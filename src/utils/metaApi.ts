@@ -180,7 +180,10 @@ export async function fetchMetaCreatives(
 
 // ─── Transformation ──────────────────────────────────────────────────────────
 
-/** Finds the numeric value of a specific action_type in a Meta actions array. */
+/**
+ * Returns the value of the FIRST matching action_type found (for mutually-exclusive
+ * purchase hierarchies: purchase > omni_purchase > fb_pixel_purchase).
+ */
 function pickAction(actions: MetaAction[] | undefined, ...types: string[]): number {
   if (!actions) return 0;
   for (const type of types) {
@@ -188,6 +191,19 @@ function pickAction(actions: MetaAction[] | undefined, ...types: string[]): numb
     if (found) return parseFloat(found.value) || 0;
   }
   return 0;
+}
+
+/**
+ * SUMS the values of ALL specified action_types (for additive metrics like leads,
+ * where "lead" and "onsite_conversion.lead_grouped" are independent event types).
+ * Mirrors exactly how ProfileAnalysis counts leads.
+ */
+function sumActions(actions: MetaAction[] | undefined, ...types: string[]): number {
+  if (!actions) return 0;
+  return types.reduce((total, type) => {
+    const found = actions.find((a) => a.action_type === type);
+    return total + (found ? parseFloat(found.value) || 0 : 0);
+  }, 0);
 }
 
 /**
@@ -229,8 +245,11 @@ export function metaInsightsToCampaignData(
       "offsite_conversion.fb_pixel_purchase",
     );
 
-    // Leads — from actions (lead events)
-    const leads = pickAction(
+    // Leads — SUM all lead event types (same logic as ProfileAnalysis).
+    // "lead" = FB lead form, "onsite_conversion.lead_grouped" = grouped on-site leads,
+    // "offsite_conversion.fb_pixel_lead" = pixel lead events.
+    // These are independent event types and must be summed, not picked exclusively.
+    const leads = sumActions(
       row.actions,
       "lead",
       "onsite_conversion.lead_grouped",
