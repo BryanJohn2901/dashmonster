@@ -157,10 +157,15 @@ export async function fetchMetaInsights(
 // ─── Creatives ────────────────────────────────────────────────────────────────
 
 export interface MetaCampaignCreative {
+  adId:         string;           // individual ad ID (unique per ad)
+  adName:       string;           // ad name from Meta Ads Manager
   campaignId:   string;
   campaignName: string;
-  thumbnailUrl: string;
-  adLink:       string;
+  adsetName:    string;
+  thumbnailUrl: string;           // thumbnail URL (may expire — re-fetch to refresh)
+  previewUrl:   string;           // preview_shareable_link (for direct preview)
+  adLink:       string;           // Ads Library URL or preview link
+  mediaType:    "image" | "video" | "carousel" | "unknown";
 }
 
 /**

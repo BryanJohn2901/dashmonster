@@ -1,47 +1,25 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import {
-  Check,
-  CloudUpload,
-  Download,
-  ExternalLink,
-  ImageIcon,
-  Loader2,
-  MousePointerClick,
-  Pencil,
-  ShoppingCart,
-  Star,
-  X,
+  Download, ExternalLink, Film, ImageIcon, Layers, Loader2,
+  MousePointerClick, Play, ShoppingCart, Star, Trophy, X,
 } from "lucide-react";
 import { AggregatedCampaign } from "@/types/campaign";
-import { useCreativeStore, CreativeData, EMPTY_CREATIVE } from "@/hooks/useCreativeStore";
+import { useCreativeStore } from "@/hooks/useCreativeStore";
+import type { MetaCampaignCreative } from "@/utils/metaApi";
 import { fetchMetaCreatives, loadMetaCredentials } from "@/utils/metaApi";
 import { formatCurrency, formatPercent } from "@/utils/metrics";
-import {
-  fetchSupabaseCreatives,
-  saveCreativeToSupabase,
-} from "@/utils/supabaseCreatives";
 
 interface BestCreativesProps {
   campaigns: AggregatedCampaign[];
   adAccountId?: string;
 }
 
-// ─── Creative card ────────────────────────────────────────────────────────────
+type CreativeSubTab  = "gallery" | "rankings" | "starred";
+type MediaTypeFilter = "all" | "image" | "video" | "carousel";
 
-interface CreativeCardProps {
-  campaign: AggregatedCampaign;
-  creative: CreativeData;
-  isEditing: boolean;
-  isSaving: boolean;
-  isSupabaseSaved: boolean;
-  onEditOpen: () => void;
-  onSave: (data: CreativeData) => void;
-  onCancel: () => void;
-  onToggleStar: () => void;
-  onSaveToSupabase: () => void;
-}
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function downloadBlob(url: string, filename: string) {
   fetch(url)
@@ -53,268 +31,321 @@ function downloadBlob(url: string, filename: string) {
       a.click();
       URL.revokeObjectURL(a.href);
     })
-    .catch(() => {
-      // Fallback: open in new tab
-      window.open(url, "_blank");
-    });
+    .catch(() => window.open(url, "_blank"));
 }
 
-function CreativeCard({ campaign: c, creative, isEditing, isSaving, isSupabaseSaved, onEditOpen, onSave, onCancel, onToggleStar, onSaveToSupabase }: CreativeCardProps) {
-  const [draft, setDraft] = useState<CreativeData>(creative);
+const TYPE_LABEL: Record<MetaCampaignCreative["mediaType"], string> = {
+  image:    "Imagem",
+  video:    "Vídeo",
+  carousel: "Carrossel",
+  unknown:  "Anúncio",
+};
 
-  const handleOpen = () => {
-    setDraft(creative);
-    onEditOpen();
-  };
+const TYPE_COLOR: Record<MetaCampaignCreative["mediaType"], string> = {
+  image:    "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
+  video:    "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+  carousel: "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400",
+  unknown:  "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400",
+};
 
-  const hasMedia = Boolean(creative.mediaUrl);
-  const hasLink = Boolean(creative.adLink);
-  const isStarred = Boolean(creative.starred);
+const TYPE_ICON: Record<MetaCampaignCreative["mediaType"], React.ElementType> = {
+  image:    ImageIcon,
+  video:    Film,
+  carousel: Layers,
+  unknown:  ImageIcon,
+};
+
+// ─── Thumbnail ────────────────────────────────────────────────────────────────
+
+function Thumbnail({
+  ad,
+  className = "",
+  onClick,
+}: {
+  ad: MetaCampaignCreative;
+  className?: string;
+  onClick?: () => void;
+}) {
+  const [imgFailed, setImgFailed] = useState(false);
+  const TypeIcon = TYPE_ICON[ad.mediaType];
+  const hasThumb = Boolean(ad.thumbnailUrl) && !imgFailed;
 
   return (
     <div
-      className="flex flex-col overflow-hidden rounded-xl border shadow-sm"
-      style={{
-        backgroundColor: "var(--dm-bg-surface)",
-        borderColor: isEditing ? "var(--dm-brand-500)" : "var(--dm-border-default)",
-      }}
+      className={`relative overflow-hidden bg-slate-100 dark:bg-slate-800 ${onClick ? "cursor-pointer" : ""} ${className}`}
+      onClick={onClick}
     >
-      {/* Thumbnail */}
-      <div className="relative aspect-video w-full overflow-hidden" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
-        {hasMedia ? (
-          <img
-            src={creative.mediaUrl}
-            alt={c.campaignName}
-            className="h-full w-full object-cover"
-            onError={(e) => {
-              (e.currentTarget as HTMLImageElement).style.display = "none";
-              (e.currentTarget.nextElementSibling as HTMLElement | null)?.removeAttribute("hidden");
-            }}
-          />
-        ) : null}
-        {/* Fallback placeholder — shown when no URL or image fails */}
-        <div
-          className="absolute inset-0 flex flex-col items-center justify-center gap-1"
-          hidden={hasMedia || undefined}
-          id={`placeholder-${c.campaignName}`}
-        >
-          <ImageIcon size={28} style={{ color: "var(--dm-border-strong)" }} />
-          <span className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>Criativo não disponível</span>
+      {hasThumb ? (
+        <img
+          src={ad.thumbnailUrl}
+          alt={ad.adName}
+          className="h-full w-full object-cover transition-transform duration-200 hover:scale-105"
+          onError={() => setImgFailed(true)}
+        />
+      ) : (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5">
+          <TypeIcon size={28} className="text-slate-300 dark:text-slate-600" />
+          <span className="text-[10px] text-slate-400 dark:text-slate-500">
+            {ad.mediaType === "video" ? "Vídeo" : "Sem preview"}
+          </span>
         </div>
+      )}
 
-        {/* Star badge (top-left) */}
-        {isStarred && (
-          <div className="absolute left-2 top-2">
-            <span className="flex items-center gap-1 rounded-full bg-amber-400/90 px-2 py-0.5 text-[10px] font-bold text-white shadow backdrop-blur-sm">
-              <Star size={10} fill="white" /> Destaque
-            </span>
-          </div>
-        )}
-
-        {/* Actions overlay (top-right) */}
-        <div className="absolute right-2 top-2 flex gap-1">
-          {/* Star/unstar */}
-          <button
-            type="button"
-            onClick={onToggleStar}
-            className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/90 shadow backdrop-blur-sm hover:bg-white dark:bg-slate-800/90 dark:hover:bg-slate-800"
-            title={isStarred ? "Remover destaque" : "Marcar como destaque"}
-          >
-            <Star size={13} fill={isStarred ? "#f59e0b" : "none"} stroke={isStarred ? "#f59e0b" : "currentColor"} className="text-slate-400" />
-          </button>
-          {/* Download */}
-          {hasMedia && (
-            <button
-              type="button"
-              onClick={() => downloadBlob(creative.mediaUrl, `${c.campaignName}-criativo.jpg`)}
-              className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/90 shadow backdrop-blur-sm hover:bg-white dark:bg-slate-800/90 dark:hover:bg-slate-800"
-              title="Baixar imagem"
-            >
-              <Download size={13} className="text-slate-500 dark:text-slate-400" />
-            </button>
-          )}
-          {/* Save to Supabase Storage */}
-          {hasMedia && (
-            <button
-              type="button"
-              onClick={onSaveToSupabase}
-              disabled={isSaving || isSupabaseSaved}
-              className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/90 shadow backdrop-blur-sm hover:bg-white disabled:cursor-default dark:bg-slate-800/90 dark:hover:bg-slate-800"
-              title={isSupabaseSaved ? "Salvo no Supabase" : "Salvar no Supabase"}
-            >
-              {isSaving ? (
-                <Loader2 size={13} className="animate-spin text-blue-500" />
-              ) : isSupabaseSaved ? (
-                <Check size={13} className="text-emerald-500" />
-              ) : (
-                <CloudUpload size={13} className="text-slate-500 dark:text-slate-400" />
-              )}
-            </button>
-          )}
-          {hasLink && (
-            <a
-              href={creative.adLink}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/90 shadow backdrop-blur-sm hover:bg-white dark:bg-slate-800/90 dark:hover:bg-slate-800"
-              title="Abrir anúncio"
-            >
-              <ExternalLink size={13} className="text-blue-500" />
-            </a>
-          )}
-          <button
-            type="button"
-            onClick={handleOpen}
-            className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/90 shadow backdrop-blur-sm hover:bg-white dark:bg-slate-800/90 dark:hover:bg-slate-800"
-            title="Editar criativo"
-          >
-            <Pencil size={13} className="text-slate-500 dark:text-slate-400" />
-          </button>
-        </div>
-      </div>
-
-      {/* Campaign info */}
-      <div className="flex flex-1 flex-col gap-1.5 p-3">
-        <p className="line-clamp-2 text-xs font-semibold leading-snug" style={{ color: "var(--dm-text-primary)" }}>
-          {c.campaignName}
-        </p>
-        <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-[10px]" style={{ color: "var(--dm-text-secondary)" }}>
-          <span>CTR {formatPercent(c.ctr)}</span>
-          <span>ROAS {c.roas.toFixed(2)}x</span>
-          {c.conversions > 0 && <span>CPA {formatCurrency(c.cpa)}</span>}
-        </div>
-        {creative.notes && (
-          <p className="mt-0.5 line-clamp-2 text-[10px] leading-snug" style={{ color: "var(--dm-text-tertiary)" }}>
-            {creative.notes}
-          </p>
-        )}
-
-        {/* Link row (if set but no media to show overlay) */}
-        {hasLink && !hasMedia && (
-          <a
-            href={creative.adLink}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-auto flex items-center gap-1 text-[10px] font-medium text-blue-500 hover:underline"
-          >
-            <ExternalLink size={10} />
-            Ver anúncio
-          </a>
-        )}
-      </div>
-
-      {/* Inline edit form */}
-      {isEditing && (
-        <div className="border-t p-3" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)" }}>
-          <div className="space-y-2">
-            <input
-              type="url"
-              value={draft.mediaUrl}
-              onChange={(e) => setDraft((d) => ({ ...d, mediaUrl: e.target.value }))}
-              placeholder="URL da imagem ou vídeo"
-              className="w-full rounded-md border px-2.5 py-1.5 text-xs focus:outline-none"
-              style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)", color: "var(--dm-text-primary)" }}
-            />
-            <input
-              type="url"
-              value={draft.adLink}
-              onChange={(e) => setDraft((d) => ({ ...d, adLink: e.target.value }))}
-              placeholder="Link do anúncio"
-              className="w-full rounded-md border px-2.5 py-1.5 text-xs focus:outline-none"
-              style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)", color: "var(--dm-text-primary)" }}
-            />
-            <textarea
-              value={draft.notes}
-              onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value }))}
-              placeholder="Notas"
-              rows={2}
-              className="w-full resize-none rounded-md border px-2.5 py-1.5 text-xs focus:outline-none"
-              style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)", color: "var(--dm-text-primary)" }}
-            />
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={onCancel}
-                className="flex items-center gap-1 rounded-md px-2.5 py-1 text-xs"
-                style={{ color: "var(--dm-text-secondary)" }}
-              >
-                <X size={11} /> Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={() => onSave(draft)}
-                className="flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium text-white"
-                style={{ backgroundColor: "var(--dm-brand-500)" }}
-              >
-                <Check size={11} /> Salvar
-              </button>
-            </div>
+      {/* Video play overlay */}
+      {ad.mediaType === "video" && hasThumb && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-black/50 shadow-lg backdrop-blur-sm transition-transform hover:scale-110">
+            <Play size={16} fill="white" className="text-white ml-0.5" />
           </div>
         </div>
       )}
+
+      {/* Type badge */}
+      <span className={`absolute left-2 top-2 rounded-full px-2 py-0.5 text-[10px] font-bold shadow ${TYPE_COLOR[ad.mediaType]}`}>
+        {TYPE_LABEL[ad.mediaType]}
+      </span>
+    </div>
+  );
+}
+
+// ─── Creative Card ────────────────────────────────────────────────────────────
+
+function CreativeCard({
+  ad,
+  metrics,
+  starred,
+  onPreview,
+  onToggleStar,
+}: {
+  ad: MetaCampaignCreative;
+  metrics?: AggregatedCampaign;
+  starred: boolean;
+  onPreview: () => void;
+  onToggleStar: () => void;
+}) {
+  return (
+    <div className="flex flex-col overflow-hidden rounded-xl border shadow-sm transition-shadow hover:shadow-md"
+      style={{ borderColor: starred ? "#f59e0b" : "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}
+    >
+      {/* Thumbnail — clickable */}
+      <Thumbnail ad={ad} className="aspect-video w-full" onClick={onPreview} />
+
+      {/* Top-right actions overlay */}
+      <div className="relative -mt-8 mr-2 flex justify-end gap-1 pr-0">
+        <button type="button" onClick={onToggleStar} title={starred ? "Remover destaque" : "Marcar destaque"}
+          className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/90 shadow backdrop-blur-sm hover:bg-white dark:bg-slate-800/90">
+          <Star size={13} fill={starred ? "#f59e0b" : "none"} stroke={starred ? "#f59e0b" : "currentColor"} className="text-slate-400" />
+        </button>
+        {ad.thumbnailUrl && (
+          <button type="button" onClick={() => downloadBlob(ad.thumbnailUrl, `${ad.adId}.jpg`)} title="Baixar thumbnail"
+            className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/90 shadow backdrop-blur-sm hover:bg-white dark:bg-slate-800/90">
+            <Download size={13} className="text-slate-500 dark:text-slate-400" />
+          </button>
+        )}
+        <a href={ad.adLink} target="_blank" rel="noopener noreferrer" title="Ver anúncio no Meta"
+          className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/90 shadow backdrop-blur-sm hover:bg-white dark:bg-slate-800/90">
+          <ExternalLink size={13} className="text-blue-500" />
+        </a>
+      </div>
+
+      {/* Info */}
+      <div className="flex flex-1 flex-col gap-1.5 px-3 pb-3 pt-1">
+        <p className="line-clamp-2 text-xs font-semibold leading-snug" style={{ color: "var(--dm-text-primary)" }}
+          title={ad.adName}>
+          {ad.adName}
+        </p>
+        <p className="truncate text-[10px]" style={{ color: "var(--dm-text-tertiary)" }} title={ad.campaignName}>
+          {ad.campaignName}
+        </p>
+        {/* Metrics */}
+        {metrics && (
+          <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-[10px]" style={{ color: "var(--dm-text-secondary)" }}>
+            <span>CTR {formatPercent(metrics.ctr)}</span>
+            {metrics.roas > 0 && <span>ROAS {metrics.roas.toFixed(2)}x</span>}
+          </div>
+        )}
+        {/* View button */}
+        <button type="button" onClick={onPreview}
+          className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 text-[11px] font-semibold text-white transition-opacity hover:opacity-90"
+          style={{ backgroundColor: "var(--dm-brand-500)" }}>
+          {ad.mediaType === "video" ? <Play size={11} /> : <ExternalLink size={11} />}
+          {ad.mediaType === "video" ? "Assistir / Ver anúncio" : "Visualizar"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Preview Modal ────────────────────────────────────────────────────────────
+
+function PreviewModal({
+  ad,
+  metrics,
+  starred,
+  onClose,
+  onToggleStar,
+}: {
+  ad: MetaCampaignCreative;
+  metrics?: AggregatedCampaign;
+  starred: boolean;
+  onClose: () => void;
+  onToggleStar: () => void;
+}) {
+  // Close on Escape
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ backgroundColor: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+
+      <div className="relative flex w-full max-w-3xl flex-col overflow-hidden rounded-2xl shadow-2xl md:flex-row"
+        style={{ backgroundColor: "var(--dm-bg-card)", maxHeight: "90vh" }}>
+
+        {/* Close button */}
+        <button type="button" onClick={onClose}
+          className="absolute right-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/40 text-white hover:bg-black/60">
+          <X size={16} />
+        </button>
+
+        {/* Left — creative preview */}
+        <div className="flex w-full items-center justify-center bg-black md:w-[55%]" style={{ minHeight: 280 }}>
+          <Thumbnail ad={ad} className="h-full w-full" />
+        </div>
+
+        {/* Right — details */}
+        <div className="flex w-full flex-col gap-4 overflow-y-auto p-5 md:w-[45%]">
+
+          {/* Type + Star */}
+          <div className="flex items-center justify-between">
+            <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${TYPE_COLOR[ad.mediaType]}`}>
+              {TYPE_LABEL[ad.mediaType]}
+            </span>
+            <button type="button" onClick={onToggleStar}
+              className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors"
+              style={{ color: starred ? "#f59e0b" : "var(--dm-text-secondary)", backgroundColor: starred ? "rgba(245,158,11,0.1)" : "var(--dm-bg-elevated)" }}>
+              <Star size={13} fill={starred ? "#f59e0b" : "none"} stroke={starred ? "#f59e0b" : "currentColor"} />
+              {starred ? "Destacado" : "Marcar"}
+            </button>
+          </div>
+
+          {/* Ad info */}
+          <div>
+            <p className="text-sm font-bold leading-snug" style={{ color: "var(--dm-text-primary)" }}>{ad.adName}</p>
+            <p className="mt-1 text-xs" style={{ color: "var(--dm-text-secondary)" }}>{ad.campaignName}</p>
+            {ad.adsetName && (
+              <p className="mt-0.5 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>{ad.adsetName}</p>
+            )}
+          </div>
+
+          {/* Metrics */}
+          {metrics && (
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { label: "CTR",        value: formatPercent(metrics.ctr) },
+                { label: "ROAS",       value: `${metrics.roas.toFixed(2)}x` },
+                { label: "Cliques",    value: metrics.clicks.toLocaleString("pt-BR") },
+                { label: "Impressões", value: metrics.impressions.toLocaleString("pt-BR") },
+                ...(metrics.conversions > 0 ? [{ label: "CPA", value: formatCurrency(metrics.cpa) }] : []),
+                ...(metrics.investment > 0   ? [{ label: "Investimento", value: formatCurrency(metrics.investment) }] : []),
+              ].map(({ label, value }) => (
+                <div key={label} className="rounded-lg p-2" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>{label}</p>
+                  <p className="mt-0.5 text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>{value}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Action buttons */}
+          <div className="mt-auto flex flex-col gap-2">
+            <a href={ad.adLink} target="_blank" rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+              style={{ backgroundColor: "var(--dm-brand-500)" }}>
+              <ExternalLink size={15} />
+              Ver anúncio no Meta
+            </a>
+            {ad.previewUrl && ad.previewUrl !== ad.adLink && (
+              <a href={ad.previewUrl} target="_blank" rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 rounded-xl border py-2.5 text-sm font-semibold transition-colors hover:opacity-80"
+                style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>
+                <Play size={14} />
+                Preview do anúncio
+              </a>
+            )}
+            {ad.thumbnailUrl && (
+              <button type="button" onClick={() => downloadBlob(ad.thumbnailUrl, `${ad.adId}-thumb.jpg`)}
+                className="flex items-center justify-center gap-2 rounded-xl border py-2 text-xs font-medium transition-colors hover:opacity-80"
+                style={{ borderColor: "var(--dm-border-subtle)", color: "var(--dm-text-tertiary)" }}>
+                <Download size={12} />
+                Baixar thumbnail
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
 // ─── Ranking row ──────────────────────────────────────────────────────────────
 
-interface CreativeRowProps {
+function RankingRow({
+  rank,
+  ad,
+  metrics,
+  highlight,
+  highlightValue,
+  onPreview,
+}: {
   rank: number;
-  campaign: AggregatedCampaign;
-  creative: CreativeData;
+  ad?: MetaCampaignCreative;
+  metrics: AggregatedCampaign;
   highlight: string;
   highlightValue: string;
-}
-
-function CreativeRow({ rank, campaign: c, creative, highlight, highlightValue }: CreativeRowProps) {
+  onPreview?: () => void;
+}) {
   return (
-    <li className="flex items-center gap-2.5 rounded-lg border p-2.5" style={{ borderColor: "var(--dm-border-subtle)", backgroundColor: "var(--dm-bg-elevated)" }}>
-      <span
-        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
-        style={
-          rank === 1
-            ? { backgroundColor: "var(--dm-brand-50)", color: "var(--dm-brand-500)" }
-            : { backgroundColor: "var(--dm-bg-surface)", color: "var(--dm-text-tertiary)" }
-        }
-      >
+    <li className="flex items-center gap-2.5 rounded-lg border p-2.5 transition-colors hover:opacity-90"
+      style={{ borderColor: "var(--dm-border-subtle)", backgroundColor: "var(--dm-bg-elevated)" }}>
+      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
+        style={rank === 1
+          ? { backgroundColor: "var(--dm-brand-50)", color: "var(--dm-brand-500)" }
+          : { backgroundColor: "var(--dm-bg-surface)", color: "var(--dm-text-tertiary)" }}>
         {rank}
       </span>
 
-      {/* Tiny thumbnail */}
-      {creative.mediaUrl ? (
-        <img
-          src={creative.mediaUrl}
-          alt=""
-          className="h-8 w-8 shrink-0 rounded object-cover"
-        />
+      {/* Thumbnail thumbnail */}
+      {ad?.thumbnailUrl ? (
+        <img src={ad.thumbnailUrl} alt="" className="h-9 w-9 shrink-0 rounded object-cover cursor-pointer"
+          onClick={onPreview} onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
       ) : (
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded" style={{ backgroundColor: "var(--dm-border-default)" }}>
-          <ImageIcon size={12} style={{ color: "var(--dm-text-tertiary)" }} />
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded" style={{ backgroundColor: "var(--dm-border-default)" }}>
+          <ImageIcon size={14} style={{ color: "var(--dm-text-tertiary)" }} />
         </div>
       )}
 
       <div className="min-w-0 flex-1">
-        <p className="truncate text-xs font-semibold" style={{ color: "var(--dm-text-primary)" }}>{c.campaignName}</p>
+        <p className="truncate text-xs font-semibold" style={{ color: "var(--dm-text-primary)" }}>{metrics.campaignName}</p>
         <div className="mt-0.5 flex flex-wrap gap-x-2 gap-y-0 text-[10px]" style={{ color: "var(--dm-text-secondary)" }}>
-          <span>CTR {formatPercent(c.ctr)}</span>
-          <span>Conv. {formatPercent(c.conversionRate)}</span>
-          <span>ROAS {c.roas.toFixed(2)}x</span>
+          <span>CTR {formatPercent(metrics.ctr)}</span>
+          <span>ROAS {metrics.roas.toFixed(2)}x</span>
         </div>
       </div>
 
       <div className="flex shrink-0 flex-col items-end gap-1">
-        <div className="rounded-md bg-blue-50 px-2 py-0.5 text-right dark:bg-blue-900/30">
-          <p className="text-[9px] text-blue-500 dark:text-blue-400">{highlight}</p>
-          <p className="text-xs font-bold text-blue-700 dark:text-blue-300">{highlightValue}</p>
+        <div className="rounded-md px-2 py-0.5 text-right" style={{ backgroundColor: "var(--dm-brand-50)" }}>
+          <p className="text-[9px]" style={{ color: "var(--dm-brand-500)" }}>{highlight}</p>
+          <p className="text-xs font-bold" style={{ color: "var(--dm-brand-700, var(--dm-brand-500))" }}>{highlightValue}</p>
         </div>
-        {creative.adLink && (
-          <a
-            href={creative.adLink}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[10px] text-blue-400 hover:underline"
-          >
-            <ExternalLink size={10} />
+        {ad?.adLink && (
+          <a href={ad.adLink} target="_blank" rel="noopener noreferrer" title="Ver anúncio"
+            className="text-blue-400 hover:text-blue-500">
+            <ExternalLink size={11} />
           </a>
         )}
       </div>
@@ -325,331 +356,292 @@ function CreativeRow({ rank, campaign: c, creative, highlight, highlightValue }:
 // ─── Main export ──────────────────────────────────────────────────────────────
 
 export function BestCreatives({ campaigns, adAccountId }: BestCreativesProps) {
-  const { store, saveCreative } = useCreativeStore();
-  const [editingCampaign, setEditingCampaign] = useState<string | null>(null);
-  const [fetchingCreatives, setFetchingCreatives] = useState(false);
-  // campaign_name → true when successfully saved to Supabase Storage
-  const [supabaseSaved, setSupabaseSaved] = useState<Record<string, boolean>>({});
-  const [savingCampaign, setSavingCampaign] = useState<string | null>(null);
+  const [subTab, setSubTab]         = useState<CreativeSubTab>("gallery");
+  const [typeFilter, setTypeFilter] = useState<MediaTypeFilter>("all");
+  const [previewAd, setPreviewAd]   = useState<MetaCampaignCreative | null>(null);
+  const [metaAds, setMetaAds]       = useState<MetaCampaignCreative[]>([]);
+  const [fetching, setFetching]     = useState(false);
+  const { store, saveCreative }     = useCreativeStore();
   const storeRef = useRef(store);
   storeRef.current = store;
 
-  const toggleStar = (campaignName: string) => {
-    const existing = storeRef.current[campaignName] ?? EMPTY_CREATIVE;
-    saveCreative(campaignName, {
-      ...existing,
-      starred: !existing.starred,
-      starredAt: !existing.starred ? new Date().toISOString() : undefined,
-    });
-  };
-
-  // Load previously saved creatives from Supabase on mount
-  useEffect(() => {
-    fetchSupabaseCreatives().then((rows) => {
-      for (const row of rows) {
-        if (!row.storage_url) continue;
-        const existing = storeRef.current[row.campaign_name];
-        // Prefer Supabase URL over Meta CDN (won't expire)
-        saveCreative(row.campaign_name, {
-          mediaUrl: row.storage_url,
-          adLink:   existing?.adLink || row.ad_link,
-          notes:    existing?.notes  || row.notes,
-          starred:  existing?.starred ?? row.starred,
-          starredAt: existing?.starredAt ?? row.starred_at ?? undefined,
-        });
-        setSupabaseSaved((prev) => ({ ...prev, [row.campaign_name]: true }));
-      }
-    }).catch(() => {});
-  // Only on mount
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
+  // Fetch all ads from Meta
   useEffect(() => {
     if (!adAccountId) return;
     const { accessToken } = loadMetaCredentials();
     if (!accessToken) return;
-
-    setFetchingCreatives(true);
+    setFetching(true);
     fetchMetaCreatives(adAccountId, accessToken)
-      .then((results) => {
-        for (const r of results) {
-          if (!r.thumbnailUrl && !r.adLink) continue;
-          const existing = storeRef.current[r.campaignName];
-          // Preserve manually-set mediaUrl; always refresh adLink from API if user hasn't set one
-          saveCreative(r.campaignName, {
-            mediaUrl: existing?.mediaUrl || r.thumbnailUrl,
-            adLink:   existing?.adLink   || r.adLink,
-            notes:    existing?.notes    || "",
-          });
-        }
-      })
+      .then((ads) => setMetaAds(ads))
       .catch(() => {})
-      .finally(() => setFetchingCreatives(false));
-  // adAccountId change triggers a fresh fetch; saveCreative is stable
+      .finally(() => setFetching(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adAccountId]);
 
-  const handleSaveToSupabase = async (campaignName: string) => {
-    const creative = storeRef.current[campaignName];
-    if (!creative?.mediaUrl) return;
-    setSavingCampaign(campaignName);
-    try {
-      const storageUrl = await saveCreativeToSupabase(
-        creative.mediaUrl,
-        campaignName,
-        adAccountId ?? "",
-        creative.adLink,
-      );
-      // Update local store with the permanent Supabase URL
-      saveCreative(campaignName, { ...creative, mediaUrl: storageUrl });
-      setSupabaseSaved((prev) => ({ ...prev, [campaignName]: true }));
-    } catch {
-      // Silently ignore — user can retry
-    } finally {
-      setSavingCampaign(null);
-    }
-  };
+  const toggleStar = useCallback((ad: MetaCampaignCreative) => {
+    const existing = storeRef.current[ad.adId];
+    const wasStarred = existing?.starred ?? false;
+    saveCreative(ad.adId, {
+      mediaUrl:  existing?.mediaUrl  ?? ad.thumbnailUrl,
+      adLink:    existing?.adLink    ?? ad.adLink,
+      notes:     existing?.notes     ?? "",
+      starred:   !wasStarred,
+      starredAt: !wasStarred ? new Date().toISOString() : undefined,
+    });
+  }, [saveCreative]);
 
+  // Metrics lookup by campaign name
+  const metricsMap = useMemo(
+    () => new Map(campaigns.map((c) => [c.campaignName, c])),
+    [campaigns],
+  );
+
+  // Filtered ads for gallery
+  const galleryAds = useMemo(() => {
+    const base = subTab === "starred"
+      ? metaAds.filter((ad) => store[ad.adId]?.starred)
+      : metaAds;
+    return typeFilter === "all" ? base : base.filter((ad) => ad.mediaType === typeFilter);
+  }, [metaAds, subTab, typeFilter, store]);
+
+  // Rankings (by campaign metrics)
   const byCtr = useMemo(
-    () =>
-      [...campaigns]
-        .filter((c) => c.impressions > 500)
-        .sort((a, b) => b.ctr - a.ctr)
-        .slice(0, 8),
+    () => [...campaigns].filter((c) => c.impressions > 500).sort((a, b) => b.ctr - a.ctr).slice(0, 8),
     [campaigns],
   );
-
   const byConversion = useMemo(
-    () =>
-      [...campaigns]
-        .filter((c) => c.clicks > 50 && c.conversions > 0)
-        .sort((a, b) => b.conversionRate - a.conversionRate)
-        .slice(0, 8),
+    () => [...campaigns].filter((c) => c.clicks > 50 && c.conversions > 0).sort((a, b) => b.conversionRate - a.conversionRate).slice(0, 8),
+    [campaigns],
+  );
+  const byRoas = useMemo(
+    () => [...campaigns].filter((c) => c.investment > 0 && c.roas > 0).sort((a, b) => b.roas - a.roas).slice(0, 8),
     [campaigns],
   );
 
-  const starred = useMemo(
-    () =>
-      campaigns
-        .map((c) => ({ campaign: c, creative: store[c.campaignName] }))
-        .filter((x) => x.creative?.starred)
-        .sort((a, b) => {
-          const ta = a.creative.starredAt ?? "";
-          const tb = b.creative.starredAt ?? "";
-          return tb.localeCompare(ta);
-        }),
-    [campaigns, store],
-  );
+  // First ad per campaign (for ranking thumbnails)
+  const firstAdByCampaign = useMemo(() => {
+    const m = new Map<string, MetaCampaignCreative>();
+    metaAds.forEach((ad) => { if (!m.has(ad.campaignName)) m.set(ad.campaignName, ad); });
+    return m;
+  }, [metaAds]);
 
-  if (campaigns.length === 0) {
+  const starredCount = metaAds.filter((ad) => store[ad.adId]?.starred).length;
+
+  const videoCount    = metaAds.filter((a) => a.mediaType === "video").length;
+  const imageCount    = metaAds.filter((a) => a.mediaType === "image").length;
+  const carouselCount = metaAds.filter((a) => a.mediaType === "carousel").length;
+
+  if (!adAccountId && campaigns.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
         <div className="flex h-14 w-14 items-center justify-center rounded-xl" style={{ backgroundColor: "var(--dm-brand-50)" }}>
           <ImageIcon size={26} style={{ color: "var(--dm-brand-500)" }} />
         </div>
-        <div>
-          <p className="text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>Nenhum criativo disponível</p>
-          <p className="mt-1 text-xs" style={{ color: "var(--dm-text-secondary)" }}>Importe dados via Meta Ads ou filtre uma campanha com impressões.</p>
-        </div>
+        <p className="text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>Nenhum criativo disponível</p>
+        <p className="text-xs" style={{ color: "var(--dm-text-secondary)" }}>Importe dados via Meta Ads para visualizar seus criativos.</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
 
-      {/* ── How it works banner ──────────────────────────────────────────── */}
-      <div
-        className="flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-start"
-        style={{ borderColor: "var(--dm-brand-100)", backgroundColor: "var(--dm-brand-50)" }}
-      >
-        <div
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
-          style={{ backgroundColor: "var(--dm-brand-100)" }}
-        >
-          <ImageIcon size={16} style={{ color: "var(--dm-brand-600)" }} />
-        </div>
-        <div className="space-y-1.5">
-          <p className="text-xs font-semibold" style={{ color: "var(--dm-brand-700)" }}>Como funciona esta seção</p>
-          <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px]" style={{ color: "var(--dm-brand-600)" }}>
-            <span className="flex items-center gap-1"><MousePointerClick size={11} /> Rankings automáticos por CTR e conversão</span>
-            <span className="flex items-center gap-1"><Star size={11} /> Marque como destaque com a estrela — aparece na biblioteca</span>
-            <span className="flex items-center gap-1"><Download size={11} /> Baixe a imagem do criativo com um clique</span>
-            <span className="flex items-center gap-1"><ExternalLink size={11} /> Acesse o anúncio diretamente pelo ícone de link</span>
-          </div>
-        </div>
+      {/* ── Sub-tabs ───────────────────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center gap-2">
+        {(
+          [
+            { id: "gallery" as const,  label: "Galeria",         count: metaAds.length },
+            { id: "rankings" as const, label: "Rankings",        count: null },
+            { id: "starred" as const,  label: "⭐ Destaques",    count: starredCount },
+          ] as const
+        ).map(({ id, label, count }) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setSubTab(id)}
+            className="flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-semibold transition-all"
+            style={
+              subTab === id
+                ? { backgroundColor: "var(--dm-brand-500)", color: "#fff" }
+                : { backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-secondary)", border: "1px solid var(--dm-border-default)" }
+            }
+          >
+            {label}
+            {count !== null && (
+              <span className="rounded-full px-1.5 py-0.5 text-[10px] font-bold"
+                style={{ backgroundColor: subTab === id ? "rgba(255,255,255,0.2)" : "var(--dm-bg-surface)" }}>
+                {count}
+              </span>
+            )}
+          </button>
+        ))}
+
+        {fetching && (
+          <span className="flex items-center gap-1.5 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
+            <Loader2 size={12} className="animate-spin" /> Buscando no Meta…
+          </span>
+        )}
       </div>
 
-      {/* ── Gallery ─────────────────────────────────────────────────────── */}
-      <section>
-        <div className="mb-3 flex items-center gap-2">
-          <h2 className="text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>
-            Criativos ({campaigns.length})
-          </h2>
-          {fetchingCreatives && (
-            <span className="flex items-center gap-1 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
-              <Loader2 size={11} className="animate-spin" />
-              Buscando criativos no Meta…
-            </span>
+      {/* ── Gallery & Starred ──────────────────────────────────────────────── */}
+      {(subTab === "gallery" || subTab === "starred") && (
+        <>
+          {/* Type filter pills */}
+          {subTab === "gallery" && (
+            <div className="flex flex-wrap gap-2">
+              {(
+                [
+                  { key: "all" as const,      label: "Todos",      count: metaAds.length },
+                  { key: "video" as const,     label: "🎬 Vídeo",   count: videoCount },
+                  { key: "image" as const,     label: "🖼️ Imagem",  count: imageCount },
+                  { key: "carousel" as const,  label: "📎 Carrossel", count: carouselCount },
+                ] as const
+              ).map(({ key, label, count }) => count > 0 || key === "all" ? (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setTypeFilter(key)}
+                  className="flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-semibold transition-all"
+                  style={
+                    typeFilter === key
+                      ? { backgroundColor: "var(--dm-brand-500)", color: "#fff", borderColor: "var(--dm-brand-500)" }
+                      : { backgroundColor: "var(--dm-bg-surface)", color: "var(--dm-text-secondary)", borderColor: "var(--dm-border-default)" }
+                  }
+                >
+                  {label}
+                  <span className="rounded-full px-1 text-[10px]"
+                    style={{ opacity: 0.7 }}>
+                    {count}
+                  </span>
+                </button>
+              ) : null)}
+            </div>
           )}
-        </div>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          {campaigns.map((c) => {
-            const creative = store[c.campaignName] ?? EMPTY_CREATIVE;
-            return (
-              <CreativeCard
-                key={c.campaignName}
-                campaign={c}
-                creative={creative}
-                isEditing={editingCampaign === c.campaignName}
-                isSaving={savingCampaign === c.campaignName}
-                isSupabaseSaved={supabaseSaved[c.campaignName] ?? false}
-                onEditOpen={() => setEditingCampaign(c.campaignName)}
-                onSave={(data) => {
-                  saveCreative(c.campaignName, data);
-                  setEditingCampaign(null);
-                }}
-                onCancel={() => setEditingCampaign(null)}
-                onToggleStar={() => toggleStar(c.campaignName)}
-                onSaveToSupabase={() => void handleSaveToSupabase(c.campaignName)}
-              />
-            );
-          })}
-        </div>
-      </section>
 
-      {/* ── Biblioteca de Destaque ───────────────────────────────────────── */}
-      {starred.length > 0 && (
-        <section>
-          <div className="mb-3 flex items-center gap-2">
-            <Star size={15} fill="#f59e0b" stroke="#f59e0b" />
-            <h2 className="text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>
-              Biblioteca de Destaques ({starred.length})
-            </h2>
-            <p className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>— Criativos marcados como melhores</p>
-          </div>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-            {starred.map(({ campaign: c, creative }) => (
-              <div
-                key={c.campaignName}
-                className="flex flex-col overflow-hidden rounded-xl border shadow-sm"
-                style={{ borderColor: "#f59e0b", backgroundColor: "var(--dm-bg-surface)" }}
-              >
-                {/* Thumbnail */}
-                <div className="relative aspect-video overflow-hidden" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
-                  {creative.mediaUrl ? (
-                    <img src={creative.mediaUrl} alt={c.campaignName} className="h-full w-full object-cover" />
-                  ) : (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <ImageIcon size={24} style={{ color: "var(--dm-border-strong)" }} />
-                    </div>
-                  )}
-                  <div className="absolute left-2 top-2">
-                    <span className="flex items-center gap-1 rounded-full bg-amber-400/90 px-2 py-0.5 text-[10px] font-bold text-white">
-                      <Star size={9} fill="white" /> Destaque
-                    </span>
-                  </div>
-                  {creative.adLink && (
-                    <div className="absolute right-2 top-2 flex gap-1">
-                      <button
-                        type="button"
-                        onClick={() => downloadBlob(creative.mediaUrl, `${c.campaignName}-destaque.jpg`)}
-                        className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/90 shadow hover:bg-white"
-                        title="Baixar"
-                      >
-                        <Download size={12} className="text-slate-500" />
-                      </button>
-                      <a
-                        href={creative.adLink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/90 shadow hover:bg-white"
-                        title="Abrir anúncio"
-                      >
-                        <ExternalLink size={12} className="text-blue-500" />
-                      </a>
-                    </div>
-                  )}
-                </div>
-                {/* Info */}
-                <div className="flex flex-col gap-1 p-3">
-                  <p className="line-clamp-2 text-xs font-semibold leading-snug" style={{ color: "var(--dm-text-primary)" }}>{c.campaignName}</p>
-                  <div className="flex flex-wrap gap-x-2 text-[10px]" style={{ color: "var(--dm-text-secondary)" }}>
-                    <span>CTR {formatPercent(c.ctr)}</span>
-                    <span>ROAS {c.roas.toFixed(2)}x</span>
-                  </div>
-                  {creative.notes && (
-                    <p className="mt-0.5 line-clamp-2 text-[10px] italic leading-snug" style={{ color: "var(--dm-text-tertiary)" }}>{creative.notes}</p>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => toggleStar(c.campaignName)}
-                    className="mt-1 self-start rounded-md px-2 py-0.5 text-[10px] font-medium"
-                    style={{ color: "#f59e0b", backgroundColor: "rgba(245,158,11,0.08)" }}
-                  >
-                    Remover destaque
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
+          {/* Grid */}
+          {galleryAds.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-3 rounded-xl border py-14 text-center"
+              style={{ borderColor: "var(--dm-border-default)" }}>
+              <ImageIcon size={32} style={{ color: "var(--dm-border-strong)" }} />
+              <p className="text-sm font-semibold" style={{ color: "var(--dm-text-secondary)" }}>
+                {subTab === "starred" ? "Nenhum criativo marcado como destaque" : "Nenhum criativo encontrado"}
+              </p>
+              {subTab === "starred" && (
+                <p className="text-xs" style={{ color: "var(--dm-text-tertiary)" }}>
+                  Clique na ⭐ em qualquer criativo para marcá-lo como destaque.
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+              {galleryAds.map((ad) => (
+                <CreativeCard
+                  key={ad.adId}
+                  ad={ad}
+                  metrics={metricsMap.get(ad.campaignName)}
+                  starred={store[ad.adId]?.starred ?? false}
+                  onPreview={() => setPreviewAd(ad)}
+                  onToggleStar={() => toggleStar(ad)}
+                />
+              ))}
+            </div>
+          )}
+        </>
       )}
 
-      {/* ── Rankings ────────────────────────────────────────────────────── */}
-      <div className="grid gap-4 md:grid-cols-2">
-        <article className="rounded-xl border p-5 shadow-sm" style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
-          <div className="mb-4 flex items-center gap-2">
-            <MousePointerClick size={17} style={{ color: "var(--dm-brand-500)" }} />
-            <div>
-              <h3 className="text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>Maior CTR</h3>
-              <p className="text-xs" style={{ color: "var(--dm-text-secondary)" }}>Criativos que mais geram cliques</p>
+      {/* ── Rankings ──────────────────────────────────────────────────────── */}
+      {subTab === "rankings" && (
+        <div className="grid gap-4 md:grid-cols-3">
+          {/* CTR */}
+          <article className="rounded-xl border p-5 shadow-sm"
+            style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
+            <div className="mb-4 flex items-center gap-2">
+              <MousePointerClick size={16} style={{ color: "var(--dm-brand-500)" }} />
+              <div>
+                <h3 className="text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>Maior CTR</h3>
+                <p className="text-[11px]" style={{ color: "var(--dm-text-secondary)" }}>Criativos que mais geram cliques</p>
+              </div>
             </div>
-          </div>
-          {byCtr.length === 0 ? (
-            <p className="text-xs" style={{ color: "var(--dm-text-tertiary)" }}>Dados insuficientes para este filtro.</p>
-          ) : (
-            <ol className="space-y-2">
-              {byCtr.map((c, idx) => (
-                <CreativeRow
-                  key={c.campaignName}
-                  rank={idx + 1}
-                  campaign={c}
-                  creative={store[c.campaignName] ?? EMPTY_CREATIVE}
-                  highlight="CTR"
-                  highlightValue={formatPercent(c.ctr)}
-                />
-              ))}
-            </ol>
-          )}
-        </article>
+            {byCtr.length === 0 ? (
+              <p className="text-xs" style={{ color: "var(--dm-text-tertiary)" }}>Dados insuficientes.</p>
+            ) : (
+              <ol className="space-y-2">
+                {byCtr.map((c, idx) => {
+                  const ad = firstAdByCampaign.get(c.campaignName);
+                  return (
+                    <RankingRow key={c.campaignName} rank={idx + 1} ad={ad} metrics={c}
+                      highlight="CTR" highlightValue={formatPercent(c.ctr)}
+                      onPreview={ad ? () => setPreviewAd(ad) : undefined} />
+                  );
+                })}
+              </ol>
+            )}
+          </article>
 
-        <article className="rounded-xl border p-5 shadow-sm" style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
-          <div className="mb-4 flex items-center gap-2">
-            <ShoppingCart size={17} style={{ color: "var(--dm-brand-500)" }} />
-            <div>
-              <h3 className="text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>Melhor Conversão</h3>
-              <p className="text-xs" style={{ color: "var(--dm-text-secondary)" }}>Criativos que mais convertem em vendas</p>
+          {/* ROAS */}
+          <article className="rounded-xl border p-5 shadow-sm"
+            style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
+            <div className="mb-4 flex items-center gap-2">
+              <Trophy size={16} className="text-amber-500" />
+              <div>
+                <h3 className="text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>Melhor ROAS</h3>
+                <p className="text-[11px]" style={{ color: "var(--dm-text-secondary)" }}>Maior retorno sobre investimento</p>
+              </div>
             </div>
-          </div>
-          {byConversion.length === 0 ? (
-            <p className="text-xs" style={{ color: "var(--dm-text-tertiary)" }}>Dados insuficientes para este filtro.</p>
-          ) : (
-            <ol className="space-y-2">
-              {byConversion.map((c, idx) => (
-                <CreativeRow
-                  key={c.campaignName}
-                  rank={idx + 1}
-                  campaign={c}
-                  creative={store[c.campaignName] ?? EMPTY_CREATIVE}
-                  highlight="Tx. Conv."
-                  highlightValue={formatPercent(c.conversionRate)}
-                />
-              ))}
-            </ol>
-          )}
-        </article>
-      </div>
+            {byRoas.length === 0 ? (
+              <p className="text-xs" style={{ color: "var(--dm-text-tertiary)" }}>Dados insuficientes.</p>
+            ) : (
+              <ol className="space-y-2">
+                {byRoas.map((c, idx) => {
+                  const ad = firstAdByCampaign.get(c.campaignName);
+                  return (
+                    <RankingRow key={c.campaignName} rank={idx + 1} ad={ad} metrics={c}
+                      highlight="ROAS" highlightValue={`${c.roas.toFixed(2)}x`}
+                      onPreview={ad ? () => setPreviewAd(ad) : undefined} />
+                  );
+                })}
+              </ol>
+            )}
+          </article>
+
+          {/* Conversão */}
+          <article className="rounded-xl border p-5 shadow-sm"
+            style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
+            <div className="mb-4 flex items-center gap-2">
+              <ShoppingCart size={16} className="text-emerald-500" />
+              <div>
+                <h3 className="text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>Melhor Conversão</h3>
+                <p className="text-[11px]" style={{ color: "var(--dm-text-secondary)" }}>Maior taxa de conversão em vendas</p>
+              </div>
+            </div>
+            {byConversion.length === 0 ? (
+              <p className="text-xs" style={{ color: "var(--dm-text-tertiary)" }}>Dados insuficientes.</p>
+            ) : (
+              <ol className="space-y-2">
+                {byConversion.map((c, idx) => {
+                  const ad = firstAdByCampaign.get(c.campaignName);
+                  return (
+                    <RankingRow key={c.campaignName} rank={idx + 1} ad={ad} metrics={c}
+                      highlight="Tx. Conv." highlightValue={formatPercent(c.conversionRate)}
+                      onPreview={ad ? () => setPreviewAd(ad) : undefined} />
+                  );
+                })}
+              </ol>
+            )}
+          </article>
+        </div>
+      )}
+
+      {/* ── Preview Modal ──────────────────────────────────────────────────── */}
+      {previewAd && (
+        <PreviewModal
+          ad={previewAd}
+          metrics={metricsMap.get(previewAd.campaignName)}
+          starred={store[previewAd.adId]?.starred ?? false}
+          onClose={() => setPreviewAd(null)}
+          onToggleStar={() => toggleStar(previewAd)}
+        />
+      )}
     </div>
   );
 }
