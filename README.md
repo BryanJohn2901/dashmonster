@@ -37,7 +37,7 @@ O app converte internamente para o usuario seed no Supabase.
 
 ## Deploy na Vercel
 
-1. No Supabase, aplique as migrações em `supabase/migrations/` (por ordem numérica) no SQL Editor ou via CLI.
+1. No Supabase, aplique as migrações em `supabase/migrations/` (por ordem numérica) no SQL Editor ou via CLI. Inclua pelo menos `002_auth_shared_dashboard.sql` e, para leads no dashboard, `013_campaign_metrics_leads.sql` (depois use **Atualizar Meta** no app).
 2. Na Vercel: **Add New > Project**, importe o repositório.
 3. Deixe o preset **Next.js** (build `npm run build`, install com `npm ci` se existir `package-lock.json`).
 4. **Node:** o repositório define `engines.node` e `.nvmrc` (22+); a Vercel usa isso automaticamente.

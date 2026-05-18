@@ -37,23 +37,59 @@ const mapSupabaseRow = (row: SupabaseCampaignRow, index: number): CampaignData =
   );
 };
 
-export const fetchSupabaseCampaigns = async (): Promise<CampaignData[]> => {
+const SELECT_WITH_LEADS =
+  "id, date, campaign_name, investment, clicks, impressions, conversions, leads, revenue, source";
+const SELECT_LEGACY =
+  "id, date, campaign_name, investment, clicks, impressions, conversions, revenue, source";
+
+export const LEADS_MIGRATION_FILE = "013_campaign_metrics_leads.sql";
+
+function isMissingLeadsColumnError(message: string): boolean {
+  return /leads/i.test(message) && /(column|schema|does not exist|PGRST204)/i.test(message);
+}
+
+export interface FetchCampaignsResult {
+  campaigns: CampaignData[];
+  /** false quando a coluna `leads` ainda não existe (migration 013 pendente). */
+  hasLeadsColumn: boolean;
+}
+
+export const fetchSupabaseCampaigns = async (): Promise<FetchCampaignsResult> => {
   if (!supabaseClient) {
     throw new Error("Supabase não configurado. Defina NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY.");
   }
 
   const { data, error } = await supabaseClient
     .from("campaign_metrics")
-    .select(
-      "id, date, campaign_name, investment, clicks, impressions, conversions, leads, revenue, source",
-    )
+    .select(SELECT_WITH_LEADS)
     .order("date", { ascending: true });
 
-  if (error) {
-    throw new Error(`Erro ao buscar dados no Supabase: ${error.message}`);
+  if (!error) {
+    return {
+      campaigns: (data ?? []).map((row, index) => mapSupabaseRow(row as SupabaseCampaignRow, index)),
+      hasLeadsColumn: true,
+    };
   }
 
-  return (data ?? []).map((row, index) => mapSupabaseRow(row, index));
+  if (isMissingLeadsColumnError(error.message)) {
+    const legacy = await supabaseClient
+      .from("campaign_metrics")
+      .select(SELECT_LEGACY)
+      .order("date", { ascending: true });
+
+    if (legacy.error) {
+      throw new Error(`Erro ao buscar dados no Supabase: ${legacy.error.message}`);
+    }
+
+    return {
+      campaigns: (legacy.data ?? []).map((row, index) =>
+        mapSupabaseRow({ ...(row as Omit<SupabaseCampaignRow, "leads">), leads: 0 }, index),
+      ),
+      hasLeadsColumn: false,
+    };
+  }
+
+  throw new Error(`Erro ao buscar dados no Supabase: ${error.message}`);
 };
 
 export const subscribeSupabaseCampaigns = (
@@ -107,6 +143,7 @@ export const replaceSupabaseCampaigns = async (
     clicks: item.clicks,
     impressions: item.impressions,
     conversions: item.conversions,
+    leads: item.leads ?? 0,
     revenue: item.revenue,
     source,
   }));
@@ -199,7 +236,14 @@ export const upsertMetaCampaigns = async (campaigns: CampaignData[]): Promise<Me
     .upsert(payload, { onConflict: "date,campaign_name,source" })
     .select("id");
 
-  if (error) throw new Error(`Erro ao sincronizar: ${error.message}`);
+  if (error) {
+    if (isMissingLeadsColumnError(error.message)) {
+      throw new Error(
+        `Execute a migration ${LEADS_MIGRATION_FILE} no Supabase SQL Editor e depois use "Atualizar Meta" para re-sincronizar com leads.`,
+      );
+    }
+    throw new Error(`Erro ao sincronizar: ${error.message}`);
+  }
 
   return {
     synced: data?.length ?? 0,

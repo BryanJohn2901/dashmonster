@@ -24,7 +24,7 @@ import { classifyCampaign, classifyCourse } from "@/utils/campaignClassifier";
 import {
   fetchMetaAdAccounts, fetchMetaCampaigns, loadMetaCredentials, saveMetaCredentials,
 } from "@/utils/metaApi";
-import type { MetaSyncResult } from "@/utils/supabaseCampaigns";
+import { LEADS_MIGRATION_FILE, type MetaSyncResult } from "@/utils/supabaseCampaigns";
 import type { MetaAdAccount, MetaCampaign } from "@/utils/metaApi";
 import { CategoryGate, CATEGORY_LABEL, CATEGORY_ICON, CATEGORY_DOT, ICON_MAP, COLOR_HEX } from "@/components/CategoryGate";
 import {
@@ -57,6 +57,8 @@ interface DashboardProps {
   campaigns: CampaignData[];
   dataSource?: DataSource | null;
   syncStatus?: { syncing: boolean; result?: MetaSyncResult; error?: string };
+  /** false se a migration 013 (coluna leads) ainda não foi aplicada no Supabase. */
+  campaignMetricsHasLeadsColumn?: boolean;
   currentUser: { name: string; email: string };
   categories?: UserCategory[];
   accountEntries?: UserAccountEntry[];
@@ -1403,6 +1405,7 @@ export function Dashboard({
   campaigns,
   dataSource,
   syncStatus,
+  campaignMetricsHasLeadsColumn = true,
   currentUser,
   categories = [],
   accountEntries = [],
@@ -1746,6 +1749,14 @@ export function Dashboard({
   }, [filteredCampaigns, sortBy]);
 
   const totals             = aggregateTotals(filteredCampaigns);
+  const allCampaignTotals  = useMemo(() => aggregateTotals(campaigns), [campaigns]);
+  const needsLeadsMigration = !campaignMetricsHasLeadsColumn;
+  const needsLeadsResync =
+    campaignMetricsHasLeadsColumn &&
+    dataSource?.type === "meta" &&
+    campaigns.length > 0 &&
+    allCampaignTotals.totalLeads === 0 &&
+    allCampaignTotals.totalClicks > 0;
   const dailyTrend         = buildDailyTrend(filteredCampaigns);
   const campaignComparison = buildCampaignComparison(filteredCampaigns);
   const budgetDistribution = buildBudgetDistribution(filteredCampaigns);
@@ -2231,6 +2242,48 @@ export function Dashboard({
             ) : (
               /* ── Dashboard com dados (todas as campanhas até escolher categoria no topo) ── */
               <div className="space-y-6">
+                {(needsLeadsMigration || needsLeadsResync) && (
+                  <div
+                    className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm dark:border-amber-800/60 dark:bg-amber-950/40"
+                    role="alert"
+                  >
+                    <p className="font-semibold text-amber-900 dark:text-amber-100">
+                      {needsLeadsMigration ? "Ação necessária — coluna Leads no Supabase" : "Re-sincronizar dados Meta (Leads)"}
+                    </p>
+                    <p className="mt-1 text-xs leading-relaxed text-amber-800 dark:text-amber-200/90">
+                      {needsLeadsMigration ? (
+                        <>
+                          Cole o SQL de{" "}
+                          <code className="rounded bg-amber-100/80 px-1 dark:bg-amber-900/50">
+                            supabase/migrations/{LEADS_MIGRATION_FILE}
+                          </code>{" "}
+                          no <strong>SQL Editor</strong> do Supabase e execute. Depois use{" "}
+                          <strong>Atualizar Meta</strong> no topo para reimportar com leads.
+                        </>
+                      ) : (
+                        <>
+                          A coluna <strong>leads</strong> já existe, mas os dados atuais foram sincronizados antes dela.
+                          Faça um novo sync Meta para preencher leads (formulários e eventos de pixel).
+                        </>
+                      )}
+                    </p>
+                    {dataSource?.type === "meta" && onRefresh && (
+                      <button
+                        type="button"
+                        onClick={() => void onRefresh()}
+                        disabled={syncStatus?.syncing || needsLeadsMigration}
+                        className="mt-3 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-100 dark:hover:bg-amber-900/50"
+                      >
+                        {syncStatus?.syncing ? "A sincronizar…" : "Atualizar Meta agora"}
+                      </button>
+                    )}
+                    {needsLeadsMigration && (
+                      <p className="mt-2 text-[10px] text-amber-700 dark:text-amber-300/80">
+                        O sync Meta só funciona depois de executar a migration no Supabase.
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {/* ── Sub-tab switcher ── */}
                 <nav className="flex gap-1 rounded-xl border p-1" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)" }}>
@@ -2508,6 +2561,7 @@ export function Dashboard({
                   clicks={totals.totalClicks}
                   conversions={totals.totalConversions}
                   investment={totals.totalInvestment}
+                  leads={totals.totalLeads}
                   storageScope={currentUser.email}
                 />
 
