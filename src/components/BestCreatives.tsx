@@ -3,8 +3,11 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import {
   Download, ExternalLink, Film, ImageIcon, Layers, Loader2,
-  MousePointerClick, Play, ShoppingCart, Star, Trophy, X,
+  MousePointerClick, Play, RefreshCw, ShoppingCart, Star, Trophy, X,
 } from "lucide-react";
+
+// ─── Module-level preview cache (adId → iframeSrc) ────────────────────────────
+const previewSrcCache = new Map<string, string>();
 import { AggregatedCampaign } from "@/types/campaign";
 import { useCreativeStore } from "@/hooks/useCreativeStore";
 import type { MetaCampaignCreative } from "@/utils/metaApi";
@@ -56,53 +59,99 @@ const TYPE_ICON: Record<MetaCampaignCreative["mediaType"], React.ElementType> = 
   unknown:  ImageIcon,
 };
 
-// ─── Thumbnail ────────────────────────────────────────────────────────────────
+// ─── AdPreviewFrame ───────────────────────────────────────────────────────────
+// Lazy-loads the official Meta ad preview iframe using IntersectionObserver.
+// Fetches only when the card enters the viewport. Caches in module-level Map.
 
-function Thumbnail({
+function AdPreviewFrame({
   ad,
   className = "",
   onClick,
+  accessToken,
 }: {
   ad: MetaCampaignCreative;
   className?: string;
   onClick?: () => void;
+  accessToken: string;
 }) {
-  const [imgFailed, setImgFailed] = useState(false);
-  const TypeIcon = TYPE_ICON[ad.mediaType];
-  const hasThumb = Boolean(ad.thumbnailUrl) && !imgFailed;
+  const containerRef              = useRef<HTMLDivElement>(null);
+  const [iframeSrc, setIframeSrc] = useState<string | null>(previewSrcCache.get(ad.adId) ?? null);
+  const [loading, setLoading]     = useState(false);
+  const [failed, setFailed]       = useState(false);
+  const TypeIcon                  = TYPE_ICON[ad.mediaType];
+
+  useEffect(() => {
+    if (iframeSrc || !accessToken) return;
+
+    const el = containerRef.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0]?.isIntersecting) return;
+        observer.disconnect();
+
+        setLoading(true);
+        fetch(`/api/meta/ad-preview?${new URLSearchParams({ adId: ad.adId, accessToken })}`)
+          .then((r) => r.json())
+          .then((json: { iframeSrc?: string; error?: string }) => {
+            if (json.iframeSrc) {
+              previewSrcCache.set(ad.adId, json.iframeSrc);
+              setIframeSrc(json.iframeSrc);
+            } else {
+              setFailed(true);
+            }
+          })
+          .catch(() => setFailed(true))
+          .finally(() => setLoading(false));
+      },
+      { threshold: 0.1 },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [ad.adId, accessToken, iframeSrc]);
 
   return (
     <div
+      ref={containerRef}
       className={`relative overflow-hidden bg-slate-100 dark:bg-slate-800 ${onClick ? "cursor-pointer" : ""} ${className}`}
       onClick={onClick}
     >
-      {hasThumb ? (
-        <img
-          src={ad.thumbnailUrl}
-          alt={ad.adName}
-          className="h-full w-full object-cover transition-transform duration-200 hover:scale-105"
-          onError={() => setImgFailed(true)}
+      {/* Iframe preview */}
+      {iframeSrc && (
+        <iframe
+          src={iframeSrc}
+          title={ad.adName}
+          scrolling="no"
+          className="pointer-events-none absolute inset-0 h-full w-full origin-top-left scale-[0.85] border-none"
+          style={{ width: "118%", height: "118%", transform: "scale(0.85)", transformOrigin: "top left" }}
+          sandbox="allow-scripts allow-same-origin"
         />
-      ) : (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5">
-          <TypeIcon size={28} className="text-slate-300 dark:text-slate-600" />
-          <span className="text-[10px] text-slate-400 dark:text-slate-500">
-            {ad.mediaType === "video" ? "Vídeo" : "Sem preview"}
-          </span>
+      )}
+
+      {/* Loading skeleton */}
+      {loading && !iframeSrc && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+          <Loader2 size={20} className="animate-spin text-slate-300 dark:text-slate-600" />
+          <span className="text-[10px] text-slate-400">Carregando preview…</span>
         </div>
       )}
 
-      {/* Video play overlay */}
-      {ad.mediaType === "video" && hasThumb && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-black/50 shadow-lg backdrop-blur-sm transition-transform hover:scale-110">
-            <Play size={16} fill="white" className="text-white ml-0.5" />
-          </div>
+      {/* Fallback — no preview available */}
+      {(failed || (!loading && !iframeSrc && !accessToken)) && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5">
+          <TypeIcon size={28} className="text-slate-300 dark:text-slate-600" />
+          <span className="text-[10px] text-slate-400 dark:text-slate-500">Sem preview</span>
         </div>
+      )}
+
+      {/* Clickable overlay (iframes block pointer events above) */}
+      {iframeSrc && onClick && (
+        <div className="absolute inset-0 cursor-pointer" onClick={onClick} />
       )}
 
       {/* Type badge */}
-      <span className={`absolute left-2 top-2 rounded-full px-2 py-0.5 text-[10px] font-bold shadow ${TYPE_COLOR[ad.mediaType]}`}>
+      <span className={`absolute left-2 top-2 z-10 rounded-full px-2 py-0.5 text-[10px] font-bold shadow ${TYPE_COLOR[ad.mediaType]}`}>
         {TYPE_LABEL[ad.mediaType]}
       </span>
     </div>
@@ -117,19 +166,21 @@ function CreativeCard({
   starred,
   onPreview,
   onToggleStar,
+  accessToken,
 }: {
   ad: MetaCampaignCreative;
   metrics?: AggregatedCampaign;
   starred: boolean;
   onPreview: () => void;
   onToggleStar: () => void;
+  accessToken: string;
 }) {
   return (
     <div className="flex flex-col overflow-hidden rounded-xl border shadow-sm transition-shadow hover:shadow-md"
       style={{ borderColor: starred ? "#f59e0b" : "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}
     >
-      {/* Thumbnail — clickable */}
-      <Thumbnail ad={ad} className="aspect-video w-full" onClick={onPreview} />
+      {/* Ad preview iframe — lazy loaded */}
+      <AdPreviewFrame ad={ad} className="aspect-[9/16] w-full" onClick={onPreview} accessToken={accessToken} />
 
       {/* Top-right actions overlay */}
       <div className="relative -mt-8 mr-2 flex justify-end gap-1 pr-0">
@@ -185,12 +236,14 @@ function PreviewModal({
   starred,
   onClose,
   onToggleStar,
+  accessToken,
 }: {
   ad: MetaCampaignCreative;
   metrics?: AggregatedCampaign;
   starred: boolean;
   onClose: () => void;
   onToggleStar: () => void;
+  accessToken: string;
 }) {
   // Close on Escape
   useEffect(() => {
@@ -213,9 +266,9 @@ function PreviewModal({
           <X size={16} />
         </button>
 
-        {/* Left — creative preview */}
-        <div className="flex w-full items-center justify-center bg-black md:w-[55%]" style={{ minHeight: 280 }}>
-          <Thumbnail ad={ad} className="h-full w-full" />
+        {/* Left — creative preview (full iframe) */}
+        <div className="flex w-full items-center justify-center bg-slate-950 md:w-[55%]" style={{ minHeight: 400 }}>
+          <AdPreviewFrame ad={ad} className="h-full w-full" accessToken={accessToken} />
         </div>
 
         {/* Right — details */}
@@ -356,6 +409,24 @@ function RankingRow({
 
 // ─── Main export ──────────────────────────────────────────────────────────────
 
+const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+function getCacheKey(ids: string[]) {
+  return `pta_creatives_cache_${ids.sort().join(",")}`;
+}
+function readCache(key: string): MetaCampaignCreative[] | null {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const { ts, data } = JSON.parse(raw) as { ts: number; data: MetaCampaignCreative[] };
+    if (Date.now() - ts > CACHE_TTL_MS) { localStorage.removeItem(key); return null; }
+    return data;
+  } catch { return null; }
+}
+function writeCache(key: string, data: MetaCampaignCreative[]) {
+  try { localStorage.setItem(key, JSON.stringify({ ts: Date.now(), data })); } catch {}
+}
+
 export function BestCreatives({ campaigns, adAccountId }: BestCreativesProps) {
   const [subTab, setSubTab]         = useState<CreativeSubTab>("gallery");
   const [typeFilter, setTypeFilter] = useState<MediaTypeFilter>("all");
@@ -363,42 +434,68 @@ export function BestCreatives({ campaigns, adAccountId }: BestCreativesProps) {
   const [metaAds, setMetaAds]       = useState<MetaCampaignCreative[]>([]);
   const [fetching, setFetching]     = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [cacheAge, setCacheAge]     = useState<number | null>(null); // ms since cached
   const { store, saveCreative }     = useCreativeStore();
   const storeRef = useRef(store);
   storeRef.current = store;
 
-  // Fetch all ads from Meta (supports single or multiple adAccountIds)
-  useEffect(() => {
-    const ids = Array.isArray(adAccountId)
-      ? adAccountId.filter(Boolean)
-      : adAccountId
-        ? [adAccountId]
-        : [];
-    if (ids.length === 0) return;
+  // Resolved access token — stable for preview iframes
+  const [accessToken] = useState(() => loadMetaCredentials().accessToken);
 
+  const getIds = useCallback(() => {
+    return Array.isArray(adAccountId)
+      ? adAccountId.filter(Boolean)
+      : adAccountId ? [adAccountId] : [];
+  }, [adAccountId]);
+
+  const doFetch = useCallback((force = false) => {
+    const ids = getIds();
+    if (ids.length === 0) return;
     const { accessToken } = loadMetaCredentials();
     if (!accessToken) return;
 
+    const cacheKey = getCacheKey(ids);
+
+    // Use cache unless forced refresh
+    if (!force) {
+      const cached = readCache(cacheKey);
+      if (cached) {
+        const raw = localStorage.getItem(cacheKey);
+        const ts = raw ? (JSON.parse(raw) as { ts: number }).ts : Date.now();
+        setMetaAds(cached);
+        setCacheAge(Date.now() - ts);
+        return;
+      }
+    }
+
     setFetching(true);
     setFetchError(null);
+    setCacheAge(null);
 
-    Promise.all(ids.map((id) => fetchMetaCreatives(id, accessToken)))
-      .then((results) => {
-        // Merge all results and de-duplicate by adId
-        const seen = new Set<string>();
-        const merged: MetaCampaignCreative[] = [];
-        for (const batch of results) {
-          for (const ad of batch) {
-            if (!seen.has(ad.adId)) {
-              seen.add(ad.adId);
-              merged.push(ad);
-            }
-          }
+    // Sequential fetch to respect rate limits (one account at a time)
+    (async () => {
+      const seen = new Set<string>();
+      const merged: MetaCampaignCreative[] = [];
+      for (const id of ids) {
+        const batch = await fetchMetaCreatives(id, accessToken);
+        for (const ad of batch) {
+          if (!seen.has(ad.adId)) { seen.add(ad.adId); merged.push(ad); }
         }
+      }
+      return merged;
+    })()
+      .then((merged) => {
+        writeCache(cacheKey, merged);
         setMetaAds(merged);
+        setCacheAge(0);
       })
       .catch((err: unknown) => setFetchError(err instanceof Error ? err.message : "Erro ao buscar criativos"))
       .finally(() => setFetching(false));
+  }, [getIds]);
+
+  // Auto-fetch on mount / when ids change (uses cache if available)
+  useEffect(() => {
+    doFetch(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(adAccountId)]);
 
@@ -501,17 +598,42 @@ export function BestCreatives({ campaigns, adAccountId }: BestCreativesProps) {
           </button>
         ))}
 
-        {fetching && (
-          <span className="flex items-center gap-1.5 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
-            <Loader2 size={12} className="animate-spin" /> Buscando no Meta…
-          </span>
-        )}
+        <div className="ml-auto flex items-center gap-2">
+          {cacheAge !== null && !fetching && (
+            <span className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+              Cache: {cacheAge < 60000 ? "agora" : `${Math.floor(cacheAge / 60000)}min atrás`}
+            </span>
+          )}
+          {fetching ? (
+            <span className="flex items-center gap-1.5 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
+              <Loader2 size={12} className="animate-spin" /> Buscando…
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => doFetch(true)}
+              title="Atualizar criativos (ignora cache)"
+              className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors hover:opacity-80"
+              style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)", backgroundColor: "var(--dm-bg-elevated)" }}
+            >
+              <RefreshCw size={11} />
+              Atualizar
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Error banner */}
       {fetchError && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700 dark:border-red-800/40 dark:bg-red-900/20 dark:text-red-400">
-          <strong>Erro ao buscar criativos:</strong> {fetchError}
+          {fetchError.toLowerCase().includes("too many calls") ? (
+            <>
+              <strong>Rate limit da Meta atingido.</strong> Aguarde alguns minutos e clique em{" "}
+              <button type="button" onClick={() => doFetch(true)} className="underline font-semibold">Atualizar</button>.
+            </>
+          ) : (
+            <><strong>Erro ao buscar criativos:</strong> {fetchError}</>
+          )}
         </div>
       )}
 
@@ -574,6 +696,7 @@ export function BestCreatives({ campaigns, adAccountId }: BestCreativesProps) {
                   starred={store[ad.adId]?.starred ?? false}
                   onPreview={() => setPreviewAd(ad)}
                   onToggleStar={() => toggleStar(ad)}
+                  accessToken={accessToken}
                 />
               ))}
             </div>
@@ -672,6 +795,7 @@ export function BestCreatives({ campaigns, adAccountId }: BestCreativesProps) {
           starred={store[previewAd.adId]?.starred ?? false}
           onClose={() => setPreviewAd(null)}
           onToggleStar={() => toggleStar(previewAd)}
+          accessToken={accessToken}
         />
       )}
     </div>
