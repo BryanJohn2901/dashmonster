@@ -13,7 +13,8 @@ import { formatCurrency, formatPercent } from "@/utils/metrics";
 
 interface BestCreativesProps {
   campaigns: AggregatedCampaign[];
-  adAccountId?: string;
+  /** A single account ID, an array of IDs (used when "all groups" is selected), or undefined. */
+  adAccountId?: string | string[];
 }
 
 type CreativeSubTab  = "gallery" | "rankings" | "starred";
@@ -366,19 +367,40 @@ export function BestCreatives({ campaigns, adAccountId }: BestCreativesProps) {
   const storeRef = useRef(store);
   storeRef.current = store;
 
-  // Fetch all ads from Meta
+  // Fetch all ads from Meta (supports single or multiple adAccountIds)
   useEffect(() => {
-    if (!adAccountId) return;
+    const ids = Array.isArray(adAccountId)
+      ? adAccountId.filter(Boolean)
+      : adAccountId
+        ? [adAccountId]
+        : [];
+    if (ids.length === 0) return;
+
     const { accessToken } = loadMetaCredentials();
     if (!accessToken) return;
+
     setFetching(true);
     setFetchError(null);
-    fetchMetaCreatives(adAccountId, accessToken)
-      .then((ads) => setMetaAds(ads))
+
+    Promise.all(ids.map((id) => fetchMetaCreatives(id, accessToken)))
+      .then((results) => {
+        // Merge all results and de-duplicate by adId
+        const seen = new Set<string>();
+        const merged: MetaCampaignCreative[] = [];
+        for (const batch of results) {
+          for (const ad of batch) {
+            if (!seen.has(ad.adId)) {
+              seen.add(ad.adId);
+              merged.push(ad);
+            }
+          }
+        }
+        setMetaAds(merged);
+      })
       .catch((err: unknown) => setFetchError(err instanceof Error ? err.message : "Erro ao buscar criativos"))
       .finally(() => setFetching(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [adAccountId]);
+  }, [JSON.stringify(adAccountId)]);
 
   const toggleStar = useCallback((ad: MetaCampaignCreative) => {
     const existing = storeRef.current[ad.adId];
@@ -433,7 +455,8 @@ export function BestCreatives({ campaigns, adAccountId }: BestCreativesProps) {
   const imageCount    = metaAds.filter((a) => a.mediaType === "image").length;
   const carouselCount = metaAds.filter((a) => a.mediaType === "carousel").length;
 
-  if (!adAccountId && campaigns.length === 0) {
+  const hasAccountId = Array.isArray(adAccountId) ? adAccountId.length > 0 : Boolean(adAccountId);
+  if (!hasAccountId && campaigns.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
         <div className="flex h-14 w-14 items-center justify-center rounded-xl" style={{ backgroundColor: "var(--dm-brand-50)" }}>

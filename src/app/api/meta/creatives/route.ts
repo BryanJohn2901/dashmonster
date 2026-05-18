@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
         "preview_shareable_link",
         "creative{thumbnail_url,image_url,picture,instagram_permalink_url,effective_instagram_story_url,object_story_spec{link_data{link,picture,child_attachments{picture,image_url}},video_data{image_url,call_to_action{value{link}}}}}",
       ].join(","),
-      effective_status: JSON.stringify(["ACTIVE", "PAUSED"]),
+      effective_status: JSON.stringify(["ACTIVE", "PAUSED", "ARCHIVED"]),
       limit:            "200",
     }).toString();
 
@@ -93,7 +93,7 @@ export async function GET(request: NextRequest) {
     }
 
     const result: MetaCampaignCreative[] = allAds
-      .filter((ad) => ad.campaign?.name)
+      .filter((ad) => ad.id && ad.name)
       .map((ad) => {
         const spec = ad.creative?.object_story_spec;
         const carouselPicture =
@@ -122,7 +122,7 @@ export async function GET(request: NextRequest) {
           adId:         ad.id,
           adName:       ad.name,
           campaignId:   ad.campaign_id,
-          campaignName: ad.campaign?.name ?? "",
+          campaignName: ad.campaign?.name ?? ad.campaign_id ?? "",
           adsetName:    ad.adset_name ?? "",
           thumbnailUrl,
           previewUrl,

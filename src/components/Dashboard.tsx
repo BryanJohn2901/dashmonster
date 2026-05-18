@@ -2586,7 +2586,15 @@ export function Dashboard({
                   ) : (
                     <BestCreatives
                       campaigns={aggregated}
-                      adAccountId={selectedGroup !== "all" ? campaignConfigs[selectedGroup]?.adAccountId : undefined}
+                      adAccountId={
+                        selectedGroup !== "all"
+                          ? campaignConfigs[selectedGroup]?.adAccountId
+                          : [...new Set(
+                              Object.values(campaignConfigs)
+                                .map((c) => c?.adAccountId ?? "")
+                                .filter(Boolean),
+                            )]
+                      }
                     />
                   )
                 )}
