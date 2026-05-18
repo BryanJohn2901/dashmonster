@@ -6,7 +6,7 @@ import {
 } from "recharts";
 import {
   AlertCircle, ArrowDown, ArrowLeft, ArrowUp, AtSign, BookMarked, CalendarDays, CheckCircle2,
-  Edit2, GraduationCap, Key, Loader2, Plus, RefreshCw, Repeat, SlidersHorizontal,
+  Edit2, GraduationCap, Key, Loader2, Plus, RefreshCw, Repeat, SlidersHorizontal, Target,
   Trash2, Users, X, Zap,
 } from "lucide-react";
 import {
@@ -31,9 +31,10 @@ import type { CampaignConfig } from "@/hooks/useCampaignStore";
 const formatCurrency = formatBRL;
 const formatNumber = formatInt;
 
-const TEMPLATE_LS_KEY    = "pta_profile_template_v1";
-const DATES_LS_KEY       = "pta_profile_dates_v1";
+const TEMPLATE_LS_KEY      = "pta_profile_template_v1";
+const DATES_LS_KEY         = "pta_profile_dates_v1";
 const FUNNEL_CONFIG_LS_KEY = "pta_profile_funnel_v1";
+const GOALS_LS_KEY         = "pta_profile_goals_v1";
 
 type ProfileFunnelStepId = "reach" | "impressions" | "clicks" | "page_views" | "leads" | "sales";
 
@@ -72,6 +73,21 @@ function saveProfileFunnelConfig(campaignId: string, ids: ProfileFunnelStepId[])
   try {
     const stored = JSON.parse(localStorage.getItem(FUNNEL_CONFIG_LS_KEY) ?? "{}") as Record<string, string[]>;
     localStorage.setItem(FUNNEL_CONFIG_LS_KEY, JSON.stringify({ ...stored, [campaignId]: ids }));
+  } catch {}
+}
+
+function loadGoals(campaignId: string): Record<string, number> {
+  if (typeof window === "undefined") return {};
+  try {
+    const stored = JSON.parse(localStorage.getItem(GOALS_LS_KEY) ?? "{}") as Record<string, Record<string, number>>;
+    return stored[campaignId] ?? {};
+  } catch { return {}; }
+}
+
+function saveGoals(campaignId: string, goals: Record<string, number>): void {
+  try {
+    const stored = JSON.parse(localStorage.getItem(GOALS_LS_KEY) ?? "{}") as Record<string, Record<string, number>>;
+    localStorage.setItem(GOALS_LS_KEY, JSON.stringify({ ...stored, [campaignId]: goals }));
   } catch {}
 }
 
@@ -864,6 +880,21 @@ function CampaignAnalysisPanel({
   const data = kpiData;
   const [funnelStepIds, setFunnelStepIds] = useState<ProfileFunnelStepId[]>(() => loadProfileFunnelConfig(campaign.id));
   const [showFunnelPanel, setShowFunnelPanel] = useState(false);
+  const [funnelView, setFunnelView] = useState<"bars" | "funnel">("bars");
+
+  // Goals / Metas
+  const [goals, setGoals] = useState<Record<string, number>>(() => loadGoals(campaign.id));
+  const [editGoals, setEditGoals] = useState(false);
+
+  const updateGoal = (kpiId: string, value: number) => {
+    setGoals((prev) => {
+      const next = { ...prev };
+      if (!value || value <= 0) delete next[kpiId];
+      else next[kpiId] = value;
+      saveGoals(campaign.id, next);
+      return next;
+    });
+  };
 
   const persistFunnelSteps = (next: ProfileFunnelStepId[]) => {
     const safe = next.length > 0 ? next : DEFAULT_FUNNEL_STEP_IDS;
@@ -987,6 +1018,34 @@ function CampaignAnalysisPanel({
     slate: "text-slate-500",
   };
 
+  // Horizon-style color maps for KPI cards
+  const KPI_SOLID: Record<string, string> = {
+    brand: "#6366C8",
+    sky:   "#0ea5e9",
+    green: "#05CD99",
+    rose:  "#EE5D50",
+    amber: "#F4A60D",
+    slate: "#64748b",
+  };
+  const KPI_BG: Record<string, string> = {
+    brand: "rgba(99,102,200,0.12)",
+    sky:   "rgba(14,165,233,0.12)",
+    green: "rgba(5,205,153,0.12)",
+    rose:  "rgba(238,93,80,0.12)",
+    amber: "rgba(244,166,13,0.12)",
+    slate: "rgba(100,116,139,0.10)",
+  };
+
+  // Funnel step colors — more saturated for professional look
+  const FUNNEL_COLORS: Record<string, string> = {
+    reach:       "#6366C8",
+    impressions: "#8b5cf6",
+    clicks:      "#0ea5e9",
+    page_views:  "#f59e0b",
+    leads:       "#e11d48",
+    sales:       "#05CD99",
+  };
+
   // ── Análise de Conjunto helpers (3.3) ────────────────────────────────────────
   const fmt = { brl: formatCurrency, int: formatNumber, pct: formatPercent };
 
@@ -994,139 +1053,200 @@ function CampaignAnalysisPanel({
     <div className="space-y-4">
 
       {/* ── Tab switcher ─────────────────────────────────────────────────────── */}
-      <div className="flex gap-1 rounded-xl p-1" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
+      <div className="flex gap-1 rounded-[14px] p-1" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
         {([ ["kpis", "Visão Geral"], ["conjunto", "Análise de Conjunto"] ] as const).map(([id, label]) => (
           <button key={id} type="button" onClick={() => setActiveTab(id)}
-            className="flex-1 rounded-lg py-1.5 text-xs font-semibold transition-all"
+            className="flex-1 rounded-[10px] py-2 text-[13px] font-semibold transition-all"
             style={activeTab === id
-              ? { backgroundColor: "var(--dm-bg-surface)", color: "var(--dm-text-primary)", boxShadow: "0 1px 3px rgba(0,0,0,.1)" }
+              ? { background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)", color: "#fff", boxShadow: "0 4px 12px rgba(49,52,145,0.28)" }
               : { color: "var(--dm-text-tertiary)" }}>
             {label}
           </button>
         ))}
       </div>
 
-      {/* ── Análise de Conjunto (3.3) ─────────────────────────────────────────── */}
+      {/* ── Análise de Conjunto ─────────────────────────────────────────────── */}
       {activeTab === "conjunto" && (() => {
-        // Use adset-level data for this tab; fall back to kpiData if adset not yet loaded
-        const rows = adsetData.length > 0 ? adsetData : kpiData;
-        const totSpend  = rows.reduce((s, r) => s + r.spend,         0);
-        const totClicks = rows.reduce((s, r) => s + r.clicks,        0);
-        const totAll    = rows.reduce((s, r) => s + r.total_clicks,  0);
-        const totImpr   = rows.reduce((s, r) => s + r.impressions,   0);
-        const totPV     = rows.reduce((s, r) => s + r.page_views,    0);
+        const rows      = adsetData.length > 0 ? adsetData : kpiData;
+        const totSpend  = rows.reduce((s, r) => s + r.spend,        0);
+        const totClicks = rows.reduce((s, r) => s + r.clicks,       0);
+        const totAll    = rows.reduce((s, r) => s + r.total_clicks, 0);
+        const totImpr   = rows.reduce((s, r) => s + r.impressions,  0);
+        const totPV     = rows.reduce((s, r) => s + r.page_views,   0);
+        const maxSpend  = Math.max(...rows.map((r) => r.spend), 1);
+
+        // CTR benchmark color: ≥10% green, ≥5% amber, <5% red
+        const ctrColor = (v: number) =>
+          v >= 10 ? "#05CD99" : v >= 5 ? "#F4A60D" : v > 0 ? "#EE5D50" : "var(--dm-text-tertiary)";
+
         return (
-          <article className="overflow-hidden rounded-xl border shadow-sm"
+          <article className="overflow-hidden rounded-[20px] border shadow-horizon"
             style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
-            <div className="flex items-center justify-between border-b px-5 py-3"
+
+            {/* Header */}
+            <div className="flex items-center justify-between border-b px-5 py-4"
               style={{ borderColor: "var(--dm-border-subtle)" }}>
-              <h3 className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
-                Análise de Conjunto
-              </h3>
-              {loading && <Loader2 size={13} className="animate-spin" style={{ color: "var(--dm-text-tertiary)" }} />}
+              <div>
+                <h3 className="text-sm font-bold" style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>
+                  Análise de Conjunto
+                </h3>
+                <p className="mt-0.5 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                  Performance por conjunto de anúncios · {rows.length} conjuntos
+                </p>
+              </div>
+              {loading && <Loader2 size={14} className="animate-spin" style={{ color: "var(--dm-text-tertiary)" }} />}
             </div>
+
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-left text-xs">
+              <table className="w-full border-collapse text-left">
                 <thead>
                   <tr style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
                     {[
-                      { label: "Conjunto de Anúncios", right: false },
-                      { label: "CPM",                  right: true  },
-                      { label: "Cliques no Link",      right: true  },
-                      { label: "CPC (link)",            right: true  },
-                      { label: "CTR (link)",            right: true  },
-                      { label: "Cliques (todos)",       right: true  },
-                      { label: "CTR (todos)",           right: true  },
-                      { label: "CPC (todos)",           right: true  },
-                      { label: "Vis. de Página",        right: true  },
-                      { label: "Custo/Vis.",            right: true  },
-                      { label: "Investimento",          right: true  },
-                    ].map(col => (
+                      { label: "Conjunto de Anúncios", right: false, w: "min-w-[180px]" },
+                      { label: "CPM",            right: true, w: "" },
+                      { label: "Cliques Link",   right: true, w: "" },
+                      { label: "CPC Link",       right: true, w: "" },
+                      { label: "CTR Link",       right: true, w: "" },
+                      { label: "Cliques Total",  right: true, w: "" },
+                      { label: "CTR Total",      right: true, w: "" },
+                      { label: "Vis. Página",    right: true, w: "" },
+                      { label: "Investimento",   right: true, w: "min-w-[120px]" },
+                    ].map((col) => (
                       <th key={col.label}
-                        className={`px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap ${col.right ? "text-right" : ""}`}
-                        style={{ color: "var(--dm-text-tertiary)" }}>
+                        className={`${col.w} border-b px-4 py-3 text-[10px] font-bold uppercase tracking-wider whitespace-nowrap ${col.right ? "text-right" : ""}`}
+                        style={{ borderColor: "var(--dm-border-subtle)", color: "var(--dm-text-tertiary)" }}>
                         {col.label}
                       </th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y" style={{ borderColor: "var(--dm-border-subtle)" }}>
-                  {rows.map(r => {
-                    const cpcLink = r.clicks       > 0 ? r.spend / r.clicks       : 0;
+                <tbody>
+                  {rows.map((r, idx) => {
+                    const cpcLink = r.clicks       > 0 ? r.spend / r.clicks      : 0;
                     const ctrLink = r.impressions  > 0 ? (r.clicks / r.impressions) * 100 : 0;
-                    const cpcAll  = r.total_clicks > 0 ? r.spend / r.total_clicks  : 0;
                     const ctrAll  = r.impressions  > 0 ? (r.total_clicks / r.impressions) * 100 : 0;
-                    const costPV  = r.page_views   > 0 ? r.spend / r.page_views    : 0;
+                    const spendPct = (r.spend / maxSpend) * 100;
                     return (
-                      <tr key={r.name} className="transition-colors hover:bg-[var(--dm-bg-elevated)]"
-                        style={{ borderColor: "var(--dm-border-subtle)" }}>
-                        <td className="max-w-[200px] truncate px-4 py-2.5 font-semibold"
-                          style={{ color: "var(--dm-text-primary)" }} title={r.name}>{r.name}</td>
-                        <td className="whitespace-nowrap px-4 py-2.5 text-right tabular-nums" style={{ color: "var(--dm-text-secondary)" }}>
-                          {r.cpm > 0 ? fmt.brl(r.cpm) : "—"}
+                      <tr key={r.name}
+                        className="group transition-colors hover:bg-[var(--dm-bg-elevated)]"
+                        style={{ borderBottom: "1px solid var(--dm-border-subtle)" }}>
+
+                        {/* Name + spend bar */}
+                        <td className="px-4 py-3" style={{ minWidth: "180px" }}>
+                          <p className="truncate max-w-[200px] text-[12px] font-semibold"
+                            style={{ color: "var(--dm-text-primary)" }} title={r.name}>
+                            {r.name}
+                          </p>
+                          {/* Spend mini-bar */}
+                          <div className="mt-1.5 h-1 overflow-hidden rounded-full w-full" style={{ backgroundColor: "var(--dm-bg-elevated)", maxWidth: "160px" }}>
+                            <div className="h-full rounded-full"
+                              style={{ width: `${spendPct}%`, background: "linear-gradient(90deg,#6366C8 0%,#313491 100%)" }} />
+                          </div>
                         </td>
-                        <td className="whitespace-nowrap px-4 py-2.5 text-right tabular-nums" style={{ color: "var(--dm-text-secondary)" }}>
-                          {r.clicks > 0 ? fmt.int(r.clicks) : "—"}
+
+                        {/* CPM */}
+                        <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-[12px]"
+                          style={{ color: "var(--dm-text-secondary)" }}>
+                          {r.cpm > 0 ? fmt.brl(r.cpm) : <span style={{ color: "var(--dm-text-tertiary)" }}>—</span>}
                         </td>
-                        <td className="whitespace-nowrap px-4 py-2.5 text-right tabular-nums" style={{ color: "var(--dm-text-secondary)" }}>
-                          {cpcLink > 0 ? fmt.brl(cpcLink) : "—"}
+
+                        {/* Cliques link */}
+                        <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-[12px]"
+                          style={{ color: "var(--dm-text-secondary)" }}>
+                          {r.clicks > 0 ? fmt.int(r.clicks) : <span style={{ color: "var(--dm-text-tertiary)" }}>—</span>}
                         </td>
-                        <td className="whitespace-nowrap px-4 py-2.5 text-right tabular-nums" style={{ color: "var(--dm-text-secondary)" }}>
-                          {ctrLink > 0 ? fmt.pct(ctrLink) : "—"}
+
+                        {/* CPC link */}
+                        <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-[12px]"
+                          style={{ color: "var(--dm-text-secondary)" }}>
+                          {cpcLink > 0 ? fmt.brl(cpcLink) : <span style={{ color: "var(--dm-text-tertiary)" }}>—</span>}
                         </td>
-                        <td className="whitespace-nowrap px-4 py-2.5 text-right tabular-nums" style={{ color: "var(--dm-text-secondary)" }}>
-                          {r.total_clicks > 0 ? fmt.int(r.total_clicks) : "—"}
+
+                        {/* CTR link — color-coded */}
+                        <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-[12px]">
+                          {ctrLink > 0
+                            ? <span className="rounded-full px-2 py-0.5 text-[11px] font-bold"
+                                style={{ backgroundColor: ctrColor(ctrLink) + "1a", color: ctrColor(ctrLink) }}>
+                                {fmt.pct(ctrLink)}
+                              </span>
+                            : <span style={{ color: "var(--dm-text-tertiary)" }}>—</span>}
                         </td>
-                        <td className="whitespace-nowrap px-4 py-2.5 text-right tabular-nums" style={{ color: "var(--dm-text-secondary)" }}>
-                          {ctrAll > 0 ? fmt.pct(ctrAll) : "—"}
+
+                        {/* Cliques todos */}
+                        <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-[12px]"
+                          style={{ color: "var(--dm-text-secondary)" }}>
+                          {r.total_clicks > 0 ? fmt.int(r.total_clicks) : <span style={{ color: "var(--dm-text-tertiary)" }}>—</span>}
                         </td>
-                        <td className="whitespace-nowrap px-4 py-2.5 text-right tabular-nums" style={{ color: "var(--dm-text-secondary)" }}>
-                          {cpcAll > 0 ? fmt.brl(cpcAll) : "—"}
+
+                        {/* CTR todos — color-coded */}
+                        <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-[12px]">
+                          {ctrAll > 0
+                            ? <span className="rounded-full px-2 py-0.5 text-[11px] font-bold"
+                                style={{ backgroundColor: ctrColor(ctrAll) + "1a", color: ctrColor(ctrAll) }}>
+                                {fmt.pct(ctrAll)}
+                              </span>
+                            : <span style={{ color: "var(--dm-text-tertiary)" }}>—</span>}
                         </td>
-                        <td className="whitespace-nowrap px-4 py-2.5 text-right tabular-nums" style={{ color: "var(--dm-text-secondary)" }}>
-                          {r.page_views > 0 ? fmt.int(r.page_views) : "—"}
+
+                        {/* Vis. Página */}
+                        <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-[12px]"
+                          style={{ color: "var(--dm-text-secondary)" }}>
+                          {r.page_views > 0 ? fmt.int(r.page_views) : <span style={{ color: "var(--dm-text-tertiary)" }}>—</span>}
                         </td>
-                        <td className="whitespace-nowrap px-4 py-2.5 text-right tabular-nums" style={{ color: "var(--dm-text-secondary)" }}>
-                          {costPV > 0 ? fmt.brl(costPV) : "—"}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-2.5 text-right tabular-nums font-semibold" style={{ color: "var(--dm-text-primary)" }}>
-                          {fmt.brl(r.spend)}
+
+                        {/* Investimento — bold + ranked highlight */}
+                        <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums">
+                          <span className={`text-[13px] font-bold ${idx === 0 ? "" : ""}`}
+                            style={{ color: idx === 0 ? "var(--dm-brand-500)" : "var(--dm-text-primary)" }}>
+                            {fmt.brl(r.spend)}
+                          </span>
                         </td>
                       </tr>
                     );
                   })}
+
                   {/* Totals row */}
-                  <tr className="font-semibold" style={{ backgroundColor: "var(--dm-bg-elevated)", borderColor: "var(--dm-border-subtle)" }}>
-                    <td className="px-4 py-2.5 text-[10px] uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Total</td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-right tabular-nums" style={{ color: "var(--dm-text-secondary)" }}>
+                  <tr style={{ background: "linear-gradient(135deg, rgba(49,52,145,0.06) 0%, rgba(99,102,200,0.04) 100%)", borderTop: "2px solid var(--dm-border-default)" }}>
+                    <td className="px-4 py-3">
+                      <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-brand-500)" }}>
+                        Total
+                      </span>
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-[12px] font-semibold" style={{ color: "var(--dm-text-primary)" }}>
                       {totImpr > 0 ? fmt.brl((totSpend / totImpr) * 1000) : "—"}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-right tabular-nums" style={{ color: "var(--dm-text-secondary)" }}>
+                    <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-[12px] font-semibold" style={{ color: "var(--dm-text-primary)" }}>
                       {fmt.int(totClicks)}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-right tabular-nums" style={{ color: "var(--dm-text-secondary)" }}>
+                    <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-[12px] font-semibold" style={{ color: "var(--dm-text-primary)" }}>
                       {totClicks > 0 ? fmt.brl(totSpend / totClicks) : "—"}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-right tabular-nums" style={{ color: "var(--dm-text-secondary)" }}>
-                      {totImpr > 0 ? fmt.pct((totClicks / totImpr) * 100) : "—"}
+                    <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums">
+                      {totImpr > 0
+                        ? <span className="rounded-full px-2 py-0.5 text-[11px] font-bold"
+                            style={{ backgroundColor: ctrColor((totClicks / totImpr) * 100) + "1a", color: ctrColor((totClicks / totImpr) * 100) }}>
+                            {fmt.pct((totClicks / totImpr) * 100)}
+                          </span>
+                        : <span style={{ color: "var(--dm-text-tertiary)" }}>—</span>}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-right tabular-nums" style={{ color: "var(--dm-text-secondary)" }}>
+                    <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-[12px] font-semibold" style={{ color: "var(--dm-text-primary)" }}>
                       {fmt.int(totAll)}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-right tabular-nums" style={{ color: "var(--dm-text-secondary)" }}>
-                      {totImpr > 0 ? fmt.pct((totAll / totImpr) * 100) : "—"}
+                    <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums">
+                      {totImpr > 0
+                        ? <span className="rounded-full px-2 py-0.5 text-[11px] font-bold"
+                            style={{ backgroundColor: ctrColor((totAll / totImpr) * 100) + "1a", color: ctrColor((totAll / totImpr) * 100) }}>
+                            {fmt.pct((totAll / totImpr) * 100)}
+                          </span>
+                        : <span style={{ color: "var(--dm-text-tertiary)" }}>—</span>}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-right tabular-nums" style={{ color: "var(--dm-text-secondary)" }}>
-                      {totAll > 0 ? fmt.brl(totSpend / totAll) : "—"}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-right tabular-nums" style={{ color: "var(--dm-text-secondary)" }}>
+                    <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-[12px] font-semibold" style={{ color: "var(--dm-text-primary)" }}>
                       {fmt.int(totPV)}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-right tabular-nums" style={{ color: "var(--dm-text-secondary)" }}>
-                      {totPV > 0 ? fmt.brl(totSpend / totPV) : "—"}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-right tabular-nums" style={{ color: "var(--dm-text-primary)" }}>
-                      {fmt.brl(totSpend)}
+                    <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums">
+                      <span className="text-[14px] font-bold" style={{ color: "var(--dm-brand-500)" }}>
+                        {fmt.brl(totSpend)}
+                      </span>
                     </td>
                   </tr>
                 </tbody>
@@ -1139,85 +1259,185 @@ function CampaignAnalysisPanel({
       {activeTab === "kpis" && <>
 
       {/* ── KPIs dirigidos pelo template ─────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        {tpl.kpis.map((kpi) => {
-          const val = kpiValues[kpi.id] ?? 0;
-          const display = val > 0 ? kpi.format(val) : "—";
-          return (
-            <article
-              key={kpi.id}
-              className="flex flex-col rounded-xl border p-4 shadow-sm"
-              style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}
-            >
-              <p
-                className="dm-metric-label"
-                {...(kpi.tooltip ? { "data-dm-tip": kpi.tooltip } : {})}
-              >
-                {kpi.label}
-              </p>
-              <p className={`mt-1.5 text-2xl font-bold tabular-nums tracking-tight ${KPI_ACCENT[kpi.color] ?? ""}`}>
-                {display}
-              </p>
-            </article>
-          );
-        })}
-      </div>
-
-      {/* ── Funil de Vendas (horizontal, colapsável) ─────────────────────── */}
-      <article
-        className="rounded-xl border shadow-sm"
-        style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between border-b px-4 py-3" style={{ borderColor: "var(--dm-border-subtle)" }}>
-          <h3 className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
-            Funil de Vendas
-          </h3>
+      <div>
+        {/* Section header with Goals toggle */}
+        <div className="mb-3 flex items-center justify-between">
+          <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>
+            Métricas Principais
+          </p>
           <button
             type="button"
-            onClick={() => setShowFunnelPanel((v) => !v)}
-            className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[10px] font-semibold transition"
-            style={showFunnelPanel
-              ? { backgroundColor: "var(--dm-brand-500)", borderColor: "var(--dm-brand-500)", color: "#fff" }
-              : { borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-secondary)" }}
+            onClick={() => setEditGoals((v) => !v)}
+            className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-semibold transition"
+            style={editGoals
+              ? { background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)", color: "#fff", boxShadow: "0 4px 12px rgba(49,52,145,0.30)" }
+              : { backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)", border: "1px solid var(--dm-border-default)" }}
           >
-            <SlidersHorizontal size={10} />
-            {showFunnelPanel ? "Fechar" : "Personalizar"}
+            <Target size={11} />
+            {editGoals ? "Salvar Metas" : "Definir Metas"}
           </button>
         </div>
 
-        {/* Painel de configuração — inline, sem overlap */}
-        {showFunnelPanel && (
-          <div className="border-b px-4 py-3" style={{ borderColor: "var(--dm-border-subtle)", backgroundColor: "var(--dm-bg-elevated)" }}>
-            <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>
-              Etapas visíveis
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          {tpl.kpis.map((kpi) => {
+            const val       = kpiValues[kpi.id] ?? 0;
+            const display   = val > 0 ? kpi.format(val) : "—";
+            const goalVal   = goals[kpi.id] ?? 0;
+            const goalPct   = goalVal > 0
+              ? kpi.invert
+                ? (goalVal / Math.max(val, 0.001)) * 100
+                : (val / goalVal) * 100
+              : 0;
+            const goalMet   = goalVal > 0 && (kpi.invert ? val <= goalVal : val >= goalVal);
+            const goalColor = goalMet ? "#05CD99" : goalPct >= 75 ? "#F4A60D" : "#EE5D50";
+            const solid     = KPI_SOLID[kpi.color] ?? "#6366C8";
+            const bg        = KPI_BG[kpi.color]    ?? "rgba(99,102,200,0.10)";
+
+            return (
+              <article
+                key={kpi.id}
+                className="flex flex-col rounded-[20px] border shadow-horizon card-hover"
+                style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)", padding: "18px" }}
+              >
+                {/* Icon circle + label row */}
+                <div className="mb-4 flex items-center justify-between gap-2">
+                  <div
+                    className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full"
+                    style={{ backgroundColor: bg }}
+                  >
+                    <Target size={18} style={{ color: solid }} />
+                  </div>
+                  {editGoals && (
+                    <input
+                      type="number"
+                      step="any"
+                      value={goals[kpi.id] ?? ""}
+                      onChange={(e) => {
+                        const v = parseFloat(e.target.value);
+                        updateGoal(kpi.id, isNaN(v) ? 0 : v);
+                      }}
+                      placeholder="Meta"
+                      className="w-20 h-7 rounded-[10px] border px-2 text-[10px] text-right outline-none"
+                      style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
+                    />
+                  )}
+                </div>
+
+                {/* Label */}
+                <p className="mb-1 text-[12px] font-semibold" style={{ color: "var(--dm-text-secondary)" }} title={kpi.tooltip}>
+                  {kpi.label}
+                </p>
+
+                {/* Value */}
+                <p
+                  className="text-[22px] font-bold tabular-nums tracking-tight leading-tight"
+                  style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins), Poppins, sans-serif" }}
+                >
+                  {display}
+                </p>
+
+                {/* Goal progress bar */}
+                {!editGoals && goalVal > 0 && (
+                  <div className="mt-3 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                        Meta: {kpi.format(goalVal)}
+                      </span>
+                      <span className="text-[10px] font-bold" style={{ color: goalColor }}>
+                        {Math.min(Math.round(goalPct), 999)}%
+                      </span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{ width: `${Math.min(100, goalPct)}%`, backgroundColor: goalColor }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </article>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── Funil de Conversão (vertical, afunilado) ─────────────────────── */}
+      <article
+        className="overflow-hidden rounded-[20px] border shadow-horizon"
+        style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}
+      >
+        {/* Header */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4" style={{ borderColor: "var(--dm-border-subtle)" }}>
+          <div>
+            <h3 className="text-sm font-bold" style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>
+              Funil de Conversão
+            </h3>
+            <p className="mt-0.5 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
+              Jornada do anúncio até a venda
             </p>
-            <div className="flex flex-wrap gap-1.5">
+          </div>
+          <div className="flex items-center gap-2">
+            {/* View toggle — Barras | Funil */}
+            <div className="flex rounded-[10px] p-0.5" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
+              {(["bars", "funnel"] as const).map((v) => (
+                <button key={v} type="button" onClick={() => setFunnelView(v)}
+                  className="flex items-center gap-1.5 rounded-[8px] px-3 py-1.5 text-[11px] font-semibold transition-all"
+                  style={funnelView === v
+                    ? { background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)", color: "#fff", boxShadow: "0 2px 8px rgba(49,52,145,0.28)" }
+                    : { color: "var(--dm-text-tertiary)" }}>
+                  {v === "bars" ? "Barras" : "Funil"}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowFunnelPanel((v) => !v)}
+              className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-semibold transition"
+              style={showFunnelPanel
+                ? { background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)", color: "#fff", boxShadow: "0 4px 12px rgba(49,52,145,0.30)" }
+                : { backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-secondary)", border: "1px solid var(--dm-border-default)" }}
+            >
+              <SlidersHorizontal size={11} />
+              {showFunnelPanel ? "Fechar" : "Personalizar"}
+            </button>
+          </div>
+        </div>
+
+        {/* Customization panel */}
+        {showFunnelPanel && (
+          <div className="border-b px-5 py-4 space-y-3" style={{ borderColor: "var(--dm-border-subtle)", backgroundColor: "var(--dm-bg-elevated)" }}>
+            <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>
+              Etapas visíveis — clique para ativar/desativar, arraste para reordenar
+            </p>
+            <div className="flex flex-wrap gap-2">
               {PROFILE_FUNNEL_STEPS.map((step) => {
                 const selected = funnelStepIds.includes(step.id);
                 const index    = funnelStepIds.indexOf(step.id);
                 return (
-                  <div key={step.id} className="flex items-center gap-1 rounded-lg border px-2.5 py-1"
-                    style={{ borderColor: selected ? step.color + "55" : "var(--dm-border-default)", backgroundColor: selected ? step.color + "11" : "var(--dm-bg-surface)" }}>
-                    <input
-                      type="checkbox"
-                      id={`fs-${step.id}`}
-                      checked={selected}
-                      disabled={selected && funnelStepIds.length === 1}
-                      onChange={() => toggleFunnelStep(step.id)}
-                      className="h-3 w-3 cursor-pointer accent-[var(--dm-brand-500)]"
-                    />
-                    <label htmlFor={`fs-${step.id}`} className="cursor-pointer text-[10px] font-medium" style={{ color: "var(--dm-text-primary)" }}>
-                      {step.label}
-                    </label>
+                  <div
+                    key={step.id}
+                    className="flex items-center gap-1.5 rounded-[12px] cursor-pointer select-none transition"
+                    style={{
+                      padding: "6px 12px",
+                      backgroundColor: selected ? step.color + "20" : "var(--dm-bg-surface)",
+                      border: `1.5px solid ${selected ? step.color + "66" : "var(--dm-border-default)"}`,
+                      color: selected ? step.color : "var(--dm-text-tertiary)",
+                    }}
+                    onClick={() => !(selected && funnelStepIds.length === 1) && toggleFunnelStep(step.id)}
+                  >
+                    <span className="text-[11px] font-semibold">{step.label}</span>
                     {selected && (
-                      <div className="ml-0.5 flex gap-0.5">
-                        <button type="button" onClick={() => moveFunnelStep(step.id, -1)} disabled={index === 0}
-                          className="rounded p-0.5 transition disabled:opacity-30 hover:bg-[var(--dm-border-subtle)]" style={{ color: "var(--dm-text-tertiary)" }}>
+                      <div className="flex gap-0.5 ml-0.5">
+                        <button type="button"
+                          onClick={(e) => { e.stopPropagation(); moveFunnelStep(step.id, -1); }}
+                          disabled={index === 0}
+                          className="rounded p-0.5 transition disabled:opacity-20 hover:opacity-80">
                           <ArrowUp size={9} />
                         </button>
-                        <button type="button" onClick={() => moveFunnelStep(step.id, 1)} disabled={index === funnelStepIds.length - 1}
-                          className="rounded p-0.5 transition disabled:opacity-30 hover:bg-[var(--dm-border-subtle)]" style={{ color: "var(--dm-text-tertiary)" }}>
+                        <button type="button"
+                          onClick={(e) => { e.stopPropagation(); moveFunnelStep(step.id, 1); }}
+                          disabled={index === funnelStepIds.length - 1}
+                          className="rounded p-0.5 transition disabled:opacity-20 hover:opacity-80">
                           <ArrowDown size={9} />
                         </button>
                       </div>
@@ -1229,61 +1449,135 @@ function CampaignAnalysisPanel({
             <button
               type="button"
               onClick={() => persistFunnelSteps(DEFAULT_FUNNEL_STEP_IDS)}
-              className="mt-2 text-[10px] font-semibold text-blue-500 hover:underline"
+              className="text-[10px] font-semibold transition hover:opacity-70"
+              style={{ color: "var(--dm-brand-500)" }}
             >
               Restaurar padrão
             </button>
           </div>
         )}
 
-        {/* Funil horizontal */}
-        <div className="flex items-stretch overflow-x-auto p-4">
-          {funnelStepIds.map((stepId, i) => {
-            const step = PROFILE_FUNNEL_STEPS.find((s) => s.id === stepId);
-            if (!step) return null;
-            const val  = kpiValues[stepId] ?? 0;
-            const prevId = i > 0 ? funnelStepIds[i - 1] : null;
-            const prev = prevId ? (kpiValues[prevId] ?? 0) : null;
-            const rate = prev !== null && prev > 0 ? (val / prev) * 100 : null;
-            return (
-              <div key={stepId} className="flex flex-1 items-stretch">
-                {/* Connector + rate */}
-                {i > 0 && (
-                  <div className="flex flex-col items-center justify-center px-1.5">
-                    <div className="h-px w-5 flex-shrink-0" style={{ backgroundColor: "var(--dm-border-subtle)" }} />
-                    {rate !== null && step.rateLabel && (
-                      <span className="mt-0.5 whitespace-nowrap text-[9px] font-semibold" style={{ color: "var(--dm-brand-500)" }}>
-                        {formatPercent(rate)}
-                      </span>
+        {/* ── VIEW: BARRAS ── */}
+        {funnelView === "bars" && (() => {
+          const maxVal = Math.max(...funnelStepIds.map((id) => kpiValues[id] ?? 0), 1);
+          return (
+            <div className="flex flex-col gap-0 px-5 py-5">
+              {funnelStepIds.map((stepId, i) => {
+                const step    = PROFILE_FUNNEL_STEPS.find((s) => s.id === stepId);
+                if (!step) return null;
+                const val     = kpiValues[stepId] ?? 0;
+                const prevId  = i > 0 ? funnelStepIds[i - 1] : null;
+                const prevVal = prevId ? (kpiValues[prevId] ?? 0) : null;
+                const rate    = prevVal !== null && prevVal > 0 ? (val / prevVal) * 100 : null;
+                const color   = FUNNEL_COLORS[stepId] ?? step.color;
+                const pct     = maxVal > 0 ? (val / maxVal) * 100 : 0;
+                return (
+                  <div key={stepId} className="flex flex-col">
+                    {i > 0 && (
+                      <div className="flex items-center gap-3 py-2 pl-[52px]">
+                        <div className="w-px self-stretch" style={{ backgroundColor: "var(--dm-border-default)", minHeight: "12px" }} />
+                        {rate !== null && (
+                          <span className="rounded-full px-3 py-0.5 text-[10px] font-bold"
+                            style={{ backgroundColor: color + "18", color }}>
+                            {formatPercent(rate)}{step.rateLabel ? ` ${step.rateLabel}` : ""}
+                          </span>
+                        )}
+                      </div>
                     )}
+                    <div className="flex items-center gap-4">
+                      <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full text-sm font-bold text-white"
+                        style={{ background: `linear-gradient(135deg,${color} 0%,${color}bb 100%)`, boxShadow: `0 4px 12px ${color}44` }}>
+                        {i + 1}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-baseline justify-between mb-2">
+                          <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color }}>{step.label}</p>
+                          <p className="text-[20px] font-bold tabular-nums leading-none"
+                            style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>
+                            {val > 0 ? formatNumber(val) : <span style={{ color: "var(--dm-text-tertiary)", fontSize: "14px" }}>Sem dados</span>}
+                          </p>
+                        </div>
+                        <div className="h-2 overflow-hidden rounded-full" style={{ backgroundColor: color + "18" }}>
+                          <div className="h-full rounded-full transition-all duration-700"
+                            style={{ width: `${pct}%`, background: `linear-gradient(90deg,${color} 0%,${color}99 100%)` }} />
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                )}
-                {/* Step card */}
-                <div
-                  className="flex min-w-[90px] flex-1 flex-col items-center justify-center rounded-lg px-3 py-3 text-center"
-                  style={{ backgroundColor: step.color + "18", border: `1px solid ${step.color}44` }}
-                >
-                  <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color: step.color }}>
-                    {step.label}
-                  </p>
-                  <p className="mt-1 text-lg font-bold tabular-nums" style={{ color: "var(--dm-text-primary)" }}>
-                    {val > 0 ? formatNumber(val) : "—"}
-                  </p>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+                );
+              })}
+            </div>
+          );
+        })()}
+
+        {/* ── VIEW: FUNIL AFUNILADO ── */}
+        {funnelView === "funnel" && (() => {
+          const total = funnelStepIds.length;
+          return (
+            <div className="flex flex-col items-center px-6 py-6 gap-0">
+              {funnelStepIds.map((stepId, i) => {
+                const step    = PROFILE_FUNNEL_STEPS.find((s) => s.id === stepId);
+                if (!step) return null;
+                const val     = kpiValues[stepId] ?? 0;
+                const prevId  = i > 0 ? funnelStepIds[i - 1] : null;
+                const prevVal = prevId ? (kpiValues[prevId] ?? 0) : null;
+                const rate    = prevVal !== null && prevVal > 0 ? (val / prevVal) * 100 : null;
+                const color   = FUNNEL_COLORS[stepId] ?? step.color;
+                // Taper from 100% → 50%
+                const widthPct = total > 1 ? 100 - (i / (total - 1)) * 50 : 88;
+                return (
+                  <div key={stepId} className="w-full flex flex-col items-center">
+                    {/* Connector + rate */}
+                    {i > 0 && (
+                      <div className="flex flex-col items-center py-2 gap-1">
+                        <div className="w-px h-4" style={{ backgroundColor: "var(--dm-border-default)" }} />
+                        {rate !== null && (
+                          <span className="rounded-full px-3 py-0.5 text-[10px] font-bold"
+                            style={{ backgroundColor: color + "1a", color }}>
+                            {formatPercent(rate)}{step.rateLabel ? ` ${step.rateLabel}` : ""}
+                          </span>
+                        )}
+                        <div className="w-px h-4" style={{ backgroundColor: "var(--dm-border-default)" }} />
+                      </div>
+                    )}
+                    {/* Step block */}
+                    <div
+                      className="flex items-center justify-between transition-all"
+                      style={{
+                        width: `${widthPct}%`,
+                        borderRadius: "14px",
+                        padding: "14px 20px",
+                        background: `linear-gradient(135deg, ${color}22 0%, ${color}0d 100%)`,
+                        border: `1.5px solid ${color}55`,
+                      }}
+                    >
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-wider mb-0.5" style={{ color }}>{step.label}</p>
+                        {rate !== null && step.rateLabel && (
+                          <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>{step.rateLabel}</p>
+                        )}
+                      </div>
+                      <p className="text-[22px] font-bold tabular-nums"
+                        style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>
+                        {val > 0 ? formatNumber(val) : <span style={{ color: "var(--dm-text-tertiary)", fontSize: "13px" }}>—</span>}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
       </article>
 
       {/* ── Tabela do template ───────────────────────────────────────────────── */}
       {tpl.table && (
         <article
-          className="overflow-hidden rounded-xl border shadow-sm"
+          className="overflow-hidden rounded-[20px] border shadow-horizon"
           style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}
         >
-          <div className="flex items-center justify-between border-b px-5 py-3" style={{ borderColor: "var(--dm-border-subtle)" }}>
-            <h3 className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
+          <div className="flex items-center justify-between border-b px-5 py-4" style={{ borderColor: "var(--dm-border-subtle)" }}>
+            <h3 className="text-sm font-bold" style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>
               {tpl.table.title}
             </h3>
             {loading && <Loader2 size={13} className="animate-spin" style={{ color: "var(--dm-text-tertiary)" }} />}
@@ -1361,10 +1655,10 @@ function CampaignAnalysisPanel({
       {/* ── Gráfico investimento por conjunto ───────────────────────────────── */}
       {data.length > 1 && (
         <article
-          className="rounded-xl border p-5 shadow-sm"
-          style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}
+          className="rounded-[20px] border shadow-horizon"
+          style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)", padding: "20px" }}
         >
-          <h3 className="mb-4 text-xs font-semibold" style={{ color: "var(--dm-text-primary)" }}>
+          <h3 className="mb-4 text-sm font-bold" style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>
             Investimento por Conjunto de Anúncios
           </h3>
           <div className="h-52">
