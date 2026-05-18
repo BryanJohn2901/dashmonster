@@ -11,6 +11,7 @@ interface SupabaseCampaignRow {
   clicks: number;
   impressions: number;
   conversions: number;
+  leads: number;
   revenue: number;
   source: "csv" | "google_sheets" | "meta";
 }
@@ -29,7 +30,7 @@ const mapSupabaseRow = (row: SupabaseCampaignRow, index: number): CampaignData =
       clicks: Number(row.clicks ?? 0),
       impressions: Number(row.impressions ?? 0),
       conversions: Number(row.conversions ?? 0),
-      leads: Number((row as { leads?: number }).leads ?? 0),
+      leads: Number(row.leads ?? 0),
       revenue: Number(row.revenue ?? 0),
     },
     index,
@@ -44,7 +45,7 @@ export const fetchSupabaseCampaigns = async (): Promise<CampaignData[]> => {
   const { data, error } = await supabaseClient
     .from("campaign_metrics")
     .select(
-      "id, date, campaign_name, investment, clicks, impressions, conversions, revenue, source",
+      "id, date, campaign_name, investment, clicks, impressions, conversions, leads, revenue, source",
     )
     .order("date", { ascending: true });
 
@@ -188,6 +189,7 @@ export const upsertMetaCampaigns = async (campaigns: CampaignData[]): Promise<Me
     clicks: item.clicks,
     impressions: item.impressions,
     conversions: item.conversions,
+    leads: item.leads ?? 0,
     revenue: item.revenue,
     source: "meta" as const,
   }));
