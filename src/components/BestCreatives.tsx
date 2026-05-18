@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import {
   Download, ExternalLink, Film, ImageIcon, Layers, Loader2,
-  MousePointerClick, Play, ShoppingCart, Star, Trophy, X,
+  MousePointerClick, Play, RefreshCw, ShoppingCart, Star, Trophy, X,
 } from "lucide-react";
 import { AggregatedCampaign } from "@/types/campaign";
 import { useCreativeStore } from "@/hooks/useCreativeStore";
@@ -356,6 +356,24 @@ function RankingRow({
 
 // ─── Main export ──────────────────────────────────────────────────────────────
 
+const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+function getCacheKey(ids: string[]) {
+  return `pta_creatives_cache_${ids.sort().join(",")}`;
+}
+function readCache(key: string): MetaCampaignCreative[] | null {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const { ts, data } = JSON.parse(raw) as { ts: number; data: MetaCampaignCreative[] };
+    if (Date.now() - ts > CACHE_TTL_MS) { localStorage.removeItem(key); return null; }
+    return data;
+  } catch { return null; }
+}
+function writeCache(key: string, data: MetaCampaignCreative[]) {
+  try { localStorage.setItem(key, JSON.stringify({ ts: Date.now(), data })); } catch {}
+}
+
 export function BestCreatives({ campaigns, adAccountId }: BestCreativesProps) {
   const [subTab, setSubTab]         = useState<CreativeSubTab>("gallery");
   const [typeFilter, setTypeFilter] = useState<MediaTypeFilter>("all");
@@ -363,42 +381,65 @@ export function BestCreatives({ campaigns, adAccountId }: BestCreativesProps) {
   const [metaAds, setMetaAds]       = useState<MetaCampaignCreative[]>([]);
   const [fetching, setFetching]     = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [cacheAge, setCacheAge]     = useState<number | null>(null); // ms since cached
   const { store, saveCreative }     = useCreativeStore();
   const storeRef = useRef(store);
   storeRef.current = store;
 
-  // Fetch all ads from Meta (supports single or multiple adAccountIds)
-  useEffect(() => {
-    const ids = Array.isArray(adAccountId)
+  const getIds = useCallback(() => {
+    return Array.isArray(adAccountId)
       ? adAccountId.filter(Boolean)
-      : adAccountId
-        ? [adAccountId]
-        : [];
-    if (ids.length === 0) return;
+      : adAccountId ? [adAccountId] : [];
+  }, [adAccountId]);
 
+  const doFetch = useCallback((force = false) => {
+    const ids = getIds();
+    if (ids.length === 0) return;
     const { accessToken } = loadMetaCredentials();
     if (!accessToken) return;
 
+    const cacheKey = getCacheKey(ids);
+
+    // Use cache unless forced refresh
+    if (!force) {
+      const cached = readCache(cacheKey);
+      if (cached) {
+        const raw = localStorage.getItem(cacheKey);
+        const ts = raw ? (JSON.parse(raw) as { ts: number }).ts : Date.now();
+        setMetaAds(cached);
+        setCacheAge(Date.now() - ts);
+        return;
+      }
+    }
+
     setFetching(true);
     setFetchError(null);
+    setCacheAge(null);
 
-    Promise.all(ids.map((id) => fetchMetaCreatives(id, accessToken)))
-      .then((results) => {
-        // Merge all results and de-duplicate by adId
-        const seen = new Set<string>();
-        const merged: MetaCampaignCreative[] = [];
-        for (const batch of results) {
-          for (const ad of batch) {
-            if (!seen.has(ad.adId)) {
-              seen.add(ad.adId);
-              merged.push(ad);
-            }
-          }
+    // Sequential fetch to respect rate limits (one account at a time)
+    (async () => {
+      const seen = new Set<string>();
+      const merged: MetaCampaignCreative[] = [];
+      for (const id of ids) {
+        const batch = await fetchMetaCreatives(id, accessToken);
+        for (const ad of batch) {
+          if (!seen.has(ad.adId)) { seen.add(ad.adId); merged.push(ad); }
         }
+      }
+      return merged;
+    })()
+      .then((merged) => {
+        writeCache(cacheKey, merged);
         setMetaAds(merged);
+        setCacheAge(0);
       })
       .catch((err: unknown) => setFetchError(err instanceof Error ? err.message : "Erro ao buscar criativos"))
       .finally(() => setFetching(false));
+  }, [getIds]);
+
+  // Auto-fetch on mount / when ids change (uses cache if available)
+  useEffect(() => {
+    doFetch(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(adAccountId)]);
 
@@ -501,17 +542,42 @@ export function BestCreatives({ campaigns, adAccountId }: BestCreativesProps) {
           </button>
         ))}
 
-        {fetching && (
-          <span className="flex items-center gap-1.5 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
-            <Loader2 size={12} className="animate-spin" /> Buscando no Meta…
-          </span>
-        )}
+        <div className="ml-auto flex items-center gap-2">
+          {cacheAge !== null && !fetching && (
+            <span className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+              Cache: {cacheAge < 60000 ? "agora" : `${Math.floor(cacheAge / 60000)}min atrás`}
+            </span>
+          )}
+          {fetching ? (
+            <span className="flex items-center gap-1.5 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
+              <Loader2 size={12} className="animate-spin" /> Buscando…
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => doFetch(true)}
+              title="Atualizar criativos (ignora cache)"
+              className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors hover:opacity-80"
+              style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)", backgroundColor: "var(--dm-bg-elevated)" }}
+            >
+              <RefreshCw size={11} />
+              Atualizar
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Error banner */}
       {fetchError && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700 dark:border-red-800/40 dark:bg-red-900/20 dark:text-red-400">
-          <strong>Erro ao buscar criativos:</strong> {fetchError}
+          {fetchError.toLowerCase().includes("too many calls") ? (
+            <>
+              <strong>Rate limit da Meta atingido.</strong> Aguarde alguns minutos e clique em{" "}
+              <button type="button" onClick={() => doFetch(true)} className="underline font-semibold">Atualizar</button>.
+            </>
+          ) : (
+            <><strong>Erro ao buscar criativos:</strong> {fetchError}</>
+          )}
         </div>
       )}
 
