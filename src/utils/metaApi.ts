@@ -229,6 +229,14 @@ export function metaInsightsToCampaignData(
       "offsite_conversion.fb_pixel_purchase",
     );
 
+    // Leads — from actions (lead events)
+    const leads = pickAction(
+      row.actions,
+      "lead",
+      "onsite_conversion.lead_grouped",
+      "offsite_conversion.fb_pixel_lead",
+    );
+
     // CTR: Meta returns percentage strings ("2.34" = 2.34%).
     // Convert to decimal (0–1 range) for storage; recalculated as % when read from DB.
     const ctrPct = row.inline_link_click_ctr != null
@@ -244,6 +252,7 @@ export function metaInsightsToCampaignData(
       clicks,
       impressions,
       conversions,
+      leads,
       revenue,
       ctr,
       cpc:            clicks      > 0 ? investment / clicks      : 0,

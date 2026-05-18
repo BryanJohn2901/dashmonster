@@ -29,6 +29,7 @@ const mapSupabaseRow = (row: SupabaseCampaignRow, index: number): CampaignData =
       clicks: Number(row.clicks ?? 0),
       impressions: Number(row.impressions ?? 0),
       conversions: Number(row.conversions ?? 0),
+      leads: Number((row as { leads?: number }).leads ?? 0),
       revenue: Number(row.revenue ?? 0),
     },
     index,

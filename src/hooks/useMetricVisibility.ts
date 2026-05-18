@@ -4,7 +4,7 @@ import { useState } from "react";
 
 export const ALL_METRIC_IDS = [
   "investment", "revenue", "roas", "roi",
-  "conversions", "cpa", "ctr", "cpc", "cpm",
+  "conversions", "leads", "cpa", "cpl", "ctr", "cpc", "cpm",
   "clicks", "impressions",
 ] as const;
 
@@ -16,7 +16,9 @@ export const METRIC_LABELS: Record<MetricId, string> = {
   roas:        "ROAS",
   roi:         "ROI",
   conversions: "Conversões",
+  leads:       "Leads",
   cpa:         "CPA",
+  cpl:         "CPL",
   ctr:         "CTR",
   cpc:         "CPC",
   cpm:         "CPM",

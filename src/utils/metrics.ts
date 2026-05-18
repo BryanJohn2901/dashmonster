@@ -46,6 +46,7 @@ export const aggregateTotals = (campaigns: CampaignData[]): DashboardTotals => {
       acc.totalClicks += campaign.clicks;
       acc.totalImpressions += campaign.impressions;
       acc.totalConversions += campaign.conversions;
+      acc.totalLeads += campaign.leads ?? 0;
       return acc;
     },
     {
@@ -54,6 +55,7 @@ export const aggregateTotals = (campaigns: CampaignData[]): DashboardTotals => {
       totalClicks: 0,
       totalImpressions: 0,
       totalConversions: 0,
+      totalLeads: 0,
     },
   );
 
@@ -64,6 +66,7 @@ export const aggregateTotals = (campaigns: CampaignData[]): DashboardTotals => {
   const averageConversionRate = safeDivide(totals.totalConversions, totals.totalClicks) * 100;
   const averageCpc = safeDivide(totals.totalInvestment, totals.totalClicks);
   const averageCpm = safeDivide(totals.totalInvestment, totals.totalImpressions) * 1000;
+  const averageCpl = safeDivide(totals.totalInvestment, totals.totalLeads);
 
   return {
     ...totals,
@@ -74,6 +77,7 @@ export const aggregateTotals = (campaigns: CampaignData[]): DashboardTotals => {
     averageConversionRate,
     averageCpc,
     averageCpm,
+    averageCpl,
   };
 };
 
