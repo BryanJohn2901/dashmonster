@@ -9,20 +9,17 @@ interface MetaAdRaw {
   campaign_id: string;
   campaign?: { name: string };
   adset_id?: string;
-  adset_name?: string;          // scalar field — available without edge expansion
+  adset_name?: string;
   preview_shareable_link?: string;
   creative?: {
     thumbnail_url?: string;
     image_url?: string;
-    instagram_permalink_url?: string;
-    effective_instagram_story_url?: string;
     object_story_spec?: {
       link_data?: {
         link?: string;
-        image_hash?: string;
         child_attachments?: Array<{ image_url?: string }>;
       };
-      video_data?: { call_to_action?: { value?: { link?: string } }; image_url?: string };
+      video_data?: { image_url?: string };
     };
   };
 }
@@ -70,7 +67,7 @@ export async function GET(request: NextRequest) {
         "adset_id",
         "adset_name",
         "preview_shareable_link",
-        "creative{thumbnail_url,image_url,instagram_permalink_url,effective_instagram_story_url,object_story_spec{link_data{link,child_attachments{image_url}},video_data{image_url,call_to_action{value{link}}}}}",
+        "creative{thumbnail_url,image_url,object_story_spec{link_data{link,child_attachments{image_url}},video_data{image_url}}}",
       ].join(","),
       effective_status: JSON.stringify(["ACTIVE", "PAUSED", "ARCHIVED"]),
       limit:            "200",
@@ -110,10 +107,7 @@ export async function GET(request: NextRequest) {
         const previewUrl = ad.preview_shareable_link ?? "";
         const adLink =
           ad.preview_shareable_link ??
-          ad.creative?.instagram_permalink_url ??
-          ad.creative?.effective_instagram_story_url ??
           spec?.link_data?.link ??
-          spec?.video_data?.call_to_action?.value?.link ??
           adsLibraryUrl;
 
         return {
