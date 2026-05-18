@@ -193,18 +193,6 @@ function pickAction(actions: MetaAction[] | undefined, ...types: string[]): numb
   return 0;
 }
 
-/**
- * SUMS the values of ALL specified action_types (for additive metrics like leads,
- * where "lead" and "onsite_conversion.lead_grouped" are independent event types).
- * Mirrors exactly how ProfileAnalysis counts leads.
- */
-function sumActions(actions: MetaAction[] | undefined, ...types: string[]): number {
-  if (!actions) return 0;
-  return types.reduce((total, type) => {
-    const found = actions.find((a) => a.action_type === type);
-    return total + (found ? parseFloat(found.value) || 0 : 0);
-  }, 0);
-}
 
 /**
  * Converts Meta Insights API rows into CampaignData records compatible
@@ -245,14 +233,16 @@ export function metaInsightsToCampaignData(
       "offsite_conversion.fb_pixel_purchase",
     );
 
-    // Leads — SUM all lead event types (same logic as ProfileAnalysis).
-    // "lead" = FB lead form, "onsite_conversion.lead_grouped" = grouped on-site leads,
-    // "offsite_conversion.fb_pixel_lead" = pixel lead events.
-    // These are independent event types and must be summed, not picked exclusively.
-    const leads = sumActions(
+    // Leads — first match wins (same priority as Meta Ads Manager default column).
+    // "onsite_conversion.lead_grouped" = grouped leads (Meta's primary metric, most complete).
+    // "lead" = raw lead form completions (fallback for campaigns without grouped events).
+    // "offsite_conversion.fb_pixel_lead" = pixel-tracked off-site leads (last resort).
+    // IMPORTANT: these types are REDUNDANT at campaign level — Meta includes both
+    // "lead" and "onsite_conversion.lead_grouped" with the same value. Summing = double-count.
+    const leads = pickAction(
       row.actions,
-      "lead",
       "onsite_conversion.lead_grouped",
+      "lead",
       "offsite_conversion.fb_pixel_lead",
     );
 
