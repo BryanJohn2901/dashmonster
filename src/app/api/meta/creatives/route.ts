@@ -3,21 +3,39 @@ import type { MetaCampaignCreative } from "@/utils/metaApi";
 
 const META_API_VERSION = "v21.0";
 
+/**
+ * Fields that are GUARANTEED to exist on the AdCreative object (v21.0):
+ *  - thumbnail_url        : thumbnail for all creative types (image, video, carousel)
+ *  - object_story_spec    : ad story content — always present for page-post ads
+ *    - link_data.link     : destination URL
+ *    - link_data.child_attachments : carousel items (existence = carousel type)
+ *    - video_data.image_url : poster frame for video ads
+ *
+ * Fields intentionally OMITTED (cause #100 on most accounts):
+ *  - creative.image_url          (not a top-level creative field)
+ *  - creative.picture            (requires special permission)
+ *  - instagram_permalink_url     (requires Instagram permission)
+ *  - effective_instagram_story_url (requires Instagram permission)
+ *  - call_to_action.value.link   (restricted)
+ *  - child_attachments.picture   (requires special permission)
+ *  - child_attachments.image_url (not a valid field on child_attachments)
+ */
+
 interface MetaAdRaw {
   id: string;
   name: string;
   campaign_id: string;
   campaign?: { name: string };
-  adset_id?: string;
   adset_name?: string;
   preview_shareable_link?: string;
   creative?: {
+    id?: string;
     thumbnail_url?: string;
-    image_url?: string;
     object_story_spec?: {
       link_data?: {
         link?: string;
-        child_attachments?: Array<{ image_url?: string }>;
+        // child_attachments presence = carousel; we only fetch `id` to avoid field errors
+        child_attachments?: Array<{ id?: string }>;
       };
       video_data?: { image_url?: string };
     };
@@ -28,7 +46,7 @@ function detectMediaType(ad: MetaAdRaw): MetaCampaignCreative["mediaType"] {
   const spec = ad.creative?.object_story_spec;
   if (spec?.video_data) return "video";
   if ((spec?.link_data?.child_attachments?.length ?? 0) > 0) return "carousel";
-  if (ad.creative?.thumbnail_url || ad.creative?.image_url) return "image";
+  if (ad.creative?.thumbnail_url) return "image";
   return "unknown";
 }
 
@@ -36,10 +54,6 @@ function detectMediaType(ad: MetaAdRaw): MetaCampaignCreative["mediaType"] {
  * GET /api/meta/creatives?accessToken=EAAx...&adAccountId=act_123
  *
  * Returns ALL active/paused/archived ads with thumbnail, preview link, media type.
- * Each ad is an individual entry (no grouping by campaign).
- *
- * Note: `picture` field is intentionally omitted — it requires special permissions
- * and throws error #100 on most accounts. Use thumbnail_url / image_url instead.
  */
 export async function GET(request: NextRequest) {
   const sp          = request.nextUrl.searchParams;
@@ -59,18 +73,19 @@ export async function GET(request: NextRequest) {
   let nextUrl: string | null =
     `https://graph.facebook.com/${META_API_VERSION}/act_${accountId}/ads?` +
     new URLSearchParams({
-      access_token:     accessToken,
+      access_token: accessToken,
       fields: [
         "name",
         "campaign_id",
         "campaign{name}",
-        "adset_id",
         "adset_name",
         "preview_shareable_link",
-        "creative{thumbnail_url,image_url,object_story_spec{link_data{link,child_attachments{image_url}},video_data{image_url}}}",
+        // thumbnail_url: universal field — works for image, video, carousel
+        // object_story_spec: safe subfields only
+        "creative{id,thumbnail_url,object_story_spec{link_data{link,child_attachments{id}},video_data{image_url}}}",
       ].join(","),
       effective_status: JSON.stringify(["ACTIVE", "PAUSED", "ARCHIVED"]),
-      limit:            "200",
+      limit: "200",
     }).toString();
 
   try {
@@ -95,16 +110,15 @@ export async function GET(request: NextRequest) {
       .filter((ad) => ad.id && ad.name)
       .map((ad) => {
         const spec = ad.creative?.object_story_spec;
-        const carouselImage = spec?.link_data?.child_attachments?.[0]?.image_url;
+
+        // thumbnail_url is the primary source for all creative types.
+        // For video ads, also fall back to video_data.image_url (poster frame).
         const thumbnailUrl =
           ad.creative?.thumbnail_url ??
-          ad.creative?.image_url ??
           spec?.video_data?.image_url ??
-          carouselImage ??
           "";
 
         const adsLibraryUrl = `https://www.facebook.com/ads/library/?id=${ad.id}`;
-        const previewUrl = ad.preview_shareable_link ?? "";
         const adLink =
           ad.preview_shareable_link ??
           spec?.link_data?.link ??
@@ -117,7 +131,7 @@ export async function GET(request: NextRequest) {
           campaignName: ad.campaign?.name ?? ad.campaign_id ?? "",
           adsetName:    ad.adset_name ?? "",
           thumbnailUrl,
-          previewUrl,
+          previewUrl:   ad.preview_shareable_link ?? "",
           adLink,
           mediaType:    detectMediaType(ad),
         } satisfies MetaCampaignCreative;
