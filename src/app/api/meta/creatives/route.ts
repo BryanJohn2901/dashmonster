@@ -14,14 +14,13 @@ interface MetaAdRaw {
   creative?: {
     thumbnail_url?: string;
     image_url?: string;
-    picture?: string;
     instagram_permalink_url?: string;
     effective_instagram_story_url?: string;
     object_story_spec?: {
       link_data?: {
         link?: string;
-        picture?: string;
-        child_attachments?: Array<{ picture?: string; image_url?: string }>;
+        image_hash?: string;
+        child_attachments?: Array<{ image_url?: string }>;
       };
       video_data?: { call_to_action?: { value?: { link?: string } }; image_url?: string };
     };
@@ -32,15 +31,18 @@ function detectMediaType(ad: MetaAdRaw): MetaCampaignCreative["mediaType"] {
   const spec = ad.creative?.object_story_spec;
   if (spec?.video_data) return "video";
   if ((spec?.link_data?.child_attachments?.length ?? 0) > 0) return "carousel";
-  if (ad.creative?.thumbnail_url || ad.creative?.image_url || ad.creative?.picture) return "image";
+  if (ad.creative?.thumbnail_url || ad.creative?.image_url) return "image";
   return "unknown";
 }
 
 /**
  * GET /api/meta/creatives?accessToken=EAAx...&adAccountId=act_123
  *
- * Returns ALL active/paused ads with thumbnail, preview link, media type.
+ * Returns ALL active/paused/archived ads with thumbnail, preview link, media type.
  * Each ad is an individual entry (no grouping by campaign).
+ *
+ * Note: `picture` field is intentionally omitted — it requires special permissions
+ * and throws error #100 on most accounts. Use thumbnail_url / image_url instead.
  */
 export async function GET(request: NextRequest) {
   const sp          = request.nextUrl.searchParams;
@@ -68,7 +70,7 @@ export async function GET(request: NextRequest) {
         "adset_id",
         "adset_name",
         "preview_shareable_link",
-        "creative{thumbnail_url,image_url,picture,instagram_permalink_url,effective_instagram_story_url,object_story_spec{link_data{link,picture,child_attachments{picture,image_url}},video_data{image_url,call_to_action{value{link}}}}}",
+        "creative{thumbnail_url,image_url,instagram_permalink_url,effective_instagram_story_url,object_story_spec{link_data{link,child_attachments{image_url}},video_data{image_url,call_to_action{value{link}}}}}",
       ].join(","),
       effective_status: JSON.stringify(["ACTIVE", "PAUSED", "ARCHIVED"]),
       limit:            "200",
@@ -96,16 +98,12 @@ export async function GET(request: NextRequest) {
       .filter((ad) => ad.id && ad.name)
       .map((ad) => {
         const spec = ad.creative?.object_story_spec;
-        const carouselPicture =
-          spec?.link_data?.child_attachments?.[0]?.picture ??
-          spec?.link_data?.child_attachments?.[0]?.image_url;
+        const carouselImage = spec?.link_data?.child_attachments?.[0]?.image_url;
         const thumbnailUrl =
           ad.creative?.thumbnail_url ??
-          ad.creative?.picture ??
           ad.creative?.image_url ??
           spec?.video_data?.image_url ??
-          spec?.link_data?.picture ??
-          carouselPicture ??
+          carouselImage ??
           "";
 
         const adsLibraryUrl = `https://www.facebook.com/ads/library/?id=${ad.id}`;
