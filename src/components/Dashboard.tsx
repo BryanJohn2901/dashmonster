@@ -1435,6 +1435,9 @@ export function Dashboard({
   // ── Metric visibility — shared across all tabs ────────────────────────────
   const { hidden: hiddenMetrics, toggle: toggleMetric, showAll: showAllMetrics, isVisible: isMetricVisible } = useMetricVisibility();
   const [showKpiPanel, setShowKpiPanel] = useState(false);
+  const [pixelFunnelOpen, setPixelFunnelOpen] = useState(() => {
+    try { return localStorage.getItem("pta_pixel_funnel_open_v1") !== "0"; } catch { return true; }
+  });
   const [pickCategoryOpen, setPickCategoryOpen] = useState(false);
   const [searchCampaign, setSearchCampaign] = useState("");
   const [showImport, setShowImport]         = useState(false);
@@ -2409,6 +2412,20 @@ export function Dashboard({
                         goalPct={goals.conversions != null ? (totals.totalConversions / goals.conversions) * 100 : null}
                       />
                     ),
+                    isMetricVisible("leads") && (
+                      <KpiCard key="leads"
+                        title="Leads" value={formatNumber(totals.totalLeads)}
+                        subtitle={totals.totalLeads > 0 ? `CPL: ${formatCurrency(totals.averageCpl)}` : undefined}
+                        icon={Users} accentColor="violet"
+                      />
+                    ),
+                    isMetricVisible("cpl") && totals.totalLeads > 0 && (
+                      <KpiCard key="cpl"
+                        title="CPL Médio" value={formatCurrency(totals.averageCpl)}
+                        subtitle={undefined}
+                        icon={UserRound} accentColor="violet"
+                      />
+                    ),
                     isMetricVisible("roi") && (
                       <KpiCard key="roi"
                         title="ROI" value={formatPercent(totals.roi)}
@@ -2495,11 +2512,32 @@ export function Dashboard({
                 />
 
                 <ChartsSection dailyTrend={dailyTrend} campaignComparison={campaignComparison} budgetDistribution={budgetDistribution} />
-                <PixelFunnelSection
-                  adAccountId={selectedGroup !== "all" ? campaignConfigs[selectedGroup]?.adAccountId : undefined}
-                  dateFrom={dateFrom || undefined}
-                  dateTo={dateTo || undefined}
-                />
+                {/* Funil do Pixel — collapsible */}
+                <div className="rounded-xl border overflow-hidden" style={{ borderColor: "var(--dm-border-default)" }}>
+                  <button
+                    type="button"
+                    onClick={() => setPixelFunnelOpen((prev) => {
+                      const next = !prev;
+                      try { localStorage.setItem("pta_pixel_funnel_open_v1", next ? "1" : "0"); } catch {}
+                      return next;
+                    })}
+                    className="flex w-full items-center justify-between px-4 py-3 text-sm font-semibold transition-colors hover:opacity-80"
+                    style={{ background: "var(--dm-bg-card)", color: "var(--dm-text-primary)" }}
+                  >
+                    <span className="flex items-center gap-2">
+                      <Target size={14} className="text-violet-500" />
+                      Funil do Pixel
+                    </span>
+                    {pixelFunnelOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  </button>
+                  {pixelFunnelOpen && (
+                    <PixelFunnelSection
+                      adAccountId={selectedGroup !== "all" ? campaignConfigs[selectedGroup]?.adAccountId : undefined}
+                      dateFrom={dateFrom || undefined}
+                      dateTo={dateTo || undefined}
+                    />
+                  )}
+                </div>
                 <CampaignTable campaigns={sortedCampaigns} isMetricVisible={isMetricVisible} />
                 </>)}
 

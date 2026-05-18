@@ -23,6 +23,7 @@ export interface CampaignData {
   clicks: number;
   impressions: number;
   conversions: number;
+  leads: number;
   revenue: number;
   ctr: number;
   cpc: number;
@@ -37,6 +38,7 @@ export interface DashboardTotals {
   totalClicks: number;
   totalImpressions: number;
   totalConversions: number;
+  totalLeads: number;
   roi: number;
   roas: number;
   averageCpa: number;
@@ -44,6 +46,7 @@ export interface DashboardTotals {
   averageConversionRate: number;
   averageCpc: number;
   averageCpm: number;
+  averageCpl: number;
 }
 
 export interface DailyTrendPoint {

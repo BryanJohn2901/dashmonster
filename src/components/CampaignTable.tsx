@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowUpDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { CampaignData } from "@/types/campaign";
 import {
   formatCurrency, formatDatePtBr, formatNumber, formatPercent,
@@ -57,14 +57,43 @@ function shortDate(v: string): string {
 
 // ─── Single‑campaign daily view ───────────────────────────────────────────────
 
+type DailySortBy = "date-asc" | "date-desc" | "invest-desc" | "invest-asc" | "roas-desc" | "ctr-desc" | "conversions-desc" | "clicks-desc";
+
+const DAILY_SORT_LABELS: Record<DailySortBy, string> = {
+  "date-asc":         "Data ↑",
+  "date-desc":        "Data ↓",
+  "invest-desc":      "Invest. ↓",
+  "invest-asc":       "Invest. ↑",
+  "roas-desc":        "ROAS ↓",
+  "ctr-desc":         "CTR ↓",
+  "conversions-desc": "Conversões ↓",
+  "clicks-desc":      "Cliques ↓",
+};
+
+function applyDailySort(data: CampaignData[], sort: DailySortBy): CampaignData[] {
+  return [...data].sort((a, b) => {
+    switch (sort) {
+      case "date-asc":         return a.date.localeCompare(b.date);
+      case "date-desc":        return b.date.localeCompare(a.date);
+      case "invest-desc":      return b.investment - a.investment;
+      case "invest-asc":       return a.investment - b.investment;
+      case "roas-desc":        return b.roas - a.roas;
+      case "ctr-desc":         return b.ctr - a.ctr;
+      case "conversions-desc": return b.conversions - a.conversions;
+      case "clicks-desc":      return b.clicks - a.clicks;
+    }
+  });
+}
+
 function SingleCampaignView({ campaigns, isMetricVisible = () => true }: { campaigns: CampaignData[]; isMetricVisible?: (id: string) => boolean }) {
   const { resolvedTheme } = useTheme();
   const dark = resolvedTheme === "dark";
   const [page, setPage] = useState(1);
+  const [sortBy, setSortBy] = useState<DailySortBy>("date-asc");
 
   const sorted = useMemo(
-    () => [...campaigns].sort((a, b) => a.date.localeCompare(b.date)),
-    [campaigns],
+    () => applyDailySort(campaigns, sortBy),
+    [campaigns, sortBy],
   );
 
   const totalPages = Math.max(1, Math.ceil(sorted.length / ITEMS_PER_PAGE));
@@ -106,7 +135,19 @@ function SingleCampaignView({ campaigns, isMetricVisible = () => true }: { campa
               {campaignName}
             </h3>
           </div>
-          <p className="text-[11px] text-slate-400 dark:text-slate-500">{sorted.length} dias de dados</p>
+          <div className="flex items-center gap-2">
+            <ArrowUpDown size={12} className="text-slate-400" />
+            <select
+              value={sortBy}
+              onChange={(e) => { setSortBy(e.target.value as DailySortBy); setPage(1); }}
+              className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 shadow-sm transition hover:border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
+            >
+              {(Object.keys(DAILY_SORT_LABELS) as DailySortBy[]).map((k) => (
+                <option key={k} value={k}>{DAILY_SORT_LABELS[k]}</option>
+              ))}
+            </select>
+            <span className="text-[11px] text-slate-400 dark:text-slate-500">{sorted.length} dias</span>
+          </div>
         </div>
 
         {/* Summary KPIs */}

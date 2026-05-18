@@ -14,7 +14,7 @@ function row(
   const cpa = conversions > 0 ? investment / conversions : 0;
   const roas = investment > 0 ? revenue / investment : 0;
   const conversionRate = clicks > 0 ? (conversions / clicks) * 100 : 0;
-  return { id, date, campaignName: name, investment, clicks, impressions, conversions, revenue, ctr, cpc, cpa, roas, conversionRate };
+  return { id, date, campaignName: name, investment, clicks, impressions, conversions, leads: 0, revenue, ctr, cpc, cpa, roas, conversionRate };
 }
 
 function uid(prefix: string, i: number) { return `${prefix}${String(i).padStart(3, "0")}`; }
