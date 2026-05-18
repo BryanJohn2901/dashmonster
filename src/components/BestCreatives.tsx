@@ -361,6 +361,7 @@ export function BestCreatives({ campaigns, adAccountId }: BestCreativesProps) {
   const [previewAd, setPreviewAd]   = useState<MetaCampaignCreative | null>(null);
   const [metaAds, setMetaAds]       = useState<MetaCampaignCreative[]>([]);
   const [fetching, setFetching]     = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const { store, saveCreative }     = useCreativeStore();
   const storeRef = useRef(store);
   storeRef.current = store;
@@ -371,9 +372,10 @@ export function BestCreatives({ campaigns, adAccountId }: BestCreativesProps) {
     const { accessToken } = loadMetaCredentials();
     if (!accessToken) return;
     setFetching(true);
+    setFetchError(null);
     fetchMetaCreatives(adAccountId, accessToken)
       .then((ads) => setMetaAds(ads))
-      .catch(() => {})
+      .catch((err: unknown) => setFetchError(err instanceof Error ? err.message : "Erro ao buscar criativos"))
       .finally(() => setFetching(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adAccountId]);
@@ -482,6 +484,13 @@ export function BestCreatives({ campaigns, adAccountId }: BestCreativesProps) {
           </span>
         )}
       </div>
+
+      {/* Error banner */}
+      {fetchError && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700 dark:border-red-800/40 dark:bg-red-900/20 dark:text-red-400">
+          <strong>Erro ao buscar criativos:</strong> {fetchError}
+        </div>
+      )}
 
       {/* ── Gallery & Starred ──────────────────────────────────────────────── */}
       {(subTab === "gallery" || subTab === "starred") && (

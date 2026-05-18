@@ -8,7 +8,8 @@ interface MetaAdRaw {
   name: string;
   campaign_id: string;
   campaign?: { name: string };
-  adset?: { name: string };
+  adset_id?: string;
+  adset_name?: string;          // scalar field — available without edge expansion
   preview_shareable_link?: string;
   creative?: {
     thumbnail_url?: string;
@@ -64,7 +65,8 @@ export async function GET(request: NextRequest) {
         "name",
         "campaign_id",
         "campaign{name}",
-        "adset{name}",
+        "adset_id",
+        "adset_name",
         "preview_shareable_link",
         "creative{thumbnail_url,image_url,picture,instagram_permalink_url,effective_instagram_story_url,object_story_spec{link_data{link,picture,child_attachments{picture,image_url}},video_data{image_url,call_to_action{value{link}}}}}",
       ].join(","),
@@ -121,7 +123,7 @@ export async function GET(request: NextRequest) {
           adName:       ad.name,
           campaignId:   ad.campaign_id,
           campaignName: ad.campaign?.name ?? "",
-          adsetName:    ad.adset?.name ?? "",
+          adsetName:    ad.adset_name ?? "",
           thumbnailUrl,
           previewUrl,
           adLink,
