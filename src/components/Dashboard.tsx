@@ -11,6 +11,7 @@ import {
   LayoutDashboard, History, LineChart, Sparkles, Database, Dna, Weight, HeartPulse,
   Medal, PersonStanding, Flame, BookText, MonitorSmartphone, Ticket, Library, VenetianMask
 } from "lucide-react";
+import Link from "next/link";
 import { useTheme } from "next-themes";
 import { CampaignData, ProductCategory } from "@/types/campaign";
 import type { UserAccountEntry, UserCategory } from "@/types/userConfig";
@@ -44,6 +45,7 @@ import { ProductBase } from "@/components/products/ProductBase";
 import { DashMonsterLogo } from "@/components/DashMonsterLogo";
 import { TabLanding } from "@/components/TabLanding";
 import { PixelFunnelSection } from "@/components/PixelFunnelSection";
+import { IndividualGoals, type CategorySummary } from "@/components/IndividualGoals";
 import { toast } from "@/hooks/useToast";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -1762,6 +1764,56 @@ export function Dashboard({
   const budgetDistribution = buildBudgetDistribution(filteredCampaigns);
   const aggregated         = useMemo(() => aggregateByCampaign(filteredCampaigns), [filteredCampaigns]);
 
+  // Per-group summaries for IndividualGoals — uses date-filtered campaigns across ALL groups
+  const perGroupSummaries = useMemo((): CategorySummary[] => {
+    const colorToHex: Record<string, string> = {
+      "text-blue-500": "#3b82f6", "text-emerald-500": "#10b981", "text-violet-500": "#8b5cf6",
+      "text-amber-500": "#f59e0b", "text-rose-500": "#f43f5e",
+      "text-pink-500": "#ec4899", "text-cyan-500": "#06b6d4", "text-orange-500": "#f97316",
+    };
+    const dateCampaigns = categorizedCampaigns.filter((item) => {
+      if (dateFrom && item.date < dateFrom) return false;
+      if (dateTo   && item.date > dateTo)   return false;
+      return true;
+    });
+    return allGroups.map((g): CategorySummary => {
+      const adAccountId = campaignConfigs[g.id]?.adAccountId ?? "";
+      const groupCamps = dateCampaigns.filter((item) => {
+        if (item.id.startsWith("meta-") && adAccountId) {
+          const itemAccId = item.id.split("-")[1];
+          const bare = adAccountId.replace(/^act_/, "");
+          return itemAccId === adAccountId || itemAccId.replace(/^act_/, "") === bare;
+        }
+        if (!item.id.startsWith("meta-")) {
+          const nameGroup = getLaunchGroup(item.campaignName);
+          if (nameGroup === g.id) return true;
+          if (adAccountId) {
+            const verified = campaignsByGroup[g.id] ?? [];
+            if (verified.length > 0) {
+              const names = new Set(verified.map((c) => c.name));
+              return names.has(item.campaignName);
+            }
+          }
+        }
+        return false;
+      });
+      const t = aggregateTotals(groupCamps);
+      const cat = categories?.find((c) => c.slug === g.section);
+      return {
+        groupId: g.id,
+        label: g.label,
+        emoji: cat?.emoji ?? null,
+        accentColor: colorToHex[g.iconColor] ?? "#6366f1",
+        totalInvestment: t.totalInvestment,
+        totalConversions: t.totalConversions,
+        totalLeads: t.totalLeads,
+        totalRevenue: t.totalRevenue,
+        roas: t.roas,
+        goals: getGoals(g.id),
+      };
+    });
+  }, [categorizedCampaigns, dateFrom, dateTo, allGroups, campaignConfigs, campaignsByGroup, categories, getGoals]);
+
   const showRightPanel     = mainTab !== "history" && mainTab !== "profiles" && mainTab !== "products";
   const showCourseGroups   = selectedCategory !== null;
   const sidebarGroups      = selectedCategory
@@ -1863,6 +1915,29 @@ export function Dashboard({
           </li>
         ))}
       </ul>
+
+      {/* Perpetuo shortcut */}
+      <div className="mt-4 px-2">
+        <div className="mb-2 h-px" style={{ backgroundColor: "var(--dm-border-subtle)" }} />
+        <p className="mb-2 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>Dashboards</p>
+        <Link
+          href="/produto/perpetuo"
+          className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-150"
+          style={{ color: "var(--dm-nav-default-text)" }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLElement).style.backgroundColor = "var(--dm-nav-hover-bg)";
+            (e.currentTarget as HTMLElement).style.color = "var(--dm-nav-hover-text)";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLElement).style.backgroundColor = "";
+            (e.currentTarget as HTMLElement).style.color = "var(--dm-nav-default-text)";
+          }}
+        >
+          <RotateCcw size={16} className="flex-shrink-0 text-amber-500" />
+          <span className="truncate">Perpétuo</span>
+          <span className="ml-auto text-[9px] font-semibold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)" }}>↗</span>
+        </Link>
+      </div>
     </nav>
   );
 
@@ -2438,7 +2513,49 @@ export function Dashboard({
                         icon={Wallet} accentColor="blue"
                         goalValue={goals.investment} goalLabel={goals.investment != null ? formatCurrency(goals.investment) : undefined}
                         goalPct={goals.investment != null ? (totals.totalInvestment / goals.investment) * 100 : null}
+                        variant={goals.investment != null ? "donut" : "bar"}
+                        goalInvert
                       />
+                    ),
+                    // Budget card — spent vs. available (only when budget goal is set)
+                    goals.investment != null && goals.investment > 0 && (
+                      <article key="budget"
+                        className="card-hover group relative overflow-hidden rounded-[20px] border bg-white dark:bg-[#111c44] shadow-horizon transition-all duration-300 hover:-translate-y-0.5"
+                        style={{ borderColor: "var(--dm-border-default)" }}
+                      >
+                        <div className="flex items-center gap-3 p-5 pb-3">
+                          <span className="flex h-[46px] w-[46px] flex-shrink-0 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-900/20">
+                            <Wallet size={20} className="text-emerald-500" />
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="dm-metric-label mb-1">Orçamento</p>
+                            <p className="text-xl font-bold leading-tight tracking-tight font-[family-name:var(--font-poppins)]" style={{ color: "var(--dm-text-primary)" }}>
+                              {formatCurrency(goals.investment)}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="px-5 pb-4 pt-1 space-y-2">
+                          <div className="flex items-center justify-between text-[10px]">
+                            <span style={{ color: "var(--dm-text-tertiary)" }}>Utilizado</span>
+                            <span className="font-semibold" style={{ color: "var(--dm-text-secondary)" }}>{formatCurrency(totals.totalInvestment)}</span>
+                          </div>
+                          <div className="h-2 w-full overflow-hidden rounded-full" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
+                            <div
+                              className="h-full rounded-full transition-all duration-500"
+                              style={{
+                                width: `${Math.min((totals.totalInvestment / goals.investment) * 100, 100)}%`,
+                                backgroundColor: totals.totalInvestment >= goals.investment ? "#ef4444" : totals.totalInvestment / goals.investment >= 0.8 ? "#f59e0b" : "#10b981",
+                              }}
+                            />
+                          </div>
+                          <div className="flex items-center justify-between text-[10px]">
+                            <span style={{ color: "var(--dm-text-tertiary)" }}>Disponível</span>
+                            <span className="font-semibold" style={{ color: goals.investment - totals.totalInvestment > 0 ? "#10b981" : "#ef4444" }}>
+                              {formatCurrency(Math.max(0, goals.investment - totals.totalInvestment))}
+                            </span>
+                          </div>
+                        </div>
+                      </article>
                     ),
                     isMetricVisible("revenue") && (
                       <KpiCard key="revenue"
@@ -2454,6 +2571,7 @@ export function Dashboard({
                         icon={TrendingUp} accentColor="blue"
                         goalValue={goals.roas} goalLabel={goals.roas != null ? `${goals.roas.toFixed(1)}x` : undefined}
                         goalPct={goals.roas != null ? (totals.roas / goals.roas) * 100 : null}
+                        variant={goals.roas != null ? "donut" : "bar"}
                       />
                     ),
                     isMetricVisible("conversions") && (
@@ -2554,6 +2672,11 @@ export function Dashboard({
                   );
                 })()}
                 </section>
+
+                {/* Metas por grupo — visível quando selectedGroup === "all" e há dados */}
+                {selectedGroup === "all" && perGroupSummaries.length > 0 && (
+                  <IndividualGoals summaries={perGroupSummaries} />
+                )}
 
                 {/* Funnel */}
                 <FunnelCard

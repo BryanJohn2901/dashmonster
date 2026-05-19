@@ -1,13 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { toast } from "@/hooks/useToast";
 import { RealtimeChannel, Session } from "@supabase/supabase-js";
-import { Dashboard } from "@/components/Dashboard";
-import { ControlPanel, type CPTab } from "@/components/ControlPanel";
-import { OnboardingTutorial } from "@/components/OnboardingTutorial";
-import { AuthScreen } from "@/components/AuthScreen";
-import { CampaignData } from "@/types/campaign";
+import type { CPTab } from "@/components/ControlPanel";
+import type { CampaignData } from "@/types/campaign";
+
+const Dashboard        = dynamic(() => import("@/components/Dashboard").then((m) => ({ default: m.Dashboard })), { ssr: false });
+const ControlPanel     = dynamic(() => import("@/components/ControlPanel").then((m) => ({ default: m.ControlPanel })), { ssr: false });
+const OnboardingTutorial = dynamic(() => import("@/components/OnboardingTutorial").then((m) => ({ default: m.OnboardingTutorial })), { ssr: false });
+const AuthScreen       = dynamic(() => import("@/components/AuthScreen").then((m) => ({ default: m.AuthScreen })), { ssr: false });
 import { MOCK_CAMPAIGNS, MOCK_SOURCE_LABEL, seedDemoData } from "@/utils/mockData";
 import { fetchCampaignSheetData, parseCampaignCsvFile } from "@/utils/googleSheets";
 import { isSupabaseConfigured, supabaseClient } from "@/lib/supabase";
@@ -513,15 +516,14 @@ export default function Home() {
 
     void (async () => {
       try {
-        const rows = await loadSupabaseData();
-        const source = await fetchSharedDataSource();
-        setDataSource(source);
-
-        // Load user categories and account entries (Painel de Controle)
-        const [cats, entries] = await Promise.all([
+        // Parallel fetch — all 4 are independent
+        const [rows, source, cats, entries] = await Promise.all([
+          loadSupabaseData(),
+          fetchSharedDataSource(),
           fetchUserCategories(),
           fetchUserAccountEntries(),
         ]);
+        setDataSource(source);
         setUserCategories(cats);
         replaceUserAccountEntries(entries);
 
