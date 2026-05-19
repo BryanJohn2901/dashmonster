@@ -2597,6 +2597,8 @@ export function Dashboard({
                       }
                       dateFrom={dateFrom || undefined}
                       dateTo={dateTo || undefined}
+                      selectedCampaignIds={isFilterExplicit && checkedCampaignIds.length > 0 ? checkedCampaignIds : undefined}
+                      selectedGroupName={selectedGroup !== "all" ? (allGroups.find((g) => g.id === selectedGroup)?.label ?? selectedGroup) : undefined}
                     />
                   )
                 )}

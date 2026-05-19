@@ -187,6 +187,7 @@ export interface MetaCampaignCreative {
   previewUrl:   string;           // preview_shareable_link (for direct preview)
   adLink:       string;           // Ads Library URL or preview link
   mediaType:    "image" | "video" | "carousel" | "unknown";
+  createdTime?: string;           // ISO 8601 — when the ad was created in Meta
 }
 
 /**
