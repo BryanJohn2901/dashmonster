@@ -41,6 +41,9 @@ export async function GET(request: NextRequest) {
   if (level === "adset") {
     baseFields.push("adset_name", "adset_id");
   }
+  if (level === "ad") {
+    baseFields.push("ad_id", "ad_name", "adset_name", "adset_id");
+  }
 
   const fields = baseFields.join(",");
 
