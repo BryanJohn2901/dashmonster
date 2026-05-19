@@ -81,7 +81,7 @@ export async function GET(request: NextRequest) {
         // object_story_spec: safe subfields only
         "creative{id,thumbnail_url,object_story_spec{link_data{link},video_data{image_url}}}",
       ].join(","),
-      effective_status: JSON.stringify(["ACTIVE", "PAUSED", "ARCHIVED"]),
+      effective_status: JSON.stringify(["ACTIVE", "PAUSED"]),
       limit: "200",
     }).toString();
 

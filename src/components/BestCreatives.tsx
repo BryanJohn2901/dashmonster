@@ -15,7 +15,7 @@ import { formatCurrency, formatPercent } from "@/utils/metrics";
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const PAGE_SIZE      = 24;
-const CACHE_TTL_MS   = 10 * 60 * 1000;
+const CACHE_TTL_MS   = 6 * 60 * 60 * 1000; // 6h
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -382,6 +382,9 @@ export function BestCreatives({ campaigns, adAccountId, dateFrom, dateTo }: Best
     Array.isArray(adAccountId) ? adAccountId.filter(Boolean) : adAccountId ? [adAccountId] : []
   , [adAccountId]);
 
+  // Load from cache on mount (no auto API call)
+  const [hasLoaded, setHasLoaded] = useState(false);
+
   const doFetch = useCallback((force = false) => {
     const ids = getIds();
     if (!ids.length || !accessToken) return;
@@ -395,6 +398,7 @@ export function BestCreatives({ campaigns, adAccountId, dateFrom, dateTo }: Best
         const ts  = raw ? (JSON.parse(raw) as { ts: number }).ts : Date.now();
         setMetaAds(cached);
         setCacheAge(Date.now() - ts);
+        setHasLoaded(true);
         return;
       }
     }
@@ -404,7 +408,7 @@ export function BestCreatives({ campaigns, adAccountId, dateFrom, dateTo }: Best
     setCacheAge(null);
 
     (async () => {
-      // Sequential creatives fetch
+      // Sequential creatives fetch (ACTIVE + PAUSED only)
       const seen   = new Set<string>();
       const merged: MetaCampaignCreative[] = [];
       for (const id of ids) {
@@ -426,13 +430,25 @@ export function BestCreatives({ campaigns, adAccountId, dateFrom, dateTo }: Best
 
       return merged;
     })()
-      .then((merged) => { writeCache(cacheKey, merged); setMetaAds(merged); setCacheAge(0); })
+      .then((merged) => { writeCache(cacheKey, merged); setMetaAds(merged); setCacheAge(0); setHasLoaded(true); })
       .catch((err: unknown) => setFetchError(err instanceof Error ? err.message : "Erro ao buscar criativos"))
       .finally(() => setFetching(false));
   }, [getIds, accessToken, dateFrom, dateTo]);
 
-  useEffect(() => { doFetch(false); }, // eslint-disable-next-line react-hooks/exhaustive-deps
-  [JSON.stringify(adAccountId)]);
+  // On mount: load from cache only (no auto API call)
+  useEffect(() => {
+    const ids = getIds();
+    if (!ids.length || !accessToken) return;
+    const cached = readCache(getCacheKey(ids));
+    if (cached) {
+      const raw = localStorage.getItem(getCacheKey(ids));
+      const ts  = raw ? (JSON.parse(raw) as { ts: number }).ts : Date.now();
+      setMetaAds(cached);
+      setCacheAge(Date.now() - ts);
+      setHasLoaded(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(adAccountId)]);
 
   // Reset page + campaign filter when ads change
   useEffect(() => { setPage(1); setCampaignFilter("all"); }, [metaAds]);
@@ -551,6 +567,28 @@ export function BestCreatives({ campaigns, adAccountId, dateFrom, dateTo }: Best
           ) : (
             <><strong>Erro:</strong> {fetchError}</>
           )}
+        </div>
+      )}
+
+      {/* Not loaded yet — show load button */}
+      {!hasLoaded && !fetching && !fetchError && (
+        <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border py-20"
+          style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
+          <ImageIcon size={32} style={{ color: "var(--dm-text-tertiary)" }} />
+          <div className="text-center">
+            <p className="text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>Criativos não carregados</p>
+            <p className="mt-1 text-xs" style={{ color: "var(--dm-text-secondary)" }}>
+              Clique para buscar anúncios ativos e pausados.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => doFetch(false)}
+            className="flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+            style={{ backgroundColor: "var(--dm-brand-500)" }}
+          >
+            <RefreshCw size={14} /> Carregar criativos
+          </button>
         </div>
       )}
 

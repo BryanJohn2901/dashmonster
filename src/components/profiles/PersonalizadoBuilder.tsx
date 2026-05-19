@@ -9,7 +9,7 @@ import {
   KPI_GROUPS,
   DEFAULT_PERSONALIZADO_CONFIG,
 } from "@/lib/templates";
-import { loadInstagramCredentials } from "@/utils/instagramApi";
+import { loadMetaCredentials } from "@/utils/metaApi";
 
 const BRAND_GRAD = "linear-gradient(135deg, #6366C8 0%, #313491 100%)";
 const MAX_KPIS = 10;
@@ -25,7 +25,7 @@ export function PersonalizadoBuilder({ config, onChange, onClose }: Props) {
   const [kpiIds,    setKpiIds]    = useState<string[]>(config.kpiIds);
   const [funnelIds, setFunnelIds] = useState<string[]>(config.funnelIds);
 
-  const hasIgToken = Boolean(loadInstagramCredentials().accessToken);
+  const hasIgToken = Boolean(loadMetaCredentials().accessToken);
 
   const toggleKpi = (id: string) => {
     setKpiIds((prev) => {
