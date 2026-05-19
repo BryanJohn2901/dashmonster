@@ -90,7 +90,9 @@ interface MetaAction {
 export interface MetaInsight {
   campaign_name: string;
   campaign_id:   string;
-  adset_name?:   string;  // present when level="adset" (kept for ProfileAnalysis compatibility)
+  ad_id?:        string;  // present when level="ad"
+  ad_name?:      string;  // present when level="ad"
+  adset_name?:   string;  // present when level="adset" or "ad"
   impressions:   string | number; // Meta API returns numeric strings
   reach:         string | number;
   clicks:        string | number; // all clicks (including reactions, shares — do NOT use for link metrics)
@@ -105,9 +107,28 @@ export interface MetaInsight {
   action_values?: MetaAction[]; // conversion revenue values
 }
 
+export interface AdInsight {
+  ad_id:        string;
+  ad_name:      string;
+  campaign_id:  string;
+  campaign_name: string;
+  adset_name:   string;
+  spend:        number;
+  impressions:  number;
+  clicks:       number;
+  ctr:          number;  // decimal (0–1)
+  cpc:          number;
+  cpm:          number;
+  conversions:  number;
+  leads:        number;
+  revenue:      number;
+  roas:         number;
+  conversionRate: number;
+}
+
 export interface FetchInsightsOptions {
-  /** API breakdown level. "campaign" = one row per campaign (default). "adset" = one row per ad set. */
-  level?: "campaign" | "adset";
+  /** API breakdown level. "campaign" = one row per campaign (default). "adset" = one row per ad set. "ad" = one row per ad. */
+  level?: "campaign" | "adset" | "ad";
   /**
    * Time aggregation. "1" = daily rows (useful for trend charts).
    * "all_days" = single totals row per campaign/adset over the whole period.
@@ -181,6 +202,82 @@ export async function fetchMetaCreatives(
   const body = await res.json() as MetaCampaignCreative[] | { error: string };
   if (!res.ok) throw new Error((body as { error: string }).error ?? `Meta API error ${res.status}`);
   return body as MetaCampaignCreative[];
+}
+
+/**
+ * Fetches ad-level insights (one row per ad, totals over date range).
+ * Returns AdInsight[] with spend, CTR, conversions, leads, ROAS per ad ID.
+ */
+export async function fetchAdInsights(
+  adAccountId: string,
+  accessToken: string,
+  dateFrom: string,
+  dateTo: string,
+): Promise<AdInsight[]> {
+  if (!adAccountId || !accessToken || !dateFrom || !dateTo) return [];
+
+  const params = new URLSearchParams({
+    adAccountId, accessToken, dateFrom, dateTo,
+    level: "ad",
+    timeIncrement: "all_days",
+  });
+
+  const res = await fetch(`/api/meta/insights?${params.toString()}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { error?: string }).error ?? `Meta API error ${res.status}`);
+  }
+
+  const rows = (await res.json()) as MetaInsight[];
+
+  return rows
+    .filter((r) => r.ad_id)
+    .map((r) => {
+      const spend       = parseFloat(String(r.spend))       || 0;
+      const impressions = parseFloat(String(r.impressions)) || 0;
+      const clicks      = r.inline_link_clicks != null
+        ? parseFloat(String(r.inline_link_clicks)) || 0
+        : parseFloat(String(r.clicks)) || 0;
+      const ctrPct      = r.inline_link_click_ctr != null
+        ? parseFloat(String(r.inline_link_click_ctr))
+        : parseFloat(String(r.ctr)) || 0;
+      const cpm         = parseFloat(String(r.cpm)) || 0;
+
+      const conversions = pickActionRaw(r.actions, "purchase", "omni_purchase", "offsite_conversion.fb_pixel_purchase");
+      const leads       = pickActionRaw(r.actions, "onsite_conversion.lead_grouped", "lead", "offsite_conversion.fb_pixel_lead");
+      const revenue     = pickActionRaw(r.action_values, "purchase", "omni_purchase", "offsite_conversion.fb_pixel_purchase");
+
+      return {
+        ad_id:          r.ad_id!,
+        ad_name:        r.ad_name ?? "",
+        campaign_id:    r.campaign_id,
+        campaign_name:  r.campaign_name,
+        adset_name:     r.adset_name ?? "",
+        spend,
+        impressions,
+        clicks,
+        ctr:            ctrPct / 100,
+        cpc:            clicks > 0 ? spend / clicks : 0,
+        cpm,
+        conversions,
+        leads,
+        revenue,
+        roas:           spend  > 0 ? revenue / spend : 0,
+        conversionRate: clicks > 0 ? (conversions / clicks) * 100 : 0,
+      } satisfies AdInsight;
+    });
+}
+
+function pickActionRaw(
+  actions: Array<{ action_type: string; value: string }> | undefined,
+  ...types: string[]
+): number {
+  if (!actions) return 0;
+  for (const type of types) {
+    const found = actions.find((a) => a.action_type === type);
+    if (found) return parseFloat(found.value) || 0;
+  }
+  return 0;
 }
 
 // ─── Transformation ──────────────────────────────────────────────────────────

@@ -34,8 +34,6 @@ interface MetaAdRaw {
     object_story_spec?: {
       link_data?: {
         link?: string;
-        // child_attachments presence = carousel; we only fetch `id` to avoid field errors
-        child_attachments?: Array<{ id?: string }>;
       };
       video_data?: { image_url?: string };
     };
@@ -45,7 +43,6 @@ interface MetaAdRaw {
 function detectMediaType(ad: MetaAdRaw): MetaCampaignCreative["mediaType"] {
   const spec = ad.creative?.object_story_spec;
   if (spec?.video_data) return "video";
-  if ((spec?.link_data?.child_attachments?.length ?? 0) > 0) return "carousel";
   if (ad.creative?.thumbnail_url) return "image";
   return "unknown";
 }
@@ -82,7 +79,7 @@ export async function GET(request: NextRequest) {
         "preview_shareable_link",
         // thumbnail_url: universal field — works for image, video, carousel
         // object_story_spec: safe subfields only
-        "creative{id,thumbnail_url,object_story_spec{link_data{link,child_attachments{id}},video_data{image_url}}}",
+        "creative{id,thumbnail_url,object_story_spec{link_data{link},video_data{image_url}}}",
       ].join(","),
       effective_status: JSON.stringify(["ACTIVE", "PAUSED", "ARCHIVED"]),
       limit: "200",

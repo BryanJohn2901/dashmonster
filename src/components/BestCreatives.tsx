@@ -11,13 +11,16 @@ const previewSrcCache = new Map<string, string>();
 import { AggregatedCampaign } from "@/types/campaign";
 import { useCreativeStore } from "@/hooks/useCreativeStore";
 import type { MetaCampaignCreative } from "@/utils/metaApi";
-import { fetchMetaCreatives, loadMetaCredentials } from "@/utils/metaApi";
+import { fetchMetaCreatives, fetchAdInsights, loadMetaCredentials } from "@/utils/metaApi";
+import type { AdInsight } from "@/utils/metaApi";
 import { formatCurrency, formatPercent } from "@/utils/metrics";
 
 interface BestCreativesProps {
   campaigns: AggregatedCampaign[];
   /** A single account ID, an array of IDs (used when "all groups" is selected), or undefined. */
   adAccountId?: string | string[];
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 type CreativeSubTab  = "gallery" | "rankings" | "starred";
@@ -169,7 +172,7 @@ function CreativeCard({
   accessToken,
 }: {
   ad: MetaCampaignCreative;
-  metrics?: AggregatedCampaign;
+  metrics?: AdInsight;
   starred: boolean;
   onPreview: () => void;
   onToggleStar: () => void;
@@ -211,9 +214,35 @@ function CreativeCard({
         </p>
         {/* Metrics */}
         {metrics && (
-          <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-[10px]" style={{ color: "var(--dm-text-secondary)" }}>
-            <span>CTR {formatPercent(metrics.ctr)}</span>
-            {metrics.roas > 0 && <span>ROAS {metrics.roas.toFixed(2)}x</span>}
+          <div className="grid grid-cols-2 gap-1 text-[10px]">
+            <div className="rounded px-1.5 py-0.5" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
+              <span style={{ color: "var(--dm-text-tertiary)" }}>CTR </span>
+              <span className="font-semibold" style={{ color: "var(--dm-text-primary)" }}>{formatPercent(metrics.ctr)}</span>
+            </div>
+            {metrics.spend > 0 && (
+              <div className="rounded px-1.5 py-0.5" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
+                <span style={{ color: "var(--dm-text-tertiary)" }}>Inv </span>
+                <span className="font-semibold" style={{ color: "var(--dm-text-primary)" }}>{formatCurrency(metrics.spend)}</span>
+              </div>
+            )}
+            {metrics.roas > 0 && (
+              <div className="rounded px-1.5 py-0.5" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
+                <span style={{ color: "var(--dm-text-tertiary)" }}>ROAS </span>
+                <span className="font-semibold" style={{ color: "var(--dm-text-primary)" }}>{metrics.roas.toFixed(2)}x</span>
+              </div>
+            )}
+            {metrics.leads > 0 && (
+              <div className="rounded px-1.5 py-0.5" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
+                <span style={{ color: "var(--dm-text-tertiary)" }}>Leads </span>
+                <span className="font-semibold" style={{ color: "var(--dm-text-primary)" }}>{metrics.leads}</span>
+              </div>
+            )}
+            {metrics.conversions > 0 && (
+              <div className="rounded px-1.5 py-0.5 col-span-2" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
+                <span style={{ color: "var(--dm-text-tertiary)" }}>Conv </span>
+                <span className="font-semibold" style={{ color: "var(--dm-text-primary)" }}>{metrics.conversions} · CPA {formatCurrency(metrics.cpc > 0 ? metrics.spend / metrics.conversions : 0)}</span>
+              </div>
+            )}
           </div>
         )}
         {/* View button */}
@@ -239,7 +268,7 @@ function PreviewModal({
   accessToken,
 }: {
   ad: MetaCampaignCreative;
-  metrics?: AggregatedCampaign;
+  metrics?: AdInsight;
   starred: boolean;
   onClose: () => void;
   onToggleStar: () => void;
@@ -300,12 +329,14 @@ function PreviewModal({
           {metrics && (
             <div className="grid grid-cols-2 gap-2">
               {[
-                { label: "CTR",        value: formatPercent(metrics.ctr) },
-                { label: "ROAS",       value: `${metrics.roas.toFixed(2)}x` },
-                { label: "Cliques",    value: metrics.clicks.toLocaleString("pt-BR") },
-                { label: "Impressões", value: metrics.impressions.toLocaleString("pt-BR") },
-                ...(metrics.conversions > 0 ? [{ label: "CPA", value: formatCurrency(metrics.cpa) }] : []),
-                ...(metrics.investment > 0   ? [{ label: "Investimento", value: formatCurrency(metrics.investment) }] : []),
+                { label: "CTR",         value: formatPercent(metrics.ctr) },
+                { label: "Investimento",value: formatCurrency(metrics.spend) },
+                { label: "Cliques",     value: metrics.clicks.toLocaleString("pt-BR") },
+                { label: "Impressões",  value: metrics.impressions.toLocaleString("pt-BR") },
+                ...(metrics.roas > 0        ? [{ label: "ROAS",  value: `${metrics.roas.toFixed(2)}x` }] : []),
+                ...(metrics.conversions > 0 ? [{ label: "CPA",   value: formatCurrency(metrics.spend / metrics.conversions) }] : []),
+                ...(metrics.leads > 0       ? [{ label: "Leads", value: String(metrics.leads) }] : []),
+                ...(metrics.cpm > 0         ? [{ label: "CPM",   value: formatCurrency(metrics.cpm) }] : []),
               ].map(({ label, value }) => (
                 <div key={label} className="rounded-lg p-2" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
                   <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>{label}</p>
@@ -427,11 +458,12 @@ function writeCache(key: string, data: MetaCampaignCreative[]) {
   try { localStorage.setItem(key, JSON.stringify({ ts: Date.now(), data })); } catch {}
 }
 
-export function BestCreatives({ campaigns, adAccountId }: BestCreativesProps) {
+export function BestCreatives({ campaigns, adAccountId, dateFrom, dateTo }: BestCreativesProps) {
   const [subTab, setSubTab]         = useState<CreativeSubTab>("gallery");
   const [typeFilter, setTypeFilter] = useState<MediaTypeFilter>("all");
   const [previewAd, setPreviewAd]   = useState<MetaCampaignCreative | null>(null);
   const [metaAds, setMetaAds]       = useState<MetaCampaignCreative[]>([]);
+  const [adInsights, setAdInsights] = useState<Map<string, AdInsight>>(new Map());
   const [fetching, setFetching]     = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [cacheAge, setCacheAge]     = useState<number | null>(null); // ms since cached
@@ -472,7 +504,7 @@ export function BestCreatives({ campaigns, adAccountId }: BestCreativesProps) {
     setFetchError(null);
     setCacheAge(null);
 
-    // Sequential fetch to respect rate limits (one account at a time)
+    // Sequential creatives fetch + parallel ad insights
     (async () => {
       const seen = new Set<string>();
       const merged: MetaCampaignCreative[] = [];
@@ -482,6 +514,19 @@ export function BestCreatives({ campaigns, adAccountId }: BestCreativesProps) {
           if (!seen.has(ad.adId)) { seen.add(ad.adId); merged.push(ad); }
         }
       }
+
+      // Fetch ad-level insights in parallel (one per account) if dates available
+      if (dateFrom && dateTo) {
+        const insightBatches = await Promise.all(
+          ids.map((id) => fetchAdInsights(id, accessToken, dateFrom, dateTo).catch(() => [] as AdInsight[]))
+        );
+        const insightMap = new Map<string, AdInsight>();
+        for (const batch of insightBatches) {
+          for (const row of batch) insightMap.set(row.ad_id, row);
+        }
+        setAdInsights(insightMap);
+      }
+
       return merged;
     })()
       .then((merged) => {
@@ -692,7 +737,7 @@ export function BestCreatives({ campaigns, adAccountId }: BestCreativesProps) {
                 <CreativeCard
                   key={ad.adId}
                   ad={ad}
-                  metrics={metricsMap.get(ad.campaignName)}
+                  metrics={adInsights.get(ad.adId)}
                   starred={store[ad.adId]?.starred ?? false}
                   onPreview={() => setPreviewAd(ad)}
                   onToggleStar={() => toggleStar(ad)}
@@ -791,7 +836,7 @@ export function BestCreatives({ campaigns, adAccountId }: BestCreativesProps) {
       {previewAd && (
         <PreviewModal
           ad={previewAd}
-          metrics={metricsMap.get(previewAd.campaignName)}
+          metrics={adInsights.get(previewAd.adId)}
           starred={store[previewAd.adId]?.starred ?? false}
           onClose={() => setPreviewAd(null)}
           onToggleStar={() => toggleStar(previewAd)}

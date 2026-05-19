@@ -2595,6 +2595,8 @@ export function Dashboard({
                                 .filter(Boolean),
                             )]
                       }
+                      dateFrom={dateFrom || undefined}
+                      dateTo={dateTo || undefined}
                     />
                   )
                 )}
