@@ -34,9 +34,16 @@ interface MetaAdRaw {
     thumbnail_url?: string;
     object_story_spec?: {
       link_data?: {
-        link?: string;
+        link?:        string;
+        message?:     string;  // ad body / caption text
+        name?:        string;  // link headline
+        description?: string;  // link description
       };
-      video_data?: { image_url?: string };
+      video_data?: {
+        image_url?: string;
+        message?:   string;  // video ad caption
+        title?:     string;  // video ad title
+      };
     };
   };
 }
@@ -81,7 +88,7 @@ export async function GET(request: NextRequest) {
         "created_time",
         // thumbnail_url: universal field — works for image, video, carousel
         // object_story_spec: safe subfields only
-        "creative{id,thumbnail_url,object_story_spec{link_data{link},video_data{image_url}}}",
+        "creative{id,thumbnail_url,object_story_spec{link_data{link,message,name,description},video_data{image_url,message,title}}}",
       ].join(","),
       effective_status: JSON.stringify(["ACTIVE", "PAUSED"]),
       limit: "200",
@@ -123,6 +130,18 @@ export async function GET(request: NextRequest) {
           spec?.link_data?.link ??
           adsLibraryUrl;
 
+        // Ad copy: prefer link_data.message, fall back to video_data.message
+        const body =
+          spec?.link_data?.message ??
+          spec?.video_data?.message ??
+          undefined;
+
+        // Headline: prefer link_data.name, fall back to video_data.title
+        const headline =
+          spec?.link_data?.name ??
+          spec?.video_data?.title ??
+          undefined;
+
         return {
           adId:         ad.id,
           adName:       ad.name,
@@ -134,6 +153,8 @@ export async function GET(request: NextRequest) {
           adLink,
           mediaType:    detectMediaType(ad),
           createdTime:  ad.created_time,
+          body,
+          headline,
         } satisfies MetaCampaignCreative;
       });
 

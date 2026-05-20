@@ -214,6 +214,8 @@ function CreativeCard({
 
 // ─── Preview Modal ────────────────────────────────────────────────────────────
 
+const MODAL_GRAD = "linear-gradient(135deg, #6366C8 0%, #313491 100%)";
+
 function PreviewModal({
   ad, insight, starred, accessToken, onClose, onToggleStar,
 }: {
@@ -230,41 +232,81 @@ function PreviewModal({
     return () => window.removeEventListener("keydown", h);
   }, [onClose]);
 
-  // Show iframe only if explicitly requested
   const [showIframe, setShowIframe] = useState(false);
-
-  const metrics = insight ? [
-    { label: "CTR",          value: formatPercent(insight.ctr) },
-    { label: "Investimento", value: formatCurrency(insight.spend) },
-    { label: "Cliques",      value: insight.clicks.toLocaleString("pt-BR") },
-    { label: "Impressões",   value: insight.impressions.toLocaleString("pt-BR") },
-    ...(insight.roas > 0        ? [{ label: "ROAS",  value: `${insight.roas.toFixed(2)}x` }] : []),
-    ...(insight.conversions > 0 ? [{ label: "CPA",   value: formatCurrency(insight.spend / insight.conversions) }] : []),
-    ...(insight.leads > 0       ? [{ label: "Leads", value: String(insight.leads) }] : []),
-    ...(insight.cpm > 0         ? [{ label: "CPM",   value: formatCurrency(insight.cpm) }] : []),
-  ] : [];
+  const [bodyExpanded, setBodyExpanded] = useState(false);
 
   const createdLabel = ad.createdTime
     ? new Date(ad.createdTime).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })
     : null;
 
+  // ── Hero KPIs (the 4 most important) ──────────────────────────────────────
+  const heroKpis = insight
+    ? [
+        {
+          label: "Investimento",
+          value: formatCurrency(insight.spend),
+          color: "#6366C8",
+          bg: "rgba(99,102,200,0.10)",
+        },
+        {
+          label: "CTR",
+          value: formatPercent(insight.ctr),
+          color: insight.ctr >= 0.02 ? "#05CD99" : insight.ctr >= 0.01 ? "#F4A60D" : "#EE5D50",
+          bg: insight.ctr >= 0.02 ? "rgba(5,205,153,0.10)" : insight.ctr >= 0.01 ? "rgba(244,166,13,0.10)" : "rgba(238,93,80,0.10)",
+        },
+        ...(insight.leads > 0
+          ? [{ label: "Leads", value: insight.leads.toLocaleString("pt-BR"), color: "#E1306C", bg: "rgba(225,48,108,0.10)" }]
+          : []),
+        ...(insight.conversions > 0
+          ? [{ label: "Vendas", value: insight.conversions.toLocaleString("pt-BR"), color: "#05CD99", bg: "rgba(5,205,153,0.10)" }]
+          : []),
+      ]
+    : [];
+
+  // ── Secondary metrics ─────────────────────────────────────────────────────
+  const secondaryMetrics = insight
+    ? [
+        { label: "Impressões",  value: insight.impressions.toLocaleString("pt-BR") },
+        { label: "Cliques",     value: insight.clicks.toLocaleString("pt-BR") },
+        ...(insight.roas > 0         ? [{ label: "ROAS",  value: `${insight.roas.toFixed(2)}x` }] : []),
+        ...(insight.conversions > 0  ? [{ label: "CPA",   value: formatCurrency(insight.spend / insight.conversions) }] : []),
+        ...(insight.cpm > 0          ? [{ label: "CPM",   value: formatCurrency(insight.cpm) }] : []),
+      ]
+    : [];
+
+  const BODY_LIMIT = 180;
+  const bodyText   = ad.body ?? null;
+  const bodyIsLong = bodyText && bodyText.length > BODY_LIMIT;
+  const displayBody = bodyText
+    ? bodyExpanded || !bodyIsLong
+      ? bodyText
+      : bodyText.slice(0, BODY_LIMIT) + "…"
+    : null;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ backgroundColor: "rgba(0,0,0,0.82)", backdropFilter: "blur(8px)" }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-3"
+      style={{ backgroundColor: "rgba(0,0,0,0.75)" }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        className="relative flex w-full max-w-[920px] flex-col overflow-hidden md:flex-row"
+        style={{
+          backgroundColor: "var(--dm-bg-surface)",
+          border: "1px solid var(--dm-border-default)",
+          borderRadius: 20,
+          boxShadow: "0 24px 60px rgba(0,0,0,0.40)",
+          maxHeight: "94vh",
+        }}
+      >
+        {/* Gradient top accent bar */}
+        <div className="absolute left-0 right-0 top-0 h-1 flex-shrink-0" style={{ background: MODAL_GRAD, zIndex: 10, borderRadius: "20px 20px 0 0" }} />
 
-      <div className="relative flex w-full max-w-[860px] flex-col overflow-hidden rounded-2xl shadow-2xl md:flex-row"
-        style={{ backgroundColor: "var(--dm-bg-card)", maxHeight: "92vh" }}>
-
-        {/* Close */}
-        <button type="button" onClick={onClose}
-          className="absolute right-3 top-3 z-20 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80">
-          <X size={15} />
-        </button>
-
-        {/* Left — creative preview */}
-        <div className="relative flex w-full flex-shrink-0 items-center justify-center overflow-hidden bg-slate-950 md:w-[46%]"
-          style={{ minHeight: 380 }}>
+        {/* ── LEFT — creative preview ── */}
+        <div
+          className="relative flex w-full flex-shrink-0 items-center justify-center overflow-hidden md:w-[44%]"
+          style={{ background: "#0b1437", minHeight: 360, borderRadius: "20px 0 0 20px" }}
+        >
           {showIframe ? (
             <AdIframe ad={ad} accessToken={accessToken} />
           ) : ad.thumbnailUrl ? (
@@ -273,90 +315,214 @@ function PreviewModal({
                 src={ad.thumbnailUrl}
                 alt={ad.adName}
                 className="h-full w-full object-contain"
-                style={{ maxHeight: "92vh" }}
+                style={{ maxHeight: "94vh" }}
               />
-              {/* Overlay button to switch to live preview */}
               {accessToken && (
                 <button
                   type="button"
                   onClick={() => setShowIframe(true)}
-                  className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 rounded-full bg-black/70 px-3 py-1.5 text-[11px] font-semibold text-white backdrop-blur-sm hover:bg-black/90"
+                  className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1.5 rounded-full px-4 py-2 text-[11px] font-semibold text-white"
+                  style={{ background: "rgba(0,0,0,0.72)", backdropFilter: "blur(6px)", border: "1px solid rgba(255,255,255,0.15)" }}
                 >
-                  <Play size={11} fill="white" />
-                  Ver preview interativo
+                  <Play size={10} fill="white" />
+                  Preview interativo
                 </button>
               )}
             </>
           ) : (
-            <div className="flex flex-col items-center justify-center gap-3 text-slate-500">
-              {ad.mediaType === "video" ? <Film size={40} /> : <ImageIcon size={40} />}
+            <div className="flex flex-col items-center justify-center gap-3" style={{ color: "rgba(255,255,255,0.25)" }}>
+              {ad.mediaType === "video" ? <Film size={44} /> : <ImageIcon size={44} />}
               <p className="text-xs">Sem preview disponível</p>
             </div>
           )}
+
+          {/* Media type badge — bottom left */}
+          <span
+            className={`absolute left-3 top-4 rounded-full px-2.5 py-0.5 text-[11px] font-bold ${TYPE_COLOR[ad.mediaType]}`}
+            style={{ backdropFilter: "blur(4px)" }}
+          >
+            {TYPE_LABEL[ad.mediaType]}
+          </span>
         </div>
 
-        {/* Right — details */}
-        <div className="flex w-full flex-col gap-4 overflow-y-auto p-5 md:w-[54%]">
+        {/* ── RIGHT — details ── */}
+        <div
+          className="flex w-full flex-col overflow-y-auto md:w-[56%]"
+          style={{ paddingTop: "1px" }} /* compensate for 1px accent bar */
+        >
 
-          {/* Header row */}
-          <div className="flex items-start justify-between gap-2">
-            <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-bold ${TYPE_COLOR[ad.mediaType]}`}>
-              {TYPE_LABEL[ad.mediaType]}
-            </span>
-            <button type="button" onClick={onToggleStar}
-              className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium"
-              style={{ color: starred ? "#f59e0b" : "var(--dm-text-secondary)", backgroundColor: starred ? "rgba(245,158,11,0.1)" : "var(--dm-bg-elevated)" }}>
+          {/* Close + Star header */}
+          <div
+            className="flex flex-shrink-0 items-center justify-between px-5 py-4"
+            style={{ borderBottom: "1px solid var(--dm-border-subtle)" }}
+          >
+            <button
+              type="button"
+              onClick={onToggleStar}
+              className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-semibold transition hover:opacity-80"
+              style={{
+                color: starred ? "#f59e0b" : "var(--dm-text-secondary)",
+                backgroundColor: starred ? "rgba(245,158,11,0.12)" : "var(--dm-bg-elevated)",
+                border: `1px solid ${starred ? "rgba(245,158,11,0.30)" : "var(--dm-border-default)"}`,
+              }}
+            >
               <Star size={12} fill={starred ? "#f59e0b" : "none"} stroke={starred ? "#f59e0b" : "currentColor"} />
               {starred ? "Destacado" : "Marcar destaque"}
             </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex h-8 w-8 items-center justify-center rounded-full transition hover:opacity-70"
+              style={{ backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)", border: "1px solid var(--dm-border-default)" }}
+            >
+              <X size={14} />
+            </button>
           </div>
 
-          {/* Ad info */}
-          <div className="space-y-0.5">
-            <p className="text-sm font-bold leading-snug" style={{ color: "var(--dm-text-primary)" }}>{ad.adName}</p>
-            <p className="text-xs font-semibold" style={{ color: "var(--dm-brand-500)" }}>{ad.campaignName}</p>
-            {ad.adsetName && <p className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>{ad.adsetName}</p>}
-            {createdLabel && (
-              <p className="flex items-center gap-1 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
-                <CalendarDays size={9} /> Criado em {createdLabel}
+          {/* Scrollable body */}
+          <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-5 py-4">
+
+            {/* Ad identity */}
+            <div className="space-y-0.5">
+              <p
+                className="text-[14px] font-bold leading-snug"
+                style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins), Poppins, sans-serif" }}
+              >
+                {ad.adName}
               </p>
+              <p className="text-[12px] font-semibold" style={{ color: "var(--dm-brand-500)" }}>
+                {ad.campaignName}
+              </p>
+              {ad.adsetName && (
+                <p className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>{ad.adsetName}</p>
+              )}
+              {createdLabel && (
+                <p className="flex items-center gap-1 pt-0.5 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                  <CalendarDays size={9} />
+                  Criado em {createdLabel}
+                </p>
+              )}
+              {ad.headline && (
+                <p
+                  className="mt-1 text-[12px] font-semibold"
+                  style={{ color: "var(--dm-text-secondary)" }}
+                >
+                  {ad.headline}
+                </p>
+              )}
+            </div>
+
+            {/* Caption / body text */}
+            {displayBody && (
+              <div
+                className="rounded-[14px] p-3.5"
+                style={{
+                  backgroundColor: "var(--dm-bg-elevated)",
+                  border: "1px solid var(--dm-border-subtle)",
+                }}
+              >
+                <p className="mb-1.5 text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>
+                  Legenda do anúncio
+                </p>
+                <p className="text-[12px] leading-relaxed" style={{ color: "var(--dm-text-secondary)", whiteSpace: "pre-line" }}>
+                  {displayBody}
+                </p>
+                {bodyIsLong && (
+                  <button
+                    type="button"
+                    onClick={() => setBodyExpanded((v) => !v)}
+                    className="mt-2 text-[11px] font-semibold transition hover:opacity-70"
+                    style={{ color: "var(--dm-brand-500)" }}
+                  >
+                    {bodyExpanded ? "Ver menos ↑" : "Ver tudo ↓"}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Hero KPI cards */}
+            {heroKpis.length > 0 && (
+              <div>
+                <p className="mb-2 text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>
+                  Métricas principais
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {heroKpis.map(({ label, value, color, bg }) => (
+                    <div
+                      key={label}
+                      className="rounded-[14px] p-3"
+                      style={{ backgroundColor: bg, border: `1.5px solid ${color}30` }}
+                    >
+                      <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color }}>
+                        {label}
+                      </p>
+                      <p
+                        className="mt-0.5 text-[18px] font-bold leading-tight"
+                        style={{ color, fontFamily: "var(--font-poppins), Poppins, sans-serif" }}
+                      >
+                        {value}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Secondary metrics */}
+            {secondaryMetrics.length > 0 && (
+              <div>
+                <p className="mb-2 text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>
+                  Outras métricas
+                </p>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {secondaryMetrics.map(({ label, value }) => (
+                    <div
+                      key={label}
+                      className="rounded-[12px] p-2.5"
+                      style={{ backgroundColor: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-subtle)" }}
+                    >
+                      <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: "var(--dm-text-tertiary)" }}>{label}</p>
+                      <p className="mt-0.5 text-[13px] font-bold" style={{ color: "var(--dm-text-primary)" }}>{value}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* No metrics fallback */}
+            {!insight && (
+              <div
+                className="rounded-[14px] p-4 text-center text-[11px]"
+                style={{ backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)", border: "1px solid var(--dm-border-subtle)" }}
+              >
+                Selecione um período de datas para ver as métricas deste criativo.
+              </div>
             )}
           </div>
 
-          {/* Metrics grid */}
-          {metrics.length > 0 ? (
-            <div>
-              <p className="mb-2 text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>
-                Performance
-              </p>
-              <div className="grid grid-cols-2 gap-1.5">
-                {metrics.map(({ label, value }) => (
-                  <div key={label} className="rounded-xl p-2.5" style={{ backgroundColor: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-subtle)" }}>
-                    <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>{label}</p>
-                    <p className="mt-0.5 text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>{value}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="rounded-xl p-3 text-center text-[11px]"
-              style={{ backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)", border: "1px solid var(--dm-border-subtle)" }}>
-              Métricas disponíveis após carregar os criativos com um período de datas selecionado.
-            </div>
-          )}
-
-          {/* Actions */}
-          <div className="mt-auto flex flex-col gap-2 pt-2">
-            <a href={ad.adLink} target="_blank" rel="noopener noreferrer"
-              className="flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold text-white"
-              style={{ backgroundColor: "var(--dm-brand-500)" }}>
-              <ExternalLink size={14} />
+          {/* Footer actions */}
+          <div
+            className="flex flex-shrink-0 flex-col gap-2 px-5 py-4"
+            style={{ borderTop: "1px solid var(--dm-border-subtle)", backgroundColor: "var(--dm-bg-elevated)" }}
+          >
+            <a
+              href={ad.adLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 rounded-[14px] py-2.5 text-[13px] font-bold text-white transition hover:opacity-90"
+              style={{ background: MODAL_GRAD, boxShadow: "0 4px 14px rgba(49,52,145,0.28)" }}
+            >
+              <ExternalLink size={13} />
               Ver no Gerenciador de Anúncios
             </a>
             {ad.previewUrl && ad.previewUrl !== ad.adLink && (
-              <a href={ad.previewUrl} target="_blank" rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 rounded-xl border py-2 text-xs font-medium"
-                style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>
+              <a
+                href={ad.previewUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 rounded-[14px] border py-2 text-[12px] font-semibold transition hover:opacity-80"
+                style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)", backgroundColor: "var(--dm-bg-surface)" }}
+              >
                 <Play size={12} />
                 Abrir preview compartilhável
               </a>
