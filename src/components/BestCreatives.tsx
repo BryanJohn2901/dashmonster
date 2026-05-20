@@ -677,9 +677,19 @@ export function BestCreatives({
       setMetaAds(cached);
       setCacheAge(Date.now() - ts);
       setHasLoaded(true);
+      fetchInsights(ids).catch(() => {});
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(adAccountId)]);
+
+  // Re-fetch insights whenever date range changes (ads already loaded)
+  useEffect(() => {
+    if (!dateFrom || !dateTo || !hasLoaded) return;
+    const ids = getIds();
+    if (!ids.length) return;
+    fetchInsights(ids).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateFrom, dateTo]);
 
   // Reset page when ads or external filter changes
   useEffect(() => { setPage(1); }, [metaAds, selectedCampaignIds]);
