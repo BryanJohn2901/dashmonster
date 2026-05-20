@@ -30,11 +30,14 @@ export interface SubPromessa {
   text: string;
 }
 
+export type LotePagamento = "cartao" | "boleto" | "ambos";
+
 export interface Lote {
   id: string;
   label: string;   // "Lote 1"
   valor: string;
   promo: string;
+  pagamento?: LotePagamento;
 }
 
 export interface TurmaLink {
