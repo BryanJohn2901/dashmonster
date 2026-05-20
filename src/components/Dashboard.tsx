@@ -254,6 +254,7 @@ const GOAL_FIELDS: GoalField[] = [
   { key: "cpa",         label: "CPA",         placeholder: "Ex: 50",   prefix: "R$" },
   { key: "cpc",         label: "CPC",         placeholder: "Ex: 1.50", prefix: "R$" },
   { key: "cpm",         label: "CPM",         placeholder: "Ex: 15",   prefix: "R$" },
+  { key: "leads",       label: "Leads",       placeholder: "Ex: 50"   },
   { key: "conversions", label: "Conversões",  placeholder: "Ex: 100"  },
   { key: "investment",  label: "Orçamento",   placeholder: "Ex: 5000", prefix: "R$" },
 ];

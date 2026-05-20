@@ -32,17 +32,19 @@ interface MetaAdRaw {
   creative?: {
     id?: string;
     thumbnail_url?: string;
+    video_id?: string;          // present on video ads
     object_story_spec?: {
       link_data?: {
-        link?:        string;
-        message?:     string;  // ad body / caption text
-        name?:        string;  // link headline
-        description?: string;  // link description
+        link?:              string;
+        message?:           string;
+        name?:              string;
+        description?:       string;
+        child_attachments?: { id: string }[];  // present on carousel ads
       };
       video_data?: {
         image_url?: string;
-        message?:   string;  // video ad caption
-        title?:     string;  // video ad title
+        message?:   string;
+        title?:     string;
       };
     };
   };
@@ -50,7 +52,11 @@ interface MetaAdRaw {
 
 function detectMediaType(ad: MetaAdRaw): MetaCampaignCreative["mediaType"] {
   const spec = ad.creative?.object_story_spec;
-  if (spec?.video_data) return "video";
+  // Carousel: link_data has child_attachments
+  if (spec?.link_data?.child_attachments && spec.link_data.child_attachments.length > 0) return "carousel";
+  // Video: video_data present OR creative has a video_id
+  if (spec?.video_data || ad.creative?.video_id) return "video";
+  // Image: has a thumbnail
   if (ad.creative?.thumbnail_url) return "image";
   return "unknown";
 }
@@ -88,7 +94,7 @@ export async function GET(request: NextRequest) {
         "created_time",
         // thumbnail_url: universal field — works for image, video, carousel
         // object_story_spec: safe subfields only
-        "creative{id,thumbnail_url,object_story_spec{link_data{link,message,name,description},video_data{image_url,message,title}}}",
+        "creative{id,thumbnail_url,video_id,object_story_spec{link_data{link,message,name,description,child_attachments{id}},video_data{image_url,message,title}}}",
       ].join(","),
       effective_status: JSON.stringify(["ACTIVE", "PAUSED"]),
       limit: "200",

@@ -157,6 +157,13 @@ function CreativeCard({
   onPreview: () => void;
   onToggleStar: () => void;
 }) {
+  const score      = computeScore(insight);
+  const scoreColor = score === null ? null : score >= 70 ? "#05CD99" : score >= 40 ? "#F4A60D" : "#EE5D50";
+
+  const createdLabel = ad.createdTime
+    ? new Date(ad.createdTime).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "2-digit" })
+    : null;
+
   return (
     <div
       className="group relative flex flex-col overflow-hidden rounded-xl border transition-all hover:shadow-lg hover:-translate-y-0.5"
@@ -167,6 +174,16 @@ function CreativeCard({
     >
       {/* Thumbnail */}
       <AdThumb ad={ad} onClick={onPreview} />
+
+      {/* Score badge — top left over thumbnail */}
+      {score !== null && scoreColor && (
+        <div
+          className="absolute left-2 top-2 z-10 rounded-[6px] px-2 py-0.5 text-[10px] font-bold"
+          style={{ background: "rgba(0,0,0,0.65)", color: scoreColor, border: `1px solid ${scoreColor}50`, backdropFilter: "blur(4px)" }}
+        >
+          {score}
+        </div>
+      )}
 
       {/* Hover overlay actions */}
       <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 z-10">
@@ -182,10 +199,17 @@ function CreativeCard({
 
       {/* Info */}
       <div className="flex flex-col gap-1.5 p-3">
-        <p className="line-clamp-1 text-[11px] font-semibold leading-snug"
-          style={{ color: "var(--dm-text-primary)" }} title={ad.adName}>
-          {ad.adName}
-        </p>
+        <div className="flex items-start justify-between gap-1">
+          <p className="line-clamp-1 text-[11px] font-semibold leading-snug"
+            style={{ color: "var(--dm-text-primary)" }} title={ad.adName}>
+            {ad.adName}
+          </p>
+          {createdLabel && (
+            <span className="flex-shrink-0 flex items-center gap-0.5 text-[9px]" style={{ color: "var(--dm-text-tertiary)" }}>
+              <CalendarDays size={8} />{createdLabel}
+            </span>
+          )}
+        </div>
         <p className="truncate text-[10px]" style={{ color: "var(--dm-text-tertiary)" }} title={ad.campaignName}>
           {ad.campaignName}
         </p>
@@ -195,8 +219,8 @@ function CreativeCard({
           <div className="flex flex-wrap gap-x-2 gap-y-0.5 pt-0.5 text-[10px]" style={{ color: "var(--dm-text-secondary)" }}>
             <span>CTR <strong>{formatPercent(insight.ctr)}</strong></span>
             {insight.spend > 0 && <span>Inv <strong>{formatCurrency(insight.spend)}</strong></span>}
-            {insight.roas > 0 && <span>ROAS <strong>{insight.roas.toFixed(2)}x</strong></span>}
             {insight.leads > 0 && <span>Leads <strong>{insight.leads}</strong></span>}
+            {insight.conversions > 0 && <span>Vendas <strong>{insight.conversions}</strong></span>}
           </div>
         )}
 
@@ -635,9 +659,13 @@ export function BestCreatives({
   const [hasLoaded, setHasLoaded] = useState(false);
 
   const fetchInsights = useCallback(async (ids: string[]) => {
-    if (!dateFrom || !dateTo || !accessToken) return;
+    if (!accessToken) return;
+    const today   = new Date().toISOString().slice(0, 10);
+    const yearAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const from    = dateFrom || yearAgo;
+    const to      = dateTo   || today;
     const batches = await Promise.all(
-      ids.map((id) => fetchAdInsights(id, accessToken, dateFrom, dateTo).catch(() => [] as AdInsight[]))
+      ids.map((id) => fetchAdInsights(id, accessToken, from, to).catch(() => [] as AdInsight[]))
     );
     const map = new Map<string, AdInsight>();
     for (const b of batches) for (const r of b) map.set(r.ad_id, r);
@@ -707,7 +735,7 @@ export function BestCreatives({
 
   // Re-fetch insights whenever date range changes (ads already loaded)
   useEffect(() => {
-    if (!dateFrom || !dateTo || !hasLoaded) return;
+    if (!hasLoaded) return;
     const ids = getIds();
     if (!ids.length) return;
     fetchInsights(ids).catch(() => {});
