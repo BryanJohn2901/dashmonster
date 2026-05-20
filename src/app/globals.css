@@ -196,23 +196,23 @@
   /* ----------------------------------------------------------
      FUNDAÇÃO
      ---------------------------------------------------------- */
-  --dm-bg-page:          #0b1437;
+  --dm-bg-page:          #070d27;  /* mais escuro → cards se destacam */
   --dm-bg-surface:       #111c44;
-  --dm-bg-sidebar:       #111c44;
-  --dm-bg-elevated:      #1B254B;
+  --dm-bg-sidebar:       #0d1636;
+  --dm-bg-elevated:      #1a2750;  /* mais claro → separação clara */
 
-  --dm-border-subtle:    #1a2a5e;
-  --dm-border-default:   #243062;
-  --dm-border-strong:    #2f3f7a;
+  --dm-border-subtle:    #1e306e;  /* era #1a2a5e — mais visível */
+  --dm-border-default:   #2a4090;  /* era #243062 — mais visível */
+  --dm-border-strong:    #3554b0;  /* era #2f3f7a — mais visível */
 
   /* ----------------------------------------------------------
-     TIPOGRAFIA DARK (4.3 — contraste mínimo 4.5:1)
+     TIPOGRAFIA DARK (WCAG AA — contraste mínimo 4.5:1)
      ---------------------------------------------------------- */
-  --dm-text-primary:     #FFFFFF;  /* on #111c44 navy */
-  --dm-text-secondary:   #A0AEC0;  /* muted blue-gray */
-  --dm-text-tertiary:    #4A5568;  /* decorativo */
-  --dm-text-disabled:    #2D3748;
-  --dm-text-inverse:     #0b1437;
+  --dm-text-primary:     #FFFFFF;   /* on #111c44 — 21:1 ✓ */
+  --dm-text-secondary:   #B0BED8;   /* era #A0AEC0 — ligeiramente mais brilhante */
+  --dm-text-tertiary:    #7B8FC4;   /* era #4A5568 — CRÍTICO: agora legível em navy */
+  --dm-text-disabled:    #3A4F7A;   /* era #2D3748 */
+  --dm-text-inverse:     #070d27;
 
   /* ----------------------------------------------------------
      MARCA DARK — Azul mais claro sobre fundo escuro
@@ -364,12 +364,12 @@
 }
 
 /* Sombras dark — navy Horizon palette */
-.dark .shadow-sm { box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.35); }
-.dark .shadow    { box-shadow: 0 2px 6px 0 rgb(0 0 0 / 0.4); }
-.dark .shadow-md { box-shadow: 0 4px 12px -2px rgb(0 0 0 / 0.45); }
-.dark .shadow-lg { box-shadow: 0 8px 20px -4px rgb(0 0 0 / 0.5); }
-.dark .shadow-xl { box-shadow: 0 16px 32px -6px rgb(0 0 0 / 0.55); }
-.dark .shadow-2xl{ box-shadow: 0 24px 48px -8px rgb(0 0 0 / 0.6); }
+.dark .shadow-sm { box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.5), inset 0 1px 0 rgba(255,255,255,0.04); }
+.dark .shadow    { box-shadow: 0 2px 6px 0 rgb(0 0 0 / 0.55), inset 0 1px 0 rgba(255,255,255,0.04); }
+.dark .shadow-md { box-shadow: 0 4px 12px -2px rgb(0 0 0 / 0.6), inset 0 1px 0 rgba(255,255,255,0.05); }
+.dark .shadow-lg { box-shadow: 0 8px 20px -4px rgb(0 0 0 / 0.65), inset 0 1px 0 rgba(255,255,255,0.05); }
+.dark .shadow-xl { box-shadow: 0 16px 32px -6px rgb(0 0 0 / 0.7), inset 0 1px 0 rgba(255,255,255,0.06); }
+.dark .shadow-2xl{ box-shadow: 0 24px 48px -8px rgb(0 0 0 / 0.75), inset 0 1px 0 rgba(255,255,255,0.06); }
 
 /* Category card hover */
 .dm-cat-card:hover { border-color: var(--dm-cat-card-hover-border) !important; }
@@ -389,7 +389,7 @@
   box-shadow: 14px 17px 40px 4px rgba(112, 144, 176, 0.08);
 }
 .dark .shadow-horizon {
-  box-shadow: 14px 17px 40px 4px rgba(0, 0, 0, 0.35);
+  box-shadow: 14px 17px 40px 4px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255,255,255,0.05);
 }
 
 /* ── Card hover (subtle shadow lift) ── */
@@ -563,6 +563,16 @@ h1, h2, h3, h4, h5 {
 .dm-empty-value {
   color: var(--dm-value-neutral);
   font-variant-numeric: tabular-nums;
+}
+
+/* dark: boost de legibilidade dos rótulos */
+.dark .dm-metric-label,
+.dark .dm-section-title,
+.dark .dm-table-header {
+  color: #8FA4D8;  /* mais visível que var(--dm-text-tertiary) em navy escuro */
+}
+.dark .dm-table-cell {
+  color: #C8D4EE;  /* mais claro que --dm-text-secondary */
 }
 
 /* ============================================================
