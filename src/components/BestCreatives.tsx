@@ -361,64 +361,136 @@ function PreviewModal({
   const compMax = Math.max(...campaignPeers.map(p => p.ins[compKey as keyof AdInsight] as number), 1);
   const compLabel = compKey === "leads" ? "Leads" : compKey === "conversions" ? "Vendas" : "Cliques";
 
+  // Metric cards — simplified color: value color only, null cards dimmed
+  const cplVal = insight && insight.leads > 0 ? insight.spend / insight.leads : null;
+  const cpaVal = insight && insight.conversions > 0 ? insight.spend / insight.conversions : null;
+
+  const metricCards2: { label: string; value: string | null; valueColor: string }[] = insight ? [
+    {
+      label: "Investimento",
+      value: formatCurrency(insight.spend),
+      valueColor: "var(--dm-text-primary)",
+    },
+    {
+      label: "CTR",
+      value: formatPercent(insight.ctr),
+      valueColor: insight.ctr >= 0.02 ? "#05CD99" : insight.ctr >= 0.01 ? "#F4A60D" : "#EE5D50",
+    },
+    {
+      label: cplVal != null ? "CPL" : cpaVal != null ? "CPA" : "CPC",
+      value: formatCurrency(cplVal ?? cpaVal ?? insight.cpc),
+      valueColor: mq("cpl", cplVal ?? cpaVal ?? insight.cpc) === "good" ? "#05CD99" : "var(--dm-text-primary)",
+    },
+    {
+      label: "Leads",
+      value: insight.leads > 0 ? insight.leads.toLocaleString("pt-BR") : null,
+      valueColor: "#05CD99",
+    },
+    {
+      label: "Vendas",
+      value: insight.conversions > 0 ? insight.conversions.toLocaleString("pt-BR") : null,
+      valueColor: "#05CD99",
+    },
+    {
+      label: "Cliques",
+      value: insight.clicks.toLocaleString("pt-BR"),
+      valueColor: "var(--dm-text-primary)",
+    },
+    {
+      label: "ROAS",
+      value: insight.roas > 0 ? `${insight.roas.toFixed(2)}x` : null,
+      valueColor: mq("roas", insight.roas) === "good" ? "#05CD99" : mq("roas", insight.roas) === "avg" ? "#F4A60D" : "var(--dm-text-primary)",
+    },
+    {
+      label: "CPM",
+      value: insight.cpm > 0 ? formatCurrency(insight.cpm) : null,
+      valueColor: "var(--dm-text-primary)",
+    },
+  ] : [];
+
   return (
     <>
       {/* Dim overlay */}
-      <div className="fixed inset-0 z-40" style={{ backgroundColor: "rgba(0,0,0,0.55)" }} onClick={onClose} />
+      <div className="fixed inset-0 z-40" style={{ backgroundColor: "rgba(0,0,0,0.50)" }} onClick={onClose} />
 
       {/* Drawer */}
       <div
         className="fixed bottom-0 right-0 top-0 z-50 flex flex-col overflow-hidden"
         style={{
-          width: 520,
+          width: 500,
           backgroundColor: "var(--dm-bg-surface)",
           borderLeft: "1px solid var(--dm-border-default)",
-          boxShadow: "-12px 0 48px rgba(0,0,0,0.28)",
+          boxShadow: "-16px 0 60px rgba(0,0,0,0.22)",
         }}
       >
         {/* Brand top stripe */}
         <div className="h-[3px] flex-shrink-0" style={{ background: DRAWER_GRAD }} />
 
-        {/* ── Header ── */}
+        {/* ── Header — GRID layout so arrows never shift ── */}
         <div
-          className="flex flex-shrink-0 items-center justify-between px-4 py-3"
-          style={{ borderBottom: "1px solid var(--dm-border-subtle)", backgroundColor: "var(--dm-bg-surface)" }}
+          className="grid flex-shrink-0 items-center gap-2 px-4 py-3"
+          style={{
+            gridTemplateColumns: "1fr auto auto",
+            borderBottom: "1px solid var(--dm-border-subtle)",
+            backgroundColor: "var(--dm-bg-surface)",
+          }}
         >
+          {/* Col 1: badge + title */}
           <div className="flex min-w-0 items-center gap-2">
-            <span className={`flex-shrink-0 rounded-[6px] px-2 py-0.5 text-[9px] font-bold tracking-wide ${TYPE_COLOR[ad.mediaType]}`}>
+            <span className={`flex-shrink-0 rounded-[5px] px-2 py-0.5 text-[9px] font-bold tracking-wide ${TYPE_COLOR[ad.mediaType]}`}>
               {TYPE_LABEL[ad.mediaType].toUpperCase()}
             </span>
             <span
-              className="truncate text-[14px] font-bold"
-              style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins), Poppins, sans-serif", maxWidth: 180 }}
+              className="truncate text-[13px] font-bold"
+              style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins), Poppins, sans-serif" }}
+              title={ad.adName}
             >
               {ad.adName}
             </span>
-            <div className="flex gap-1">
-              <button type="button" onClick={() => { setShowIframe(false); onNavigate(allAds[currentIndex - 1]); }}
-                disabled={currentIndex <= 0}
-                className="flex h-6 w-6 items-center justify-center rounded-[6px] text-xs transition disabled:opacity-30"
-                style={{ backgroundColor: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>‹</button>
-              <button type="button" onClick={() => { setShowIframe(false); onNavigate(allAds[currentIndex + 1]); }}
-                disabled={currentIndex >= allAds.length - 1}
-                className="flex h-6 w-6 items-center justify-center rounded-[6px] text-xs transition disabled:opacity-30"
-                style={{ backgroundColor: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>›</button>
-            </div>
           </div>
-          <div className="flex items-center gap-1.5">
-            <button type="button" onClick={onToggleStar}
-              className="flex items-center gap-1 rounded-[8px] px-2.5 py-1.5 text-[11px] font-semibold transition"
+
+          {/* Col 2: nav arrows — fixed, never shifts */}
+          <div className="flex flex-shrink-0 gap-1">
+            <button
+              type="button"
+              aria-label="Criativo anterior"
+              onClick={() => { setShowIframe(false); onNavigate(allAds[currentIndex - 1]); }}
+              disabled={currentIndex <= 0}
+              className="flex h-7 w-7 items-center justify-center rounded-[7px] text-[14px] font-bold transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-25"
+              style={{ backgroundColor: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-default)", color: "var(--dm-text-secondary)" }}
+            >‹</button>
+            <button
+              type="button"
+              aria-label="Próximo criativo"
+              onClick={() => { setShowIframe(false); onNavigate(allAds[currentIndex + 1]); }}
+              disabled={currentIndex >= allAds.length - 1}
+              className="flex h-7 w-7 items-center justify-center rounded-[7px] text-[14px] font-bold transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-25"
+              style={{ backgroundColor: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-default)", color: "var(--dm-text-secondary)" }}
+            >›</button>
+          </div>
+
+          {/* Col 3: star + close */}
+          <div className="flex flex-shrink-0 items-center gap-1.5">
+            <button
+              type="button"
+              onClick={onToggleStar}
+              className="flex items-center gap-1.5 rounded-[8px] px-2.5 py-1.5 text-[11px] font-semibold transition hover:opacity-80"
               style={{
                 color: starred ? "#f59e0b" : "var(--dm-text-secondary)",
                 backgroundColor: starred ? "rgba(245,158,11,0.10)" : "var(--dm-bg-elevated)",
-                border: `1px solid ${starred ? "rgba(245,158,11,0.25)" : "var(--dm-border-default)"}`,
-              }}>
-              <Star size={10} fill={starred ? "#f59e0b" : "none"} stroke={starred ? "#f59e0b" : "currentColor"} />
-              Destaque
+                border: `1px solid ${starred ? "rgba(245,158,11,0.30)" : "var(--dm-border-default)"}`,
+              }}
+            >
+              <Star size={11} fill={starred ? "#f59e0b" : "none"} stroke={starred ? "#f59e0b" : "currentColor"} />
+              {starred ? "Destacado" : "Destaque"}
             </button>
-            <button type="button" onClick={onClose}
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Fechar"
               className="flex h-7 w-7 items-center justify-center rounded-[7px] transition hover:opacity-70"
-              style={{ backgroundColor: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-default)", color: "var(--dm-text-tertiary)" }}>
+              style={{ backgroundColor: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-default)", color: "var(--dm-text-tertiary)" }}
+            >
               <X size={13} />
             </button>
           </div>
@@ -426,44 +498,58 @@ function PreviewModal({
 
         {/* ── Scrollable body ── */}
         <div className="flex-1 overflow-y-auto">
-          <div className="flex flex-col gap-3.5 p-4">
+          <div className="flex flex-col gap-4 p-4">
 
-            {/* Preview image */}
-            <div className="relative w-full overflow-hidden"
-              style={{ aspectRatio: "16/9", borderRadius: 10, background: "#0b1437", border: "1px solid var(--dm-border-subtle)" }}>
+            {/* ── Creative preview ── */}
+            <div
+              className="relative w-full overflow-hidden"
+              style={{ aspectRatio: "16/9", borderRadius: 10, background: "#0b1437", border: "1px solid var(--dm-border-subtle)" }}
+            >
               {showIframe ? (
                 <AdIframe ad={ad} accessToken={accessToken} />
               ) : ad.thumbnailUrl ? (
                 <img src={ad.thumbnailUrl} alt={ad.adName} className="h-full w-full object-cover" />
               ) : (
-                <div className="flex h-full flex-col items-center justify-center gap-2" style={{ color: "rgba(255,255,255,0.2)" }}>
+                <div className="flex h-full flex-col items-center justify-center gap-2" style={{ color: "rgba(255,255,255,0.18)" }}>
                   {ad.mediaType === "video" ? <Film size={36} /> : <ImageIcon size={36} />}
+                  <p className="text-[10px]">Sem preview</p>
                 </div>
               )}
-              <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.65) 0%, transparent 50%)" }} />
+
+              {/* Gradient overlay */}
+              <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.70) 0%, transparent 55%)" }} />
+
+              {/* Bottom info */}
               <div className="absolute bottom-0 left-0 right-0 flex items-end justify-between p-3">
-                <div>
-                  <p className="text-[10px] font-semibold text-white/90 truncate max-w-[260px]">{ad.campaignName}</p>
-                  {createdLabel && <p className="mt-0.5 text-[9px] text-white/50">{createdLabel}</p>}
+                <div className="min-w-0">
+                  <p className="truncate text-[10px] font-semibold" style={{ color: "rgba(255,255,255,0.80)" }}>{ad.campaignName}</p>
+                  {createdLabel && <p className="mt-0.5 flex items-center gap-1 text-[9px]" style={{ color: "rgba(255,255,255,0.45)" }}><CalendarDays size={8} />{createdLabel}</p>}
                 </div>
+                {/* Score badge — clean, no "SCORE" label */}
                 {score !== null && (
-                  <div className="rounded-[8px] px-2.5 py-1.5 text-center flex-shrink-0"
-                    style={{ background: "rgba(0,0,0,0.70)", border: `1px solid ${scoreColor}40`, backdropFilter: "blur(6px)" }}>
-                    <p className="text-[20px] font-bold leading-none" style={{ color: scoreColor, fontFamily: "var(--font-poppins), Poppins, sans-serif" }}>{score}</p>
-                    <p className="mt-0.5 text-[8px] font-semibold uppercase tracking-wider" style={{ color: "rgba(255,255,255,0.45)" }}>Score</p>
+                  <div
+                    className="ml-2 flex flex-shrink-0 h-10 w-10 items-center justify-center rounded-full"
+                    style={{ background: "rgba(0,0,0,0.65)", border: `2px solid ${scoreColor}`, backdropFilter: "blur(6px)" }}
+                  >
+                    <span className="text-[15px] font-bold leading-none" style={{ color: scoreColor, fontFamily: "var(--font-poppins), Poppins, sans-serif" }}>{score}</span>
                   </div>
                 )}
               </div>
+
+              {/* Interactive preview button */}
               {accessToken && !showIframe && (
-                <button type="button" onClick={() => setShowIframe(true)}
-                  className="absolute right-3 top-3 flex items-center gap-1 rounded-[6px] px-2 py-1 text-[10px] font-semibold text-white"
-                  style={{ background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.18)", backdropFilter: "blur(4px)" }}>
+                <button
+                  type="button"
+                  onClick={() => setShowIframe(true)}
+                  className="absolute right-2.5 top-2.5 flex items-center gap-1 rounded-[6px] px-2 py-1 text-[10px] font-semibold text-white transition hover:opacity-90"
+                  style={{ background: "rgba(0,0,0,0.55)", border: "1px solid rgba(255,255,255,0.20)", backdropFilter: "blur(4px)" }}
+                >
                   <Play size={8} fill="white" /> Preview interativo
                 </button>
               )}
             </div>
 
-            {/* Insight chips */}
+            {/* ── Insight chips ── */}
             {chips.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
                 {chips.map((c) => (
@@ -472,59 +558,85 @@ function PreviewModal({
               </div>
             )}
 
-            {/* Ad copy / legenda */}
+            {/* ── Ad copy / legenda ── */}
             {ad.body && (
-              <div className="rounded-[10px] p-3" style={{ backgroundColor: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-subtle)" }}>
-                <SectionLabel>Legenda do anúncio</SectionLabel>
-                <p className="text-[11px] leading-relaxed" style={{ color: "var(--dm-text-secondary)", whiteSpace: "pre-line" }}>
-                  {ad.body.length > 220 ? ad.body.slice(0, 220) + "…" : ad.body}
+              <div className="rounded-[10px] p-3.5" style={{ backgroundColor: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-subtle)" }}>
+                <p className="mb-1.5 text-[9px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>Legenda do anúncio</p>
+                <p className="text-[11px] leading-[1.6]" style={{ color: "var(--dm-text-secondary)", whiteSpace: "pre-line" }}>
+                  {ad.body.length > 240 ? ad.body.slice(0, 240) + "…" : ad.body}
                 </p>
               </div>
             )}
 
-            {/* Metrics 4-col grid */}
-            {metricCards.length > 0 ? (
+            {/* ── Metrics grid — clean 4-col, value-colored only ── */}
+            {metricCards2.length > 0 ? (
               <div>
-                <SectionLabel>Métricas do período</SectionLabel>
+                <p className="mb-2.5 text-[9px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>Métricas do período</p>
                 <div className="grid grid-cols-4 gap-1.5">
-                  {metricCards.map(({ label, value, qual }) => (
-                    <div key={label} className="relative overflow-hidden rounded-[8px] px-2 pb-2 pt-3"
-                      style={{ backgroundColor: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-subtle)" }}>
-                      <div className="absolute left-0 right-0 top-0 h-[2px]" style={{ background: QUALITY_TOP[qual] }} />
-                      <p className="text-[8px] font-bold uppercase tracking-wide" style={{ color: "var(--dm-text-tertiary)" }}>{label}</p>
-                      <p className="mt-1 text-[13px] font-bold leading-none" style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins), Poppins, sans-serif" }}>{value}</p>
-                    </div>
-                  ))}
+                  {metricCards2.map(({ label, value, valueColor }) => {
+                    const hasData = value !== null;
+                    return (
+                      <div
+                        key={label}
+                        className="rounded-[8px] p-2.5 transition-opacity"
+                        style={{
+                          backgroundColor: "var(--dm-bg-elevated)",
+                          border: "1px solid var(--dm-border-subtle)",
+                          opacity: hasData ? 1 : 0.38,
+                        }}
+                      >
+                        <p className="text-[8px] font-semibold uppercase tracking-wide" style={{ color: "var(--dm-text-tertiary)" }}>{label}</p>
+                        <p
+                          className="mt-1.5 text-[13px] font-bold leading-none"
+                          style={{
+                            color: hasData ? valueColor : "var(--dm-text-tertiary)",
+                            fontFamily: "var(--font-poppins), Poppins, sans-serif",
+                          }}
+                        >
+                          {value ?? "—"}
+                        </p>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             ) : (
-              <div className="rounded-[10px] p-3 text-center text-[11px]"
-                style={{ backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)", border: "1px solid var(--dm-border-subtle)" }}>
-                Selecione um período para ver as métricas.
+              <div
+                className="rounded-[10px] p-4 text-center text-[11px]"
+                style={{ backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)", border: "1px solid var(--dm-border-subtle)" }}
+              >
+                Aguardando métricas — clique em <strong>Atualizar</strong> ou selecione um período.
               </div>
             )}
 
-            {/* Comparison bars */}
+            {/* ── Comparison bars ── */}
             {campaignPeers.length > 1 && (
-              <div className="rounded-[10px] p-3" style={{ backgroundColor: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-subtle)" }}>
-                <SectionLabel>Ranking de {compLabel} na campanha</SectionLabel>
-                <div className="mt-1 space-y-2">
+              <div className="rounded-[10px] p-3.5" style={{ backgroundColor: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-subtle)" }}>
+                <p className="mb-3 text-[9px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>Ranking · {compLabel} na campanha</p>
+                <div className="space-y-2.5">
                   {campaignPeers.map(({ ad: peer, ins }) => {
                     const isMe = peer.adId === ad.adId;
                     const val  = ins[compKey as keyof AdInsight] as number;
                     const pct  = Math.round((val / compMax) * 100);
                     return (
-                      <div key={peer.adId} className="flex items-center gap-2">
-                        <span className="w-14 flex-shrink-0 truncate text-[10px] font-semibold"
-                          style={{ color: isMe ? "var(--dm-brand-500)" : "var(--dm-text-secondary)" }}>
+                      <div key={peer.adId} className="flex items-center gap-2.5">
+                        <span
+                          className="w-16 flex-shrink-0 truncate text-[10px] font-semibold"
+                          style={{ color: isMe ? "var(--dm-brand-500)" : "var(--dm-text-secondary)" }}
+                          title={peer.adName}
+                        >
                           {peer.adName}
                         </span>
-                        <div className="flex-1 overflow-hidden rounded-full" style={{ height: 5, backgroundColor: "var(--dm-bg-surface)" }}>
-                          <div className="h-full rounded-full transition-all duration-700"
-                            style={{ width: `${pct}%`, background: isMe ? DRAWER_GRAD : "var(--dm-border-default)" }} />
+                        <div className="flex-1 overflow-hidden rounded-full" style={{ height: 4, backgroundColor: "var(--dm-bg-surface)" }}>
+                          <div
+                            className="h-full rounded-full"
+                            style={{ width: `${pct}%`, background: isMe ? DRAWER_GRAD : "var(--dm-border-default)", transition: "width 0.6s ease" }}
+                          />
                         </div>
-                        <span className="w-7 flex-shrink-0 text-right text-[10px] font-bold"
-                          style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins), Poppins, sans-serif" }}>{val}</span>
+                        <span
+                          className="w-8 flex-shrink-0 text-right text-[10px] font-bold"
+                          style={{ color: isMe ? "var(--dm-brand-500)" : "var(--dm-text-primary)", fontFamily: "var(--font-poppins), Poppins, sans-serif" }}
+                        >{val}</span>
                       </div>
                     );
                   })}
@@ -532,25 +644,24 @@ function PreviewModal({
               </div>
             )}
 
-            {/* Sparkline — fake/placeholder (daily per-ad data not yet fetched) */}
-            <div className="rounded-[10px] p-3" style={{ backgroundColor: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-subtle)" }}>
-              <div className="mb-2 flex items-center justify-between">
+            {/* ── Sparkline placeholder ── */}
+            <div className="rounded-[10px] p-3.5" style={{ backgroundColor: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-subtle)" }}>
+              <div className="mb-3 flex items-center justify-between">
                 <span className="text-[10px] font-semibold" style={{ color: "var(--dm-text-secondary)" }}>Evolução · últimos 7 dias</span>
-                <span className="rounded-full px-2 py-0.5 text-[9px] font-semibold"
-                  style={{ backgroundColor: "rgba(99,102,200,0.10)", color: "var(--dm-brand-500)" }}>Em breve</span>
+                <span className="rounded-full px-2 py-0.5 text-[9px] font-medium" style={{ backgroundColor: "rgba(99,102,200,0.08)", color: "var(--dm-brand-500)", border: "1px solid rgba(99,102,200,0.15)" }}>Em breve</span>
               </div>
-              <svg width="100%" height="44" viewBox="0 0 460 44" preserveAspectRatio="none">
+              <svg width="100%" height="40" viewBox="0 0 460 40" preserveAspectRatio="none">
                 <defs>
                   <linearGradient id="spkGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#6366C8" stopOpacity="0.22"/>
+                    <stop offset="0%" stopColor="#6366C8" stopOpacity="0.18"/>
                     <stop offset="100%" stopColor="#6366C8" stopOpacity="0"/>
                   </linearGradient>
                 </defs>
-                <path d="M0,36 L65,30 L130,22 L195,26 L260,14 L325,9 L390,5 L460,2 L460,44 L0,44 Z" fill="url(#spkGrad)" opacity="0.6"/>
-                <path d="M0,36 L65,30 L130,22 L195,26 L260,14 L325,9 L390,5 L460,2" fill="none" stroke="#6366C8" strokeWidth="1.5" strokeLinejoin="round" opacity="0.5"/>
-                <circle cx="460" cy="2" r="3" fill="#6366C8" opacity="0.6"/>
+                <path d="M0,34 L65,28 L130,20 L195,24 L260,12 L325,8 L390,4 L460,1 L460,40 L0,40 Z" fill="url(#spkGrad)"/>
+                <path d="M0,34 L65,28 L130,20 L195,24 L260,12 L325,8 L390,4 L460,1" fill="none" stroke="#6366C8" strokeWidth="1.5" strokeLinejoin="round" opacity="0.45"/>
+                <circle cx="460" cy="1" r="3" fill="#6366C8" opacity="0.5"/>
               </svg>
-              <div className="mt-1 flex justify-between">
+              <div className="mt-2 flex justify-between">
                 {["D-6","D-5","D-4","D-3","D-2","D-1","Hoje"].map((d) => (
                   <span key={d} className="text-[8px]" style={{ color: "var(--dm-text-tertiary)" }}>{d}</span>
                 ))}
@@ -561,18 +672,28 @@ function PreviewModal({
         </div>
 
         {/* ── Footer ── */}
-        <div className="flex flex-shrink-0 items-center gap-2 px-4 py-3"
-          style={{ borderTop: "1px solid var(--dm-border-subtle)", backgroundColor: "var(--dm-bg-elevated)" }}>
+        <div
+          className="flex flex-shrink-0 items-center gap-2 px-4 py-3"
+          style={{ borderTop: "1px solid var(--dm-border-subtle)", backgroundColor: "var(--dm-bg-elevated)" }}
+        >
           {ad.previewUrl && ad.previewUrl !== ad.adLink && (
-            <a href={ad.previewUrl} target="_blank" rel="noopener noreferrer"
+            <a
+              href={ad.previewUrl}
+              target="_blank"
+              rel="noopener noreferrer"
               className="flex items-center gap-1.5 rounded-[9px] border px-3 py-2 text-[11px] font-semibold transition hover:opacity-80"
-              style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)", backgroundColor: "var(--dm-bg-surface)" }}>
+              style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)", backgroundColor: "var(--dm-bg-surface)" }}
+            >
               <Play size={10} /> Preview
             </a>
           )}
-          <a href={ad.adLink} target="_blank" rel="noopener noreferrer"
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-[9px] py-2.5 text-[12px] font-bold text-white transition hover:opacity-90"
-            style={{ background: DRAWER_GRAD, boxShadow: "0 3px 12px rgba(49,52,145,0.25)" }}>
+          <a
+            href={ad.adLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex flex-1 items-center justify-center gap-2 rounded-[9px] py-2.5 text-[12px] font-bold text-white transition hover:opacity-90"
+            style={{ background: DRAWER_GRAD, boxShadow: "0 4px 14px rgba(49,52,145,0.22)" }}
+          >
             <ExternalLink size={12} /> Ver no Gerenciador de Anúncios
           </a>
         </div>
