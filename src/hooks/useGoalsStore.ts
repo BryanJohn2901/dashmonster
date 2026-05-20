@@ -11,13 +11,14 @@ export interface Goals {
   roi: number | null;         // % — e.g. 200 means 200%
   cpc: number | null;         // R$ per click
   cpm: number | null;         // R$ per 1000 impressions
+  leads: number | null;       // lead count
   conversions: number | null; // count
   investment: number | null;  // R$ budget limit
 }
 
 export const DEFAULT_GOALS: Goals = {
   ctr: null, roas: null, cpa: null, roi: null,
-  cpc: null, cpm: null, conversions: null, investment: null,
+  cpc: null, cpm: null, leads: null, conversions: null, investment: null,
 };
 
 interface GoalsState {
