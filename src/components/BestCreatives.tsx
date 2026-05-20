@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import {
-  ChevronDown, ExternalLink, Film, ImageIcon, Layers, Loader2,
+  CalendarDays, ExternalLink, Film, Filter, ImageIcon, Loader2,
   MousePointerClick, Play, RefreshCw, ShoppingCart, Star, Trophy, X,
 } from "lucide-react";
 
@@ -15,16 +15,22 @@ import { formatCurrency, formatPercent } from "@/utils/metrics";
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const PAGE_SIZE      = 24;
-const CACHE_TTL_MS   = 10 * 60 * 1000;
+const CACHE_TTL_MS   = 6 * 60 * 60 * 1000; // 6h
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface BestCreativesProps {
-  campaigns:    AggregatedCampaign[];
-  adAccountId?: string | string[];
-  dateFrom?:    string;
-  dateTo?:      string;
+  campaigns:             AggregatedCampaign[];
+  adAccountId?:          string | string[];
+  dateFrom?:             string;
+  dateTo?:               string;
+  /** Meta campaign IDs checked in the right panel — undefined = show all */
+  selectedCampaignIds?:  string[];
+  /** Human-readable label for the active group/filter */
+  selectedGroupName?:    string;
 }
+
+type CreatedPeriod = "all" | "30d" | "90d" | "365d";
 
 type SubTab       = "gallery" | "rankings" | "starred";
 type MediaFilter  = "all" | "image" | "video" | "carousel";
@@ -224,6 +230,9 @@ function PreviewModal({
     return () => window.removeEventListener("keydown", h);
   }, [onClose]);
 
+  // Show iframe only if explicitly requested
+  const [showIframe, setShowIframe] = useState(false);
+
   const metrics = insight ? [
     { label: "CTR",          value: formatPercent(insight.ctr) },
     { label: "Investimento", value: formatCurrency(insight.spend) },
@@ -235,28 +244,61 @@ function PreviewModal({
     ...(insight.cpm > 0         ? [{ label: "CPM",   value: formatCurrency(insight.cpm) }] : []),
   ] : [];
 
+  const createdLabel = ad.createdTime
+    ? new Date(ad.createdTime).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })
+    : null;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ backgroundColor: "rgba(0,0,0,0.8)", backdropFilter: "blur(6px)" }}
+      style={{ backgroundColor: "rgba(0,0,0,0.82)", backdropFilter: "blur(8px)" }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
 
-      <div className="relative flex w-full max-w-3xl overflow-hidden rounded-2xl shadow-2xl md:flex-row"
-        style={{ backgroundColor: "var(--dm-bg-card)", maxHeight: "90vh" }}>
+      <div className="relative flex w-full max-w-[860px] flex-col overflow-hidden rounded-2xl shadow-2xl md:flex-row"
+        style={{ backgroundColor: "var(--dm-bg-card)", maxHeight: "92vh" }}>
 
+        {/* Close */}
         <button type="button" onClick={onClose}
-          className="absolute right-3 top-3 z-20 flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70">
+          className="absolute right-3 top-3 z-20 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80">
           <X size={15} />
         </button>
 
-        {/* Left — iframe preview */}
-        <div className="relative w-full overflow-hidden bg-slate-950 md:w-[52%]" style={{ minHeight: 420 }}>
-          <AdIframe ad={ad} accessToken={accessToken} />
+        {/* Left — creative preview */}
+        <div className="relative flex w-full flex-shrink-0 items-center justify-center overflow-hidden bg-slate-950 md:w-[46%]"
+          style={{ minHeight: 380 }}>
+          {showIframe ? (
+            <AdIframe ad={ad} accessToken={accessToken} />
+          ) : ad.thumbnailUrl ? (
+            <>
+              <img
+                src={ad.thumbnailUrl}
+                alt={ad.adName}
+                className="h-full w-full object-contain"
+                style={{ maxHeight: "92vh" }}
+              />
+              {/* Overlay button to switch to live preview */}
+              {accessToken && (
+                <button
+                  type="button"
+                  onClick={() => setShowIframe(true)}
+                  className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 rounded-full bg-black/70 px-3 py-1.5 text-[11px] font-semibold text-white backdrop-blur-sm hover:bg-black/90"
+                >
+                  <Play size={11} fill="white" />
+                  Ver preview interativo
+                </button>
+              )}
+            </>
+          ) : (
+            <div className="flex flex-col items-center justify-center gap-3 text-slate-500">
+              {ad.mediaType === "video" ? <Film size={40} /> : <ImageIcon size={40} />}
+              <p className="text-xs">Sem preview disponível</p>
+            </div>
+          )}
         </div>
 
         {/* Right — details */}
-        <div className="flex w-full flex-col gap-4 overflow-y-auto p-5 md:w-[48%]">
+        <div className="flex w-full flex-col gap-4 overflow-y-auto p-5 md:w-[54%]">
 
-          {/* Header */}
+          {/* Header row */}
           <div className="flex items-start justify-between gap-2">
             <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-bold ${TYPE_COLOR[ad.mediaType]}`}>
               {TYPE_LABEL[ad.mediaType]}
@@ -265,43 +307,58 @@ function PreviewModal({
               className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium"
               style={{ color: starred ? "#f59e0b" : "var(--dm-text-secondary)", backgroundColor: starred ? "rgba(245,158,11,0.1)" : "var(--dm-bg-elevated)" }}>
               <Star size={12} fill={starred ? "#f59e0b" : "none"} stroke={starred ? "#f59e0b" : "currentColor"} />
-              {starred ? "Destacado" : "Marcar"}
+              {starred ? "Destacado" : "Marcar destaque"}
             </button>
           </div>
 
           {/* Ad info */}
-          <div>
-            <p className="text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>{ad.adName}</p>
-            <p className="mt-0.5 text-xs" style={{ color: "var(--dm-text-secondary)" }}>{ad.campaignName}</p>
-            {ad.adsetName && <p className="mt-0.5 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>{ad.adsetName}</p>}
+          <div className="space-y-0.5">
+            <p className="text-sm font-bold leading-snug" style={{ color: "var(--dm-text-primary)" }}>{ad.adName}</p>
+            <p className="text-xs font-semibold" style={{ color: "var(--dm-brand-500)" }}>{ad.campaignName}</p>
+            {ad.adsetName && <p className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>{ad.adsetName}</p>}
+            {createdLabel && (
+              <p className="flex items-center gap-1 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                <CalendarDays size={9} /> Criado em {createdLabel}
+              </p>
+            )}
           </div>
 
           {/* Metrics grid */}
-          {metrics.length > 0 && (
-            <div className="grid grid-cols-2 gap-1.5">
-              {metrics.map(({ label, value }) => (
-                <div key={label} className="rounded-lg p-2.5" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
-                  <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>{label}</p>
-                  <p className="mt-0.5 text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>{value}</p>
-                </div>
-              ))}
+          {metrics.length > 0 ? (
+            <div>
+              <p className="mb-2 text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>
+                Performance
+              </p>
+              <div className="grid grid-cols-2 gap-1.5">
+                {metrics.map(({ label, value }) => (
+                  <div key={label} className="rounded-xl p-2.5" style={{ backgroundColor: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-subtle)" }}>
+                    <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>{label}</p>
+                    <p className="mt-0.5 text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>{value}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-xl p-3 text-center text-[11px]"
+              style={{ backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)", border: "1px solid var(--dm-border-subtle)" }}>
+              Métricas disponíveis após carregar os criativos com um período de datas selecionado.
             </div>
           )}
 
           {/* Actions */}
-          <div className="mt-auto flex flex-col gap-2">
+          <div className="mt-auto flex flex-col gap-2 pt-2">
             <a href={ad.adLink} target="_blank" rel="noopener noreferrer"
               className="flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold text-white"
               style={{ backgroundColor: "var(--dm-brand-500)" }}>
               <ExternalLink size={14} />
-              Ver anúncio no Meta
+              Ver no Gerenciador de Anúncios
             </a>
             {ad.previewUrl && ad.previewUrl !== ad.adLink && (
               <a href={ad.previewUrl} target="_blank" rel="noopener noreferrer"
                 className="flex items-center justify-center gap-2 rounded-xl border py-2 text-xs font-medium"
                 style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>
                 <Play size={12} />
-                Preview do anúncio
+                Abrir preview compartilhável
               </a>
             )}
           </div>
@@ -361,11 +418,14 @@ function RankingRow({
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-export function BestCreatives({ campaigns, adAccountId, dateFrom, dateTo }: BestCreativesProps) {
-  const [subTab,          setSubTab]          = useState<SubTab>("gallery");
-  const [mediaFilter,     setMediaFilter]     = useState<MediaFilter>("all");
-  const [campaignFilter,  setCampaignFilter]  = useState<string>("all");
-  const [page,            setPage]            = useState(1);
+export function BestCreatives({
+  campaigns, adAccountId, dateFrom, dateTo,
+  selectedCampaignIds, selectedGroupName,
+}: BestCreativesProps) {
+  const [subTab,        setSubTab]        = useState<SubTab>("gallery");
+  const [mediaFilter,   setMediaFilter]   = useState<MediaFilter>("all");
+  const [createdPeriod, setCreatedPeriod] = useState<CreatedPeriod>("all");
+  const [page,          setPage]          = useState(1);
   const [previewAd,       setPreviewAd]       = useState<MetaCampaignCreative | null>(null);
   const [metaAds,         setMetaAds]         = useState<MetaCampaignCreative[]>([]);
   const [adInsights,      setAdInsights]      = useState<Map<string, AdInsight>>(new Map());
@@ -382,6 +442,19 @@ export function BestCreatives({ campaigns, adAccountId, dateFrom, dateTo }: Best
     Array.isArray(adAccountId) ? adAccountId.filter(Boolean) : adAccountId ? [adAccountId] : []
   , [adAccountId]);
 
+  // Load from cache on mount (no auto API call)
+  const [hasLoaded, setHasLoaded] = useState(false);
+
+  const fetchInsights = useCallback(async (ids: string[]) => {
+    if (!dateFrom || !dateTo || !accessToken) return;
+    const batches = await Promise.all(
+      ids.map((id) => fetchAdInsights(id, accessToken, dateFrom, dateTo).catch(() => [] as AdInsight[]))
+    );
+    const map = new Map<string, AdInsight>();
+    for (const b of batches) for (const r of b) map.set(r.ad_id, r);
+    setAdInsights(map);
+  }, [accessToken, dateFrom, dateTo]);
+
   const doFetch = useCallback((force = false) => {
     const ids = getIds();
     if (!ids.length || !accessToken) return;
@@ -395,6 +468,9 @@ export function BestCreatives({ campaigns, adAccountId, dateFrom, dateTo }: Best
         const ts  = raw ? (JSON.parse(raw) as { ts: number }).ts : Date.now();
         setMetaAds(cached);
         setCacheAge(Date.now() - ts);
+        setHasLoaded(true);
+        // Also fetch fresh insights for the selected date range
+        fetchInsights(ids).catch(() => {});
         return;
       }
     }
@@ -404,7 +480,7 @@ export function BestCreatives({ campaigns, adAccountId, dateFrom, dateTo }: Best
     setCacheAge(null);
 
     (async () => {
-      // Sequential creatives fetch
+      // Sequential creatives fetch (ACTIVE + PAUSED only)
       const seen   = new Set<string>();
       const merged: MetaCampaignCreative[] = [];
       for (const id of ids) {
@@ -415,27 +491,32 @@ export function BestCreatives({ campaigns, adAccountId, dateFrom, dateTo }: Best
       }
 
       // Parallel ad-level insights
-      if (dateFrom && dateTo) {
-        const batches = await Promise.all(
-          ids.map((id) => fetchAdInsights(id, accessToken, dateFrom, dateTo).catch(() => [] as AdInsight[]))
-        );
-        const map = new Map<string, AdInsight>();
-        for (const b of batches) for (const r of b) map.set(r.ad_id, r);
-        setAdInsights(map);
-      }
+      await fetchInsights(ids).catch(() => {});
 
       return merged;
     })()
-      .then((merged) => { writeCache(cacheKey, merged); setMetaAds(merged); setCacheAge(0); })
+      .then((merged) => { writeCache(cacheKey, merged); setMetaAds(merged); setCacheAge(0); setHasLoaded(true); })
       .catch((err: unknown) => setFetchError(err instanceof Error ? err.message : "Erro ao buscar criativos"))
       .finally(() => setFetching(false));
-  }, [getIds, accessToken, dateFrom, dateTo]);
+  }, [getIds, accessToken, fetchInsights]);
 
-  useEffect(() => { doFetch(false); }, // eslint-disable-next-line react-hooks/exhaustive-deps
-  [JSON.stringify(adAccountId)]);
+  // On mount: load from cache only (no auto API call)
+  useEffect(() => {
+    const ids = getIds();
+    if (!ids.length || !accessToken) return;
+    const cached = readCache(getCacheKey(ids));
+    if (cached) {
+      const raw = localStorage.getItem(getCacheKey(ids));
+      const ts  = raw ? (JSON.parse(raw) as { ts: number }).ts : Date.now();
+      setMetaAds(cached);
+      setCacheAge(Date.now() - ts);
+      setHasLoaded(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(adAccountId)]);
 
-  // Reset page + campaign filter when ads change
-  useEffect(() => { setPage(1); setCampaignFilter("all"); }, [metaAds]);
+  // Reset page when ads or external filter changes
+  useEffect(() => { setPage(1); }, [metaAds, selectedCampaignIds]);
 
   const toggleStar = useCallback((ad: MetaCampaignCreative) => {
     const existing   = storeRef.current[ad.adId];
@@ -449,21 +530,33 @@ export function BestCreatives({ campaigns, adAccountId, dateFrom, dateTo }: Best
     });
   }, [saveCreative]);
 
-  // Unique campaigns for filter dropdown
-  const campaignOptions = useMemo(() => {
-    const names = [...new Set(metaAds.map((a) => a.campaignName))].filter(Boolean).sort();
-    return names;
-  }, [metaAds]);
-
   // Filtered + paginated ads
   const filteredAds = useMemo(() => {
     let base = subTab === "starred"
       ? metaAds.filter((a) => store[a.adId]?.starred)
       : metaAds;
-    if (campaignFilter !== "all") base = base.filter((a) => a.campaignName === campaignFilter);
-    if (mediaFilter !== "all")    base = base.filter((a) => a.mediaType === mediaFilter);
+
+    // Campaign filter: driven by right-panel selection
+    if (selectedCampaignIds && selectedCampaignIds.length > 0) {
+      const idSet = new Set(selectedCampaignIds);
+      base = base.filter((a) => idSet.has(a.campaignId));
+    }
+
+    // Media type filter
+    if (mediaFilter !== "all") base = base.filter((a) => a.mediaType === mediaFilter);
+
+    // Created period filter
+    if (createdPeriod !== "all") {
+      const days = createdPeriod === "30d" ? 30 : createdPeriod === "90d" ? 90 : 365;
+      const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+      base = base.filter((a) => {
+        if (!a.createdTime) return true; // keep if unknown
+        return new Date(a.createdTime).getTime() >= cutoff;
+      });
+    }
+
     return base;
-  }, [metaAds, subTab, campaignFilter, mediaFilter, store]);
+  }, [metaAds, subTab, selectedCampaignIds, mediaFilter, createdPeriod, store]);
 
   const pageAds    = useMemo(() => filteredAds.slice(0, page * PAGE_SIZE), [filteredAds, page]);
   const hasMore    = pageAds.length < filteredAds.length;
@@ -554,6 +647,28 @@ export function BestCreatives({ campaigns, adAccountId, dateFrom, dateTo }: Best
         </div>
       )}
 
+      {/* Not loaded yet — show load button */}
+      {!hasLoaded && !fetching && !fetchError && (
+        <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border py-20"
+          style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
+          <ImageIcon size={32} style={{ color: "var(--dm-text-tertiary)" }} />
+          <div className="text-center">
+            <p className="text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>Criativos não carregados</p>
+            <p className="mt-1 text-xs" style={{ color: "var(--dm-text-secondary)" }}>
+              Clique para buscar anúncios ativos e pausados.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => doFetch(false)}
+            className="flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+            style={{ backgroundColor: "var(--dm-brand-500)" }}
+          >
+            <RefreshCw size={14} /> Carregar criativos
+          </button>
+        </div>
+      )}
+
       {/* ── Gallery / Starred ──────────────────────────────────────────────── */}
       {(subTab === "gallery" || subTab === "starred") && (
         <>
@@ -561,34 +676,41 @@ export function BestCreatives({ campaigns, adAccountId, dateFrom, dateTo }: Best
           {subTab === "gallery" && metaAds.length > 0 && (
             <div className="flex flex-wrap items-center gap-2">
 
-              {/* Campaign dropdown */}
-              <div className="relative">
-                <select
-                  value={campaignFilter}
-                  onChange={(e) => { setCampaignFilter(e.target.value); setPage(1); }}
-                  className="appearance-none rounded-lg border py-1.5 pl-3 pr-7 text-[11px] font-medium focus:outline-none"
-                  style={{
-                    borderColor: "var(--dm-border-default)",
-                    backgroundColor: campaignFilter !== "all" ? "var(--dm-brand-500)" : "var(--dm-bg-elevated)",
-                    color: campaignFilter !== "all" ? "#fff" : "var(--dm-text-secondary)",
-                  }}
-                >
-                  <option value="all">Todas as campanhas ({metaAds.length})</option>
-                  {campaignOptions.map((name) => {
-                    const count = metaAds.filter((a) => a.campaignName === name).length;
-                    return <option key={name} value={name}>{name} ({count})</option>;
-                  })}
-                </select>
-                <ChevronDown size={11} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2"
-                  style={{ color: campaignFilter !== "all" ? "rgba(255,255,255,0.8)" : "var(--dm-text-tertiary)" }} />
+              {/* Active filter indicator (driven by right panel) */}
+              {(selectedGroupName || (selectedCampaignIds && selectedCampaignIds.length > 0)) && (
+                <div className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium"
+                  style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-secondary)" }}>
+                  <Filter size={10} style={{ color: "var(--dm-brand-500)" }} />
+                  {selectedGroupName && <span style={{ color: "var(--dm-brand-500)", fontWeight: 600 }}>{selectedGroupName}</span>}
+                  {selectedCampaignIds && selectedCampaignIds.length > 0 && (
+                    <span>· {selectedCampaignIds.length} campanha{selectedCampaignIds.length > 1 ? "s" : ""}</span>
+                  )}
+                </div>
+              )}
+
+              {/* Period filter */}
+              <div className="flex items-center gap-1 rounded-lg border px-1.5 py-1"
+                style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)" }}>
+                <CalendarDays size={10} style={{ color: "var(--dm-text-tertiary)", marginRight: 2 }} />
+                {(["all", "30d", "90d", "365d"] as const).map((k) => {
+                  const lbl = { all: "Todos", "30d": "30 dias", "90d": "90 dias", "365d": "1 ano" };
+                  return (
+                    <button key={k} type="button"
+                      onClick={() => { setCreatedPeriod(k); setPage(1); }}
+                      className="rounded px-2 py-0.5 text-[10px] font-semibold transition-all"
+                      style={createdPeriod === k
+                        ? { backgroundColor: "var(--dm-brand-500)", color: "#fff" }
+                        : { color: "var(--dm-text-secondary)" }}>
+                      {lbl[k]}
+                    </button>
+                  );
+                })}
               </div>
 
               {/* Media type pills */}
               {(["all", "video", "image", "carousel"] as const).map((key) => {
                 const labels = { all: "Todos", video: "🎬 Vídeo", image: "🖼 Imagem", carousel: "📎 Carrossel" };
-                const count  = key === "all"
-                  ? filteredAds.length
-                  : metaAds.filter((a) => a.mediaType === key && (campaignFilter === "all" || a.campaignName === campaignFilter)).length;
+                const count  = key === "all" ? filteredAds.length : filteredAds.filter((a) => a.mediaType === key).length;
                 if (key !== "all" && count === 0) return null;
                 return (
                   <button key={key} type="button"

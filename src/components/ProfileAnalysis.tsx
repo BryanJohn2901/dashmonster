@@ -6,15 +6,16 @@ import {
 } from "recharts";
 import {
   AlertCircle, ArrowDown, ArrowLeft, ArrowUp, AtSign, BookMarked, CalendarDays, CheckCircle2,
-  Edit2, GraduationCap, Key, Loader2, Plus, RefreshCw, Repeat, SlidersHorizontal, Target,
-  Trash2, Users, X, Zap,
+  Edit2, GraduationCap, Heart, Key, Loader2, Plus, RefreshCw, Repeat, SlidersHorizontal,
+  Target, Trash2, TrendingDown, TrendingUp, Users, X, Zap,
 } from "lucide-react";
 import {
   fetchMetaCampaigns, fetchMetaInsights, fetchMetaAdAccounts,
   loadMetaCredentials, MetaInsight, MetaAdAccount,
 } from "@/utils/metaApi";
 import {
-  loadInstagramCredentials, fetchInstagramAccounts, InstagramAccount,
+  fetchInstagramAccounts, fetchInstagramInsights,
+  InstagramAccount, InstagramProfileInsights,
 } from "@/utils/instagramApi";
 import { formatBRL, formatCompact, formatInt, formatPercent } from "@/lib/format";
 import { getTemplate, TEMPLATE_LIST, DEFAULT_PERSONALIZADO_CONFIG } from "@/lib/templates";
@@ -452,6 +453,113 @@ function FormSectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
+// ── Instagram selected chip with inline verify ────────────────────────────────
+function IgSelectedChip({
+  igUserId, knownAccount, onClear,
+}: {
+  igUserId: string;
+  knownAccount?: InstagramAccount;
+  onClear: () => void;
+}) {
+  const [verifyState, setVerifyState] = useState<"idle" | "loading" | "ok" | "error">("idle");
+  const [verifiedLabel, setVerifiedLabel] = useState<string>("");
+
+  const verify = async () => {
+    const { accessToken } = loadMetaCredentials();
+    if (!accessToken) return;
+    setVerifyState("loading");
+    try {
+      const res = await fetch(
+        `/api/instagram/accounts?accessToken=${encodeURIComponent(accessToken)}`,
+      );
+      const accounts = await res.json() as InstagramAccount[];
+      const match = Array.isArray(accounts)
+        ? accounts.find((a) => a.id === igUserId)
+        : null;
+      if (match) {
+        setVerifiedLabel(`@${match.username} · ${formatNumber(match.followersCount)} seguidores`);
+        setVerifyState("ok");
+      } else {
+        setVerifyState("error");
+      }
+    } catch {
+      setVerifyState("error");
+    }
+  };
+
+  const displayName = knownAccount
+    ? `@${knownAccount.username}`
+    : verifyState === "ok"
+      ? verifiedLabel
+      : `ID: ${igUserId}`;
+
+  return (
+    <div className="mb-3 space-y-1.5">
+      <div
+        className="flex items-center gap-2 rounded-lg border px-3 py-2"
+        style={{
+          borderColor: verifyState === "ok"
+            ? "var(--dm-brand-200, #c7d2fe)"
+            : verifyState === "error"
+              ? "var(--dm-border-default)"
+              : "var(--dm-border-default)",
+          backgroundColor: "var(--dm-bg-elevated)",
+        }}
+      >
+        <div className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded"
+          style={{ background: IG_GRADIENT }}>
+          <AtSign size={10} className="text-white" />
+        </div>
+        <span className="flex-1 text-xs font-medium" style={{ color: "var(--dm-text-primary)" }}>
+          {displayName}
+        </span>
+
+        {/* Status icon */}
+        {verifyState === "ok" && (
+          <CheckCircle2 size={12} className="flex-shrink-0 text-emerald-500" />
+        )}
+        {verifyState === "error" && (
+          <AlertCircle size={12} className="flex-shrink-0 text-amber-500" />
+        )}
+
+        {/* Verify button — só mostra se não veio da lista (knownAccount é undefined) */}
+        {!knownAccount && verifyState !== "ok" && (
+          <button
+            type="button"
+            onClick={() => void verify()}
+            disabled={verifyState === "loading"}
+            className="flex-shrink-0 rounded border px-2 py-0.5 text-[10px] font-semibold transition disabled:opacity-50"
+            style={{
+              borderColor: "var(--dm-border-default)",
+              color: "var(--dm-text-secondary)",
+              backgroundColor: "var(--dm-bg-surface)",
+            }}
+          >
+            {verifyState === "loading"
+              ? <Loader2 size={9} className="animate-spin" />
+              : "Verificar"}
+          </button>
+        )}
+
+        <button
+          type="button"
+          onClick={onClear}
+          className="flex-shrink-0 rounded p-0.5 transition hover:opacity-60"
+          style={{ color: "var(--dm-text-tertiary)" }}
+        >
+          <X size={12} />
+        </button>
+      </div>
+
+      {verifyState === "error" && (
+        <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+          Conta não encontrada via token atual. Use a lista "Buscar" para garantir acesso.
+        </p>
+      )}
+    </div>
+  );
+}
+
 function ProfileForm({
   initial, groupOptions, campaignConfigs, onSave, onCancel,
 }: {
@@ -481,9 +589,9 @@ function ProfileForm({
     return acc;
   }, {});
 
-  // ── Instagram picker (3.1) ─────────────────────────────────────────────────
-  const igCreds    = loadInstagramCredentials();
-  const hasIgToken = Boolean(igCreds.accessToken);
+  // ── Instagram picker (3.1) — usa o token Meta já configurado ──────────────
+  const metaCreds  = loadMetaCredentials();
+  const hasIgToken = Boolean(metaCreds.accessToken);
   const [igAccounts, setIgAccounts]     = useState<InstagramAccount[]>([]);
   const [igLoading, setIgLoading]       = useState(false);
   const [igError, setIgError]           = useState<string | null>(null);
@@ -492,7 +600,7 @@ function ProfileForm({
   const fetchIgAccountsForForm = async () => {
     setIgLoading(true); setIgError(null);
     try {
-      const list = await fetchInstagramAccounts(igCreds.accessToken);
+      const list = await fetchInstagramAccounts(metaCreds.accessToken);
       setIgAccounts(list);
       setShowIgPicker(true);
     } catch (e) {
@@ -616,22 +724,13 @@ function ProfileForm({
               Instagram <span className="ml-1 normal-case font-normal tracking-normal opacity-50">(opcional)</span>
             </FormSectionLabel>
 
-            {/* Selected account chip */}
+            {/* Selected account chip — estilo neutro do sistema */}
             {form.instagramUserId && !showIgPicker && (
-              <div className="mb-3 flex items-center gap-2 rounded-lg border px-3 py-2"
-                style={{ borderColor: "#E1306C44", backgroundColor: "#E1306C0D" }}>
-                <AtSign size={12} style={{ color: "#E1306C" }} className="flex-shrink-0" />
-                <span className="flex-1 text-xs font-medium" style={{ color: "var(--dm-text-primary)" }}>
-                  {igAccounts.find(a => a.id === form.instagramUserId)?.username
-                    ? `@${igAccounts.find(a => a.id === form.instagramUserId)!.username}`
-                    : `ID: ${form.instagramUserId}`}
-                </span>
-                <button type="button" onClick={() => setForm(f => ({ ...f, instagramUserId: "" }))}
-                  className="rounded p-0.5 transition hover:text-red-500"
-                  style={{ color: "var(--dm-text-tertiary)" }}>
-                  <X size={12} />
-                </button>
-              </div>
+              <IgSelectedChip
+                igUserId={form.instagramUserId}
+                knownAccount={igAccounts.find(a => a.id === form.instagramUserId)}
+                onClear={() => setForm(f => ({ ...f, instagramUserId: "" }))}
+              />
             )}
 
             <div className="flex gap-2">
@@ -678,7 +777,7 @@ function ProfileForm({
                   <button key={acc.id} type="button"
                     onClick={() => { setForm(f => ({ ...f, instagramUserId: acc.id })); setShowIgPicker(false); }}
                     className="flex w-full items-center gap-2 px-3 py-2.5 text-left transition hover:bg-[var(--dm-bg-elevated)]">
-                    <AtSign size={11} style={{ color: "#E1306C" }} />
+                    <AtSign size={11} style={{ color: "var(--dm-brand-500)" }} />
                     <span className="flex-1 text-xs font-medium" style={{ color: "var(--dm-text-primary)" }}>
                       @{acc.username}
                     </span>
@@ -1815,6 +1914,102 @@ function ProfileDateRange({
   );
 }
 
+// ─── Instagram Insights Panel ─────────────────────────────────────────────────
+
+const IG_GRADIENT = "linear-gradient(135deg,#f09433 0%,#e6683c 25%,#dc2743 50%,#cc2366 75%,#bc1888 100%)";
+
+function InstagramInsightsPanel({
+  igUserId, dateFrom, dateTo,
+}: { igUserId: string; dateFrom: string; dateTo: string }) {
+  const [data, setData]       = useState<InstagramProfileInsights | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState<string | null>(null);
+
+  useEffect(() => {
+    const { accessToken } = loadMetaCredentials();
+    if (!accessToken || !igUserId) return;
+    setLoading(true); setError(null);
+    fetchInstagramInsights(igUserId, accessToken, dateFrom, dateTo)
+      .then(setData)
+      .catch((e) => setError(e instanceof Error ? e.message : "Erro ao buscar dados Instagram."))
+      .finally(() => setLoading(false));
+  }, [igUserId, dateFrom, dateTo]);
+
+  return (
+    <div className="rounded-[20px] border shadow-horizon"
+      style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
+
+      {/* Header */}
+      <div className="flex items-center gap-2.5 border-b px-5 py-3.5"
+        style={{ borderColor: "var(--dm-border-subtle)" }}>
+        <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg"
+          style={{ background: IG_GRADIENT }}>
+          <AtSign size={12} className="text-white" />
+        </div>
+        <span className="text-[11px] font-semibold uppercase tracking-wider"
+          style={{ color: "var(--dm-text-tertiary)" }}>Instagram</span>
+        {loading && <Loader2 size={12} className="ml-auto animate-spin" style={{ color: "var(--dm-text-tertiary)" }} />}
+      </div>
+
+      {/* Error — permissão */}
+      {error && (
+        <div className="flex items-start gap-2.5 px-5 py-4">
+          <AlertCircle size={14} className="mt-0.5 flex-shrink-0" style={{ color: "var(--dm-text-tertiary)" }} />
+          <div>
+            <p className="text-xs font-medium" style={{ color: "var(--dm-text-secondary)" }}>
+              Sem permissão para esta conta
+            </p>
+            <p className="mt-0.5 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
+              Use apenas contas que aparecem na lista "Buscar" — precisam estar vinculadas a uma Página do Facebook acessível pelo token.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Loading skeleton */}
+      {loading && !data && !error && (
+        <div className="grid grid-cols-2 sm:grid-cols-4">
+          {[0,1,2,3].map(i => (
+            <div key={i} className="px-5 py-5">
+              <div className="mb-2 h-2.5 w-16 animate-pulse rounded" style={{ backgroundColor: "var(--dm-bg-elevated)" }} />
+              <div className="h-6 w-20 animate-pulse rounded" style={{ backgroundColor: "var(--dm-bg-elevated)" }} />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* KPIs */}
+      {data && !error && (() => {
+        const growthPositive = data.followerGrowth >= 0;
+        const kpis = [
+          { label: "Seguidores",       value: formatCompact(data.followersCount),  icon: Users,       accent: "var(--dm-brand-500)" },
+          { label: "Crescimento",      value: (growthPositive ? "+" : "") + formatCompact(data.followerGrowth), icon: growthPositive ? TrendingUp : TrendingDown, accent: growthPositive ? "var(--dm-value-positive)" : "var(--dm-value-negative)" },
+          { label: "Visitas ao Perfil", value: formatCompact(data.profileViewsTotal), icon: Target,    accent: "var(--dm-text-secondary)" },
+          { label: "Alcance",          value: formatCompact(data.reachTotal),       icon: Zap,         accent: "var(--dm-text-secondary)" },
+        ];
+        return (
+          <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-y sm:divide-y-0"
+            style={{ borderColor: "var(--dm-border-subtle)" }}>
+            {kpis.map(({ label, value, icon: Icon, accent }, i) => (
+              <div key={i} className="flex items-center gap-3 px-5 py-5">
+                <span className="flex h-[38px] w-[38px] flex-shrink-0 items-center justify-center rounded-full"
+                  style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
+                  <Icon size={16} style={{ color: accent }} />
+                </span>
+                <div className="min-w-0">
+                  <p className="dm-metric-label">{label}</p>
+                  <p className="text-lg font-bold leading-tight tabular-nums"
+                    style={{ color: "var(--dm-text-primary)" }}>{value}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
+    </div>
+  );
+}
+
 // ─── Profile Detail View ──────────────────────────────────────────────────────
 
 function ProfileDetailView({
@@ -2141,6 +2336,16 @@ function ProfileDetailView({
           dateFrom={dateFrom}
           dateTo={dateTo}
           template={resolvedTemplate}
+        />
+      )}
+
+      {/* Instagram insights — só aparece se perfil tiver conta IG vinculada */}
+      {hasToken && profile.instagramUserId && (
+        <InstagramInsightsPanel
+          key={`${profile.instagramUserId}-${dateFrom}-${dateTo}`}
+          igUserId={profile.instagramUserId}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
         />
       )}
     </div>

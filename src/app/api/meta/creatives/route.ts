@@ -28,6 +28,7 @@ interface MetaAdRaw {
   campaign?: { name: string };
   adset_name?: string;
   preview_shareable_link?: string;
+  created_time?: string;
   creative?: {
     id?: string;
     thumbnail_url?: string;
@@ -77,11 +78,12 @@ export async function GET(request: NextRequest) {
         "campaign{name}",
         "adset_name",
         "preview_shareable_link",
+        "created_time",
         // thumbnail_url: universal field — works for image, video, carousel
         // object_story_spec: safe subfields only
         "creative{id,thumbnail_url,object_story_spec{link_data{link},video_data{image_url}}}",
       ].join(","),
-      effective_status: JSON.stringify(["ACTIVE", "PAUSED", "ARCHIVED"]),
+      effective_status: JSON.stringify(["ACTIVE", "PAUSED"]),
       limit: "200",
     }).toString();
 
@@ -131,6 +133,7 @@ export async function GET(request: NextRequest) {
           previewUrl:   ad.preview_shareable_link ?? "",
           adLink,
           mediaType:    detectMediaType(ad),
+          createdTime:  ad.created_time,
         } satisfies MetaCampaignCreative;
       });
 
