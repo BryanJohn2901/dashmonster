@@ -188,6 +188,8 @@ export interface MetaCampaignCreative {
   adLink:       string;           // Ads Library URL or preview link
   mediaType:    "image" | "video" | "carousel" | "unknown";
   createdTime?: string;           // ISO 8601 — when the ad was created in Meta
+  body?:        string;           // ad copy / caption text from object_story_spec
+  headline?:    string;           // link headline (title shown under the creative)
 }
 
 /**
