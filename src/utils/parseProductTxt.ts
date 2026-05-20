@@ -1,6 +1,6 @@
 import {
   CourseGroupId, DorSolucao, Entregavel, EntregavelItem,
-  Lote, PageLink, PersonaSegmento, ProductData, ProductType, SubPromessa, TurmaLink,
+  Lote, LotePagamento, PageLink, PersonaSegmento, ProductData, ProductType, SubPromessa, TurmaLink,
 } from "@/types/product";
 
 // ─── Normalise string (remove accents, uppercase, trim) ───────────────────────
@@ -287,19 +287,62 @@ export function parseTxtTemplate(
   const valorRaw = kv(precSec, "VALOR", "VALOR BASE");
   result.valorBase = valorRaw.replace(/[Rr]\$\s*/g, "").replace(/\?\?\?/g, "").trim();
 
+  const PAGAMENTO_KEYWORDS: Record<string, LotePagamento> = {
+    CARTAO: "cartao", CARTÃO: "cartao", CARD: "cartao",
+    BOLETO: "boleto", BILLET: "boleto",
+    AMBOS: "ambos", BOTH: "ambos", TODOS: "ambos",
+  };
+  /** Returns pagamento if the string is a payment keyword, else null */
+  function parsePagamento(s: string): LotePagamento | null {
+    return PAGAMENTO_KEYWORDS[n(s.trim())] ?? null;
+  }
+  /** Clean currency string: strip R$, spaces, placeholder text */
+  function cleanMoney(s: string): string {
+    return s.replace(/[Rr]\$\s*/g, "").replace(/promo:\s*/i, "").trim();
+  }
+
   const loteLines = precSec.filter(l => bulletText(l) !== null || (l.trim().match(/^Lote\s*\d/i)));
   if (loteLines.length > 0) {
-    result.lotes = loteLines.map((l, i): Lote => {
+    const parsed = loteLines.map((l, i): Lote => {
       const raw = (bulletText(l) || l).trim();
-      // Format: "Lote 1 → Promo 4" or "Lote 1 = R$19,90" or "Lote 1 | 997,00 | promo: 897,00"
+      // Supported formats:
+      //   "Lote 1 → R$997,00"
+      //   "Lote 1 → R$997,00 → R$897,00 promo"
+      //   "Lote 1 | R$997,00 | R$897,00 | cartao"
+      //   "Lote 1 | R$997,00 | cartao"
       const parts = raw.split(/[|→=]/).map(s => s.trim());
+      const label = parts[0] || `Lote ${i + 1}`;
+      const part1 = parts[1] || "";
+      const part2 = parts[2] || "";
+      const part3 = parts[3] || "";
+
+      // Detect payment method in any part
+      const pagamento =
+        parsePagamento(part3) ??
+        parsePagamento(part2) ??
+        parsePagamento(part1) ??
+        null;
+
+      // valor = first non-payment part after label
+      const valor = cleanMoney(
+        parsePagamento(part1) ? "" : part1
+      );
+      // promo = second non-payment part (if not a payment keyword)
+      const promo = cleanMoney(
+        parsePagamento(part2) ? "" : part2
+      );
+
       return {
         id: crypto.randomUUID(),
-        label: parts[0] || `Lote ${i + 1}`,
-        valor: (parts[1] || "").replace(/[Rr]\$\s*/g, "").replace(/promo:\s*/i, ""),
-        promo: (parts[2] || "").replace(/[Rr]\$\s*/g, "").replace(/promo:\s*/i, ""),
+        label,
+        valor,
+        promo,
+        ...(pagamento ? { pagamento } : {}),
       };
     });
+
+    // Filter out placeholder lotes: label is just "LOTE" (template not filled)
+    result.lotes = parsed.filter((l) => n(l.label) !== "LOTE");
   }
 
   // ── ENTREGÁVEIS ───────────────────────────────────────────────────────────────
@@ -581,13 +624,15 @@ SUB PROMESSAS:
 
 
 ── VALOR DO PRODUTO E VARIAÇÕES ─────────────────────
+[Pagamento por lote: use | cartao, | boleto ou | ambos ao final da linha]
 
 VALOR:    R$997,00
 
 LOTES:
-  - Lote 1 → R$797,00
-  - Lote 2 → R$897,00
-  - Lote 3 → R$997,00
+  - Lote 1 → R$797,00 | cartao
+  - Lote 2 → R$897,00 | boleto
+  - Lote 3 → R$997,00 | ambos
+[Formato: - Rótulo → Valor → ValorPromo (opcional) | cartao/boleto/ambos]
 
 
 ── O QUE VAI APRENDER ────────────────────────────────

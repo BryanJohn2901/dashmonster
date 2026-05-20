@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import {
   Attachment, COURSE_GROUPS_PRODUCT, DorSolucao, Entregavel, EntregavelItem,
-  Lote, PageLink, PersonaSegmento, ProductData, ProductType, SubPromessa,
+  Lote, LotePagamento, PageLink, PersonaSegmento, ProductData, ProductType, SubPromessa,
   TurmaLink, emptyProduct,
 } from "@/types/product";
 import { parseTxtTemplate, PRODUCT_TXT_TEMPLATE, summarizeParsed } from "@/utils/parseProductTxt";
@@ -418,9 +418,15 @@ function TagsInput({ tags, onChange }: { tags: string[]; onChange: (t: string[])
 
 // ─── Lotes table ──────────────────────────────────────────────────────────────
 
+const PAGAMENTO_OPTIONS: { value: LotePagamento; label: string }[] = [
+  { value: "cartao",  label: "Cartão" },
+  { value: "boleto",  label: "Boleto" },
+  { value: "ambos",   label: "Ambos"  },
+];
+
 function LotesTable({ lotes, onChange }: { lotes: Lote[]; onChange: (l: Lote[]) => void }) {
-  const update = (id: string, key: keyof Lote, val: string) =>
-    onChange(lotes.map((l) => (l.id === id ? { ...l, [key]: val } : l)));
+  const update = (id: string, patch: Partial<Lote>) =>
+    onChange(lotes.map((l) => (l.id === id ? { ...l, ...patch } : l)));
   const remove = (id: string) => onChange(lotes.filter((l) => l.id !== id));
   const add    = () =>
     onChange([...lotes, { id: uid(), label: `Lote ${lotes.length + 1}`, valor: "", promo: "" }]);
@@ -428,15 +434,49 @@ function LotesTable({ lotes, onChange }: { lotes: Lote[]; onChange: (l: Lote[]) 
   return (
     <div className="space-y-2">
       {lotes.length > 0 && (
-        <div className="grid grid-cols-[1fr_1fr_1fr_28px] gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1 dark:text-slate-500">
-          <span>Lote</span><span>Valor</span><span>Promoção</span><span />
+        <div className="grid grid-cols-[1fr_1fr_1fr_auto_28px] gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1 dark:text-slate-500">
+          <span>Lote</span><span>Valor</span><span>Promoção</span><span>Pagamento</span><span />
         </div>
       )}
       {lotes.map((l) => (
-        <div key={l.id} className="grid grid-cols-[1fr_1fr_1fr_28px] gap-2 items-center">
-          <input value={l.label} onChange={(e) => update(l.id, "label", e.target.value)} className={cls.input} />
-          <input value={l.valor} onChange={(e) => update(l.id, "valor", e.target.value)} placeholder="R$ 0,00" className={cls.input} />
-          <input value={l.promo} onChange={(e) => update(l.id, "promo", e.target.value)} placeholder="—" className={cls.input} />
+        <div key={l.id} className="grid grid-cols-[1fr_1fr_1fr_auto_28px] gap-2 items-center">
+          <input
+            value={l.label}
+            onChange={(e) => update(l.id, { label: e.target.value })}
+            className={cls.input}
+          />
+          <input
+            value={l.valor}
+            onChange={(e) => update(l.id, { valor: e.target.value })}
+            placeholder="R$ 0,00"
+            className={cls.input}
+          />
+          <input
+            value={l.promo}
+            onChange={(e) => update(l.id, { promo: e.target.value })}
+            placeholder="—"
+            className={cls.input}
+          />
+          {/* Pagamento toggle */}
+          <div className="flex gap-0.5 rounded-lg border p-0.5"
+            style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)" }}>
+            {PAGAMENTO_OPTIONS.map((opt) => {
+              const active = l.pagamento === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => update(l.id, { pagamento: active ? undefined : opt.value })}
+                  className="rounded-md px-2 py-1 text-[10px] font-semibold transition-all"
+                  style={active
+                    ? { backgroundColor: "var(--dm-brand-500)", color: "#fff" }
+                    : { color: "var(--dm-text-tertiary)" }}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
           <button type="button" onClick={() => remove(l.id)} className={cls.removeBtn}><X size={13} /></button>
         </div>
       ))}
