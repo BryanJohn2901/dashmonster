@@ -133,18 +133,27 @@ function ProductCard({ product: p, onView, onEdit, onDuplicate, onDelete }: Prod
 function ViewerBlock({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="rounded-[16px] border p-4" style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-elevated)" }}>
-      <p className="mb-3 text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>{title}</p>
+      <p className="mb-3 text-[11px] font-bold uppercase tracking-wider dm-section-title">{title}</p>
       {children}
     </div>
   );
 }
 
-function ViewerField({ label, value }: { label: string; value?: string | number | null }) {
+function ViewerField({ label, value, html }: { label: string; value?: string | number | null; html?: boolean }) {
   if (!value) return null;
+  const isHtml = html || (typeof value === "string" && /<[a-z][\s\S]*>/i.test(value));
   return (
     <div className="mb-2 last:mb-0">
       <p className="text-[10px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: "var(--dm-text-tertiary)" }}>{label}</p>
-      <p className="text-[13px]" style={{ color: "var(--dm-text-primary)" }}>{value}</p>
+      {isHtml ? (
+        <div
+          className="text-[13px] prose prose-sm max-w-none dark:prose-invert"
+          style={{ color: "var(--dm-text-primary)" }}
+          dangerouslySetInnerHTML={{ __html: String(value) }}
+        />
+      ) : (
+        <p className="text-[13px]" style={{ color: "var(--dm-text-primary)" }}>{value}</p>
+      )}
     </div>
   );
 }
@@ -226,7 +235,7 @@ function ProductViewer({ product: p, onEdit, onClose }: { product: ProductData; 
                 <div key={l.id} className="rounded-xl border px-3 py-2.5"
                   style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)" }}>
                   <p className="text-[11px] font-bold" style={{ color: "var(--dm-text-primary)" }}>{l.label}</p>
-                  <p className="text-[15px] font-bold mt-0.5" style={{ color: "#313491" }}>R$ {l.valor}</p>
+                  <p className="text-[15px] font-bold mt-0.5" style={{ color: "var(--dm-brand-500)" }}>R$ {l.valor}</p>
                   {l.promo && <p className="text-[10px] mt-0.5" style={{ color: "var(--dm-text-tertiary)" }}>{l.promo}</p>}
                 </div>
               ))}
@@ -271,7 +280,7 @@ function ProductViewer({ product: p, onEdit, onClose }: { product: ProductData; 
                 <Link2 size={12} style={{ color: "var(--dm-text-tertiary)" }} />
                 <span className="text-[11px] font-semibold" style={{ color: "var(--dm-text-secondary)" }}>{l.label}:</span>
                 <a href={l.url} target="_blank" rel="noreferrer"
-                  className="text-[11px] truncate hover:underline" style={{ color: "#313491" }}>
+                  className="text-[11px] truncate hover:underline" style={{ color: "var(--dm-brand-500)" }}>
                   {l.url} <ExternalLink size={10} className="inline" />
                 </a>
               </div>
@@ -281,7 +290,7 @@ function ProductViewer({ product: p, onEdit, onClose }: { product: ProductData; 
                 <Link2 size={12} style={{ color: "var(--dm-text-tertiary)" }} />
                 <span className="text-[11px] font-semibold" style={{ color: "var(--dm-text-secondary)" }}>{l.label}:</span>
                 <a href={l.url} target="_blank" rel="noreferrer"
-                  className="text-[11px] truncate hover:underline" style={{ color: "#313491" }}>
+                  className="text-[11px] truncate hover:underline" style={{ color: "var(--dm-brand-500)" }}>
                   {l.url} <ExternalLink size={10} className="inline" />
                 </a>
               </div>
@@ -291,7 +300,7 @@ function ProductViewer({ product: p, onEdit, onClose }: { product: ProductData; 
                 <Tag size={12} style={{ color: "var(--dm-text-tertiary)" }} />
                 <span className="text-[11px] font-semibold" style={{ color: "var(--dm-text-secondary)" }}>{l.turma} · R$ {l.valor}:</span>
                 <a href={l.link} target="_blank" rel="noreferrer"
-                  className="text-[11px] truncate hover:underline" style={{ color: "#313491" }}>
+                  className="text-[11px] truncate hover:underline" style={{ color: "var(--dm-brand-500)" }}>
                   {l.link} <ExternalLink size={10} className="inline" />
                 </a>
               </div>
@@ -498,9 +507,10 @@ export function ProductBase() {
             { label: "Imersões",          value: imersaoList.length, color: "text-violet-700" },
             { label: "Com links de venda",value: products.filter((p) => p.linksVenda.length > 0 || p.paginasVenda?.length > 0).length, color: "text-emerald-700" },
           ].map(({ label, value, color }) => (
-            <div key={label} className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800">
-              <p className={`text-2xl font-bold ${color}`}>{value}</p>
-              <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">{label}</p>
+            <div key={label} className="rounded-xl p-4 shadow-sm"
+              style={{ border: "1px solid var(--dm-border-default)", background: "var(--dm-bg-surface)" }}>
+              <p className="text-2xl font-bold" style={{ color: "var(--dm-text-primary)" }}>{value}</p>
+              <p className="mt-0.5 text-xs" style={{ color: "var(--dm-text-tertiary)" }}>{label}</p>
             </div>
           ))}
         </div>
