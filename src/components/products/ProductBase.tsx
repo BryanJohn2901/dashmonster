@@ -128,208 +128,381 @@ function ProductCard({ product: p, onView, onEdit, onDuplicate, onDelete }: Prod
   );
 }
 
-// ─── Product viewer (read-only) ───────────────────────────────────────────────
+// ─── Product viewer (read-only) — Bento Grid ─────────────────────────────────
 
-function ViewerBlock({ title, children }: { title: string; children: React.ReactNode }) {
+function BentoTile({
+  children, className = "", style = {},
+}: { children: React.ReactNode; className?: string; style?: React.CSSProperties }) {
   return (
-    <div className="rounded-[16px] border p-4" style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-elevated)" }}>
-      <p className="mb-3 text-[11px] font-bold uppercase tracking-wider dm-section-title">{title}</p>
+    <div
+      className={`rounded-[20px] border p-5 ${className}`}
+      style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)", ...style }}
+    >
       {children}
     </div>
   );
 }
 
-function ViewerField({ label, value, html }: { label: string; value?: string | number | null; html?: boolean }) {
-  if (!value) return null;
-  const isHtml = html || (typeof value === "string" && /<[a-z][\s\S]*>/i.test(value));
-  return (
-    <div className="mb-2 last:mb-0">
-      <p className="text-[10px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: "var(--dm-text-tertiary)" }}>{label}</p>
-      {isHtml ? (
-        <div
-          className="text-[13px] prose prose-sm max-w-none dark:prose-invert"
-          style={{ color: "var(--dm-text-primary)" }}
-          dangerouslySetInnerHTML={{ __html: String(value) }}
-        />
-      ) : (
-        <p className="text-[13px]" style={{ color: "var(--dm-text-primary)" }}>{value}</p>
-      )}
-    </div>
-  );
+function BentoLabel({ children }: { children: React.ReactNode }) {
+  return <p className="dm-section-title mb-3">{children}</p>;
 }
 
 function ProductViewer({ product: p, onEdit, onClose }: { product: ProductData; onEdit: () => void; onClose: () => void }) {
-  const isPos  = p.type === "pos";
-  const course = COURSE_GROUPS_PRODUCT.find((g) => g.id === p.courseGroup);
+  const isPos   = p.type === "pos";
+  const course  = COURSE_GROUPS_PRODUCT.find((g) => g.id === p.courseGroup);
+  const heroGrad = isPos
+    ? "linear-gradient(135deg, #1a1f6e 0%, #313491 55%, #4d50aa 100%)"
+    : "linear-gradient(135deg, #3b0764 0%, #7c3aed 55%, #a78bfa 100%)";
+  const accentColor = isPos ? "#313491" : "#7C3AED";
+  const accentLight = isPos ? "rgba(49,52,145,0.08)" : "rgba(124,58,237,0.08)";
+
+  const teamFields = [
+    { label: "Expert",            value: p.expert },
+    { label: "Coordenador",       value: p.coordenador },
+    { label: "Head Marketing",    value: p.headMarketing },
+    { label: "Líder Lançamentos", value: p.liderLancamentos },
+    { label: "Gestor Tráfego",    value: p.gestorTrafego },
+    { label: "Designer",          value: p.designer },
+    { label: "Editor de Vídeo",   value: p.editorVideo },
+    { label: "Social Media",      value: p.socialMedia },
+    { label: "Web Designer",      value: p.webDesigner },
+    { label: "Co-Produtores",     value: p.coProdutores },
+  ].filter((f) => f.value);
+
+  const hasLinks     = p.linksVenda?.length > 0 || p.paginasCaptura?.length > 0 || p.paginasVenda?.length > 0;
+  const hasKeywords  = (p.palavrasChave?.length ?? 0) > 0;
+  const hasAvatar    = !!(p.descricaoAvatar || p.paraQuemE);
+  const hasPricing   = (p.lotes?.length ?? 0) > 0;
+  const hasBonus     = p.bonus?.filter(Boolean).length > 0;
+  const hasDeliv     = (p.entregaveis?.length ?? 0) > 0;
 
   return (
     <div className="flex flex-col h-full overflow-y-auto">
-      {/* Header */}
-      <div className="sticky top-0 z-10 flex items-center justify-between gap-3 px-6 py-4 border-b"
-        style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)" }}>
+      {/* ── Sticky header ── */}
+      <div
+        className="sticky top-0 z-10 flex items-center justify-between gap-3 px-6 py-4 border-b"
+        style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)" }}
+      >
         <div className="flex items-center gap-3">
-          <button type="button" onClick={onClose}
+          <button
+            type="button" onClick={onClose}
             className="flex h-8 w-8 items-center justify-center rounded-xl border transition hover:opacity-70"
-            style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>
+            style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}
+          >
             <ArrowLeft size={14} />
           </button>
           <div>
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
-                style={{ background: isPos ? "rgba(49,52,145,0.08)" : "rgba(124,58,237,0.08)", color: isPos ? "#313491" : "#7C3AED" }}>
+              <span
+                className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
+                style={{ background: accentLight, color: accentColor }}
+              >
                 {isPos ? "Pós Grad." : "Imersão"}
               </span>
               {course && <span className="text-[10px] text-slate-400">{course.label}</span>}
               {p.turmaVinculada && <span className="text-[10px] font-semibold text-[#05CD99]">{p.turmaVinculada}</span>}
             </div>
-            <h1 className="text-base font-bold mt-0.5" style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins)" }}>
+            <h1
+              className="text-base font-bold mt-0.5 truncate max-w-xs"
+              style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins)" }}
+            >
               {p.nome || "Sem nome"}
             </h1>
           </div>
         </div>
-        <button type="button" onClick={onEdit}
+        <button
+          type="button" onClick={onEdit}
           className="flex items-center gap-2 rounded-xl px-4 py-2 text-[13px] font-semibold text-white transition hover:opacity-90"
-          style={{ background: BRAND_GRAD }}>
+          style={{ background: BRAND_GRAD }}
+        >
           <Edit3 size={13} /> Editar
         </button>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 p-6 space-y-4">
+      {/* ── Bento Grid body ── */}
+      <div className="flex-1 p-4 lg:p-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
 
-        {/* Promessa */}
-        {(p.promessa || p.subPromessas?.some((s) => s.text)) && (
-          <ViewerBlock title="Promessa">
-            {p.promessa && <p className="text-[14px] font-semibold mb-3 leading-snug" style={{ color: "var(--dm-text-primary)" }}>{p.promessa}</p>}
-            {p.subPromessas?.filter((s) => s.text).map((s) => (
-              <div key={s.id} className="flex items-start gap-2 mb-1.5">
-                <span className="mt-1 h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ background: "#313491" }} />
-                <p className="text-[12px]" style={{ color: "var(--dm-text-secondary)" }}>{s.text}</p>
+          {/* ── HERO — full width ── */}
+          <div
+            className="col-span-1 md:col-span-2 lg:col-span-3 rounded-[20px] relative overflow-hidden"
+            style={{ background: heroGrad }}
+          >
+            {/* decorative orb */}
+            <div
+              className="absolute -top-16 -right-16 h-64 w-64 rounded-full opacity-10"
+              style={{ background: "white" }}
+            />
+            <div className="relative p-6 lg:p-8">
+              <div className="flex flex-wrap items-center gap-2 mb-4">
+                <span className="rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-wider bg-white/20 text-white">
+                  {isPos ? "Pós Graduação" : "Imersão"}
+                </span>
+                {course && (
+                  <span className="rounded-full px-2.5 py-1 text-[11px] font-semibold bg-white/10 text-white/75">
+                    {course.label}
+                  </span>
+                )}
+                {p.turmaVinculada && (
+                  <span className="rounded-full px-2.5 py-1 text-[11px] font-semibold bg-emerald-400/25 text-emerald-300">
+                    {p.turmaVinculada}
+                  </span>
+                )}
               </div>
-            ))}
-          </ViewerBlock>
-        )}
-
-        {/* Expert + equipe */}
-        <ViewerBlock title="Equipe">
-          <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
-            <ViewerField label="Expert" value={p.expert} />
-            <ViewerField label="Coordenador" value={p.coordenador} />
-            <ViewerField label="Head de Marketing" value={p.headMarketing} />
-            <ViewerField label="Líder de Lançamentos" value={p.liderLancamentos} />
-            <ViewerField label="Gestor de Tráfego" value={p.gestorTrafego} />
-            <ViewerField label="Designer" value={p.designer} />
-            <ViewerField label="Editor de Vídeo" value={p.editorVideo} />
-            <ViewerField label="Social Media" value={p.socialMedia} />
-            <ViewerField label="Web Designer" value={p.webDesigner} />
-            <ViewerField label="Co-Produtores" value={p.coProdutores} />
-          </div>
-        </ViewerBlock>
-
-        {/* Precificação */}
-        {p.lotes?.length > 0 && (
-          <ViewerBlock title="Precificação">
-            <ViewerField label="Valor base" value={p.valorBase ? `R$ ${p.valorBase}` : undefined} />
-            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
-              {p.lotes.map((l) => (
-                <div key={l.id} className="rounded-xl border px-3 py-2.5"
-                  style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)" }}>
-                  <p className="text-[11px] font-bold" style={{ color: "var(--dm-text-primary)" }}>{l.label}</p>
-                  <p className="text-[15px] font-bold mt-0.5" style={{ color: "var(--dm-brand-500)" }}>R$ {l.valor}</p>
-                  {l.promo && <p className="text-[10px] mt-0.5" style={{ color: "var(--dm-text-tertiary)" }}>{l.promo}</p>}
+              <h2
+                className="text-xl lg:text-2xl font-bold text-white leading-tight mb-3"
+                style={{ fontFamily: "var(--font-poppins)" }}
+              >
+                {p.nome || "Sem nome"}
+              </h2>
+              {p.promessa && (
+                <p className="text-sm text-white/80 leading-relaxed mb-4 max-w-2xl">{p.promessa}</p>
+              )}
+              {p.subPromessas?.filter((s) => s.text).length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {p.subPromessas.filter((s) => s.text).map((s) => (
+                    <span
+                      key={s.id}
+                      className="flex items-center gap-1.5 rounded-full bg-white/12 px-3 py-1"
+                    >
+                      <span className="h-1 w-1 flex-shrink-0 rounded-full bg-white/50" />
+                      <span className="text-[11px] text-white/75">{s.text}</span>
+                    </span>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
-          </ViewerBlock>
-        )}
+          </div>
 
-        {/* Entregáveis */}
-        {p.entregaveis?.length > 0 && (
-          <ViewerBlock title="Entregáveis">
-            {p.entregaveis.map((e) => (
-              <div key={e.id} className="mb-3 last:mb-0">
-                <p className="text-[12px] font-bold mb-1.5" style={{ color: "var(--dm-text-primary)" }}>{e.titulo}</p>
-                {e.itens.map((i) => (
-                  <div key={i.id} className="flex items-start gap-2 mb-1">
-                    <span className="mt-1 h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ background: "#05CD99" }} />
-                    <p className="text-[12px]" style={{ color: "var(--dm-text-secondary)" }}>{i.text}</p>
+          {/* ── PRECIFICAÇÃO ── */}
+          {hasPricing && (
+            <BentoTile>
+              <BentoLabel>Precificação</BentoLabel>
+              {p.valorBase && (
+                <p className="text-[11px] mb-3" style={{ color: "var(--dm-text-secondary)" }}>
+                  Valor base:{" "}
+                  <span className="font-bold" style={{ color: "var(--dm-text-primary)" }}>
+                    R$ {p.valorBase}
+                  </span>
+                </p>
+              )}
+              <div className="grid grid-cols-2 gap-2">
+                {p.lotes.map((l) => (
+                  <div
+                    key={l.id}
+                    className="rounded-xl p-3"
+                    style={{ background: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-subtle)" }}
+                  >
+                    <p className="text-[10px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: "var(--dm-text-tertiary)" }}>
+                      {l.label}
+                    </p>
+                    <p className="text-base font-bold" style={{ color: "var(--dm-brand-500)" }}>
+                      R$ {l.valor}
+                    </p>
+                    {l.promo && (
+                      <p className="text-[10px] mt-0.5" style={{ color: "var(--dm-text-tertiary)" }}>{l.promo}</p>
+                    )}
                   </div>
                 ))}
               </div>
-            ))}
-          </ViewerBlock>
-        )}
+            </BentoTile>
+          )}
 
-        {/* Bônus */}
-        {p.bonus?.filter(Boolean).length > 0 && (
-          <ViewerBlock title="Bônus">
-            {p.bonus.filter(Boolean).map((b, i) => (
-              <div key={i} className="flex items-start gap-2 mb-1.5">
-                <span className="mt-1 h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ background: "#FFB547" }} />
-                <p className="text-[12px]" style={{ color: "var(--dm-text-secondary)" }}>{b}</p>
+          {/* ── EQUIPE — spans 2 when pricing exists, 3 when not ── */}
+          {teamFields.length > 0 && (
+            <BentoTile className={hasPricing ? "col-span-1 md:col-span-1 lg:col-span-2" : "col-span-1 md:col-span-2 lg:col-span-3"}>
+              <BentoLabel>Equipe</BentoLabel>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {teamFields.map((f) => (
+                  <div
+                    key={f.label}
+                    className="rounded-xl p-2.5"
+                    style={{ background: "var(--dm-bg-elevated)" }}
+                  >
+                    <p className="text-[9px] font-bold uppercase tracking-wider mb-0.5" style={{ color: "var(--dm-text-tertiary)" }}>
+                      {f.label}
+                    </p>
+                    <p className="text-[12px] font-semibold leading-snug" style={{ color: "var(--dm-text-primary)" }}>
+                      {f.value}
+                    </p>
+                  </div>
+                ))}
               </div>
-            ))}
-          </ViewerBlock>
-        )}
+            </BentoTile>
+          )}
 
-        {/* Links */}
-        {(p.linksVenda?.length > 0 || p.paginasCaptura?.length > 0 || p.paginasVenda?.length > 0) && (
-          <ViewerBlock title="Links">
-            {p.paginasCaptura?.map((l) => (
-              <div key={l.id} className="flex items-center gap-2 mb-2">
-                <Link2 size={12} style={{ color: "var(--dm-text-tertiary)" }} />
-                <span className="text-[11px] font-semibold" style={{ color: "var(--dm-text-secondary)" }}>{l.label}:</span>
-                <a href={l.url} target="_blank" rel="noreferrer"
-                  className="text-[11px] truncate hover:underline" style={{ color: "var(--dm-brand-500)" }}>
-                  {l.url} <ExternalLink size={10} className="inline" />
-                </a>
+          {/* ── ENTREGÁVEIS — spans 2 when bonus exists ── */}
+          {hasDeliv && (
+            <BentoTile className={hasBonus ? "col-span-1 md:col-span-1 lg:col-span-2" : "col-span-1 md:col-span-2 lg:col-span-3"}>
+              <BentoLabel>Entregáveis</BentoLabel>
+              <div className="space-y-3">
+                {p.entregaveis.map((e) => (
+                  <div
+                    key={e.id}
+                    className="rounded-xl p-3"
+                    style={{ background: "var(--dm-bg-elevated)" }}
+                  >
+                    <p className="text-[12px] font-bold mb-2" style={{ color: "var(--dm-text-primary)" }}>
+                      {e.titulo}
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+                      {e.itens.map((i) => (
+                        <div key={i.id} className="flex items-start gap-2">
+                          <span
+                            className="mt-1.5 h-1 w-1 flex-shrink-0 rounded-full"
+                            style={{ background: "#05CD99" }}
+                          />
+                          <p className="text-[11px]" style={{ color: "var(--dm-text-secondary)" }}>{i.text}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
-            {p.paginasVenda?.map((l) => (
-              <div key={l.id} className="flex items-center gap-2 mb-2">
-                <Link2 size={12} style={{ color: "var(--dm-text-tertiary)" }} />
-                <span className="text-[11px] font-semibold" style={{ color: "var(--dm-text-secondary)" }}>{l.label}:</span>
-                <a href={l.url} target="_blank" rel="noreferrer"
-                  className="text-[11px] truncate hover:underline" style={{ color: "var(--dm-brand-500)" }}>
-                  {l.url} <ExternalLink size={10} className="inline" />
-                </a>
+            </BentoTile>
+          )}
+
+          {/* ── BÔNUS ── */}
+          {hasBonus && (
+            <BentoTile>
+              <BentoLabel>Bônus</BentoLabel>
+              <div className="space-y-2">
+                {p.bonus.filter(Boolean).map((b, i) => (
+                  <div
+                    key={i}
+                    className="flex items-start gap-2.5 rounded-xl p-2.5"
+                    style={{ background: "var(--dm-bg-elevated)" }}
+                  >
+                    <span className="flex-shrink-0 text-sm">🎁</span>
+                    <p className="text-[12px]" style={{ color: "var(--dm-text-secondary)" }}>{b}</p>
+                  </div>
+                ))}
               </div>
-            ))}
-            {p.linksVenda?.map((l) => (
-              <div key={l.id} className="flex items-center gap-2 mb-2">
-                <Tag size={12} style={{ color: "var(--dm-text-tertiary)" }} />
-                <span className="text-[11px] font-semibold" style={{ color: "var(--dm-text-secondary)" }}>{l.turma} · R$ {l.valor}:</span>
-                <a href={l.link} target="_blank" rel="noreferrer"
-                  className="text-[11px] truncate hover:underline" style={{ color: "var(--dm-brand-500)" }}>
-                  {l.link} <ExternalLink size={10} className="inline" />
-                </a>
+            </BentoTile>
+          )}
+
+          {/* ── LINKS — full width ── */}
+          {hasLinks && (
+            <BentoTile className="col-span-1 md:col-span-2 lg:col-span-3">
+              <BentoLabel>Links</BentoLabel>
+              <div className="flex flex-wrap gap-2">
+                {p.paginasCaptura?.map((l) => (
+                  <a
+                    key={l.id}
+                    href={l.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-[11px] font-medium transition hover:opacity-80"
+                    style={{
+                      background: "var(--dm-bg-elevated)",
+                      border: "1px solid var(--dm-border-default)",
+                      color: "var(--dm-brand-500)",
+                    }}
+                  >
+                    <Link2 size={10} />
+                    <span className="font-semibold" style={{ color: "var(--dm-text-secondary)" }}>{l.label}:</span>
+                    <span className="truncate max-w-[200px]">{l.url}</span>
+                    <ExternalLink size={9} style={{ color: "var(--dm-text-tertiary)", flexShrink: 0 }} />
+                  </a>
+                ))}
+                {p.paginasVenda?.map((l) => (
+                  <a
+                    key={l.id}
+                    href={l.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-[11px] font-medium transition hover:opacity-80"
+                    style={{
+                      background: "var(--dm-bg-elevated)",
+                      border: "1px solid var(--dm-border-default)",
+                      color: "var(--dm-brand-500)",
+                    }}
+                  >
+                    <Link2 size={10} />
+                    <span className="font-semibold" style={{ color: "var(--dm-text-secondary)" }}>{l.label}:</span>
+                    <span className="truncate max-w-[200px]">{l.url}</span>
+                    <ExternalLink size={9} style={{ color: "var(--dm-text-tertiary)", flexShrink: 0 }} />
+                  </a>
+                ))}
+                {p.linksVenda?.map((l) => (
+                  <a
+                    key={l.id}
+                    href={l.link}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-[11px] font-medium transition hover:opacity-80"
+                    style={{
+                      background: accentLight,
+                      border: `1px solid ${accentColor}30`,
+                      color: accentColor,
+                    }}
+                  >
+                    <Tag size={10} />
+                    <span className="font-semibold">{l.turma} · R$ {l.valor}:</span>
+                    <span className="truncate max-w-[200px]">{l.link}</span>
+                    <ExternalLink size={9} style={{ flexShrink: 0 }} />
+                  </a>
+                ))}
               </div>
-            ))}
-          </ViewerBlock>
-        )}
+            </BentoTile>
+          )}
 
-        {/* Palavras-chave */}
-        {p.palavrasChave?.length > 0 && (
-          <ViewerBlock title="Palavras-chave">
-            <div className="flex flex-wrap gap-1.5">
-              {p.palavrasChave.map((w, i) => (
-                <span key={i} className="rounded-full px-2.5 py-1 text-[11px] font-medium"
-                  style={{ background: "rgba(49,52,145,0.08)", color: "#313491" }}>
-                  {w}
-                </span>
-              ))}
-            </div>
-          </ViewerBlock>
-        )}
+          {/* ── PALAVRAS-CHAVE ── */}
+          {hasKeywords && (
+            <BentoTile className={hasAvatar ? "" : "col-span-1 md:col-span-2 lg:col-span-3"}>
+              <BentoLabel>Palavras-chave</BentoLabel>
+              <div className="flex flex-wrap gap-1.5">
+                {p.palavrasChave.map((w, i) => (
+                  <span
+                    key={i}
+                    className="rounded-full px-2.5 py-1 text-[11px] font-medium"
+                    style={{ background: accentLight, color: accentColor }}
+                  >
+                    {w}
+                  </span>
+                ))}
+              </div>
+            </BentoTile>
+          )}
 
-        {/* Avatar / Para quem é */}
-        {(p.descricaoAvatar || p.paraQuemE) && (
-          <ViewerBlock title="Público-alvo">
-            <ViewerField label="Descrição do avatar" value={p.descricaoAvatar} />
-            <ViewerField label="Para quem é" value={p.paraQuemE} />
-          </ViewerBlock>
-        )}
+          {/* ── PÚBLICO-ALVO — spans 2 when keywords exist ── */}
+          {hasAvatar && (
+            <BentoTile className={hasKeywords ? "col-span-1 md:col-span-1 lg:col-span-2" : "col-span-1 md:col-span-2 lg:col-span-3"}>
+              <BentoLabel>Público-alvo</BentoLabel>
+              {p.descricaoAvatar && (
+                <div className="mb-4">
+                  <p
+                    className="text-[10px] font-semibold uppercase tracking-wider mb-1.5"
+                    style={{ color: "var(--dm-text-tertiary)" }}
+                  >
+                    Descrição do avatar
+                  </p>
+                  <div
+                    className="text-[13px] prose prose-sm max-w-none dark:prose-invert"
+                    style={{ color: "var(--dm-text-primary)" }}
+                    dangerouslySetInnerHTML={{ __html: p.descricaoAvatar }}
+                  />
+                </div>
+              )}
+              {p.paraQuemE && (
+                <div>
+                  <p
+                    className="text-[10px] font-semibold uppercase tracking-wider mb-1.5"
+                    style={{ color: "var(--dm-text-tertiary)" }}
+                  >
+                    Para quem é
+                  </p>
+                  <div
+                    className="text-[13px] prose prose-sm max-w-none dark:prose-invert"
+                    style={{ color: "var(--dm-text-primary)" }}
+                    dangerouslySetInnerHTML={{ __html: p.paraQuemE }}
+                  />
+                </div>
+              )}
+            </BentoTile>
+          )}
 
+        </div>
       </div>
     </div>
   );
