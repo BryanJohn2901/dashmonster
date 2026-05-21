@@ -31,26 +31,18 @@ interface TaskSuggestion {
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 const CATEGORY_META: Record<Category, { label: string; icon: React.ElementType; color: string; bg: string }> = {
-  pausar:    { label: "Pausar",    icon: PauseCircle,   color: "text-red-600",     bg: "bg-red-50" },
-  criativo:  { label: "Criativo",  icon: ImageIcon,     color: "text-violet-600",  bg: "bg-violet-50" },
-  landing:   { label: "Landing",   icon: Globe,         color: "text-orange-600",  bg: "bg-orange-50" },
-  orçamento: { label: "Orçamento", icon: DollarSign,    color: "text-amber-600",   bg: "bg-amber-50" },
-  targeting: { label: "Targeting", icon: AlertTriangle, color: "text-blue-600",    bg: "bg-blue-50" },
-  escalar:   { label: "Escalar",   icon: TrendingUp,    color: "text-emerald-600", bg: "bg-emerald-50" },
+  pausar:    { label: "Pausar",    icon: PauseCircle,   color: "#EF4444", bg: "rgba(239,68,68,0.12)" },
+  criativo:  { label: "Criativo",  icon: ImageIcon,     color: "#A78BFA", bg: "rgba(167,139,250,0.12)" },
+  landing:   { label: "Landing",   icon: Globe,         color: "#F97316", bg: "rgba(249,115,22,0.12)" },
+  orçamento: { label: "Orçamento", icon: DollarSign,    color: "#F59E0B", bg: "rgba(245,158,11,0.12)" },
+  targeting: { label: "Targeting", icon: Target,        color: "#60A5FA", bg: "rgba(96,165,250,0.12)" },
+  escalar:   { label: "Escalar",   icon: TrendingUp,    color: "#10B981", bg: "rgba(16,185,129,0.12)" },
 };
 
-const PRIORITY_RING: Record<Priority, string> = {
-  alta:  "ring-red-200 bg-red-50",
-  média: "ring-amber-200 bg-amber-50",
-  baixa: "ring-emerald-200 bg-emerald-50",
-};
-const PRIORITY_BADGE: Record<Priority, string> = {
-  alta:  "bg-red-100 text-red-700",
-  média: "bg-amber-100 text-amber-700",
-  baixa: "bg-emerald-100 text-emerald-700",
-};
-const PRIORITY_DOT: Record<Priority, string> = {
-  alta: "bg-red-500", média: "bg-amber-400", baixa: "bg-emerald-500",
+const PRIORITY_COLOR: Record<Priority, { border: string; bg: string; text: string; dot: string }> = {
+  alta:  { border: "#EF4444", bg: "rgba(239,68,68,0.10)",   text: "#EF4444", dot: "#EF4444" },
+  média: { border: "#F59E0B", bg: "rgba(245,158,11,0.10)",  text: "#F59E0B", dot: "#F59E0B" },
+  baixa: { border: "#10B981", bg: "rgba(16,185,129,0.10)",  text: "#10B981", dot: "#10B981" },
 };
 
 const PER_PAGE_CRITICAL = 6;
@@ -130,10 +122,10 @@ function HealthRing({ score }: { score: number }) {
   const r      = 34;
   const circ   = 2 * Math.PI * r;
   const offset = circ * (1 - score / 100);
-  const color  = score >= 70 ? "#059669" : score >= 40 ? "#d97706" : "#dc2626";
+  const color  = score >= 70 ? "#10B981" : score >= 40 ? "#F59E0B" : "#EF4444";
   return (
     <svg width={84} height={84} viewBox="0 0 84 84" className="-rotate-90">
-      <circle cx={42} cy={42} r={r} fill="none" stroke="#f1f5f9" strokeWidth={8} />
+      <circle cx={42} cy={42} r={r} fill="none" stroke="rgba(99,102,241,0.15)" strokeWidth={8} />
       <circle
         cx={42} cy={42} r={r} fill="none"
         stroke={color} strokeWidth={8}
@@ -386,39 +378,82 @@ function TabOverview({ campaigns, selectedCategory }: { campaigns: AggregatedCam
   );
   const maxInv = Math.max(...top10.map((c) => c.investment), 1);
 
+  const totalInvest  = campaigns.reduce((s, c) => s + c.investment, 0);
+  const totalRevenue = campaigns.reduce((s, c) => s + c.revenue, 0);
+  const healthyCount = campaigns.filter((c) => c.roas >= 2).length;
+  const overallRoas  = totalInvest > 0 ? totalRevenue / totalInvest : 0;
+
   return (
-    <div className="space-y-6 pt-4">
+    <div className="space-y-5 pt-4">
+      {/* ── Bento summary tiles ── */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {[
+          { label: "Investimento Total", value: formatCurrency(totalInvest), color: "#60A5FA", bg: "rgba(96,165,250,0.10)" },
+          { label: "Receita Total",      value: formatCurrency(totalRevenue), color: "#10B981", bg: "rgba(16,185,129,0.10)" },
+          { label: "ROAS Geral",         value: `${overallRoas.toFixed(2)}x`, color: overallRoas >= 2 ? "#10B981" : overallRoas >= 1 ? "#F59E0B" : "#EF4444", bg: overallRoas >= 2 ? "rgba(16,185,129,0.10)" : overallRoas >= 1 ? "rgba(245,158,11,0.10)" : "rgba(239,68,68,0.10)" },
+          { label: "Campanhas Saudáveis", value: `${healthyCount}/${campaigns.length}`, color: "#A78BFA", bg: "rgba(167,139,250,0.10)" },
+        ].map(({ label, value, color, bg }) => (
+          <div
+            key={label}
+            className="rounded-[16px] border p-4"
+            style={{ background: bg, borderColor: `${color}30` }}
+          >
+            <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color }}>{label}</p>
+            <p className="text-lg font-black leading-tight" style={{ color: "var(--dm-text-primary)" }}>{value}</p>
+          </div>
+        ))}
+      </div>
+
       {/* Category roadmap */}
       {selectedCategory && <CategoryRoadmap category={selectedCategory} />}
 
       {/* Top 10 */}
-      <div className="space-y-2">
-        <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>Top 10 por Investimento</p>
-        {top10.map((c) => {
-          const roasColor = c.roas >= 3 ? "#059669" : c.roas >= 1.5 ? "var(--dm-brand-500)" : c.roas >= 1 ? "#d97706" : "#dc2626";
-          const barColor  = c.roas >= 3 ? "#059669" : c.roas >= 1.5 ? "var(--dm-brand-500)" : c.roas >= 1 ? "#f59e0b" : "#ef4444";
-          const pct       = (c.investment / maxInv) * 100;
-          return (
-            <div
-              key={c.campaignName}
-              className="rounded-xl border p-3 transition"
-              style={{ backgroundColor: "var(--dm-bg-elevated)", borderColor: "var(--dm-border-subtle)" }}
-            >
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <p className="min-w-0 truncate text-xs font-semibold" style={{ color: "var(--dm-text-primary)" }} title={c.campaignName}>
-                  {c.campaignName}
-                </p>
-                <div className="flex flex-shrink-0 items-center gap-3 text-xs">
-                  <span style={{ color: "var(--dm-text-secondary)" }}>{formatCurrency(c.investment)}</span>
-                  <span className="font-bold" style={{ color: roasColor }}>{c.roas.toFixed(2)}x</span>
+      <div>
+        <p className="mb-3 text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>Top 10 por Investimento</p>
+        <div className="space-y-2">
+          {top10.map((c, idx) => {
+            const roasColor = c.roas >= 3 ? "#10B981" : c.roas >= 1.5 ? "#60A5FA" : c.roas >= 1 ? "#F59E0B" : "#EF4444";
+            const barColor  = c.roas >= 3 ? "#10B981" : c.roas >= 1.5 ? "#313491" : c.roas >= 1 ? "#F59E0B" : "#EF4444";
+            const pct       = (c.investment / maxInv) * 100;
+            return (
+              <div
+                key={c.campaignName}
+                className="rounded-[14px] border p-3 transition hover:border-opacity-60"
+                style={{
+                  backgroundColor: "var(--dm-bg-surface)",
+                  borderColor: "var(--dm-border-default)",
+                  borderLeft: `3px solid ${barColor}`,
+                }}
+              >
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span
+                      className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded-md text-[10px] font-black"
+                      style={{ background: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)" }}
+                    >
+                      {idx + 1}
+                    </span>
+                    <p className="min-w-0 truncate text-xs font-semibold" style={{ color: "var(--dm-text-primary)" }} title={c.campaignName}>
+                      {c.campaignName}
+                    </p>
+                  </div>
+                  <div className="flex flex-shrink-0 items-center gap-2">
+                    <span className="text-xs" style={{ color: "var(--dm-text-secondary)" }}>{formatCurrency(c.investment)}</span>
+                    <span
+                      className="rounded-lg px-2 py-0.5 text-xs font-black"
+                      style={{ background: `${roasColor}18`, color: roasColor }}
+                    >
+                      {c.roas.toFixed(2)}x
+                    </span>
+                  </div>
+                </div>
+                <div className="h-1.5 w-full overflow-hidden rounded-full" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
+                  <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: barColor }} />
                 </div>
               </div>
-              <div className="h-1.5 w-full overflow-hidden rounded-full" style={{ backgroundColor: "var(--dm-border-default)" }}>
-                <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: barColor }} />
-              </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -444,9 +479,12 @@ function TabCritical({ campaigns }: { campaigns: AggregatedCampaign[] }) {
 
   if (withIssues.length === 0) {
     return (
-      <div className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-6 mt-4">
-        <CheckCircle2 size={20} className="text-emerald-500 flex-shrink-0" />
-        <p className="text-sm font-medium text-emerald-700">
+      <div
+        className="flex items-center gap-3 rounded-2xl border p-6 mt-4"
+        style={{ background: "rgba(16,185,129,0.08)", borderColor: "rgba(16,185,129,0.3)" }}
+      >
+        <CheckCircle2 size={20} style={{ color: "#10B981", flexShrink: 0 }} />
+        <p className="text-sm font-medium" style={{ color: "#10B981" }}>
           Nenhum ponto crítico identificado. Todas as campanhas estão dentro dos parâmetros saudáveis.
         </p>
       </div>
@@ -457,18 +495,24 @@ function TabCritical({ campaigns }: { campaigns: AggregatedCampaign[] }) {
     <div className="space-y-3 pt-4">
       {visible.map((c) => {
         const hasCritical = c.issues.some((i) => i.severity === "critical");
+        const accent = hasCritical ? "#EF4444" : "#F59E0B";
         return (
           <article
             key={c.campaignName}
-            className={`rounded-2xl border p-4 ${hasCritical ? "border-red-100 bg-red-50/60" : "border-amber-100 bg-amber-50/60"}`}
+            className="rounded-2xl border p-4"
+            style={{
+              backgroundColor: "var(--dm-bg-surface)",
+              borderColor: `${accent}35`,
+              borderLeft: `4px solid ${accent}`,
+            }}
           >
             {/* Header */}
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="flex items-center gap-2 min-w-0">
                 {hasCritical
-                  ? <XCircle size={15} className="flex-shrink-0 text-red-500" />
-                  : <AlertTriangle size={15} className="flex-shrink-0 text-amber-500" />}
-                <p className={`text-xs font-bold ${hasCritical ? "text-red-800" : "text-amber-800"}`}>
+                  ? <XCircle size={15} style={{ color: "#EF4444", flexShrink: 0 }} />
+                  : <AlertTriangle size={15} style={{ color: "#F59E0B", flexShrink: 0 }} />}
+                <p className="text-xs font-bold truncate" style={{ color: "var(--dm-text-primary)" }}>
                   {c.campaignName}
                 </p>
               </div>
@@ -479,9 +523,13 @@ function TabCritical({ campaigns }: { campaigns: AggregatedCampaign[] }) {
                   { label: "ROAS",    value: `${c.roas.toFixed(2)}x` },
                   { label: "CTR",     value: formatPercent(c.ctr) },
                 ].map(({ label, value }) => (
-                  <div key={label} className="rounded-lg bg-white/70 px-2 py-1 text-center ring-1 ring-slate-200">
-                    <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">{label}</p>
-                    <p className="text-xs font-bold text-slate-700">{value}</p>
+                  <div
+                    key={label}
+                    className="rounded-lg px-2.5 py-1.5 text-center"
+                    style={{ background: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-subtle)" }}
+                  >
+                    <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>{label}</p>
+                    <p className="text-xs font-bold" style={{ color: "var(--dm-text-primary)" }}>{value}</p>
                   </div>
                 ))}
               </div>
@@ -491,9 +539,9 @@ function TabCritical({ campaigns }: { campaigns: AggregatedCampaign[] }) {
               {c.issues.map((issue, i) => (
                 <li key={i} className="flex items-start gap-2">
                   {issue.severity === "critical"
-                    ? <XCircle size={12} className="mt-0.5 flex-shrink-0 text-red-500" />
-                    : <AlertTriangle size={12} className="mt-0.5 flex-shrink-0 text-amber-500" />}
-                  <span className={`text-xs ${issue.severity === "critical" ? "text-red-700" : "text-amber-700"}`}>
+                    ? <XCircle size={12} className="mt-0.5 flex-shrink-0" style={{ color: "#EF4444" }} />
+                    : <AlertTriangle size={12} className="mt-0.5 flex-shrink-0" style={{ color: "#F59E0B" }} />}
+                  <span className="text-xs" style={{ color: issue.severity === "critical" ? "#EF4444" : "#F59E0B" }}>
                     {issue.label}
                   </span>
                 </li>
@@ -521,32 +569,39 @@ function TopList({ title, subtitle, icon: Icon, items, metricLabel, metricValue,
       className="rounded-xl border p-4 shadow-sm"
       style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}
     >
-      <div className="mb-3 flex items-center gap-2">
-        <span className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ backgroundColor: "var(--dm-brand-50)", color: "var(--dm-brand-500)" }}>
-          <Icon size={14} />
+      <div className="mb-4 flex items-center gap-2">
+        <span
+          className="flex h-8 w-8 items-center justify-center rounded-xl"
+          style={{ backgroundColor: "rgba(49,52,145,0.12)", color: "var(--dm-brand-500)" }}
+        >
+          <Icon size={15} />
         </span>
         <div>
-          <p className="text-xs font-semibold" style={{ color: "var(--dm-text-primary)" }}>{title}</p>
+          <p className="text-xs font-bold" style={{ color: "var(--dm-text-primary)" }}>{title}</p>
           <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>{subtitle}</p>
         </div>
       </div>
       <ol className="space-y-2">
         {items.map((c, i) => (
-          <li key={c.campaignName} className="flex items-center gap-2.5">
+          <li
+            key={c.campaignName}
+            className="flex items-center gap-2.5 rounded-xl p-2.5"
+            style={{ background: i === 0 ? "rgba(49,52,145,0.07)" : "var(--dm-bg-elevated)" }}
+          >
             <span
-              className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
+              className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-black"
               style={
                 i === 0
-                  ? { backgroundColor: "var(--dm-brand-50)", color: "var(--dm-brand-500)" }
-                  : { backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)" }
+                  ? { backgroundColor: "var(--dm-brand-500)", color: "#fff" }
+                  : { backgroundColor: "var(--dm-border-default)", color: "var(--dm-text-tertiary)" }
               }
             >{i + 1}</span>
-            <p className="min-w-0 flex-1 truncate text-xs" style={{ color: "var(--dm-text-secondary)" }} title={c.campaignName}>
+            <p className="min-w-0 flex-1 truncate text-xs font-medium" style={{ color: "var(--dm-text-secondary)" }} title={c.campaignName}>
               {c.campaignName}
             </p>
             <span
-              className="flex-shrink-0 rounded-md px-2 py-0.5 text-xs font-bold"
-              style={{ backgroundColor: "var(--dm-brand-50)", color: "var(--dm-brand-500)" }}
+              className="flex-shrink-0 rounded-lg px-2 py-0.5 text-xs font-black"
+              style={{ backgroundColor: "rgba(49,52,145,0.12)", color: "var(--dm-brand-500)" }}
             >
               {metricLabel}: {metricValue(c)}
             </span>
@@ -571,8 +626,11 @@ function TabPositive({ campaigns, isMetricVisible = () => true }: { campaigns: A
   ].filter(Boolean);
 
   if (lists.length === 0) return (
-    <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-8 text-center">
-      <p className="text-sm text-slate-400">Nenhum destaque positivo nos filtros atuais. Tente ampliar o período ou ajustar as métricas visíveis.</p>
+    <div
+      className="mt-4 rounded-2xl border p-8 text-center"
+      style={{ background: "var(--dm-bg-elevated)", borderColor: "var(--dm-border-default)" }}
+    >
+      <p className="text-sm" style={{ color: "var(--dm-text-tertiary)" }}>Nenhum destaque positivo nos filtros atuais. Tente ampliar o período ou ajustar as métricas visíveis.</p>
     </div>
   );
 
@@ -622,7 +680,7 @@ function TabTasks({ tasks }: { tasks: TaskSuggestion[] }) {
                   : { color: "var(--dm-text-secondary)" }
               }
             >
-              {p !== "all" && <span className={`h-1.5 w-1.5 rounded-full ${PRIORITY_DOT[p]}`} />}
+              {p !== "all" && <span className="h-1.5 w-1.5 rounded-full" style={{ background: PRIORITY_COLOR[p].dot }} />}
               {p === "all" ? "Todas" : p.charAt(0).toUpperCase() + p.slice(1)}
             </button>
           ))}
@@ -677,9 +735,12 @@ function TabTasks({ tasks }: { tasks: TaskSuggestion[] }) {
 
       {/* Task cards */}
       {visible.length === 0 ? (
-        <div className="flex items-center gap-3 rounded-2xl border border-emerald-100 bg-emerald-50 p-5">
-          <CheckCircle2 size={18} className="flex-shrink-0 text-emerald-500" />
-          <p className="text-sm font-medium text-emerald-700">
+        <div
+          className="flex items-center gap-3 rounded-2xl border p-5"
+          style={{ background: "rgba(16,185,129,0.08)", borderColor: "rgba(16,185,129,0.3)" }}
+        >
+          <CheckCircle2 size={18} style={{ color: "#10B981", flexShrink: 0 }} />
+          <p className="text-sm font-medium" style={{ color: "#10B981" }}>
             {tasks.length === 0
               ? "Nenhuma ação necessária — campanhas saudáveis!"
               : "Nenhuma tarefa para o filtro selecionado."}
@@ -689,26 +750,38 @@ function TabTasks({ tasks }: { tasks: TaskSuggestion[] }) {
         <div className="space-y-2">
           {visible.map((task) => {
             const cat = CATEGORY_META[task.category];
+            const pc  = PRIORITY_COLOR[task.priority];
             return (
               <div
                 key={task.id}
-                className={`flex items-start gap-3 rounded-2xl border p-4 transition ring-1 ${PRIORITY_RING[task.priority]}`}
+                className="flex items-start gap-3 rounded-2xl border p-4 transition"
+                style={{
+                  backgroundColor: "var(--dm-bg-surface)",
+                  borderColor: "var(--dm-border-default)",
+                  borderLeft: `3px solid ${pc.border}`,
+                }}
               >
                 <button
                   onClick={() => toggle(task.id)}
-                  className="mt-0.5 flex-shrink-0 transition"
-                  style={{ color: "var(--dm-border-strong)" }}
+                  className="mt-0.5 flex-shrink-0 transition hover:opacity-70"
+                  style={{ color: pc.border }}
                   title="Marcar como concluída"
                 >
                   <Square size={16} />
                 </button>
                 <div className="min-w-0 flex-1">
                   <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
-                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${PRIORITY_BADGE[task.priority]}`}>
-                      <span className={`h-1.5 w-1.5 rounded-full ${PRIORITY_DOT[task.priority]}`} />
+                    <span
+                      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold"
+                      style={{ background: pc.bg, color: pc.text }}
+                    >
+                      <span className="h-1.5 w-1.5 rounded-full" style={{ background: pc.dot }} />
                       {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
                     </span>
-                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${cat.bg} ${cat.color}`}>
+                    <span
+                      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                      style={{ background: cat.bg, color: cat.color }}
+                    >
                       <cat.icon size={9} />
                       {cat.label}
                     </span>
