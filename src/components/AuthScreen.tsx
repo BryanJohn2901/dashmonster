@@ -225,7 +225,7 @@ function Field({ id, label, type, placeholder, value, onChange, focused, setFocu
         onChange={e => onChange(e.target.value)}
         onFocus={() => setFocused(id)}
         onBlur={() => setFocused(null)}
-        className="w-full bg-[#F4F7FE] text-gray-900 dark:bg-[#111c44] dark:text-white"
+        className="w-full bg-[#F4F7FE] text-gray-900 dark:bg-[#0F1020] dark:text-white"
         style={{
           padding: "12px 16px",
           borderRadius: 14,
