@@ -16,7 +16,9 @@ export interface AdvertiserProfile {
   adAccountId: string;
   groupId: string;
   campaigns: ActiveCampaign[];
-  instagramUserId?: string;   // 3.1 — vinculado via token IG (optional)
+  instagramUserId?: string;      // Meta IBA ID (e.g. "17841401234567890")
+  instagramUsername?: string;    // @handle (e.g. "personaltraineracademy_")
+  instagramAccountId?: string;   // Supabase UUID from instagram_accounts (set after register)
   createdAt: string;
 }
 

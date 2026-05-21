@@ -191,7 +191,15 @@ function CreativeCard({
           className="flex h-7 w-7 items-center justify-center rounded-lg bg-black/60 backdrop-blur-sm hover:bg-black/80">
           <Star size={12} fill={starred ? "#f59e0b" : "none"} stroke={starred ? "#f59e0b" : "white"} />
         </button>
-        <a href={ad.adLink} target="_blank" rel="noopener noreferrer"
+        {ad.instagramUrl && (
+          <a href={ad.instagramUrl} target="_blank" rel="noopener noreferrer" title="Ver no Instagram"
+            className="flex h-7 w-7 items-center justify-center rounded-lg bg-black/60 backdrop-blur-sm hover:bg-black/80">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="white" stroke="none"/>
+            </svg>
+          </a>
+        )}
+        <a href={ad.adLink} target="_blank" rel="noopener noreferrer" title="Ver no Meta"
           className="flex h-7 w-7 items-center justify-center rounded-lg bg-black/60 backdrop-blur-sm hover:bg-black/80">
           <ExternalLink size={12} className="text-white" />
         </a>
@@ -685,6 +693,21 @@ function PreviewModal({
               style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)", backgroundColor: "var(--dm-bg-surface)" }}
             >
               <Play size={10} /> Preview
+            </a>
+          )}
+          {ad.instagramUrl && (
+            <a
+              href={ad.instagramUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Ver no Instagram"
+              className="flex items-center gap-1.5 rounded-[9px] border px-3 py-2 text-[11px] font-semibold transition hover:opacity-80"
+              style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)", backgroundColor: "var(--dm-bg-surface)" }}
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/>
+              </svg>
+              Instagram
             </a>
           )}
           <a
