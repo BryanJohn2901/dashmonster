@@ -32,7 +32,7 @@ function ProductCard({ product: p, onView, onEdit, onDuplicate, onDelete }: Prod
 
   return (
     <article
-      className="group relative flex flex-col rounded-[20px] border bg-white dark:bg-[#111c44] shadow-horizon transition-all hover:-translate-y-0.5"
+      className="group relative flex flex-col rounded-[20px] border bg-white dark:bg-[#0F1020] shadow-horizon transition-all hover:-translate-y-0.5"
       style={{ borderColor: "var(--dm-border-default)", borderLeftWidth: 3, borderLeftColor: accent }}
     >
       <div className="flex flex-col flex-1 p-4 gap-3">

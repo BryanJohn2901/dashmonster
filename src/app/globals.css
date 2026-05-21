@@ -194,57 +194,57 @@
 .dark {
 
   /* ----------------------------------------------------------
-     FUNDAÇÃO
+     FUNDAÇÃO — near-black, toque mínimo de cor
      ---------------------------------------------------------- */
-  --dm-bg-page:          #070d27;  /* mais escuro → cards se destacam */
-  --dm-bg-surface:       #111c44;
-  --dm-bg-sidebar:       #0d1636;
-  --dm-bg-elevated:      #1a2750;  /* mais claro → separação clara */
+  --dm-bg-page:          #07080F;
+  --dm-bg-surface:       #0F1020;
+  --dm-bg-sidebar:       #0A0B18;
+  --dm-bg-elevated:      #161830;
 
-  --dm-border-subtle:    #1e306e;  /* era #1a2a5e — mais visível */
-  --dm-border-default:   #2a4090;  /* era #243062 — mais visível */
-  --dm-border-strong:    #3554b0;  /* era #2f3f7a — mais visível */
-
-  /* ----------------------------------------------------------
-     TIPOGRAFIA DARK (WCAG AA — contraste mínimo 4.5:1)
-     ---------------------------------------------------------- */
-  --dm-text-primary:     #FFFFFF;   /* on #111c44 — 21:1 ✓ */
-  --dm-text-secondary:   #B0BED8;   /* era #A0AEC0 — ligeiramente mais brilhante */
-  --dm-text-tertiary:    #7B8FC4;   /* era #4A5568 — CRÍTICO: agora legível em navy */
-  --dm-text-disabled:    #3A4F7A;   /* era #2D3748 */
-  --dm-text-inverse:     #070d27;
+  --dm-border-subtle:    #1A1C30;
+  --dm-border-default:   #1E2040;
+  --dm-border-strong:    #2A2D52;
 
   /* ----------------------------------------------------------
-     MARCA DARK — Azul mais claro sobre fundo escuro
+     TIPOGRAFIA DARK (WCAG AA)
      ---------------------------------------------------------- */
-  --dm-brand-50:         #0F1B2E;
-  --dm-brand-100:        #172A45;
-  --dm-brand-200:        #1E3A5F;
-  --dm-brand-400:        #3B82F6;
-  --dm-brand-500:        #60A5FA;
-  --dm-brand-600:        #93C5FD;
-  --dm-brand-700:        #BFDBFE;
-  --dm-brand-900:        #DBEAFE;
+  --dm-text-primary:     #F1F5F9;
+  --dm-text-secondary:   #8B90B8;
+  --dm-text-tertiary:    #4A4F72;
+  --dm-text-disabled:    #2A2D45;
+  --dm-text-inverse:     #07080F;
+
+  /* ----------------------------------------------------------
+     MARCA DARK — indigo vibrante sobre fundo escuro
+     ---------------------------------------------------------- */
+  --dm-brand-50:         #0D0E1E;
+  --dm-brand-100:        #111230;
+  --dm-brand-200:        #161840;
+  --dm-brand-400:        #4A4FCC;
+  --dm-brand-500:        #6366F1;
+  --dm-brand-600:        #818CF8;
+  --dm-brand-700:        #A5B4FC;
+  --dm-brand-900:        #C7D2FE;
 
   /* ----------------------------------------------------------
      NAV DARK
      ---------------------------------------------------------- */
-  --dm-nav-active-bg:    rgba(255, 255, 255, 0.12);
-  --dm-nav-active-text:  #FFFFFF;
-  --dm-nav-active-dot:   #60A5FA;
-  --dm-nav-hover-bg:     rgba(255, 255, 255, 0.06);
-  --dm-nav-hover-text:   #FFFFFF;
-  --dm-nav-default-text: #A0AEC0;
+  --dm-nav-active-bg:    rgba(99, 102, 241, 0.15);
+  --dm-nav-active-text:  #F1F5F9;
+  --dm-nav-active-dot:   #6366F1;
+  --dm-nav-hover-bg:     rgba(255, 255, 255, 0.05);
+  --dm-nav-hover-text:   #F1F5F9;
+  --dm-nav-default-text: #8B90B8;
 
   /* ----------------------------------------------------------
      BOTÕES DARK
      ---------------------------------------------------------- */
-  --dm-btn-primary-bg:   #3B82F6;
+  --dm-btn-primary-bg:   #4A4FCC;
   --dm-btn-primary-text: #FFFFFF;
-  --dm-btn-primary-hover:#2563EB;
-  --dm-btn-ghost-bg:     #0F1B2E;
-  --dm-btn-ghost-text:   #93C5FD;
-  --dm-btn-ghost-hover:  #172A45;
+  --dm-btn-primary-hover:#313491;
+  --dm-btn-ghost-bg:     #111230;
+  --dm-btn-ghost-text:   #818CF8;
+  --dm-btn-ghost-hover:  #161840;
   --dm-btn-destructive-bg:   #7F1D1D;
   --dm-btn-destructive-text: #FCA5A5;
   --dm-btn-destructive-hover:#991B1B;
@@ -254,13 +254,13 @@
      ---------------------------------------------------------- */
 
   /* PÓS */
-  --dm-cat-pos-bg:         #0F1B2E;
-  --dm-cat-pos-border:     #1E3A8A;
-  --dm-cat-pos-tag-bg:     #1E3A8A;
-  --dm-cat-pos-tag-text:   #93C5FD;
-  --dm-cat-pos-base:       #60A5FA;
-  --dm-cat-pos-icon:       #60A5FA;
-  --dm-cat-pos-title:      #BFDBFE;
+  --dm-cat-pos-bg:         #0D0F1A;
+  --dm-cat-pos-border:     #2A2D6A;
+  --dm-cat-pos-tag-bg:     #161840;
+  --dm-cat-pos-tag-text:   #A5B4FC;
+  --dm-cat-pos-base:       #6366F1;
+  --dm-cat-pos-icon:       #6366F1;
+  --dm-cat-pos-title:      #C7D2FE;
 
   /* LIVROS */
   --dm-cat-livros-bg:      #052E1C;
@@ -316,10 +316,10 @@
   --dm-error-text:     #FCA5A5;
   --dm-error-base:     #F87171;
 
-  --dm-info-bg:        #0F1B2E;
-  --dm-info-border:    #1E3A8A;
-  --dm-info-text:      #93C5FD;
-  --dm-info-base:      #60A5FA;
+  --dm-info-bg:        #0D0F1A;
+  --dm-info-border:    #2A2D6A;
+  --dm-info-text:      #A5B4FC;
+  --dm-info-base:      #6366F1;
 
   /* ----------------------------------------------------------
      VALORES SEMÂNTICOS DARK (4.3)
@@ -341,7 +341,7 @@
   --dm-delta-flat:     #999999;
   --dm-delta-flat-bg:  #99999920;
 
-  --dm-chart-1:  #60A5FA;
+  --dm-chart-1:  #6366F1;
   --dm-chart-2:  #34D399;
   --dm-chart-3:  #FBBF24;
   --dm-chart-4:  #F87171;
@@ -352,7 +352,7 @@
   /* ----------------------------------------------------------
      FOCO DARK
      ---------------------------------------------------------- */
-  --dm-focus-ring: 0 0 0 3px rgba(96, 165, 250, 0.35);
+  --dm-focus-ring: 0 0 0 3px rgba(99, 102, 241, 0.35);
 
   /* ----------------------------------------------------------
      ALIASES

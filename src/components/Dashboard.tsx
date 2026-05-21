@@ -1912,7 +1912,7 @@ export function Dashboard({
       <aside
         className={`fixed inset-y-0 left-0 z-50 flex w-[86vw] max-w-[240px] flex-col transition-transform duration-300 lg:relative lg:translate-x-0 lg:z-auto ${
           showMobileNav ? "translate-x-0 shadow-2xl" : "-translate-x-full"
-        } lg:flex lg:w-[220px] lg:flex-shrink-0 bg-white dark:bg-[#111c44] shadow-horizon`}
+        } lg:flex lg:w-[220px] lg:flex-shrink-0 bg-white dark:bg-[#0F1020] shadow-horizon`}
       >
         {/* Brand — sem border-b, o divider é separado como no Horizon */}
         <div className="flex items-center justify-between px-6 pt-10 pb-0">
@@ -2677,14 +2677,14 @@ export function Dashboard({
 
       {/* ── Right sidebar — desktop ── */}
       {showRightPanel && (
-        <aside className="relative z-20 hidden w-[280px] flex-shrink-0 border-l border-[var(--dm-border-default)] bg-white dark:bg-[#111c44] lg:flex lg:flex-col">
+        <aside className="relative z-20 hidden w-[280px] flex-shrink-0 border-l border-[var(--dm-border-default)] bg-white dark:bg-[#0F1020] lg:flex lg:flex-col">
           <CampaignPanel {...campaignPanelProps} />
         </aside>
       )}
 
       {/* ── Right panel — mobile drawer ── */}
       {showRightPanel && showMobilePanel && (
-        <aside className="fixed inset-y-0 right-0 z-50 flex w-[86vw] max-w-[320px] flex-col border-l border-[var(--dm-border-default)] bg-white dark:bg-[#111c44] shadow-2xl lg:hidden">
+        <aside className="fixed inset-y-0 right-0 z-50 flex w-[86vw] max-w-[320px] flex-col border-l border-[var(--dm-border-default)] bg-white dark:bg-[#0F1020] shadow-2xl lg:hidden">
           <CampaignPanel {...campaignPanelProps} />
         </aside>
       )}

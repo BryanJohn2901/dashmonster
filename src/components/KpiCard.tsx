@@ -61,7 +61,7 @@ export function KpiCard({
 
   return (
     <article
-      className="card-hover group relative overflow-hidden rounded-[20px] border bg-white dark:bg-[#111c44] shadow-horizon transition-all duration-300 hover:-translate-y-0.5"
+      className="card-hover group relative overflow-hidden rounded-[20px] border bg-white dark:bg-[#0F1020] shadow-horizon transition-all duration-300 hover:-translate-y-0.5"
       style={{ borderColor: "var(--dm-border-default)" }}
     >
       <div className="flex items-center gap-4 p-5">

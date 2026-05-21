@@ -129,7 +129,7 @@ export function FunnelCard({ impressions, clicks, conversions, investment, pageV
 
   return (
     <article
-      className="relative rounded-[20px] border p-5 shadow-horizon bg-white dark:bg-[#111c44] transition-all duration-300 hover:-translate-y-1"
+      className="relative rounded-[20px] border p-5 shadow-horizon bg-white dark:bg-[#0F1020] transition-all duration-300 hover:-translate-y-1"
       style={{ borderColor: "var(--dm-border-default)" }}
     >
       <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
