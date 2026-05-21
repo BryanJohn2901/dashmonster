@@ -76,6 +76,8 @@ export default function Home() {
   const [showOnboarding,     setShowOnboarding]     = useState(false);
   const [userCategories,     setUserCategories]     = useState<UserCategory[]>([]);
   const [userAccountEntries, setUserAccountEntries] = useState<UserAccountEntry[]>([]);
+  /** false até aplicar supabase/migrations/013_campaign_metrics_leads.sql */
+  const [campaignMetricsHasLeadsColumn, setCampaignMetricsHasLeadsColumn] = useState(true);
 
   const replaceUserAccountEntries = useCallback((next: UserAccountEntry[]) => {
     userAccountEntriesRef.current = next;
@@ -121,7 +123,8 @@ export default function Home() {
   }
 
   const loadSupabaseData = async (): Promise<CampaignData[]> => {
-    const data = await fetchSupabaseCampaigns();
+    const { campaigns: data, hasLeadsColumn } = await fetchSupabaseCampaigns();
+    setCampaignMetricsHasLeadsColumn(hasLeadsColumn);
     setCampaigns(data);
     return data;
   };
@@ -620,6 +623,7 @@ export default function Home() {
         campaigns={campaigns}
         dataSource={dataSource}
         syncStatus={syncStatus}
+        campaignMetricsHasLeadsColumn={campaignMetricsHasLeadsColumn}
         currentUser={currentUser}
         categories={userCategories}
         accountEntries={userAccountEntries}

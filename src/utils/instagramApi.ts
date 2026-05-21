@@ -12,12 +12,43 @@ export interface InstagramAccount {
   profilePictureUrl?: string;
 }
 
+export interface InstagramGrowthStats {
+  followersGrowthToday: number;
+  followersGrowthWeek:  number;
+  followersGrowthMonth: number;
+}
+
+export interface InstagramSeriesPoint {
+  x: number; // timestamp ms
+  y: number; // followers count
+}
+
+export interface InstagramScore {
+  value: number; // 0–100
+  label: string; // "Excelente" | "Bom" | "Regular" | "Fraco"
+}
+
 export interface InstagramProfileInsights {
-  followersCount: number;
-  impressionsTotal: number;
-  reachTotal: number;
+  // Profile
+  followersCount:    number;
+  mediaCount:        number;
+  // Engagement
+  engagementRate:    number;   // percentage, e.g. 3.24
+  avgLikes:          number;
+  avgComments:       number;
+  // Growth
+  followersGrowthToday:  number;
+  followersGrowthWeek:   number;
+  followersGrowthMonth:  number;
+  followerGrowth:        number; // alias for month (backwards compat)
+  // Aggregated insights
+  impressionsTotal:  number;
+  reachTotal:        number;
   profileViewsTotal: number;
-  followerGrowth: number;
+  // Chart
+  followersSeriesData: InstagramSeriesPoint[];
+  // Score
+  score: InstagramScore;
 }
 
 export function loadInstagramCredentials(): InstagramCredentials {

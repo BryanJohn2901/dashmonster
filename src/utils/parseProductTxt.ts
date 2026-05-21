@@ -1,6 +1,6 @@
 import {
   CourseGroupId, DorSolucao, Entregavel, EntregavelItem,
-  Lote, PageLink, PersonaSegmento, ProductData, ProductType, SubPromessa, TurmaLink,
+  Lote, LotePagamento, PageLink, PersonaSegmento, ProductData, ProductType, SubPromessa, TurmaLink,
 } from "@/types/product";
 
 // ─── Normalise string (remove accents, uppercase, trim) ───────────────────────
@@ -186,9 +186,10 @@ export function parseTxtTemplate(
 
   // ── TIPO ─────────────────────────────────────────────────────────────────────
   const idSec = sec(sections, "IDENTIFICAÇÃO", "IDENTIFICACAO", "BASE", "INFORMACOES GERAIS");
-  // also check document header line for BIG IDEIA — IMERSÃO / PÓS-GRADUAÇÃO
-  const headerLine = text.split("\n").slice(0, 6).find(l => /IMERS[AÃ]O|IMERSAO/i.test(l));
-  const rawTipo = n(kv(idSec, "TIPO") || (headerLine ? "IMERSAO" : "POS"));
+  // also check document header line for IMERSÃO / PÓS-GRADUAÇÃO
+  const headerLine = text.split("\n").slice(0, 8).find(l => /IMERS[AÃ]O|IMERSAO/i.test(l));
+  const tipoField = kv(idSec, "TIPO");
+  const rawTipo = n(tipoField || (headerLine ? "IMERSAO" : "POS"));
   result.type = (rawTipo.includes("IMERS") ? "imersao" : "pos") as ProductType;
 
   // ── NOME DO PRODUTO ───────────────────────────────────────────────────────────
@@ -197,8 +198,7 @@ export function parseTxtTemplate(
     "PROMESSA", "NOME E PROMESSA");
   result.nome =
     kv(idSec, "NOME")
-    || kv(nomeProm, "NOME")
-    || kv(sec(sections, "IDENTIFICAÇÃO", "IDENTIFICACAO"), "NOME");
+    || kv(nomeProm, "NOME");
 
   // ── EXPERT ────────────────────────────────────────────────────────────────────
   result.expert = kv(idSec, "NOME DO EXPERT", "EXPERT", "ESPECIALISTA", "PROFESSOR");
@@ -287,19 +287,62 @@ export function parseTxtTemplate(
   const valorRaw = kv(precSec, "VALOR", "VALOR BASE");
   result.valorBase = valorRaw.replace(/[Rr]\$\s*/g, "").replace(/\?\?\?/g, "").trim();
 
+  const PAGAMENTO_KEYWORDS: Record<string, LotePagamento> = {
+    CARTAO: "cartao", CARTÃO: "cartao", CARD: "cartao",
+    BOLETO: "boleto", BILLET: "boleto",
+    AMBOS: "ambos", BOTH: "ambos", TODOS: "ambos",
+  };
+  /** Returns pagamento if the string is a payment keyword, else null */
+  function parsePagamento(s: string): LotePagamento | null {
+    return PAGAMENTO_KEYWORDS[n(s.trim())] ?? null;
+  }
+  /** Clean currency string: strip R$, spaces, placeholder text */
+  function cleanMoney(s: string): string {
+    return s.replace(/[Rr]\$\s*/g, "").replace(/promo:\s*/i, "").trim();
+  }
+
   const loteLines = precSec.filter(l => bulletText(l) !== null || (l.trim().match(/^Lote\s*\d/i)));
   if (loteLines.length > 0) {
-    result.lotes = loteLines.map((l, i): Lote => {
+    const parsed = loteLines.map((l, i): Lote => {
       const raw = (bulletText(l) || l).trim();
-      // Format: "Lote 1 → Promo 4" or "Lote 1 = R$19,90" or "Lote 1 | 997,00 | promo: 897,00"
+      // Supported formats:
+      //   "Lote 1 → R$997,00"
+      //   "Lote 1 → R$997,00 → R$897,00 promo"
+      //   "Lote 1 | R$997,00 | R$897,00 | cartao"
+      //   "Lote 1 | R$997,00 | cartao"
       const parts = raw.split(/[|→=]/).map(s => s.trim());
+      const label = parts[0] || `Lote ${i + 1}`;
+      const part1 = parts[1] || "";
+      const part2 = parts[2] || "";
+      const part3 = parts[3] || "";
+
+      // Detect payment method in any part
+      const pagamento =
+        parsePagamento(part3) ??
+        parsePagamento(part2) ??
+        parsePagamento(part1) ??
+        null;
+
+      // valor = first non-payment part after label
+      const valor = cleanMoney(
+        parsePagamento(part1) ? "" : part1
+      );
+      // promo = second non-payment part (if not a payment keyword)
+      const promo = cleanMoney(
+        parsePagamento(part2) ? "" : part2
+      );
+
       return {
         id: crypto.randomUUID(),
-        label: parts[0] || `Lote ${i + 1}`,
-        valor: (parts[1] || "").replace(/[Rr]\$\s*/g, "").replace(/promo:\s*/i, ""),
-        promo: (parts[2] || "").replace(/[Rr]\$\s*/g, "").replace(/promo:\s*/i, ""),
+        label,
+        valor,
+        promo,
+        ...(pagamento ? { pagamento } : {}),
       };
     });
+
+    // Filter out placeholder lotes: label is just "LOTE" (template not filled)
+    result.lotes = parsed.filter((l) => n(l.label) !== "LOTE");
   }
 
   // ── ENTREGÁVEIS ───────────────────────────────────────────────────────────────
@@ -463,32 +506,32 @@ export function parseTxtTemplate(
   // ── LINKS DE VENDA ────────────────────────────────────────────────────────────
   const lnkSec = sec(sections, "LINKS DE VENDA", "LINK", "LINKS");
 
-  // Páginas de captura — cada linha "Rótulo: URL" ou só URL
-  const capturaItems = itemsAfterKey(lnkSec, "PÁGINAS DE CAPTURA", "PAGINAS DE CAPTURA", "PÁGINA DE CAPTURA", "PAGINA DE CAPTURA", "CAPTURA");
+  /** Parse "Rótulo: URL" or bare URL into PageLink */
+  function parsePageLink(item: string, fallbackLabel: string): PageLink {
+    const colonIdx = item.indexOf(":");
+    // If colon exists and text before it is NOT "http", it's a label
+    if (colonIdx > 0 && !item.slice(0, colonIdx).trim().toLowerCase().startsWith("http")) {
+      return { id: crypto.randomUUID(), label: item.slice(0, colonIdx).trim(), url: item.slice(colonIdx + 1).trim() };
+    }
+    return { id: crypto.randomUUID(), label: fallbackLabel, url: item.trim() };
+  }
+
+  // Páginas de captura — suporta lista (- Rótulo: URL) ou key-value único
+  const capturaItems = itemsAfterKey(lnkSec,
+    "PÁGINAS DE CAPTURA", "PAGINAS DE CAPTURA", "PÁGINA DE CAPTURA", "PAGINA DE CAPTURA", "CAPTURA");
   if (capturaItems.length > 0) {
-    result.paginasCaptura = capturaItems.map((item): PageLink => {
-      const colonIdx = item.indexOf(":");
-      if (colonIdx > 0 && !item.startsWith("http")) {
-        return { id: crypto.randomUUID(), label: item.slice(0, colonIdx).trim(), url: item.slice(colonIdx + 1).trim() };
-      }
-      return { id: crypto.randomUUID(), label: "Captura", url: item.trim() };
-    });
+    result.paginasCaptura = capturaItems.map((item) => parsePageLink(item, "Captura"));
   } else {
     const single = kv(lnkSec, "PÁGINA DE CAPTURA", "PAGINA DE CAPTURA", "CAPTURA")
       || allItems(lnkSec).find(l => l.startsWith("http")) || "";
     if (single) result.paginasCaptura = [{ id: crypto.randomUUID(), label: "Captura", url: single }];
   }
 
-  // Páginas de venda
-  const vendaItems = itemsAfterKey(lnkSec, "PÁGINAS DE VENDA", "PAGINAS DE VENDA", "PÁGINA DE VENDAS", "PAGINA DE VENDAS", "VENDAS");
+  // Páginas de venda — suporta lista (- Rótulo: URL) ou key-value único
+  const vendaItems = itemsAfterKey(lnkSec,
+    "PÁGINAS DE VENDA", "PAGINAS DE VENDA", "PÁGINA DE VENDAS", "PAGINA DE VENDAS", "VENDAS");
   if (vendaItems.length > 0) {
-    result.paginasVenda = vendaItems.map((item): PageLink => {
-      const colonIdx = item.indexOf(":");
-      if (colonIdx > 0 && !item.startsWith("http")) {
-        return { id: crypto.randomUUID(), label: item.slice(0, colonIdx).trim(), url: item.slice(colonIdx + 1).trim() };
-      }
-      return { id: crypto.randomUUID(), label: "Vendas", url: item.trim() };
-    });
+    result.paginasVenda = vendaItems.map((item) => parsePageLink(item, "Vendas"));
   } else {
     const single = kv(lnkSec, "PÁGINA DE VENDAS", "PAGINA DE VENDAS", "VENDAS") || "";
     if (single) result.paginasVenda = [{ id: crypto.randomUUID(), label: "Vendas", url: single }];
@@ -510,132 +553,189 @@ export function parseTxtTemplate(
 
 export const PRODUCT_TXT_TEMPLATE = `======================================================
   PRODUTO — PÓS-GRADUAÇÃO
-  Nome do Produto Aqui
+  [Substitua pela linha acima: PÓS-GRADUAÇÃO ou IMERSÃO]
 ======================================================
+[INSTRUÇÕES: Preencha cada campo após os dois-pontos (:).
+ Listas usam hífen (- item) ou número (1. item).
+ Não apague os títulos das seções (linhas com ──).
+ Campos opcionais podem ficar em branco.]
 
 
-── BASE ──────────────────────────────────────────────
+── IDENTIFICAÇÃO ─────────────────────────────────────
 
-NOME DO EXPERT:       Nome do Expert
-CO-PRODUTORES:        (a definir)
-COORDENADOR DA PÓS:   Nome
-GERENTE DO PRODUTO:   Nome
+TIPO:             PÓS-GRADUAÇÃO
+[Opções: PÓS-GRADUAÇÃO ou IMERSÃO]
+
+NOME:             Nome completo do produto
+NOME DO EXPERT:   Prof. Nome Sobrenome
+TURMA VINCULADA:  (ex: Turma 5 — deixe em branco se não houver)
+
+CURSO:            Biomecânica
+[Opções: Biomecânica | Musculação | Fisiologia | Bodybuilding | Treinamento Feminino | Treinamento Funcional]
+
+
+── EQUIPE ────────────────────────────────────────────
+
+CO-PRODUTORES:       Nome(s) ou (a definir)
+COORDENADOR DA PÓS:  Nome ou (a definir)
+DEBATE DO PRODUTO:   Nome ou (a definir)
+PROF. SLIDES:        Nome ou (a definir)
+HEAD DE MARKETING:   Nome ou (a definir)
+GERENTE DO PRODUTO:  Nome ou (a definir)
+DESIGNER:            Nome ou (a definir)
+EDITOR DE VÍDEO:     Nome ou (a definir)
+SOCIAL MEDIA:        Nome ou (a definir)
+GESTOR DE TRÁFEGO:   Nome ou (a definir)
+WEB DESIGNER:        Nome ou (a definir)
 
 
 ── PALAVRAS-CHAVE ────────────────────────────────────
+[Liste as palavras ou expressões que descrevem o produto]
 
-- Palavra 1
-- Palavra 2
-- Palavra 3
+- Palavra-chave 1
+- Palavra-chave 2
+- Palavra-chave 3
+- Palavra-chave 4
+- Palavra-chave 5
 
 
 ── AVATAR DO PRODUTO ─────────────────────────────────
+[Descreva o aluno ideal: quem é, o que sente, o que deseja,
+ seus obstáculos e nível de consciência sobre o problema]
 
-Descreva aqui o aluno ideal: quem é, o que sente, o que deseja,
-quais são seus obstáculos e nível de consciência sobre o problema.
+Escreva aqui a descrição completa do avatar...
 
 
 ── NOME, PROMESSA E SUB PROMESSAS ───────────────────
 
 NOME:
-  Nome completo do produto
+  Nome completo do produto (repita aqui se necessário)
 
 PROMESSA:
-  A transformação principal que o aluno vai ter ao concluir.
+  A transformação principal que o aluno vai ter ao concluir o curso.
+  Escreva em linguagem direta e orientada a resultado.
 
 SUB PROMESSAS:
-  1. Sub-promessa 1 — resultado específico que o aluno vai alcançar.
-  2. Sub-promessa 2 — outro resultado concreto.
-  3. Sub-promessa 3 — benefício adicional.
+  1. Resultado específico 1 que o aluno vai alcançar
+  2. Resultado específico 2 que o aluno vai alcançar
+  3. Resultado específico 3 que o aluno vai alcançar
+  4. Benefício adicional 4
+  5. Benefício adicional 5
 
 
 ── VALOR DO PRODUTO E VARIAÇÕES ─────────────────────
+[Pagamento por lote: use | cartao, | boleto ou | ambos ao final da linha]
 
-VALOR:     R$997,00
+VALOR:    R$997,00
 
 LOTES:
-  - Lote 1  →  R$797,00
-  - Lote 2  →  R$897,00
-  - Lote 3  →  R$997,00
+  - Lote 1 → R$797,00 | cartao
+  - Lote 2 → R$897,00 | boleto
+  - Lote 3 → R$997,00 | ambos
+[Formato: - Rótulo → Valor → ValorPromo (opcional) | cartao/boleto/ambos]
 
 
 ── O QUE VAI APRENDER ────────────────────────────────
+[Liste os principais tópicos / módulos / disciplinas do curso]
 
-- Tópico 1
-- Tópico 2
-- Tópico 3
+- Tópico ou módulo 1
+- Tópico ou módulo 2
+- Tópico ou módulo 3
+- Tópico ou módulo 4
+- Tópico ou módulo 5
 
 
 ── TEMA DA AULA INAUGURAL / IMERSÃO ─────────────────
+[Para Pós: escreva o tema da aula inaugural.
+ Para Imersão: escreva o tema central da imersão.]
 
   Título completo da aula inaugural ou tema da imersão.
 
 
 ── SENTIMENTO DA PERSONA ─────────────────────────────
+[Descreva 3 segmentos de persona com seus pontos de dor e desejo.
+ Cada segmento começa com S1, S2 ou S3 seguido de — e o título.]
 
 S1 — Estado atual (dor latente):
-  - Dor / frustração 1
-  - Dor / frustração 2
+  - Dor ou frustração principal
+  - Outra dor ou frustração
 
 S2 — Consciência do problema:
   - O que a persona percebe que precisa mudar
-  - Outro ponto
+  - Outro ponto de consciência
 
 S3 — Busca ativa por solução:
   - O que ela está buscando ativamente
-  - Outro ponto
+  - O que ela já tentou sem sucesso
 
 
 ── O QUE SERÁ ENTREGUE + BÔNUS ──────────────────────
+[Use ENTREGÁVEIS 1:, ENTREGÁVEIS 2: etc. para separar blocos.
+ Liste itens com - ou ✅. Bônus vêm depois, com - ou 🎁.]
 
-ENTREGÁVEIS 1:
-  ✅ Entregável 1
-  ✅ Entregável 2
-  ✅ Entregável 3
+ENTREGÁVEIS 1: Módulo Principal
+  - Entregável 1 (ex: Aulas gravadas com base científica)
+  - Entregável 2 (ex: Material de apoio em PDF)
+  - Entregável 3 (ex: Certificado de conclusão)
 
-ENTREGÁVEIS 2:
-  - Aulas online com base científica
-  - Certificação reconhecida
-  - Materiais de apoio
+ENTREGÁVEIS 2: Módulo Complementar
+  - Entregável 4
+  - Entregável 5
 
 BÔNUS:
-  🎁 Bônus 1
-  🎁 Bônus 2
+  - Bônus 1 (ex: Mentoria em grupo)
+  - Bônus 2 (ex: Acesso à comunidade exclusiva)
 
 
 ── PARA QUEM É ───────────────────────────────────────
+[Descreva o público-alvo. Pode ser texto livre ou lista com -]
 
-  Esta formação é indicada para:
+Esta formação é ideal para:
 
-  - Personal Trainers que buscam...
-  - Professores de academia que querem...
-  - Profissionais recém-formados que desejam...
+  - Personal Trainers que buscam aprofundar conhecimentos
+  - Professores de academia que desejam se especializar
+  - Profissionais da área que querem crescer na carreira
 
 
 ── DORES E SOLUÇÕES ──────────────────────────────────
+[Liste as dores na voz da persona (entre aspas) e, abaixo,
+ as soluções que o produto oferece para cada uma.
+ A ordem deve ser a mesma: dor 1 ↔ solução 1, etc.]
 
-20 DORES (voz da persona):
+20 DORES:
 
   1. "Frase na voz da persona — dor 1"
   2. "Frase na voz da persona — dor 2"
   3. "Frase na voz da persona — dor 3"
+  4. "Frase na voz da persona — dor 4"
+  5. "Frase na voz da persona — dor 5"
 
 20 SOLUÇÕES:
 
   1. O que o produto entrega para resolver a dor 1
   2. O que o produto entrega para resolver a dor 2
   3. O que o produto entrega para resolver a dor 3
+  4. O que o produto entrega para resolver a dor 4
+  5. O que o produto entrega para resolver a dor 5
 
 
 ── NARRATIVA CENTRAL ─────────────────────────────────
+[Texto da narrativa / receita técnica principal da campanha.
+ Pode ser longo — escreva tudo aqui.]
 
-  Texto de narrativa principal da campanha...
+  Escreva aqui o texto completo da narrativa central da campanha...
 
 
-── LINK ──────────────────────────────────────────────
+── LINKS DE VENDA ────────────────────────────────────
+[Para múltiplas páginas use - Rótulo: https://... em cada linha]
 
-PÁGINA DE CAPTURA: https://
-PÁGINA DE VENDAS:  https://
+PÁGINAS DE CAPTURA:
+  - Principal: https://
+  - Alternativa: https://
+
+PÁGINAS DE VENDA:
+  - Principal: https://
+  - Lote 1: https://
 
 ======================================================
 `;
@@ -646,8 +746,10 @@ export function summarizeParsed(
   data: Partial<Omit<ProductData, "id" | "createdAt" | "updatedAt">>,
 ): string[] {
   const lines: string[] = [];
+  if (data.type)               lines.push(`✅ Tipo: ${data.type === "imersao" ? "Imersão" : "Pós-Graduação"}`);
   if (data.nome)               lines.push(`✅ Nome: ${data.nome}`);
   if (data.expert)             lines.push(`✅ Expert: ${data.expert}`);
+  if (data.courseGroup)        lines.push(`✅ Curso: ${data.courseGroup}`);
   if (data.promessa)           lines.push(`✅ Promessa principal`);
   if (data.subPromessas?.length)  lines.push(`✅ ${data.subPromessas.length} sub-promessa(s)`);
   if (data.palavrasChave?.length) lines.push(`✅ ${data.palavrasChave.length} palavras-chave`);
