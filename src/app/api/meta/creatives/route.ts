@@ -10,15 +10,15 @@ const META_API_VERSION = "v21.0";
  *    - link_data.link     : destination URL
  *    - link_data.child_attachments : carousel items (existence = carousel type)
  *    - video_data.image_url : poster frame for video ads
+ *  - instagram_permalink_url : Instagram post URL (present when ad ran on Instagram)
  *
  * Fields intentionally OMITTED (cause #100 on most accounts):
  *  - creative.image_url          (not a top-level creative field)
  *  - creative.picture            (requires special permission)
- *  - instagram_permalink_url     (requires Instagram permission)
  *  - effective_instagram_story_url (requires Instagram permission)
  *  - call_to_action.value.link   (restricted)
  *  - child_attachments.picture   (requires special permission)
- *  - child_attachments.image_url (not a valid field on child_attachments)
+ *  - child_attachments{id}       (id is NOT a valid subfield — causes #100)
  */
 
 interface MetaAdRaw {
@@ -32,17 +32,20 @@ interface MetaAdRaw {
   creative?: {
     id?: string;
     thumbnail_url?: string;
+    video_id?: string;                          // present on video ads
+    instagram_permalink_url?: string;           // Instagram post permalink (if available)
     object_story_spec?: {
       link_data?: {
-        link?:        string;
-        message?:     string;  // ad body / caption text
-        name?:        string;  // link headline
-        description?: string;  // link description
+        link?:              string;
+        message?:           string;
+        name?:              string;
+        description?:       string;
+        child_attachments?: Array<Record<string, unknown>>; // carousel slides — no {id} subfield (causes #100)
       };
       video_data?: {
         image_url?: string;
-        message?:   string;  // video ad caption
-        title?:     string;  // video ad title
+        message?:   string;
+        title?:     string;
       };
     };
   };
@@ -50,7 +53,8 @@ interface MetaAdRaw {
 
 function detectMediaType(ad: MetaAdRaw): MetaCampaignCreative["mediaType"] {
   const spec = ad.creative?.object_story_spec;
-  if (spec?.video_data) return "video";
+  if (spec?.link_data?.child_attachments && spec.link_data.child_attachments.length > 0) return "carousel";
+  if (spec?.video_data || ad.creative?.video_id) return "video";
   if (ad.creative?.thumbnail_url) return "image";
   return "unknown";
 }
@@ -58,7 +62,7 @@ function detectMediaType(ad: MetaAdRaw): MetaCampaignCreative["mediaType"] {
 /**
  * GET /api/meta/creatives?accessToken=EAAx...&adAccountId=act_123
  *
- * Returns ALL active/paused/archived ads with thumbnail, preview link, media type.
+ * Returns ALL active/paused ads with thumbnail, preview link, media type.
  */
 export async function GET(request: NextRequest) {
   const sp          = request.nextUrl.searchParams;
@@ -86,9 +90,7 @@ export async function GET(request: NextRequest) {
         "adset_name",
         "preview_shareable_link",
         "created_time",
-        // thumbnail_url: universal field — works for image, video, carousel
-        // object_story_spec: safe subfields only
-        "creative{id,thumbnail_url,object_story_spec{link_data{link,message,name,description},video_data{image_url,message,title}}}",
+        "creative{id,thumbnail_url,video_id,instagram_permalink_url,object_story_spec{link_data{link,message,name,description,child_attachments},video_data{image_url,message,title}}}",
       ].join(","),
       effective_status: JSON.stringify(["ACTIVE", "PAUSED"]),
       limit: "200",
@@ -117,8 +119,6 @@ export async function GET(request: NextRequest) {
       .map((ad) => {
         const spec = ad.creative?.object_story_spec;
 
-        // thumbnail_url is the primary source for all creative types.
-        // For video ads, also fall back to video_data.image_url (poster frame).
         const thumbnailUrl =
           ad.creative?.thumbnail_url ??
           spec?.video_data?.image_url ??
@@ -130,13 +130,11 @@ export async function GET(request: NextRequest) {
           spec?.link_data?.link ??
           adsLibraryUrl;
 
-        // Ad copy: prefer link_data.message, fall back to video_data.message
         const body =
           spec?.link_data?.message ??
           spec?.video_data?.message ??
           undefined;
 
-        // Headline: prefer link_data.name, fall back to video_data.title
         const headline =
           spec?.link_data?.name ??
           spec?.video_data?.title ??
@@ -151,6 +149,7 @@ export async function GET(request: NextRequest) {
           thumbnailUrl,
           previewUrl:   ad.preview_shareable_link ?? "",
           adLink,
+          instagramUrl: ad.creative?.instagram_permalink_url ?? undefined,
           mediaType:    detectMediaType(ad),
           createdTime:  ad.created_time,
           body,
