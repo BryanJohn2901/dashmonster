@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Area, AreaChart,
 } from "recharts";
 import {
-  AlertCircle, ArrowDown, ArrowLeft, ArrowUp, AtSign, BookMarked, CalendarDays, CheckCircle2,
-  Edit2, GraduationCap, Heart, Key, Loader2, Plus, RefreshCw, Repeat, SlidersHorizontal,
-  Target, Trash2, TrendingDown, TrendingUp, Users, X, Zap,
+  Activity, AlertCircle, ArrowDown, ArrowLeft, ArrowUp, AtSign, BookMarked, CalendarDays,
+  CheckCircle2, Edit2, GraduationCap, Heart, Key, Loader2, MessageCircle, Plus, RefreshCw,
+  Repeat, SlidersHorizontal, Star, Target, Trash2, TrendingDown, TrendingUp, Users, X, Zap,
 } from "lucide-react";
 import {
   fetchMetaCampaigns, fetchMetaInsights, fetchMetaAdAccounts,
@@ -1935,11 +1936,16 @@ function InstagramInsightsPanel({
       .finally(() => setLoading(false));
   }, [igUserId, dateFrom, dateTo]);
 
+  const scoreColor = !data ? "#94a3b8" :
+    data.score.value >= 85 ? "#05CD99" :
+    data.score.value >= 60 ? "#4CAF50" :
+    data.score.value >= 30 ? "#F4A60D" : "#EE5D50";
+
   return (
-    <div className="rounded-[20px] border shadow-horizon"
+    <div className="rounded-[20px] border shadow-horizon overflow-hidden"
       style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
 
-      {/* Header */}
+      {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div className="flex items-center gap-2.5 border-b px-5 py-3.5"
         style={{ borderColor: "var(--dm-border-subtle)" }}>
         <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg"
@@ -1947,11 +1953,23 @@ function InstagramInsightsPanel({
           <AtSign size={12} className="text-white" />
         </div>
         <span className="text-[11px] font-semibold uppercase tracking-wider"
-          style={{ color: "var(--dm-text-tertiary)" }}>Instagram</span>
-        {loading && <Loader2 size={12} className="ml-auto animate-spin" style={{ color: "var(--dm-text-tertiary)" }} />}
+          style={{ color: "var(--dm-text-tertiary)" }}>Instagram Analytics</span>
+
+        {/* Score badge */}
+        {data && !error && (
+          <div className="ml-auto flex items-center gap-1.5 rounded-full px-3 py-1"
+            style={{ backgroundColor: scoreColor + "18", border: `1px solid ${scoreColor}40` }}>
+            <Star size={10} style={{ color: scoreColor }} fill={scoreColor} />
+            <span className="text-[11px] font-bold tabular-nums" style={{ color: scoreColor }}>
+              {data.score.value} — {data.score.label}
+            </span>
+          </div>
+        )}
+
+        {loading && <Loader2 size={12} className={`${data ? "" : "ml-auto"} animate-spin`} style={{ color: "var(--dm-text-tertiary)" }} />}
       </div>
 
-      {/* Error — permissão */}
+      {/* ── Error ──────────────────────────────────────────────────────────── */}
       {error && (
         <div className="flex items-start gap-2.5 px-5 py-4">
           <AlertCircle size={14} className="mt-0.5 flex-shrink-0" style={{ color: "var(--dm-text-tertiary)" }} />
@@ -1960,52 +1978,193 @@ function InstagramInsightsPanel({
               Sem permissão para esta conta
             </p>
             <p className="mt-0.5 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
-              Use apenas contas que aparecem na lista "Buscar" — precisam estar vinculadas a uma Página do Facebook acessível pelo token.
+              Use apenas contas vinculadas a uma Página do Facebook acessível pelo token Meta.
             </p>
           </div>
         </div>
       )}
 
-      {/* Loading skeleton */}
+      {/* ── Loading skeleton ────────────────────────────────────────────────── */}
       {loading && !data && !error && (
-        <div className="grid grid-cols-2 sm:grid-cols-4">
-          {[0,1,2,3].map(i => (
-            <div key={i} className="px-5 py-5">
-              <div className="mb-2 h-2.5 w-16 animate-pulse rounded" style={{ backgroundColor: "var(--dm-bg-elevated)" }} />
-              <div className="h-6 w-20 animate-pulse rounded" style={{ backgroundColor: "var(--dm-bg-elevated)" }} />
+        <div className="grid grid-cols-2 gap-3 p-5 sm:grid-cols-4">
+          {[0,1,2,3,4,5,6,7].map(i => (
+            <div key={i} className="rounded-xl p-3" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
+              <div className="mb-2 h-2 w-14 animate-pulse rounded" style={{ backgroundColor: "var(--dm-border-default)" }} />
+              <div className="h-5 w-20 animate-pulse rounded" style={{ backgroundColor: "var(--dm-border-default)" }} />
             </div>
           ))}
         </div>
       )}
 
-      {/* KPIs */}
-      {data && !error && (() => {
-        const growthPositive = data.followerGrowth >= 0;
-        const kpis = [
-          { label: "Seguidores",       value: formatCompact(data.followersCount),  icon: Users,       accent: "var(--dm-brand-500)" },
-          { label: "Crescimento",      value: (growthPositive ? "+" : "") + formatCompact(data.followerGrowth), icon: growthPositive ? TrendingUp : TrendingDown, accent: growthPositive ? "var(--dm-value-positive)" : "var(--dm-value-negative)" },
-          { label: "Visitas ao Perfil", value: formatCompact(data.profileViewsTotal), icon: Target,    accent: "var(--dm-text-secondary)" },
-          { label: "Alcance",          value: formatCompact(data.reachTotal),       icon: Zap,         accent: "var(--dm-text-secondary)" },
-        ];
-        return (
-          <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-y sm:divide-y-0"
-            style={{ borderColor: "var(--dm-border-subtle)" }}>
-            {kpis.map(({ label, value, icon: Icon, accent }, i) => (
-              <div key={i} className="flex items-center gap-3 px-5 py-5">
-                <span className="flex h-[38px] w-[38px] flex-shrink-0 items-center justify-center rounded-full"
-                  style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
-                  <Icon size={16} style={{ color: accent }} />
-                </span>
-                <div className="min-w-0">
-                  <p className="dm-metric-label">{label}</p>
-                  <p className="text-lg font-bold leading-tight tabular-nums"
-                    style={{ color: "var(--dm-text-primary)" }}>{value}</p>
+      {/* ── Data ───────────────────────────────────────────────────────────── */}
+      {data && !error && (
+        <div className="p-5 space-y-5">
+
+          {/* Row 1 — Seguidores + Crescimento */}
+          <div>
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-widest"
+              style={{ color: "var(--dm-text-tertiary)" }}>Audiência</p>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {/* Seguidores */}
+              <div className="rounded-xl p-3" style={{ backgroundColor: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-subtle)" }}>
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Users size={11} style={{ color: "var(--dm-brand-500)" }} />
+                  <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Seguidores</p>
                 </div>
+                <p className="text-xl font-bold tabular-nums" style={{ color: "var(--dm-text-primary)" }}>
+                  {formatCompact(data.followersCount)}
+                </p>
+                <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                  {data.mediaCount} publicações
+                </p>
               </div>
-            ))}
+
+              {/* Hoje */}
+              {(() => {
+                const v = data.followersGrowthToday;
+                const pos = v >= 0;
+                return (
+                  <div className="rounded-xl p-3" style={{ backgroundColor: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-subtle)" }}>
+                    <div className="flex items-center gap-1.5 mb-1">
+                      {pos ? <TrendingUp size={11} style={{ color: "var(--dm-value-positive)" }} /> : <TrendingDown size={11} style={{ color: "var(--dm-value-negative)" }} />}
+                      <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Hoje</p>
+                    </div>
+                    <p className="text-xl font-bold tabular-nums" style={{ color: pos ? "var(--dm-value-positive)" : "var(--dm-value-negative)" }}>
+                      {pos ? "+" : ""}{formatCompact(v)}
+                    </p>
+                  </div>
+                );
+              })()}
+
+              {/* Semana */}
+              {(() => {
+                const v = data.followersGrowthWeek;
+                const pos = v >= 0;
+                return (
+                  <div className="rounded-xl p-3" style={{ backgroundColor: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-subtle)" }}>
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <CalendarDays size={11} style={{ color: "var(--dm-text-tertiary)" }} />
+                      <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>7 dias</p>
+                    </div>
+                    <p className="text-xl font-bold tabular-nums" style={{ color: pos ? "var(--dm-value-positive)" : "var(--dm-value-negative)" }}>
+                      {pos ? "+" : ""}{formatCompact(v)}
+                    </p>
+                  </div>
+                );
+              })()}
+
+              {/* Mês */}
+              {(() => {
+                const v = data.followersGrowthMonth;
+                const pos = v >= 0;
+                return (
+                  <div className="rounded-xl p-3" style={{ backgroundColor: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-subtle)" }}>
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <CalendarDays size={11} style={{ color: "var(--dm-text-tertiary)" }} />
+                      <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Período</p>
+                    </div>
+                    <p className="text-xl font-bold tabular-nums" style={{ color: pos ? "var(--dm-value-positive)" : "var(--dm-value-negative)" }}>
+                      {pos ? "+" : ""}{formatCompact(v)}
+                    </p>
+                  </div>
+                );
+              })()}
+            </div>
           </div>
-        );
-      })()}
+
+          {/* Row 2 — Engajamento */}
+          <div>
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-widest"
+              style={{ color: "var(--dm-text-tertiary)" }}>Engajamento</p>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="rounded-xl p-3" style={{ backgroundColor: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-subtle)" }}>
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Activity size={11} style={{ color: "#E1306C" }} />
+                  <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Taxa de Engaj.</p>
+                </div>
+                <p className="text-xl font-bold tabular-nums" style={{ color: "var(--dm-text-primary)" }}>
+                  {data.engagementRate.toFixed(2)}%
+                </p>
+              </div>
+              <div className="rounded-xl p-3" style={{ backgroundColor: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-subtle)" }}>
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Heart size={11} style={{ color: "#E1306C" }} />
+                  <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Média Curtidas</p>
+                </div>
+                <p className="text-xl font-bold tabular-nums" style={{ color: "var(--dm-text-primary)" }}>
+                  {formatCompact(data.avgLikes)}
+                </p>
+              </div>
+              <div className="rounded-xl p-3" style={{ backgroundColor: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-subtle)" }}>
+                <div className="flex items-center gap-1.5 mb-1">
+                  <MessageCircle size={11} style={{ color: "var(--dm-text-secondary)" }} />
+                  <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Média Comentários</p>
+                </div>
+                <p className="text-xl font-bold tabular-nums" style={{ color: "var(--dm-text-primary)" }}>
+                  {formatCompact(data.avgComments)}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Row 3 — Alcance / Impressões / Perfil */}
+          <div>
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-widest"
+              style={{ color: "var(--dm-text-tertiary)" }}>Visibilidade no período</p>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { label: "Alcance",         value: formatCompact(data.reachTotal),        icon: Zap,    color: "var(--dm-brand-500)" },
+                { label: "Impressões",      value: formatCompact(data.impressionsTotal),  icon: Target, color: "var(--dm-text-secondary)" },
+                { label: "Visitas Perfil",  value: formatCompact(data.profileViewsTotal), icon: Users,  color: "var(--dm-text-secondary)" },
+              ].map(({ label, value, icon: Icon, color }) => (
+                <div key={label} className="rounded-xl p-3" style={{ backgroundColor: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-subtle)" }}>
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <Icon size={11} style={{ color }} />
+                    <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>{label}</p>
+                  </div>
+                  <p className="text-xl font-bold tabular-nums" style={{ color: "var(--dm-text-primary)" }}>{value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Chart — followers over time */}
+          {data.followersSeriesData.length > 1 && (
+            <div>
+              <p className="mb-2 text-[10px] font-bold uppercase tracking-widest"
+                style={{ color: "var(--dm-text-tertiary)" }}>Crescimento de seguidores</p>
+              <div className="rounded-xl p-3" style={{ backgroundColor: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-subtle)" }}>
+                <ResponsiveContainer width="100%" height={120}>
+                  <AreaChart data={data.followersSeriesData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="igFollowersGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%"  stopColor="#E1306C" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#E1306C" stopOpacity={0}   />
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="x" hide />
+                    <YAxis hide domain={["auto", "auto"]} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: "var(--dm-bg-surface)", border: "1px solid var(--dm-border-default)", borderRadius: 8, fontSize: 11 }}
+                      labelFormatter={(v) => new Date(v as number).toLocaleDateString("pt-BR")}
+                      formatter={(v) => [(Number(v)).toLocaleString("pt-BR"), "Seguidores"]}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="y"
+                      stroke="#E1306C"
+                      strokeWidth={2}
+                      fill="url(#igFollowersGrad)"
+                      dot={false}
+                      activeDot={{ r: 4, fill: "#E1306C" }}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

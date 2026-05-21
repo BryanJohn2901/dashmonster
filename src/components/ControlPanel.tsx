@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { toast } from "@/hooks/useToast";
 import { useTheme } from "next-themes";
 import {
@@ -31,10 +31,6 @@ import {
   type MetaAdAccount,
 } from "@/utils/metaApi";
 import {
-  loadInstagramCredentials,
-  saveInstagramCredentials,
-  fetchInstagramAccounts,
-  type InstagramAccount,
 } from "@/utils/instagramApi";
 import type { MetaSyncResult } from "@/utils/supabaseCampaigns";
 
@@ -67,6 +63,8 @@ interface ControlPanelProps {
   onClearData?:  () => Promise<void>;
   /** Após salvar vínculo de conta no Painel: fecha o drawer e o Dashboard aplica categoria/grupo/campanhas. */
   onPainelSaveNavigate?: (detail: { entry: UserAccountEntry; categorySlug: string; isCustom: boolean }) => void;
+  /** Quando true, renderiza inline (sem backdrop/drawer) — para usar na página Minha Conta. */
+  inline?: boolean;
 }
 
 // ─── AddEntryForm ─────────────────────────────────────────────────────────────
@@ -1060,15 +1058,6 @@ function TabIntegrations({ onSyncNow }: { onSyncNow?: () => void }) {
   const [testMsg,  setTestMsg]  = useState("");
   const [saved,    setSaved]    = useState(false);
 
-  // ── Instagram state ──
-  const [igToken,   setIgToken]   = useState(() => loadInstagramCredentials().accessToken ?? "");
-  const [igVisible, setIgVisible] = useState(false);
-  const [igTesting, setIgTesting] = useState(false);
-  const [igTestOk,  setIgTestOk]  = useState<boolean | null>(null);
-  const [igTestMsg, setIgTestMsg] = useState("");
-  const [igSaved,   setIgSaved]   = useState(false);
-  const [igAccounts, setIgAccounts] = useState<InstagramAccount[]>([]);
-
   const handleSave = () => {
     saveMetaCredentials({ accessToken: token.trim() });
     setSaved(true);
@@ -1092,36 +1081,6 @@ function TabIntegrations({ onSyncNow }: { onSyncNow?: () => void }) {
       setTestOk(false);
       setTestMsg(e instanceof Error ? e.message : "Falha ao testar token.");
     } finally { setTesting(false); }
-  };
-
-  const handleIgSave = () => {
-    saveInstagramCredentials({ accessToken: igToken.trim() });
-    setIgSaved(true);
-    setTimeout(() => setIgSaved(false), 2000);
-  };
-
-  const handleIgTest = async () => {
-    const t = igToken.trim();
-    if (!t) return;
-    setIgTesting(true);
-    setIgTestOk(null);
-    setIgTestMsg("");
-    setIgAccounts([]);
-    try {
-      const accounts = await fetchInstagramAccounts(t);
-      setIgTestOk(true);
-      setIgAccounts(accounts);
-      setIgTestMsg(
-        accounts.length > 0
-          ? `${accounts.length} conta${accounts.length !== 1 ? "s" : ""} encontrada${accounts.length !== 1 ? "s" : ""}.`
-          : "Token válido, mas nenhuma conta Instagram Business vinculada.",
-      );
-    } catch (e) {
-      setIgTestOk(false);
-      setIgTestMsg(e instanceof Error ? e.message : "Falha ao testar token.");
-    } finally {
-      setIgTesting(false);
-    }
   };
 
   return (
@@ -1190,86 +1149,6 @@ function TabIntegrations({ onSyncNow }: { onSyncNow?: () => void }) {
         </p>
       </section>
 
-      {/* Divider */}
-      <div className="h-px" style={{ backgroundColor: "var(--dm-border-subtle)" }} />
-
-      {/* Instagram */}
-      <section>
-        <div className="mb-3 flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg"
-            style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
-            <AtSign size={15} style={{ color: "#E1306C" }} />
-          </div>
-          <div>
-            <p className="text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>Instagram</p>
-            <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>Token via Instagram Graph API</p>
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <div className="relative">
-            <input
-              type={igVisible ? "text" : "password"}
-              value={igToken}
-              onChange={e => setIgToken(e.target.value)}
-              placeholder="EAAxxxxxxxxx…"
-              className="h-9 w-full rounded-lg border pr-9 pl-3 text-xs font-mono outline-none focus:ring-1"
-              style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)",
-                color: "var(--dm-text-primary)" }}
-            />
-            <button type="button" onClick={() => setIgVisible(v => !v)}
-              className="absolute right-2 top-1/2 -translate-y-1/2"
-              style={{ color: "var(--dm-text-tertiary)" }}>
-              {igVisible ? <EyeOff size={13} /> : <Eye size={13} />}
-            </button>
-          </div>
-
-          {igTestOk !== null && (
-            <div className={`flex flex-col gap-1 rounded-lg px-3 py-2 text-[11px] font-medium ${
-              igTestOk ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400"
-                       : "bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400"
-            }`}>
-              <div className="flex items-center gap-1.5">
-                {igTestOk ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
-                {igTestMsg}
-              </div>
-              {igAccounts.length > 0 && (
-                <ul className="ml-4 mt-1 space-y-0.5">
-                  {igAccounts.map((acc) => (
-                    <li key={acc.id} className="flex items-center gap-1">
-                      <AtSign size={10} />
-                      <span className="font-mono">{acc.username}</span>
-                      <span className="ml-auto opacity-60">{acc.followersCount.toLocaleString("pt-BR")} seguidores</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
-
-          <div className="flex gap-2">
-            <button type="button" onClick={() => void handleIgTest()}
-              disabled={!igToken.trim() || igTesting}
-              className="flex h-8 flex-1 items-center justify-center gap-1 rounded-lg border text-xs font-semibold transition disabled:opacity-50"
-              style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>
-              {igTesting ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
-              Testar
-            </button>
-            <button type="button" onClick={handleIgSave}
-              className="flex h-8 flex-1 items-center justify-center gap-1 rounded-lg text-xs font-bold text-white transition"
-              style={{ backgroundColor: igSaved ? "var(--dm-success-text)" : "#E1306C" }}>
-              {igSaved ? <CheckCircle2 size={11} /> : <Save size={11} />}
-              {igSaved ? "Salvo!" : "Salvar token"}
-            </button>
-          </div>
-        </div>
-
-        <p className="mt-2 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
-          💡 Use o mesmo token do Meta ou um <strong>Page Access Token</strong> com permissões
-          <code className="mx-0.5 rounded px-0.5" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>instagram_basic</code> e
-          <code className="mx-0.5 rounded px-0.5" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>instagram_manage_insights</code>.
-        </p>
-      </section>
     </div>
   );
 }
@@ -1540,19 +1419,20 @@ export function ControlPanel({
   categories, accountEntries,
   onCategoriesChange, onEntriesChange,
   onUpdateProfile, onSignOut,
-  syncStatus, campaignCount, dataSource,   onRefresh, onClearData,
+  syncStatus, campaignCount, dataSource, onRefresh, onClearData,
   onPainelSaveNavigate,
   openingTab,
+  inline = false,
 }: ControlPanelProps) {
   const [tab, setTab] = useState<CPTab>("accounts");
   const prevIsOpen = useRef(false);
 
   useEffect(() => {
-    if (isOpen && !prevIsOpen.current && openingTab) {
+    if ((isOpen || inline) && !prevIsOpen.current && openingTab) {
       setTab(openingTab);
     }
     prevIsOpen.current = isOpen;
-  }, [isOpen, openingTab]);
+  }, [isOpen, inline, openingTab]);
 
   const tabCls = useCallback((t: CPTab) =>
     `px-3 py-2 text-xs font-semibold rounded-lg transition ${
@@ -1561,6 +1441,130 @@ export function ControlPanel({
         : "text-[var(--dm-text-tertiary)] hover:text-[var(--dm-text-secondary)]"
     }`, [tab]);
 
+  // ── Shared tab content ──────────────────────────────────────────────────────
+  const tabContent = (
+    <>
+      {tab === "accounts" && (
+        <TabAccounts
+          categories={categories}
+          accountEntries={accountEntries}
+          onCategoriesChange={onCategoriesChange}
+          onEntriesChange={onEntriesChange}
+          onPainelSaveNavigate={onPainelSaveNavigate}
+        />
+      )}
+      {tab === "integrations" && (
+        <TabIntegrations
+          onSyncNow={() => {
+            setTab("sync");
+            void onRefresh?.();
+          }}
+        />
+      )}
+      {tab === "sync" && (
+        <TabSync
+          syncStatus={syncStatus}
+          campaignCount={campaignCount}
+          dataSource={dataSource}
+          onRefresh={onRefresh}
+          onClearData={onClearData}
+        />
+      )}
+      {tab === "profile" && (
+        <TabProfile
+          name={userName}
+          email={userEmail}
+          onUpdateProfile={onUpdateProfile}
+          onSignOut={onSignOut}
+        />
+      )}
+    </>
+  );
+
+  // ── Inline / bento mode (página Minha Conta) ────────────────────────────────
+  if (inline) {
+    const BRAND_GRAD = "linear-gradient(135deg,#6366C8 0%,#313491 100%)";
+
+    const BentoCard = ({
+      icon: BIcon, title, subtitle, children,
+    }: { icon: React.ElementType; title: string; subtitle: string; children: React.ReactNode }) => (
+      <div
+        className="overflow-hidden rounded-2xl border shadow-sm"
+        style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}
+      >
+        <div className="flex items-center gap-3 border-b px-5 py-4" style={{ borderColor: "var(--dm-border-default)" }}>
+          <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl" style={{ background: BRAND_GRAD }}>
+            <BIcon size={14} color="#fff" />
+          </span>
+          <div>
+            <p className="text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>{title}</p>
+            <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>{subtitle}</p>
+          </div>
+        </div>
+        <div className="p-5">{children}</div>
+      </div>
+    );
+
+    return (
+      <div className="grid gap-4 lg:grid-cols-12">
+
+        {/* ── Contas & Categorias — large left block ── */}
+        <div className="col-span-12 overflow-hidden rounded-2xl border shadow-sm lg:col-span-7"
+          style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
+          <div className="flex items-center gap-3 border-b px-5 py-4" style={{ borderColor: "var(--dm-border-default)" }}>
+            <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl" style={{ background: BRAND_GRAD }}>
+              <Database size={14} color="#fff" />
+            </span>
+            <div>
+              <p className="text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>Contas & Categorias</p>
+              <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                {accountEntries.length} conta{accountEntries.length !== 1 ? "s" : ""} vinculada{accountEntries.length !== 1 ? "s" : ""}
+              </p>
+            </div>
+          </div>
+          <div className="overflow-y-auto p-5" style={{ maxHeight: 560 }}>
+            <TabAccounts
+              categories={categories}
+              accountEntries={accountEntries}
+              onCategoriesChange={onCategoriesChange}
+              onEntriesChange={onEntriesChange}
+              onPainelSaveNavigate={onPainelSaveNavigate}
+            />
+          </div>
+        </div>
+
+        {/* ── Right column — stacked cards ── */}
+        <div className="col-span-12 flex flex-col gap-4 lg:col-span-5">
+
+          <BentoCard icon={Link2} title="Integrações" subtitle="Meta Ads · CSV · Google Sheets">
+            <TabIntegrations onSyncNow={() => { void onRefresh?.(); }} />
+          </BentoCard>
+
+          <BentoCard icon={Activity} title="Sincronização" subtitle="Status e controle de dados">
+            <TabSync
+              syncStatus={syncStatus}
+              campaignCount={campaignCount}
+              dataSource={dataSource}
+              onRefresh={onRefresh}
+              onClearData={onClearData}
+            />
+          </BentoCard>
+
+          <BentoCard icon={User} title="Perfil" subtitle="Conta e preferências">
+            <TabProfile
+              name={userName}
+              email={userEmail}
+              onUpdateProfile={onUpdateProfile}
+              onSignOut={onSignOut}
+            />
+          </BentoCard>
+
+        </div>
+      </div>
+    );
+  }
+
+  // ── Drawer mode (padrão) ────────────────────────────────────────────────────
   if (!isOpen) return null;
 
   return (
@@ -1608,42 +1612,7 @@ export function ControlPanel({
         </div>
 
         {/* Scrollable content */}
-        <div className="flex-1 overflow-y-auto p-5">
-          {tab === "accounts" && (
-            <TabAccounts
-              categories={categories}
-              accountEntries={accountEntries}
-              onCategoriesChange={onCategoriesChange}
-              onEntriesChange={onEntriesChange}
-              onPainelSaveNavigate={onPainelSaveNavigate}
-            />
-          )}
-          {tab === "integrations" && (
-            <TabIntegrations
-              onSyncNow={() => {
-                setTab("sync");
-                void onRefresh?.();
-              }}
-            />
-          )}
-          {tab === "sync" && (
-            <TabSync
-              syncStatus={syncStatus}
-              campaignCount={campaignCount}
-              dataSource={dataSource}
-              onRefresh={onRefresh}
-              onClearData={onClearData}
-            />
-          )}
-          {tab === "profile" && (
-            <TabProfile
-              name={userName}
-              email={userEmail}
-              onUpdateProfile={onUpdateProfile}
-              onSignOut={onSignOut}
-            />
-          )}
-        </div>
+        <div className="flex-1 overflow-y-auto p-5">{tabContent}</div>
       </div>
 
       <style>{`
