@@ -4,7 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "re
 import { ALL_METRIC_IDS, METRIC_LABELS, useMetricVisibility } from "@/hooks/useMetricVisibility";
 import {
   Activity, BadgeDollarSign, BarChart2, BookOpen, CalendarDays,
-  CheckCircle2, ChevronDown, ChevronUp, CircleDollarSign, Dumbbell, FileText,
+  CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CircleDollarSign, Dumbbell, FileText,
   FileUp, Filter, Flag, GraduationCap, Home, ImageIcon, Link2, Loader2, LogOut, Menu, Moon,
   MousePointerClick, Package, Pencil, Plus, Repeat, RotateCcw, Settings2, SlidersHorizontal, Sun,
   Target, Trash2, TrendingUp, Trophy, Upload, UserRound, Users, Wallet, X, XCircle, Zap,
@@ -1001,6 +1001,7 @@ interface CampaignPanelProps {
   onClearCampaignFilter: () => void;
   isFilterExplicit: boolean;
   hasActiveFilters: boolean;
+  onCollapse?: () => void;
 }
 
 function CampaignPanel({
@@ -1009,7 +1010,7 @@ function CampaignPanel({
   groups, customSections, selectedCampaign, campaignsByGroup, checkedCampaignIds, sortBy,
   onSelectGroup, onSelectTurma, onSelectCampaign, onToggleActive,
   onDateFrom, onDateTo, onSearch, onClearFilters, onSortBy, onCheckedCampaignIds,
-  onClearCampaignFilter, isFilterExplicit, hasActiveFilters,
+  onClearCampaignFilter, isFilterExplicit, hasActiveFilters, onCollapse,
 }: CampaignPanelProps) {
   const activeCount = Object.values(activeCampaigns).filter(Boolean).length;
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -1048,14 +1049,27 @@ function CampaignPanel({
   return (
     <div className="flex h-full flex-col">
       {/* Header — curso vs filtros */}
-      <div className="flex min-h-12 flex-shrink-0 flex-col justify-center gap-0.5 border-b px-4 py-2" style={{ borderColor: "var(--dm-border-default)" }}>
-        <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>
-          {showCourseGroups ? "Grupos e campanhas" : "Filtros"}
-        </p>
-        {activeCount > 0 && showCourseGroups && (
-          <span className="mt-1 w-fit rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ backgroundColor: "var(--dm-brand-50)", color: "var(--dm-brand-500)" }}>
-            {activeCount} curso{activeCount !== 1 ? "s" : ""} em destaque
-          </span>
+      <div className="flex min-h-12 flex-shrink-0 items-center justify-between gap-2 border-b px-4 py-2" style={{ borderColor: "var(--dm-border-default)" }}>
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>
+            {showCourseGroups ? "Grupos e campanhas" : "Filtros"}
+          </p>
+          {activeCount > 0 && showCourseGroups && (
+            <span className="w-fit rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ backgroundColor: "var(--dm-brand-50)", color: "var(--dm-brand-500)" }}>
+              {activeCount} curso{activeCount !== 1 ? "s" : ""} em destaque
+            </span>
+          )}
+        </div>
+        {onCollapse && (
+          <button
+            type="button"
+            onClick={onCollapse}
+            title="Recolher painel"
+            className="hidden lg:flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md border transition hover:bg-[var(--dm-bg-elevated)]"
+            style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-tertiary)" }}
+          >
+            <ChevronRight size={12} />
+          </button>
         )}
       </div>
 
@@ -1101,7 +1115,7 @@ function CampaignPanel({
                 tabIndex={0}
                 onClick={() => onSelectGroup(isSelected ? "all" : group.id)}
                 onKeyDown={(e) => e.key === "Enter" && onSelectGroup(isSelected ? "all" : group.id)}
-                className="flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left transition"
+                className="flex w-full cursor-pointer items-center gap-3 px-4 py-2 text-left transition"
                 style={{
                   backgroundColor: isSelected ? "var(--dm-brand-50)" : undefined,
                   borderRight: isSelected ? "2px solid var(--dm-brand-400)" : "2px solid transparent",
@@ -1225,7 +1239,7 @@ function CampaignPanel({
                             </button>
                           )}
                         </div>
-                        <div className="max-h-44 overflow-y-auto rounded-lg border" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
+                        <div className="max-h-52 overflow-y-auto rounded-lg border" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
                           {visibleCamps.length === 0 && (
                             <p className="px-2 py-2 text-[10px] italic" style={{ color: "var(--dm-text-tertiary)" }}>
                               Nenhuma campanha encontrada.
@@ -1250,7 +1264,7 @@ function CampaignPanel({
                                 />
                                 <span className="flex-1 truncate text-[11px] font-medium" style={{ color: "var(--dm-text-secondary)" }} title={camp.name}>
                                   {camp.status !== "ACTIVE" && <span className="mr-0.5 text-amber-400">◐</span>}
-                                  {camp.name.length > 28 ? camp.name.slice(0, 28) + "…" : camp.name}
+                                  {camp.name}
                                 </span>
                               </label>
                             );
@@ -1454,6 +1468,8 @@ export function Dashboard({
   };
   const [showMobileNav, setShowMobileNav]   = useState(false);
   const [showMobilePanel, setShowMobilePanel] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [rightCollapsed, setRightCollapsed]     = useState(false);
 
   const [sortBy, setSortBy] = useState<SortBy>("date-desc");
   const [checkedCampaignIds, setCheckedCampaignIds] = useState<string[]>([]);
@@ -1822,25 +1838,24 @@ export function Dashboard({
   };
 
   const navContent = (
-    <nav className="flex-1 overflow-y-auto px-3 py-4">
-      <p className="mb-3 px-2 text-[10px] leading-snug" style={{ color: "var(--dm-text-tertiary)" }}>
-        Escolha uma seção
-      </p>
+    <nav className={`flex-1 overflow-y-auto py-4 ${sidebarCollapsed ? "px-1" : "px-3"}`}>
+      {!sidebarCollapsed && (
+        <p className="mb-3 px-2 text-[10px] leading-snug" style={{ color: "var(--dm-text-tertiary)" }}>
+          Escolha uma seção
+        </p>
+      )}
       <ul className="space-y-0.5">
         {MAIN_TABS.map(({ id, label, icon: Icon }) => (
           <li key={id}>
             <button
               onClick={() => { setMainTab(id); setShowMobileNav(false); }}
-              className="relative flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-150"
+              title={sidebarCollapsed ? label : undefined}
+              className={`relative flex w-full items-center rounded-xl text-sm font-medium transition-all duration-150 ${
+                sidebarCollapsed ? "justify-center px-0 py-3" : "gap-3 px-3 py-2.5"
+              }`}
               style={mainTab === id
-                ? {
-                    backgroundColor: "var(--dm-nav-active-bg)",
-                    color: "var(--dm-nav-active-text)",
-                    fontWeight: 700,
-                  }
-                : {
-                    color: "var(--dm-nav-default-text)",
-                  }
+                ? { backgroundColor: "var(--dm-nav-active-bg)", color: "var(--dm-nav-active-text)", fontWeight: 700 }
+                : { color: "var(--dm-nav-default-text)" }
               }
               onMouseEnter={(e) => {
                 if (mainTab !== id) {
@@ -1855,11 +1870,11 @@ export function Dashboard({
                 }
               }}
             >
-              {mainTab === id && (
+              {mainTab === id && !sidebarCollapsed && (
                 <span className="absolute right-0 top-1/2 h-9 w-1 -translate-y-1/2 rounded-l-full bg-[var(--dm-brand-500)]" />
               )}
-              <Icon size={16} className="flex-shrink-0" />
-              <span className="truncate">{label}</span>
+              <Icon size={16} className="relative flex-shrink-0" />
+              {!sidebarCollapsed && <span className="truncate">{label}</span>}
             </button>
           </li>
         ))}
@@ -1890,6 +1905,7 @@ export function Dashboard({
     onClearCampaignFilter: handleClearCampaignFilter,
     isFilterExplicit,
     hasActiveFilters,
+    onCollapse: () => setRightCollapsed(true),
   };
 
   return (
@@ -1910,72 +1926,94 @@ export function Dashboard({
 
       {/* ── Left sidebar ── */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-[86vw] max-w-[240px] flex-col transition-transform duration-300 lg:relative lg:translate-x-0 lg:z-auto ${
+        className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-white dark:bg-[#0F1020] shadow-horizon transition-all duration-300 w-[86vw] max-w-[240px] lg:relative lg:translate-x-0 lg:z-auto lg:max-w-none lg:flex-shrink-0 ${
           showMobileNav ? "translate-x-0 shadow-2xl" : "-translate-x-full"
-        } lg:flex lg:w-[220px] lg:flex-shrink-0 bg-white dark:bg-[#0F1020] shadow-horizon`}
+        } ${sidebarCollapsed ? "lg:w-14" : "lg:w-[220px]"}`}
       >
-        {/* Brand — sem border-b, o divider é separado como no Horizon */}
-        <div className="flex items-center justify-between px-6 pt-10 pb-0">
+        {/* Brand */}
+        <div className={`flex flex-shrink-0 items-center ${sidebarCollapsed ? "justify-center px-2 pt-6 pb-2" : "justify-between px-6 pt-10 pb-0"}`}>
           <button
             type="button"
             onClick={() => { setMainTab("overview"); setShowMobileNav(false); }}
             className="flex items-center gap-2.5 transition hover:opacity-80"
             title="Voltar ao início"
           >
-            <DashMonsterLogo size={28} />
-            <span
-              className="text-[15px] uppercase tracking-wide"
-              style={{ fontFamily: "var(--font-poppins)", fontWeight: 700, color: "var(--dm-text-primary)" }}
+            <DashMonsterLogo size={sidebarCollapsed ? 22 : 28} />
+            {!sidebarCollapsed && (
+              <span
+                className="text-[15px] uppercase tracking-wide"
+                style={{ fontFamily: "var(--font-poppins)", fontWeight: 700, color: "var(--dm-text-primary)" }}
+              >
+                Dash<span style={{ fontWeight: 400 }}>Monster</span>
+              </span>
+            )}
+          </button>
+          {!sidebarCollapsed && (
+            <button
+              onClick={() => setShowMobileNav(false)}
+              className="flex h-7 w-7 items-center justify-center rounded-lg transition lg:hidden"
+              style={{ color: "var(--dm-text-tertiary)" }}
             >
-              Dash<span style={{ fontWeight: 400 }}>Monster</span>
-            </span>
-          </button>
-          <button
-            onClick={() => setShowMobileNav(false)}
-            className="flex h-7 w-7 items-center justify-center rounded-lg transition lg:hidden"
-            style={{ color: "var(--dm-text-tertiary)" }}
-          >
-            <X size={14} />
-          </button>
+              <X size={14} />
+            </button>
+          )}
         </div>
 
-        {/* Horizon divider — `mt-[58px] mb-7 h-px` */}
+        {/* Horizon divider */}
         <div className="mx-0 mt-6 mb-4 h-px" style={{ background: "var(--dm-border-default)" }} />
 
         {navContent}
 
         {/* Footer — status de dados compacto */}
-        <div className="mx-3 mb-5 mt-2">
-          <div
-            className="rounded-[16px] px-4 py-3"
-            style={{ background: "linear-gradient(135deg, #6366C8 0%, #313491 100%)" }}
-          >
-            {/* Linha 1: dot + status */}
-            <div className="flex items-center gap-2 mb-1.5">
-              <span
-                className="h-2 w-2 flex-shrink-0 rounded-full"
-                style={{ background: campaigns.length > 0 ? "#05CD99" : "rgba(255,255,255,0.35)" }}
-              />
-              <span className="text-[12px] font-bold text-white">
-                {campaigns.length > 0 ? "Dados carregados" : "Sem dados"}
-              </span>
-            </div>
-            {/* Linha 2: contagem */}
-            <p className="text-[11px] leading-snug pl-4" style={{ color: "rgba(255,255,255,0.80)" }}>
-              {campaigns.length > 0
-                ? `${campaigns.length.toLocaleString("pt-BR")} linhas`
-                : "Conecte uma fonte pelo painel ⚙️"}
-            </p>
-            {/* Linha 3: fonte */}
-            {dataSourcePill && (
-              <p className="mt-1 text-[11px] pl-4 truncate" style={{ color: "rgba(255,255,255,0.65)" }}
-                title={dataSourcePill.subtitle || dataSourcePill.title}>
-                {dataSourcePill.title}
-                {dataSourcePill.subtitle ? ` · ${dataSourcePill.subtitle}` : ""}
-              </p>
-            )}
+        {sidebarCollapsed ? (
+          <div className="mb-3 flex flex-col items-center">
+            <span
+              className="h-2.5 w-2.5 rounded-full"
+              style={{ background: campaigns.length > 0 ? "#05CD99" : "var(--dm-border-strong)" }}
+              title={campaigns.length > 0 ? `${campaigns.length.toLocaleString("pt-BR")} linhas` : "Sem dados"}
+            />
           </div>
-        </div>
+        ) : (
+          <div className="mx-3 mb-4 mt-2">
+            <div
+              className="rounded-[16px] px-4 py-3"
+              style={{ background: "linear-gradient(135deg, #6366C8 0%, #313491 100%)" }}
+            >
+              <div className="flex items-center gap-2 mb-1.5">
+                <span
+                  className="h-2 w-2 flex-shrink-0 rounded-full"
+                  style={{ background: campaigns.length > 0 ? "#05CD99" : "rgba(255,255,255,0.35)" }}
+                />
+                <span className="text-[12px] font-bold text-white">
+                  {campaigns.length > 0 ? "Dados carregados" : "Sem dados"}
+                </span>
+              </div>
+              <p className="text-[11px] leading-snug pl-4" style={{ color: "rgba(255,255,255,0.80)" }}>
+                {campaigns.length > 0
+                  ? `${campaigns.length.toLocaleString("pt-BR")} linhas`
+                  : "Conecte uma fonte pelo painel ⚙️"}
+              </p>
+              {dataSourcePill && (
+                <p className="mt-1 text-[11px] pl-4 truncate" style={{ color: "rgba(255,255,255,0.65)" }}
+                  title={dataSourcePill.subtitle || dataSourcePill.title}>
+                  {dataSourcePill.title}
+                  {dataSourcePill.subtitle ? ` · ${dataSourcePill.subtitle}` : ""}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Collapse toggle — desktop only */}
+        <button
+          type="button"
+          onClick={() => setSidebarCollapsed((v) => !v)}
+          className="hidden lg:flex items-center justify-center h-7 w-7 mx-auto mb-4 rounded-lg border transition hover:bg-[var(--dm-bg-elevated)]"
+          style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-tertiary)" }}
+          title={sidebarCollapsed ? "Expandir sidebar" : "Recolher sidebar"}
+        >
+          {sidebarCollapsed ? <ChevronRight size={13} /> : <ChevronLeft size={13} />}
+        </button>
       </aside>
 
       {/* ── Center ── */}
@@ -2677,8 +2715,30 @@ export function Dashboard({
 
       {/* ── Right sidebar — desktop ── */}
       {showRightPanel && (
-        <aside className="relative z-20 hidden w-[280px] flex-shrink-0 border-l border-[var(--dm-border-default)] bg-white dark:bg-[#0F1020] lg:flex lg:flex-col">
-          <CampaignPanel {...campaignPanelProps} />
+        <aside
+          className={`relative z-20 hidden flex-shrink-0 border-l border-[var(--dm-border-default)] bg-white dark:bg-[#0F1020] transition-all duration-300 lg:flex lg:flex-col ${
+            rightCollapsed ? "w-10" : "w-[280px]"
+          }`}
+        >
+          {rightCollapsed ? (
+            <button
+              type="button"
+              onClick={() => setRightCollapsed(false)}
+              className="flex h-full w-full flex-col items-center justify-center gap-2 transition hover:bg-[var(--dm-bg-elevated)]"
+              title="Expandir painel de filtros"
+              style={{ color: "var(--dm-text-tertiary)" }}
+            >
+              <ChevronLeft size={14} />
+              <span
+                className="text-[9px] font-bold uppercase tracking-widest"
+                style={{ color: "var(--dm-text-tertiary)", writingMode: "vertical-rl", transform: "rotate(180deg)" }}
+              >
+                Filtros
+              </span>
+            </button>
+          ) : (
+            <CampaignPanel {...campaignPanelProps} />
+          )}
         </aside>
       )}
 
