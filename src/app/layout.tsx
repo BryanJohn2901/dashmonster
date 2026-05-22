@@ -7,7 +7,7 @@ import { Toaster } from "@/components/Toaster";
 const dmSans = DM_Sans({
   variable: "--font-inter",
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  weight: ["400", "500", "600", "700", "800", "900"],
 });
 
 const geistMono = Geist_Mono({
@@ -39,6 +39,9 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
         <ThemeProvider>
+          {/* Granulado global — opacity 0.035, quase imperceptível */}
+          <div className="app-grain" aria-hidden="true" />
+          <div className="app-grain-glow" aria-hidden="true" />
           {children}
           <Toaster />
         </ThemeProvider>

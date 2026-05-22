@@ -6,7 +6,7 @@ import {
   Activity, BadgeDollarSign, BarChart2, BookOpen, CalendarDays,
   CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CircleDollarSign, Dumbbell, FileText,
   FileUp, Filter, Flag, GraduationCap, Home, ImageIcon, Link2, Loader2, LogOut, Menu, Moon,
-  MousePointerClick, Package, Pencil, Plus, Repeat, RotateCcw, Settings2, SlidersHorizontal, Sun,
+  MousePointerClick, Package, Pencil, Plus, Repeat, RotateCcw, Search, Settings2, SlidersHorizontal, Sun,
   Target, Trash2, TrendingUp, Trophy, Upload, UserRound, Users, Wallet, X, XCircle, Zap,
   LayoutDashboard, History, LineChart, Sparkles, Database, Dna, Weight, HeartPulse,
   Medal, PersonStanding, Flame, BookText, MonitorSmartphone, Ticket, Library, VenetianMask
@@ -38,12 +38,14 @@ import { CampaignTable } from "@/components/CampaignTable";
 import { useGoalsStore, type Goals } from "@/hooks/useGoalsStore";
 import { CampaignAnalysis } from "@/components/CampaignAnalysis";
 import { HistoricalView } from "@/components/HistoricalView";
+import { HISTORICAL_KIND_LABELS, type HistoricalKind } from "@/types/historical";
 import { BestCreatives } from "@/components/BestCreatives";
 import { ProfileAnalysis } from "@/components/ProfileAnalysis";
 import { ProductBase } from "@/components/products/ProductBase";
 import { DashMonsterLogo } from "@/components/DashMonsterLogo";
 import { TabLanding } from "@/components/TabLanding";
 import { PixelFunnelSection } from "@/components/PixelFunnelSection";
+import { MyAccount } from "@/components/MyAccount";
 import { toast } from "@/hooks/useToast";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -65,6 +67,8 @@ interface DashboardProps {
   onImportCsv: (file: File) => Promise<void>;
   onImportUrl: (url: string) => Promise<void>;
   onImportMeta?: (accounts: Record<string, string>, dateFrom: string, dateTo: string, campaignFilter?: Record<string, string[]>) => Promise<void>;
+  onCategoriesChange?: (cats: UserCategory[]) => void;
+  onEntriesChange?:    (entries: UserAccountEntry[]) => void;
   onRefresh?: () => Promise<void>;
   onClearData?: () => Promise<void>;
   onSignOut: () => Promise<void>;
@@ -82,7 +86,7 @@ function formatDataSourcePill(ds: DataSource | null | undefined): { title: strin
   return { title: titles[ds.type], subtitle: ds.label };
 }
 
-type MainTab = "overview" | "history" | "profiles" | "products";
+type MainTab = "overview" | "history" | "profiles" | "products" | "myaccount";
 type DashSubTab = "overview" | "analysis" | "creatives";
 
 const DASH_SUB_TABS: Array<{ id: DashSubTab; label: string; icon: React.ElementType }> = [
@@ -102,13 +106,36 @@ const SORT_LABELS: Record<SortBy, string> = {
   "ctr-desc":    "Maior CTR",
 };
 
+// ─── History sub-tabs (sidebar) ───────────────────────────────────────────────
+
+const SIDEBAR_HISTORY_TABS: Array<{ id: HistoricalKind; icon: React.ElementType }> = [
+  { id: "lancamento", icon: Wallet },
+  { id: "evento",     icon: CalendarDays },
+  { id: "perpetuo",   icon: Repeat },
+  { id: "instagram",  icon: UserRound },
+];
+
+// ─── MyAccount sub-tabs (sidebar) ─────────────────────────────────────────────
+
+type MyAccountTabId = "profile"|"accounts"|"integrations"|"sync"|"privacy"|"notifications"|"personalization";
+const SIDEBAR_ACCOUNT_TABS: Array<{ id: MyAccountTabId; label: string; icon: React.ElementType }> = [
+  { id: "profile",         label: "Meu perfil",     icon: UserRound    },
+  { id: "accounts",        label: "Contas",          icon: Settings2    },
+  { id: "integrations",    label: "Integrações",     icon: Link2        },
+  { id: "sync",            label: "Sincronização",   icon: RotateCcw    },
+  { id: "privacy",         label: "Privacidade",     icon: Zap          },
+  { id: "notifications",   label: "Notificações",    icon: Activity     },
+  { id: "personalization", label: "Personalização",  icon: SlidersHorizontal },
+];
+
 // ─── Nav config ───────────────────────────────────────────────────────────────
 
 const MAIN_TABS: Array<{ id: MainTab; label: string; shortLabel: string; icon: React.ElementType }> = [
-  { id: "overview",  label: "Dashboard",         shortLabel: "Dashboard",    icon: LayoutDashboard },
-  { id: "history",   label: "Histórico",         shortLabel: "Histórico",    icon: History },
-  { id: "profiles",  label: "Perfil de Anunciantes", shortLabel: "Perfil",   icon: Target },
-  { id: "products",  label: "Base de Produtos",  shortLabel: "Produtos",     icon: Database },
+  { id: "overview",   label: "Dashboard",             shortLabel: "Dashboard", icon: LayoutDashboard },
+  { id: "history",    label: "Histórico",             shortLabel: "Histórico", icon: History },
+  { id: "profiles",   label: "Perfil de Anunciantes", shortLabel: "Perfil",    icon: Target },
+  { id: "products",   label: "Base de Produtos",      shortLabel: "Produtos",  icon: Database },
+  { id: "myaccount",  label: "Minha conta",            shortLabel: "Conta",     icon: UserRound },
 ];
 
 // ─── Campaign groups ──────────────────────────────────────────────────────────
@@ -357,6 +384,45 @@ function ThemeToggle() {
       <Sun size={15} className="hidden dark:block" />
       <Moon size={15} className="block dark:hidden" />
     </button>
+  );
+}
+
+/* Sidebar inline theme toggle — dois botões lado a lado (estilo NeuroBank) */
+function SidebarThemeToggle() {
+  const { resolvedTheme, setTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
+  return (
+    <div
+      className="flex items-center gap-0.5 rounded-full p-[3px]"
+      style={{ background: "var(--dm-bg-page)" }}
+    >
+      {/* Moon = dark mode */}
+      <button
+        type="button"
+        onClick={() => setTheme("dark")}
+        className="flex h-[30px] w-[30px] items-center justify-center rounded-full transition-all duration-200"
+        style={isDark
+          ? { background: "var(--dm-primary)", color: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,0.3)" }
+          : { color: "var(--dm-text-tertiary)" }
+        }
+        title="Modo escuro"
+      >
+        <Moon size={14} />
+      </button>
+      {/* Sun = light mode */}
+      <button
+        type="button"
+        onClick={() => setTheme("light")}
+        className="flex h-[30px] w-[30px] items-center justify-center rounded-full transition-all duration-200"
+        style={!isDark
+          ? { background: "var(--dm-primary)", color: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,0.2)" }
+          : { color: "var(--dm-text-tertiary)" }
+        }
+        title="Modo claro"
+      >
+        <Sun size={14} />
+      </button>
+    </div>
   );
 }
 
@@ -935,8 +1001,8 @@ function ImportPopover({
           {/* click-outside backdrop */}
           <div className="fixed inset-0 z-[70]" onClick={() => { setOpenDropdownRow(null); setDropdownRect(null); }} />
           <div
-            className="fixed z-[80] max-h-52 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-800"
-            style={{ top: dropdownRect.top, left: dropdownRect.left, minWidth: Math.max(dropdownRect.width, 240) }}
+            className="fixed z-[80] max-h-52 overflow-y-auto rounded-xl shadow-2xl"
+            style={{ background: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-default)", top: dropdownRect.top, left: dropdownRect.left, minWidth: Math.max(dropdownRect.width, 240) }}
           >
             {metaAccounts.map((acc) => (
               <button
@@ -968,6 +1034,302 @@ function ImportPopover({
         </>
       )}
     </>
+  );
+}
+
+// ─── Context bar (replaces right panel) ──────────────────────────────────────
+
+interface ContextBarProps {
+  selectedGroup:        string;
+  groups:               GroupConfig[];
+  customSections:       CustomSection[];
+  showCourseGroups:     boolean;
+  onSelectGroup:        (id: string) => void;
+  checkedCampaignIds:   string[];
+  campaignsByGroup:     Record<string, CampaignSummary[]>;
+  onCheckedCampaignIds: (ids: string[]) => void;
+  onClearCampaignFilter:() => void;
+  dateFrom:             string;
+  dateTo:               string;
+  onDateFrom:           (v: string) => void;
+  onDateTo:             (v: string) => void;
+  hasActiveFilters:     boolean;
+  onClearFilters:       () => void;
+}
+
+function ContextPill({
+  label, active, isOpen, icon, onClick,
+}: { label: string; active?: boolean; isOpen?: boolean; icon?: React.ReactNode; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-semibold transition-all"
+      style={{
+        background:   active || isOpen ? "rgba(49,52,145,0.12)" : "var(--dm-bg-elevated)",
+        borderColor:  active || isOpen ? "rgba(91,96,210,0.35)"  : "var(--dm-border-default)",
+        color:        active || isOpen ? "var(--dm-primary)"      : "var(--dm-text-secondary)",
+      }}
+    >
+      {icon}
+      <span className="max-w-[160px] truncate">{label}</span>
+      <ChevronDown size={11} className={`transition-transform ${isOpen ? "rotate-180" : ""}`} />
+    </button>
+  );
+}
+
+function ContextBar({
+  selectedGroup, groups, customSections, showCourseGroups, onSelectGroup,
+  checkedCampaignIds, campaignsByGroup, onCheckedCampaignIds, onClearCampaignFilter,
+  dateFrom, dateTo, onDateFrom, onDateTo, hasActiveFilters, onClearFilters,
+}: ContextBarProps) {
+  const [openPopover, setOpenPopover] = useState<"group" | "campaign" | "period" | null>(null);
+  const barRef = useRef<HTMLDivElement>(null);
+
+  const [pendingFrom, setPendingFrom] = useState(dateFrom);
+  const [pendingTo,   setPendingTo]   = useState(dateTo);
+  useEffect(() => { setPendingFrom(dateFrom); }, [dateFrom]);
+  useEffect(() => { setPendingTo(dateTo); }, [dateTo]);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (barRef.current && !barRef.current.contains(e.target as Node)) setOpenPopover(null);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const toggle = (p: "group" | "campaign" | "period") =>
+    setOpenPopover(prev => prev === p ? null : p);
+
+  const groupLabel = selectedGroup === "all"
+    ? "Todos os grupos"
+    : (groups.find(g => g.id === selectedGroup)?.label ?? selectedGroup);
+
+  const allCampaigns = useMemo(() => Object.values(campaignsByGroup).flat(), [campaignsByGroup]);
+  const [campSearch, setCampSearch] = useState("");
+  const visibleCampaigns = useMemo(() => {
+    const q = campSearch.toLowerCase();
+    return q ? allCampaigns.filter(c => c.name.toLowerCase().includes(q)) : allCampaigns;
+  }, [allCampaigns, campSearch]);
+
+  const campaignLabel = checkedCampaignIds.length === 0
+    ? `${allCampaigns.length} campanhas`
+    : `${checkedCampaignIds.length} / ${allCampaigns.length}`;
+
+  const periodLabel =
+    dateFrom && dateTo   ? `${formatDatePtBr(dateFrom)} — ${formatDatePtBr(dateTo)}`
+    : dateFrom           ? `A partir de ${formatDatePtBr(dateFrom)}`
+    : dateTo             ? `Até ${formatDatePtBr(dateTo)}`
+    : "Todo o período";
+
+  const popoverBase: React.CSSProperties = {
+    position:    "absolute",
+    top:         "calc(100% + 6px)",
+    zIndex:      50,
+    background:  "var(--dm-bg-surface)",
+    border:      "1px solid var(--dm-border-default)",
+    borderRadius: 16,
+    boxShadow:   "0 8px 32px rgba(0,0,0,0.18)",
+    minWidth:    220,
+  };
+
+  return (
+    <div ref={barRef} className="relative flex flex-wrap items-center gap-2">
+
+      {/* ── Group pill ── */}
+      {showCourseGroups && (
+        <div className="relative">
+          <ContextPill
+            label={groupLabel}
+            active={selectedGroup !== "all"}
+            isOpen={openPopover === "group"}
+            onClick={() => toggle("group")}
+          />
+          {openPopover === "group" && (
+            <div style={{ ...popoverBase, left: 0, maxHeight: 320, overflowY: "auto" }}>
+              <div className="py-1.5 px-1">
+                <button
+                  type="button"
+                  onClick={() => { onSelectGroup("all"); setOpenPopover(null); }}
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[13px] transition"
+                  style={{
+                    fontWeight:   selectedGroup === "all" ? 600 : 400,
+                    color:        selectedGroup === "all" ? "var(--dm-primary)" : "var(--dm-text-primary)",
+                    background:   selectedGroup === "all" ? "rgba(49,52,145,0.08)" : "transparent",
+                  }}
+                >
+                  <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ background: selectedGroup === "all" ? "var(--dm-primary)" : "var(--dm-border-strong)" }} />
+                  Todos os grupos
+                </button>
+                {(() => {
+                  let lastSection = "";
+                  return groups.map(g => {
+                    const newSection = g.section !== lastSection;
+                    lastSection = g.section;
+                    return (
+                      <div key={g.id}>
+                        {newSection && (
+                          <p className="px-3 pt-2 pb-1 text-[9px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>
+                            {getSectionLabel(g.section, customSections)}
+                          </p>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => { onSelectGroup(g.id); setOpenPopover(null); }}
+                          className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[13px] transition"
+                          style={{
+                            fontWeight: selectedGroup === g.id ? 600 : 400,
+                            color:      selectedGroup === g.id ? "var(--dm-primary)" : "var(--dm-text-primary)",
+                            background: selectedGroup === g.id ? "rgba(49,52,145,0.08)" : "transparent",
+                          }}
+                        >
+                          <g.icon size={13} className="flex-shrink-0" style={{ color: selectedGroup === g.id ? "var(--dm-primary)" : "var(--dm-text-tertiary)" } as React.CSSProperties} />
+                          <span className="truncate">{g.label}</span>
+                        </button>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Campaign pill ── */}
+      <div className="relative">
+        <ContextPill
+          label={campaignLabel}
+          active={checkedCampaignIds.length > 0}
+          isOpen={openPopover === "campaign"}
+          onClick={() => toggle("campaign")}
+        />
+        {openPopover === "campaign" && (
+          <div style={{ ...popoverBase, left: 0, width: 280 }}>
+            <div className="p-2 border-b" style={{ borderColor: "var(--dm-border-subtle)" }}>
+              <div className="flex items-center gap-1.5 rounded-lg px-2 py-1.5" style={{ background: "var(--dm-bg-elevated)" }}>
+                <Search size={12} style={{ color: "var(--dm-text-tertiary)" }} />
+                <input
+                  type="text"
+                  placeholder="Buscar campanha..."
+                  value={campSearch}
+                  onChange={e => setCampSearch(e.target.value)}
+                  className="flex-1 bg-transparent text-[12px] outline-none"
+                  style={{ color: "var(--dm-text-primary)" }}
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-between px-3 py-1.5 border-b" style={{ borderColor: "var(--dm-border-subtle)" }}>
+              <button
+                type="button"
+                onClick={() => onCheckedCampaignIds(allCampaigns.map(c => c.id))}
+                className="text-[11px] font-semibold"
+                style={{ color: "var(--dm-primary)" }}
+              >Selecionar tudo</button>
+              <button
+                type="button"
+                onClick={() => { onCheckedCampaignIds([]); onClearCampaignFilter(); }}
+                className="text-[11px] font-semibold"
+                style={{ color: "var(--dm-text-tertiary)" }}
+              >Limpar</button>
+            </div>
+            <div style={{ maxHeight: 260, overflowY: "auto" }} className="py-1 px-1">
+              {visibleCampaigns.map(c => {
+                const checked = checkedCampaignIds.includes(c.id);
+                return (
+                  <label
+                    key={c.id}
+                    className="flex cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 transition"
+                    style={{ background: checked ? "rgba(49,52,145,0.06)" : "transparent" }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => {
+                        const next = checked
+                          ? checkedCampaignIds.filter(id => id !== c.id)
+                          : [...checkedCampaignIds, c.id];
+                        onCheckedCampaignIds(next);
+                      }}
+                      className="h-3.5 w-3.5 flex-shrink-0 accent-[var(--dm-primary)]"
+                    />
+                    <span className="truncate text-[12px]" style={{ color: "var(--dm-text-primary)" }}>{c.name}</span>
+                  </label>
+                );
+              })}
+              {visibleCampaigns.length === 0 && (
+                <p className="px-3 py-4 text-center text-[12px]" style={{ color: "var(--dm-text-tertiary)" }}>Nenhuma campanha encontrada</p>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Period pill ── */}
+      <div className="relative">
+        <ContextPill
+          label={periodLabel}
+          icon={<CalendarDays size={11} />}
+          active={!!(dateFrom || dateTo)}
+          isOpen={openPopover === "period"}
+          onClick={() => toggle("period")}
+        />
+        {openPopover === "period" && (
+          <div style={{ ...popoverBase, left: 0, width: 260, padding: 16 }}>
+            <p className="mb-3 text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Período</p>
+            <div className="space-y-2">
+              <div>
+                <label className="mb-1 block text-[11px] font-medium" style={{ color: "var(--dm-text-secondary)" }}>De</label>
+                <input
+                  type="date"
+                  value={pendingFrom}
+                  onChange={e => setPendingFrom(e.target.value)}
+                  className="w-full rounded-lg border px-2.5 py-1.5 text-[12px]"
+                  style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-[11px] font-medium" style={{ color: "var(--dm-text-secondary)" }}>Até</label>
+                <input
+                  type="date"
+                  value={pendingTo}
+                  onChange={e => setPendingTo(e.target.value)}
+                  className="w-full rounded-lg border px-2.5 py-1.5 text-[12px]"
+                  style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
+                />
+              </div>
+            </div>
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                onClick={() => { setPendingFrom(""); setPendingTo(""); onDateFrom(""); onDateTo(""); }}
+                className="flex-1 rounded-lg py-1.5 text-[11px] font-semibold transition"
+                style={{ background: "var(--dm-bg-elevated)", color: "var(--dm-text-secondary)" }}
+              >Limpar</button>
+              <button
+                type="button"
+                onClick={() => { onDateFrom(pendingFrom); onDateTo(pendingTo); setOpenPopover(null); }}
+                className="flex-1 rounded-lg py-1.5 text-[11px] font-semibold text-white transition"
+                style={{ background: "var(--dm-primary)" }}
+              >Aplicar</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Clear all ── */}
+      {hasActiveFilters && (
+        <button
+          type="button"
+          onClick={onClearFilters}
+          className="flex items-center gap-1 rounded-full px-2.5 py-1.5 text-[11px] font-semibold transition"
+          style={{ color: "var(--dm-text-tertiary)", background: "transparent" }}
+        >
+          <X size={11} /> Limpar
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -1424,6 +1786,8 @@ export function Dashboard({
   currentUser,
   categories = [],
   accountEntries = [],
+  onCategoriesChange,
+  onEntriesChange,
   onImportCsv,
   onImportUrl,
   onImportMeta,
@@ -1435,6 +1799,8 @@ export function Dashboard({
 }: DashboardProps) {
   const [mainTab, setMainTab]               = useState<MainTab>("overview");
   const [dashSubTab, setDashSubTab]         = useState<DashSubTab>("overview");
+  const [histKind, setHistKind]             = useState<HistoricalKind>("lancamento");
+  const [myAccountTab, setMyAccountTab]     = useState<MyAccountTabId>("profile");
   const [dateFrom, setDateFrom]             = useState<string>(() => {
     try { return localStorage.getItem("pta_date_from_v1") ?? ""; } catch { return ""; }
   });
@@ -1451,7 +1817,7 @@ export function Dashboard({
   };
 
   // ── Metric visibility — shared across all tabs ────────────────────────────
-  const { hidden: hiddenMetrics, toggle: toggleMetric, showAll: showAllMetrics, isVisible: isMetricVisible } = useMetricVisibility();
+  const { hidden: hiddenMetrics, toggle: toggleMetric, showAll: showAllMetrics, hideAll: hideAllMetrics, isVisible: isMetricVisible, allVisible: allMetricsVisible } = useMetricVisibility();
   const [showKpiPanel, setShowKpiPanel] = useState(false);
   const [pixelFunnelOpen, setPixelFunnelOpen] = useState(() => {
     try { return localStorage.getItem("pta_pixel_funnel_open_v1") !== "0"; } catch { return true; }
@@ -1468,8 +1834,15 @@ export function Dashboard({
   };
   const [showMobileNav, setShowMobileNav]   = useState(false);
   const [showMobilePanel, setShowMobilePanel] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [rightCollapsed, setRightCollapsed]     = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try { return localStorage.getItem("dm_sidebar_collapsed") === "1"; } catch { return false; }
+  });
+  const [rightCollapsed, setRightCollapsed] = useState(false);
+
+  const toggleSidebar = (next: boolean) => {
+    setSidebarCollapsed(next);
+    try { localStorage.setItem("dm_sidebar_collapsed", next ? "1" : "0"); } catch {}
+  };
 
   const [sortBy, setSortBy] = useState<SortBy>("date-desc");
   const [checkedCampaignIds, setCheckedCampaignIds] = useState<string[]>([]);
@@ -1837,50 +2210,149 @@ export function Dashboard({
     setShowMobilePanel(false);
   };
 
-  const navContent = (
-    <nav className={`flex-1 overflow-y-auto py-4 ${sidebarCollapsed ? "px-1" : "px-3"}`}>
-      {!sidebarCollapsed && (
-        <p className="mb-3 px-2 text-[10px] leading-snug" style={{ color: "var(--dm-text-tertiary)" }}>
-          Escolha uma seção
-        </p>
-      )}
-      <ul className="space-y-0.5">
-        {MAIN_TABS.map(({ id, label, icon: Icon }) => (
-          <li key={id}>
+  /* Inline sub-items rendered below active parent */
+  const renderSubItems = (parentId: MainTab) => {
+    if (parentId === "overview") {
+      return DASH_SUB_TABS.map(({ id, label, icon: Icon }) => {
+        const active = dashSubTab === id;
+        return (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setDashSubTab(id)}
+            className="flex w-full items-center gap-2 text-left transition-all duration-150"
+            style={{
+              height:       34,
+              borderRadius: "var(--dm-shape-sm)",
+              paddingLeft:  8,
+              paddingRight: 8,
+              background:   active ? "rgba(49,52,145,0.12)" : "transparent",
+              color:        active ? "var(--dm-primary)" : "var(--dm-text-tertiary)",
+              fontWeight:   active ? 600 : 400,
+              fontSize:     12,
+            }}
+          >
+            <Icon size={12} className="flex-shrink-0" />
+            <span className="truncate">{label}</span>
+          </button>
+        );
+      });
+    }
+    if (parentId === "history") {
+      return SIDEBAR_HISTORY_TABS.map(({ id, icon: Icon }) => {
+        const active = histKind === id;
+        return (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setHistKind(id)}
+            className="flex w-full items-center gap-2 text-left transition-all duration-150"
+            style={{
+              height:       34,
+              borderRadius: "var(--dm-shape-sm)",
+              paddingLeft:  8,
+              paddingRight: 8,
+              background:   active ? "rgba(49,52,145,0.12)" : "transparent",
+              color:        active ? "var(--dm-primary)" : "var(--dm-text-tertiary)",
+              fontWeight:   active ? 600 : 400,
+              fontSize:     12,
+            }}
+          >
+            <Icon size={12} className="flex-shrink-0" />
+            <span className="truncate">{HISTORICAL_KIND_LABELS[id]}</span>
+          </button>
+        );
+      });
+    }
+    if (parentId === "myaccount") {
+      return SIDEBAR_ACCOUNT_TABS.map(({ id, label, icon: Icon }) => {
+        const active = myAccountTab === id;
+        return (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setMyAccountTab(id)}
+            className="flex w-full items-center gap-2 text-left transition-all duration-150"
+            style={{
+              height:       34,
+              borderRadius: "var(--dm-shape-sm)",
+              paddingLeft:  8,
+              paddingRight: 8,
+              background:   active ? "rgba(49,52,145,0.12)" : "transparent",
+              color:        active ? "var(--dm-primary)" : "var(--dm-text-tertiary)",
+              fontWeight:   active ? 600 : 400,
+              fontSize:     12,
+            }}
+          >
+            <Icon size={12} className="flex-shrink-0" />
+            <span className="truncate">{label}</span>
+          </button>
+        );
+      });
+    }
+    return null;
+  };
+
+  /* Nav items list — reutilizado dentro do card expandido */
+  const navItemsList = (
+    <nav className="flex flex-col gap-0.5 py-2 px-2">
+      {MAIN_TABS.map(({ id, label, icon: Icon }) => {
+        const isActive = mainTab === id;
+        const hasSubItems = ["overview", "history", "myaccount"].includes(id);
+        return (
+          <div key={id}>
             <button
               onClick={() => { setMainTab(id); setShowMobileNav(false); }}
-              title={sidebarCollapsed ? label : undefined}
-              className={`relative flex w-full items-center rounded-xl text-sm font-medium transition-all duration-150 ${
-                sidebarCollapsed ? "justify-center px-0 py-3" : "gap-3 px-3 py-2.5"
-              }`}
-              style={mainTab === id
-                ? { backgroundColor: "var(--dm-nav-active-bg)", color: "var(--dm-nav-active-text)", fontWeight: 700 }
-                : { color: "var(--dm-nav-default-text)" }
-              }
+              className="flex w-full items-center gap-2.5 text-[13px] transition-all duration-150 text-left"
+              style={{
+                height:       42,
+                borderRadius: "var(--dm-shape-md)",
+                paddingLeft:  12,
+                paddingRight: 12,
+                background:   isActive ? "rgba(49,52,145,0.18)"          : "transparent",
+                border:       isActive ? "1px solid rgba(91,96,210,0.28)" : "1px solid transparent",
+                color:        isActive ? "var(--dm-nav-active-text)"      : "var(--dm-nav-default-text)",
+                fontWeight:   isActive ? 600 : 400,
+              }}
               onMouseEnter={(e) => {
-                if (mainTab !== id) {
-                  (e.currentTarget as HTMLElement).style.backgroundColor = "var(--dm-nav-hover-bg)";
-                  (e.currentTarget as HTMLElement).style.color = "var(--dm-nav-hover-text)";
+                if (!isActive) {
+                  (e.currentTarget as HTMLElement).style.background = "var(--dm-bg-surface-hover)";
+                  (e.currentTarget as HTMLElement).style.color      = "var(--dm-nav-hover-text)";
                 }
               }}
               onMouseLeave={(e) => {
-                if (mainTab !== id) {
-                  (e.currentTarget as HTMLElement).style.backgroundColor = "";
-                  (e.currentTarget as HTMLElement).style.color = "var(--dm-nav-default-text)";
+                if (!isActive) {
+                  (e.currentTarget as HTMLElement).style.background = "transparent";
+                  (e.currentTarget as HTMLElement).style.color      = "var(--dm-nav-default-text)";
                 }
               }}
             >
-              {mainTab === id && !sidebarCollapsed && (
-                <span className="absolute right-0 top-1/2 h-9 w-1 -translate-y-1/2 rounded-l-full bg-[var(--dm-brand-500)]" />
+              {isActive && (
+                <span
+                  className="mr-1 h-1.5 w-1.5 flex-shrink-0 rounded-full"
+                  style={{ background: "var(--dm-primary)" }}
+                />
               )}
-              <Icon size={16} className="relative flex-shrink-0" />
-              {!sidebarCollapsed && <span className="truncate">{label}</span>}
+              <Icon size={16} className="flex-shrink-0" />
+              <span className="ml-1 truncate">{label}</span>
             </button>
-          </li>
-        ))}
-      </ul>
+            {/* Sub-items inline below active parent */}
+            {isActive && hasSubItems && (
+              <div
+                className="mt-1 mb-2 ml-3 pl-3 flex flex-col gap-0.5"
+                style={{ borderLeft: "2px solid rgba(91,96,210,0.22)" }}
+              >
+                {renderSubItems(id)}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </nav>
   );
+
+  /* Kept for mobile (unchanged behaviour) */
+  const navContent = navItemsList;
 
   const campaignPanelProps: CampaignPanelProps = {
     selectedGroup, selectedTurma, activeCampaigns, turmasByGroup,
@@ -1924,96 +2396,220 @@ export function Dashboard({
         </div>
       )}
 
-      {/* ── Left sidebar ── */}
+      {/* ── Left sidebar — NeuroBank style ── */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-white dark:bg-[#0F1020] shadow-horizon transition-all duration-300 w-[86vw] max-w-[240px] lg:relative lg:translate-x-0 lg:z-auto lg:max-w-none lg:flex-shrink-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex flex-col shadow-horizon transition-all duration-300 w-[86vw] max-w-[280px] lg:relative lg:translate-x-0 lg:z-auto lg:max-w-none lg:flex-shrink-0 ${
           showMobileNav ? "translate-x-0 shadow-2xl" : "-translate-x-full"
-        } ${sidebarCollapsed ? "lg:w-14" : "lg:w-[220px]"}`}
+        }`}
+        style={{
+          background:   "var(--dm-bg-sidebar)",
+          borderRight:  "1px solid var(--dm-border-default)",
+          width:         sidebarCollapsed ? 72 : 280,
+        }}
       >
-        {/* Brand */}
-        <div className={`flex flex-shrink-0 items-center ${sidebarCollapsed ? "justify-center px-2 pt-6 pb-2" : "justify-between px-6 pt-10 pb-0"}`}>
-          <button
-            type="button"
-            onClick={() => { setMainTab("overview"); setShowMobileNav(false); }}
-            className="flex items-center gap-2.5 transition hover:opacity-80"
-            title="Voltar ao início"
-          >
-            <DashMonsterLogo size={sidebarCollapsed ? 22 : 28} />
-            {!sidebarCollapsed && (
-              <span
-                className="text-[15px] uppercase tracking-wide"
-                style={{ fontFamily: "var(--font-poppins)", fontWeight: 700, color: "var(--dm-text-primary)" }}
-              >
-                Dash<span style={{ fontWeight: 400 }}>Monster</span>
-              </span>
-            )}
-          </button>
-          {!sidebarCollapsed && (
-            <button
-              onClick={() => setShowMobileNav(false)}
-              className="flex h-7 w-7 items-center justify-center rounded-lg transition lg:hidden"
-              style={{ color: "var(--dm-text-tertiary)" }}
-            >
-              <X size={14} />
-            </button>
-          )}
-        </div>
-
-        {/* Horizon divider */}
-        <div className="mx-0 mt-6 mb-4 h-px" style={{ background: "var(--dm-border-default)" }} />
-
-        {navContent}
-
-        {/* Footer — status de dados compacto */}
         {sidebarCollapsed ? (
-          <div className="mb-3 flex flex-col items-center">
-            <span
-              className="h-2.5 w-2.5 rounded-full"
-              style={{ background: campaigns.length > 0 ? "#05CD99" : "var(--dm-border-strong)" }}
-              title={campaigns.length > 0 ? `${campaigns.length.toLocaleString("pt-BR")} linhas` : "Sem dados"}
-            />
-          </div>
-        ) : (
-          <div className="mx-3 mb-4 mt-2">
-            <div
-              className="rounded-[16px] px-4 py-3"
-              style={{ background: "linear-gradient(135deg, #6366C8 0%, #313491 100%)" }}
+          /* ══════════════ COLLAPSED ══════════════ */
+          <div className="flex flex-1 flex-col items-center py-4 overflow-y-auto">
+            {/* Logo = clicar expande */}
+            <button
+              type="button"
+              onClick={() => toggleSidebar(false)}
+              aria-expanded="false"
+              aria-label="Expandir sidebar"
+              data-tip="DashMonster"
+              className="dm-sidebar-tooltip mb-3 flex h-11 w-11 items-center justify-center rounded-[10px] transition hover:opacity-80"
+              style={{ background: "#313491" }}
             >
-              <div className="flex items-center gap-2 mb-1.5">
+              <DashMonsterLogo size={20} className="text-white" />
+            </button>
+
+            <div className="mb-3 w-8 h-px" style={{ background: "var(--dm-border-default)" }} />
+
+            {/* Icon-only nav — tooltips à direita */}
+            <div className="flex flex-col items-center gap-1 w-full px-2">
+              {MAIN_TABS.map(({ id, label, icon: Icon }) => (
+                <button
+                  key={id}
+                  onClick={() => { setMainTab(id); setShowMobileNav(false); }}
+                  aria-label={label}
+                  data-tip={label}
+                  className="dm-sidebar-tooltip flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-150"
+                  style={mainTab === id
+                    ? { background: "rgba(49,52,145,0.24)", border: "1px solid rgba(91,96,210,0.32)", color: "var(--dm-nav-active-text)" }
+                    : { color: "var(--dm-nav-default-text)" }
+                  }
+                >
+                  <Icon size={18} />
+                </button>
+              ))}
+            </div>
+
+            <div className="flex-1" />
+
+            {/* Divider */}
+            <div className="mx-2 h-px flex-shrink-0" style={{ background: "var(--dm-divider)" }} />
+
+            {/* CTA — collapsed: icon only */}
+            <div className="mb-4 mt-3 px-2 flex-shrink-0">
+              <button
+                type="button"
+                className="flex h-10 w-10 items-center justify-center rounded-[10px] transition hover:opacity-80"
+                style={{ background: "#313491" }}
+                title={campaigns.length > 0 ? `${campaigns.length.toLocaleString("pt-BR")} linhas carregadas` : "Sem dados — conecte uma fonte"}
+              >
                 <span
-                  className="h-2 w-2 flex-shrink-0 rounded-full"
-                  style={{ background: campaigns.length > 0 ? "#05CD99" : "rgba(255,255,255,0.35)" }}
+                  className="h-2 w-2 rounded-full"
+                  style={{ background: campaigns.length > 0 ? "#05CD99" : "rgba(255,255,255,0.4)" }}
                 />
-                <span className="text-[12px] font-bold text-white">
-                  {campaigns.length > 0 ? "Dados carregados" : "Sem dados"}
-                </span>
-              </div>
-              <p className="text-[11px] leading-snug pl-4" style={{ color: "rgba(255,255,255,0.80)" }}>
-                {campaigns.length > 0
-                  ? `${campaigns.length.toLocaleString("pt-BR")} linhas`
-                  : "Conecte uma fonte pelo painel ⚙️"}
-              </p>
-              {dataSourcePill && (
-                <p className="mt-1 text-[11px] pl-4 truncate" style={{ color: "rgba(255,255,255,0.65)" }}
-                  title={dataSourcePill.subtitle || dataSourcePill.title}>
-                  {dataSourcePill.title}
-                  {dataSourcePill.subtitle ? ` · ${dataSourcePill.subtitle}` : ""}
-                </p>
-              )}
+              </button>
             </div>
           </div>
-        )}
+        ) : (
+          /* ══════════════ EXPANDED ══════════════ */
+          <>
+            {/* Brand glow (decorative) */}
+            <div
+              className="pointer-events-none absolute -left-14 -top-14 h-48 w-48 rounded-full"
+              style={{ background: "radial-gradient(circle, rgba(49,52,145,0.10) 0%, transparent 70%)" }}
+            />
 
-        {/* Collapse toggle — desktop only */}
-        <button
-          type="button"
-          onClick={() => setSidebarCollapsed((v) => !v)}
-          className="hidden lg:flex items-center justify-center h-7 w-7 mx-auto mb-4 rounded-lg border transition hover:bg-[var(--dm-bg-elevated)]"
-          style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-tertiary)" }}
-          title={sidebarCollapsed ? "Expandir sidebar" : "Recolher sidebar"}
-        >
-          {sidebarCollapsed ? <ChevronRight size={13} /> : <ChevronLeft size={13} />}
-        </button>
+            {/* ── Brand row ── */}
+            <div className="flex flex-shrink-0 items-center justify-between px-4 pt-5 pb-0">
+              {/* Logo = clicar vai ao overview; click longo = collapse via desktop button abaixo */}
+              <button
+                type="button"
+                onClick={() => { setMainTab("overview"); setShowMobileNav(false); }}
+                className="flex items-center gap-2 transition hover:opacity-80"
+                title="Início"
+              >
+                <div
+                  className="flex h-8 w-8 items-center justify-center rounded-[8px] flex-shrink-0"
+                  style={{ background: "#313491" }}
+                >
+                  <DashMonsterLogo size={16} className="text-white" />
+                </div>
+                <span
+                  className="text-[14px] uppercase tracking-wide"
+                  style={{ fontFamily: "var(--font-poppins)", fontWeight: 700, color: "var(--dm-text-primary)" }}
+                >
+                  Dash<span style={{ fontWeight: 400 }}>Monster</span>
+                </span>
+              </button>
+              {/* Collapse (desktop) / Close (mobile) */}
+              <button
+                onClick={() => { toggleSidebar(true); setShowMobileNav(false); }}
+                className="flex h-7 w-7 items-center justify-center rounded-lg transition hover:bg-[var(--dm-bg-elevated)]"
+                style={{ color: "var(--dm-text-tertiary)" }}
+                title="Recolher"
+                aria-expanded="true"
+                aria-label="Recolher sidebar"
+              >
+                <X size={14} className="lg:hidden" />
+                <ChevronLeft size={13} className="hidden lg:block" />
+              </button>
+            </div>
+
+            {/* ── Welcome card — §6 doc spec ── */}
+            <div
+              className="mx-3 mt-4 flex-shrink-0 p-[18px]"
+              style={{
+                background:   "var(--dm-bg-card-soft)",
+                border:       "1px solid var(--dm-border-subtle)",
+                borderRadius: 20,
+              }}
+            >
+              <div className="flex items-center justify-between mb-3">
+                {/* Avatar */}
+                <div
+                  className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-[13px] font-bold text-white"
+                  style={{ background: "linear-gradient(135deg, var(--dm-primary) 0%, var(--dm-primary-vivid) 100%)", boxShadow: "0 0 0 3px var(--dm-primary-soft)" }}
+                >
+                  {(currentUser.name.trim()
+                    ? currentUser.name.trim().split(" ").filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("")
+                    : currentUser.email.slice(0, 2).toUpperCase()
+                  )}
+                </div>
+                <SidebarThemeToggle />
+              </div>
+              {/* Data */}
+              <p className="text-[10px] font-bold uppercase tracking-widest leading-tight" style={{ color: "var(--dm-text-tertiary)" }}>
+                {new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" })
+                  .replace(/^\w/, c => c.toUpperCase())}
+              </p>
+              {/* Saudação */}
+              <p className="mt-1 text-[15px] font-bold leading-snug" style={{ color: "var(--dm-text-primary)" }}>
+                Bem-vindo, <span style={{ color: "var(--dm-primary)" }}>
+                  {currentUser.name.trim().split(" ").filter(Boolean)[0] || currentUser.email.split("@")[0] || "Usuário"}!
+                </span>
+              </p>
+            </div>
+
+            {/* ── Nav section label ── */}
+            <p
+              className="mx-5 mt-3 mb-1 flex-shrink-0 text-[10px] font-semibold uppercase"
+              style={{ color: "var(--dm-text-tertiary)", letterSpacing: "0.12em" }}
+            >
+              Escolha uma seção
+            </p>
+
+            {/* ── Nav card ── */}
+            <div className="mx-3 flex-shrink-0 rounded-2xl overflow-hidden" style={{ background: "var(--dm-bg-elevated)" }}>
+              {navItemsList}
+            </div>
+
+            {/* Spacer */}
+            <div className="flex-1" />
+
+            {/* Divider */}
+            <div className="mx-4 flex-shrink-0 h-px" style={{ background: "var(--dm-divider)" }} />
+
+            {/* ── Footer / CTA card ── */}
+            <div className="mx-3 mb-4 mt-3 flex-shrink-0">
+              <div
+                className="rounded-2xl px-4 py-3"
+                style={{ background: "#313491" }}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <span
+                    className="h-2 w-2 flex-shrink-0 rounded-full"
+                    style={{ background: campaigns.length > 0 ? "#05CD99" : "rgba(255,255,255,0.35)" }}
+                  />
+                  <span className="text-[12px] font-bold text-white">
+                    {campaigns.length > 0 ? "Dados carregados" : "Sem dados"}
+                  </span>
+                </div>
+                <p className="text-[11px] leading-snug pl-4" style={{ color: "rgba(255,255,255,0.80)" }}>
+                  {campaigns.length > 0
+                    ? `${campaigns.length.toLocaleString("pt-BR")} linhas`
+                    : "Conecte uma fonte pelo painel ⚙️"}
+                </p>
+                {dataSourcePill && (
+                  <p className="mt-0.5 text-[11px] pl-4 truncate" style={{ color: "rgba(255,255,255,0.65)" }}
+                    title={dataSourcePill.subtitle || dataSourcePill.title}>
+                    {dataSourcePill.title}
+                    {dataSourcePill.subtitle ? ` · ${dataSourcePill.subtitle}` : ""}
+                  </p>
+                )}
+                {dataSource?.type === "meta" && onRefresh && (
+                  <button
+                    type="button"
+                    title="Atualizar números com a Meta (últimos dias)"
+                    onClick={() => void onRefresh()}
+                    disabled={syncStatus?.syncing}
+                    className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition"
+                    style={{
+                      background: "rgba(255,255,255,0.12)",
+                      color: "rgba(255,255,255,0.90)",
+                    }}
+                  >
+                    <RotateCcw size={11} className={syncStatus?.syncing ? "animate-spin" : ""} />
+                    {syncStatus?.syncing ? "Atualizando..." : "Atualizar Meta"}
+                  </button>
+                )}
+              </div>
+            </div>
+          </>
+        )}
       </aside>
 
       {/* ── Center ── */}
@@ -2080,33 +2676,8 @@ export function Dashboard({
             </div>
 
             <div className="flex flex-shrink-0 flex-wrap items-center justify-end gap-1.5 sm:gap-2">
-              <button
-                type="button"
-                onClick={() => onOpenControlPanel?.()}
-                title="Configurações, contas Meta e integrações"
-                className="flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition hover:opacity-90"
-                style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)", color: "var(--dm-text-secondary)" }}
-              >
-                <UserRound size={13} />
-                <span className="hidden max-w-[120px] truncate sm:inline">
-                  {currentUser.name.trim() || currentUser.email.split("@")[0] || "Conta"}
-                </span>
-                <span className="sm:hidden">Painel</span>
-              </button>
-
-              {showRightPanel && (
-                <button
-                  type="button"
-                  onClick={() => setShowMobilePanel(true)}
-                  className="relative flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700 lg:hidden"
-                >
-                  <Filter size={13} />
-                  Filtros
-                  {hasActiveFilters && (
-                    <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-blue-500" aria-hidden />
-                  )}
-                </button>
-              )}
+              {/* Mobile filter button removed — filters now accessible via context bar */}
+              {/* User account button removed — accessible via sidebar avatar */}
 
               <div className="relative">
                 <button
@@ -2132,60 +2703,7 @@ export function Dashboard({
                 )}
               </div>
 
-              <span className="hidden h-6 w-px self-center bg-slate-200 dark:bg-slate-600 sm:inline" aria-hidden />
-
-              {dataSource?.type === "meta" && onRefresh && (
-                <button
-                  type="button"
-                  title="Atualizar números com a Meta (últimos dias)"
-                  onClick={() => void onRefresh()}
-                  disabled={syncStatus?.syncing}
-                  className={`flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-semibold transition ${
-                    syncStatus?.syncing
-                      ? "cursor-wait border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-700 dark:bg-slate-800"
-                      : "border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/30"
-                  }`}
-                >
-                  <RotateCcw size={13} className={syncStatus?.syncing ? "animate-spin" : ""} />
-                  <span className="hidden sm:inline">Atualizar Meta</span>
-                </button>
-              )}
-
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => showImport ? setShowImport(false) : openImport("sheets")}
-                  className={`flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition ${
-                    showImport
-                      ? "border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
-                      : "border-blue-600 bg-blue-600 text-white shadow-sm hover:bg-blue-700 dark:border-blue-500 dark:bg-blue-500 dark:hover:bg-blue-600"
-                  }`}
-                >
-                  <Upload size={13} />
-                  <span className="hidden sm:inline">Importar</span>
-                  <span className="sm:hidden">+ Dados</span>
-                </button>
-                {showImport && (
-                  <ImportPopover
-                    onImportCsv={onImportCsv}
-                    onImportUrl={onImportUrl}
-                    onImportMeta={onImportMeta}
-                    campaignConfigs={campaignConfigs}
-                    onSaveCampaignConfig={setCampaignConfig}
-                    onClose={() => setShowImport(false)}
-                    onCampaignsVerified={setCampaignsForGroup}
-                    savedCampaignsByGroup={campaignsByGroup}
-                    savedSelectedCampaigns={selectedCampaignsByGroup}
-                    onSaveCampaignSelection={setCampaignSelectionForGroup}
-                    onClearCampaignSelection={clearCampaignSelectionForGroup}
-                    customGroups={customGroups}
-                    onAddCustomGroup={addCustomGroup}
-                    initialTab={importInitialTab}
-                    onOpenControlPanel={onOpenControlPanel}
-                    customSections={customSections}
-                  />
-                )}
-              </div>
+              {/* Atualizar Meta + Importar moved: Atualizar Meta → sidebar footer; Importar → Minha conta */}
             </div>
           </div>
 
@@ -2324,61 +2842,32 @@ export function Dashboard({
                   </div>
                 )}
 
-                {/* ── Sub-tab switcher ── */}
-                <nav className="flex gap-1 rounded-xl border p-1" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)" }}>
-                  {DASH_SUB_TABS.map(({ id, label, icon: Icon }) => (
-                    <button
-                      key={id}
-                      type="button"
-                      onClick={() => setDashSubTab(id)}
-                      className="flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition"
-                      style={dashSubTab === id
-                        ? { backgroundColor: "var(--dm-brand-500)", color: "#fff" }
-                        : { color: "var(--dm-text-secondary)" }}
-                    >
-                      <Icon size={13} aria-hidden />
-                      {label}
-                    </button>
-                  ))}
-                </nav>
+                {/* ── Context bar ── */}
+                {selectedCategory && (
+                  <ContextBar
+                    selectedGroup={selectedGroup}
+                    groups={sidebarGroups}
+                    customSections={customSections}
+                    showCourseGroups={showCourseGroups}
+                    onSelectGroup={handleSelectGroup}
+                    checkedCampaignIds={checkedCampaignIds}
+                    campaignsByGroup={campaignsByGroup}
+                    onCheckedCampaignIds={handleCheckedCampaignIds}
+                    onClearCampaignFilter={handleClearCampaignFilter}
+                    dateFrom={dateFrom}
+                    dateTo={dateTo}
+                    onDateFrom={setDateFromPersist}
+                    onDateTo={setDateToPersist}
+                    hasActiveFilters={hasActiveFilters}
+                    onClearFilters={handleClearFilters}
+                  />
+                )}
 
                 {dashSubTab === "overview" && (<>
-                {overviewSelectionSummary && (
-                  <section
-                    className="rounded-2xl border px-4 py-4 shadow-sm md:px-5"
-                    style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}
-                    aria-labelledby="overview-context-heading"
-                  >
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="min-w-0">
-                        <h2 id="overview-context-heading" className="text-base font-bold tracking-tight" style={{ color: "var(--dm-text-primary)" }}>
-                          Resumo da sua vista
-                        </h2>
-                      </div>
-                      {hasActiveFilters && (
-                        <button
-                          type="button"
-                          onClick={handleClearFilters}
-                          className="flex-shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-                        >
-                          Limpar filtros
-                        </button>
-                      )}
-                    </div>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <span className="inline-flex items-center rounded-full border px-3 py-1.5 text-xs font-medium" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}>
-                        {overviewSelectionSummary.catName}
+                {false && overviewSelectionSummary && (
+                  <section style={{ display: "none" }}>
+                      <span>{filteredCampaigns.length} / {categorizedCampaigns.length} campanhas
                       </span>
-                      <span className="inline-flex items-center rounded-full border px-3 py-1.5 text-xs font-medium" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}>
-                        {overviewSelectionSummary.groupName}
-                      </span>
-                      <span className="inline-flex items-center rounded-full border px-3 py-1.5 text-xs font-medium" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}>
-                        {overviewSelectionSummary.period}
-                      </span>
-                      <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-800 dark:border-blue-900 dark:bg-blue-950/50 dark:text-blue-200">
-                        {filteredCampaigns.length} / {categorizedCampaigns.length} campanhas
-                      </span>
-                    </div>
                   </section>
                 )}
 
@@ -2392,22 +2881,12 @@ export function Dashboard({
                         </p>
                         {dataSource?.type === "meta" && onRefresh && (
                           <p className="mt-1 text-xs" style={{ color: "var(--dm-text-tertiary)" }}>
-                            Se acabou de vincular contas no Painel, use <strong>Atualizar Meta</strong> no topo para puxar os últimos dias de dados.
+                            Se acabou de vincular contas no Painel, use <strong>Atualizar Meta</strong> na barra lateral para puxar os últimos dias de dados.
                           </p>
                         )}
                       </div>
                     </div>
                     <div className="flex flex-shrink-0 gap-2 sm:ml-auto">
-                      {dataSource?.type === "meta" && onRefresh && (
-                        <button
-                          type="button"
-                          onClick={() => void onRefresh()}
-                          disabled={syncStatus?.syncing}
-                          className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
-                        >
-                          Atualizar Meta
-                        </button>
-                      )}
                       <button type="button" onClick={handleClearFilters} className="rounded-lg border px-3 py-1.5 text-xs font-semibold underline-offset-2 hover:underline" style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>
                         Limpar filtros
                       </button>
@@ -2417,10 +2896,27 @@ export function Dashboard({
                 {/* KPI block */}
                 <section className="space-y-3" aria-labelledby="kpi-section-title">
                   <div className="relative flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-                    <div>
-                      <h2 id="kpi-section-title" className="text-sm font-bold tracking-tight sm:text-base" style={{ color: "var(--dm-text-primary)" }}>
-                        Indicadores principais
-                      </h2>
+                    <div className="flex flex-wrap items-center gap-2 min-w-0">
+                      {/* Dynamic header — tags when filter active */}
+                      {selectedGroup !== "all" || checkedCampaignIds.length > 0 ? (
+                        <>
+                          {overviewSelectionSummary?.catName && (
+                            <span className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-bold"
+                              style={{ background: "rgba(49,52,145,0.12)", color: "var(--dm-primary)" }}>
+                              {overviewSelectionSummary.catName}
+                            </span>
+                          )}
+                          <h2 id="kpi-section-title" className="text-sm font-bold tracking-tight sm:text-base truncate max-w-xs" style={{ color: "var(--dm-text-primary)" }}>
+                            {selectedGroup !== "all"
+                              ? (allGroups.find(g => g.id === selectedGroup)?.label ?? selectedGroup)
+                              : `${checkedCampaignIds.length} campanha${checkedCampaignIds.length !== 1 ? "s" : ""}`}
+                          </h2>
+                        </>
+                      ) : (
+                        <h2 id="kpi-section-title" className="text-sm font-bold tracking-tight sm:text-base" style={{ color: "var(--dm-text-primary)" }}>
+                          Indicadores principais
+                        </h2>
+                      )}
                     </div>
                     <div className="relative sm:mb-0.5">
                     <button
@@ -2433,162 +2929,243 @@ export function Dashboard({
                     </button>
                     {showKpiPanel && (
                       <div
-                        className="absolute right-0 top-full z-30 mt-1 w-56 rounded-xl border p-3 shadow-lg"
-                        style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}
+                        className="absolute right-0 top-full z-30 mt-1 w-64 rounded-xl border p-3 shadow-lg"
+                        style={{ background: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}
                       >
-                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>
-                          Métricas — todas as páginas
+                        <p className="text-[12px] font-semibold mb-0.5" style={{ color: "var(--dm-text-primary)" }}>
+                          Visibilidade dos cartões
                         </p>
-                        <p className="mb-2 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
-                          Afeta cards, tabelas e análises
+                        <p className="mb-3 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                          Ative ou desative as métricas do dashboard
                         </p>
-                        <div className="space-y-1">
-                          {ALL_METRIC_IDS.map((id) => (
-                            <label key={id} className="flex cursor-pointer items-center gap-2 rounded-md px-1 py-0.5 hover:bg-[var(--dm-bg-elevated)]">
-                              <input
-                                type="checkbox"
-                                checked={isMetricVisible(id)}
-                                onChange={() => toggleMetric(id)}
-                                className="h-3.5 w-3.5 accent-blue-500"
-                              />
-                              <span className="text-xs" style={{ color: "var(--dm-text-secondary)" }}>{METRIC_LABELS[id]}</span>
-                            </label>
+                        <div className="space-y-3">
+                          {([
+                            { label: "Financeiro",  ids: ["investment", "revenue", "roas", "roi"] as const },
+                            { label: "Eficiência",  ids: ["conversions", "leads", "cpa", "cpl", "ctr", "cpc", "cpm"] as const },
+                            { label: "Volume",      ids: ["clicks", "impressions"] as const },
+                          ] as const).map(({ label, ids }) => (
+                            <div key={label}>
+                              <p className="mb-1.5 px-1 text-[9px] font-bold uppercase tracking-widest"
+                                style={{ color: "var(--dm-text-tertiary)" }}>
+                                {label}
+                              </p>
+                              <div className="space-y-1">
+                                {ids.map((id) => {
+                                  const on = isMetricVisible(id);
+                                  return (
+                                    <label
+                                      key={id}
+                                      className="flex cursor-pointer items-center justify-between rounded-lg px-2.5 py-2 transition"
+                                      style={{ background: "var(--dm-bg-surface)", border: `0.5px solid var(--dm-border-subtle)`, borderRadius: 8 }}
+                                    >
+                                      <p className="text-[12px] font-medium" style={{ color: "var(--dm-text-secondary)" }}>
+                                        {METRIC_LABELS[id]}
+                                      </p>
+                                      <span
+                                        className="relative ml-2 inline-flex h-5 w-9 flex-shrink-0 rounded-full transition-colors duration-200"
+                                        style={{ background: on ? "var(--dm-primary)" : "var(--dm-border-strong)" }}
+                                      >
+                                        <span
+                                          className="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform duration-200"
+                                          style={{ transform: on ? "translateX(16px)" : "translateX(2px)" }}
+                                        />
+                                        <input type="checkbox" checked={on} onChange={() => toggleMetric(id)} className="sr-only" />
+                                      </span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            </div>
                           ))}
                         </div>
-                        <button
-                          type="button"
-                          onClick={showAllMetrics}
-                          className="mt-2 w-full rounded-md py-1 text-[10px] font-semibold text-blue-500 hover:underline"
-                        >
-                          Mostrar todas
-                        </button>
+                        <div className="mt-3 flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setShowKpiPanel(false)}
+                            className="flex-1 rounded-lg py-2 text-[11px] font-semibold transition hover:opacity-80"
+                            style={{ background: "var(--dm-bg-elevated)", color: "var(--dm-text-secondary)" }}
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={allMetricsVisible ? hideAllMetrics : showAllMetrics}
+                            className="flex-1 rounded-lg py-2 text-[11px] font-semibold text-white transition hover:opacity-90"
+                            style={{ background: allMetricsVisible ? "var(--dm-border-strong)" : "var(--dm-primary)" }}
+                          >
+                            {allMetricsVisible ? "Ocultar todas" : "Mostrar todas"}
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
                 </div>
 
-                {/* All KPI cards in one adaptive grid */}
+                {/* ── KPI 3-Tier layout ── */}
                 {(() => {
-                  const visibleCards = [
+                  /* Tier 1 — Financeiro */
+                  const tier1 = [
                     isMetricVisible("investment") && (
-                      <KpiCard key="investment"
-                        title="Total Investido"  value={formatCurrency(totals.totalInvestment)}
+                      <KpiCard key="investment" tier={1}
+                        title="Total Investido" value={formatCurrency(totals.totalInvestment)}
                         subtitle={`CTR médio: ${formatPercent(totals.averageCtr)}`}
-                        icon={Wallet} accentColor="blue"
+                        icon={Wallet} accentColor="red" invertTrend
                         goalValue={goals.investment} goalLabel={goals.investment != null ? formatCurrency(goals.investment) : undefined}
                         goalPct={goals.investment != null ? (totals.totalInvestment / goals.investment) * 100 : null}
+                        goalInvert
                       />
                     ),
                     isMetricVisible("revenue") && (
-                      <KpiCard key="revenue"
+                      <KpiCard key="revenue" tier={1}
                         title="Receita Total" value={formatCurrency(totals.totalRevenue)}
                         subtitle={`ROAS: ${totals.roas.toFixed(2)}x`}
-                        icon={CircleDollarSign} accentColor="blue"
+                        icon={CircleDollarSign} accentColor="green"
                       />
                     ),
                     isMetricVisible("roas") && (
-                      <KpiCard key="roas"
+                      <KpiCard key="roas" tier={1}
                         title="ROAS" value={`${totals.roas.toFixed(2)}x`}
-                        subtitle={undefined}
-                        icon={TrendingUp} accentColor="blue"
+                        icon={TrendingUp} accentColor="primary"
                         goalValue={goals.roas} goalLabel={goals.roas != null ? `${goals.roas.toFixed(1)}x` : undefined}
                         goalPct={goals.roas != null ? (totals.roas / goals.roas) * 100 : null}
                       />
                     ),
-                    isMetricVisible("conversions") && (
-                      <KpiCard key="conversions"
-                        title="Conversões" value={formatNumber(totals.totalConversions)}
-                        subtitle={`Tx.: ${formatPercent(totals.averageConversionRate)}`}
-                        icon={Target} accentColor="blue"
-                        goalValue={goals.conversions} goalLabel={goals.conversions != null ? formatNumber(goals.conversions) : undefined}
-                        goalPct={goals.conversions != null ? (totals.totalConversions / goals.conversions) * 100 : null}
-                      />
-                    ),
-                    isMetricVisible("leads") && (
-                      <KpiCard key="leads"
-                        title="Leads" value={formatNumber(totals.totalLeads)}
-                        subtitle={totals.totalLeads > 0 ? `CPL: ${formatCurrency(totals.averageCpl)}` : undefined}
-                        icon={Users} accentColor="violet"
-                      />
-                    ),
-                    isMetricVisible("cpl") && totals.totalLeads > 0 && (
-                      <KpiCard key="cpl"
-                        title="CPL Médio" value={formatCurrency(totals.averageCpl)}
-                        subtitle={undefined}
-                        icon={UserRound} accentColor="violet"
-                      />
-                    ),
+                  ].filter(Boolean);
+
+                  /* Tier 2 — Eficiência */
+                  const tier2 = [
                     isMetricVisible("roi") && (
-                      <KpiCard key="roi"
+                      <KpiCard key="roi" tier={2}
                         title="ROI" value={formatPercent(totals.roi)}
-                        subtitle={undefined}
-                        icon={TrendingUp} accentColor="blue"
+                        icon={TrendingUp} accentColor="primary"
                         goalValue={goals.roi} goalLabel={goals.roi != null ? `${goals.roi.toFixed(0)}%` : undefined}
                         goalPct={goals.roi != null ? (totals.roi / goals.roi) * 100 : null}
                       />
                     ),
                     isMetricVisible("cpa") && (
-                      <KpiCard key="cpa"
+                      <KpiCard key="cpa" tier={2}
                         title="CPA Médio" value={formatCurrency(totals.averageCpa)}
-                        subtitle={undefined}
-                        icon={BadgeDollarSign} accentColor="blue" invertTrend
+                        icon={BadgeDollarSign} accentColor="amber" invertTrend
                         goalValue={goals.cpa} goalLabel={goals.cpa != null ? formatCurrency(goals.cpa) : undefined}
                         goalPct={goals.cpa != null && totals.averageCpa > 0 ? (goals.cpa / totals.averageCpa) * 100 : null}
                         goalInvert
                       />
                     ),
                     isMetricVisible("ctr") && (
-                      <KpiCard key="ctr"
+                      <KpiCard key="ctr" tier={2}
                         title="CTR Médio" value={formatPercent(totals.averageCtr)}
-                        subtitle={undefined}
                         icon={MousePointerClick} accentColor="blue"
                         goalValue={goals.ctr} goalLabel={goals.ctr != null ? `${goals.ctr.toFixed(1)}%` : undefined}
                         goalPct={goals.ctr != null ? (totals.averageCtr / goals.ctr) * 100 : null}
                       />
                     ),
                     isMetricVisible("cpc") && (
-                      <KpiCard key="cpc"
+                      <KpiCard key="cpc" tier={2}
                         title="CPC Médio" value={formatCurrency(totals.averageCpc)}
-                        subtitle={undefined}
-                        icon={BadgeDollarSign} accentColor="blue" invertTrend
+                        icon={BadgeDollarSign} accentColor="amber" invertTrend
                         goalValue={goals.cpc} goalLabel={goals.cpc != null ? formatCurrency(goals.cpc) : undefined}
                         goalPct={goals.cpc != null && totals.averageCpc > 0 ? (goals.cpc / totals.averageCpc) * 100 : null}
                         goalInvert
                       />
                     ),
-                    isMetricVisible("cpm") && (
-                      <KpiCard key="cpm"
-                        title="CPM Médio" value={formatCurrency(totals.averageCpm)}
-                        subtitle={undefined}
-                        icon={Zap} accentColor="blue" invertTrend
-                        goalValue={goals.cpm} goalLabel={goals.cpm != null ? formatCurrency(goals.cpm) : undefined}
-                        goalPct={goals.cpm != null && totals.averageCpm > 0 ? (goals.cpm / totals.averageCpm) * 100 : null}
-                        goalInvert
-                      />
-                    ),
-                    isMetricVisible("clicks") && (
-                      <KpiCard key="clicks"
-                        title="Cliques" value={formatNumber(totals.totalClicks)}
-                        subtitle={`${formatNumber(totals.totalImpressions)} impressões`}
-                        icon={MousePointerClick} accentColor="blue"
-                      />
-                    ),
-                    isMetricVisible("impressions") && (
-                      <KpiCard key="impressions"
-                        title="Impressões" value={formatNumber(totals.totalImpressions)}
-                        subtitle={undefined}
-                        icon={Activity} accentColor="blue"
+                    isMetricVisible("conversions") && (
+                      <KpiCard key="conversions" tier={2}
+                        title="Conversões" value={formatNumber(totals.totalConversions)}
+                        subtitle={`Tx.: ${formatPercent(totals.averageConversionRate)}`}
+                        icon={Target} accentColor="green"
+                        goalValue={goals.conversions} goalLabel={goals.conversions != null ? formatNumber(goals.conversions) : undefined}
+                        goalPct={goals.conversions != null ? (totals.totalConversions / goals.conversions) * 100 : null}
                       />
                     ),
                   ].filter(Boolean);
 
-                  return visibleCards.length > 0 ? (
-                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-                      {visibleCards}
+                  /* Tier 3 — Volume */
+                  const tier3 = [
+                    isMetricVisible("impressions") && (
+                      <KpiCard key="impressions" tier={3}
+                        title="Impressões" value={formatNumber(totals.totalImpressions)}
+                        icon={Activity} accentColor="blue"
+                      />
+                    ),
+                    isMetricVisible("clicks") && (
+                      <KpiCard key="clicks" tier={3}
+                        title="Cliques" value={formatNumber(totals.totalClicks)}
+                        subtitle={`CTR: ${formatPercent(totals.averageCtr)}`}
+                        icon={MousePointerClick} accentColor="primary"
+                      />
+                    ),
+                    isMetricVisible("cpm") && (
+                      <KpiCard key="cpm" tier={3}
+                        title="CPM Médio" value={formatCurrency(totals.averageCpm)}
+                        icon={Zap} accentColor="amber" invertTrend
+                      />
+                    ),
+                    isMetricVisible("leads") && (
+                      <KpiCard key="leads" tier={3}
+                        title="Leads" value={formatNumber(totals.totalLeads)}
+                        subtitle={totals.totalLeads > 0 ? `CPL: ${formatCurrency(totals.averageCpl)}` : undefined}
+                        icon={Users} accentColor="violet"
+                      />
+                    ),
+                    isMetricVisible("cpl") && totals.totalLeads > 0 && (
+                      <KpiCard key="cpl" tier={3}
+                        title="CPL Médio" value={formatCurrency(totals.averageCpl)}
+                        icon={UserRound} accentColor="violet"
+                      />
+                    ),
+                  ].filter(Boolean);
+
+                  const hasAny = tier1.length + tier2.length + tier3.length > 0;
+
+                  /* Tier label separator */
+                  const TierLabel = ({ label }: { label: string }) => (
+                    <div className="flex items-center gap-2 pt-1">
+                      <span
+                        className="flex-shrink-0 text-[10px] font-semibold uppercase"
+                        style={{ color: "var(--dm-text-tertiary)", letterSpacing: "0.09em" }}
+                      >
+                        {label}
+                      </span>
+                      <div className="flex-1 h-px" style={{ background: "var(--dm-border-default)" }} />
+                    </div>
+                  );
+
+                  return hasAny ? (
+                    <div className="space-y-3">
+                      {tier1.length > 0 && (
+                        <>
+                          <TierLabel label="Financeiro" />
+                          <div className="grid grid-cols-1 gap-[10px] sm:grid-cols-2 lg:grid-cols-3">
+                            {tier1}
+                          </div>
+                        </>
+                      )}
+                      {tier2.length > 0 && (
+                        <>
+                          <TierLabel label="Eficiência" />
+                          <div className="grid grid-cols-2 gap-[10px] sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                            {tier2}
+                          </div>
+                        </>
+                      )}
+                      {tier3.length > 0 && (
+                        <>
+                          <TierLabel label="Volume" />
+                          <div className="grid grid-cols-2 gap-[10px] sm:grid-cols-3 lg:grid-cols-5">
+                            {tier3}
+                          </div>
+                        </>
+                      )}
                     </div>
                   ) : (
-                    <div className="flex items-center justify-center rounded-xl border py-6" style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-tertiary)" }}>
-                      <p className="text-xs">Nenhuma métrica visível. <button className="text-blue-500 underline" onClick={showAllMetrics}>Mostrar todas</button></p>
+                    <div className="flex items-center justify-center rounded-xl border py-6"
+                      style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-tertiary)" }}>
+                      <p className="text-xs">
+                        Nenhuma métrica visível.{" "}
+                        <button className="underline" style={{ color: "var(--dm-primary)" }} onClick={showAllMetrics}>
+                          Mostrar todas
+                        </button>
+                      </p>
                     </div>
                   );
                 })()}
@@ -2699,7 +3276,7 @@ export function Dashboard({
             )
           )}
 
-          {mainTab === "history" && <HistoricalView />}
+          {mainTab === "history" && <HistoricalView selectedKind={histKind} onKindChange={setHistKind} />}
 
           {mainTab === "products"  && <ProductBase />}
           {mainTab === "profiles" && (
@@ -2709,45 +3286,31 @@ export function Dashboard({
             />
           )}
 
+          {mainTab === "myaccount" && (
+            <MyAccount
+              userName={currentUser.name}
+              userEmail={currentUser.email}
+              categories={categories}
+              accountEntries={accountEntries}
+              onCategoriesChange={onCategoriesChange ?? (() => {})}
+              onEntriesChange={onEntriesChange ?? (() => {})}
+              onUpdateProfile={onUpdateProfile}
+              onSignOut={onSignOut}
+              syncStatus={syncStatus}
+              campaignCount={campaigns.length}
+              dataSource={dataSource}
+              onRefresh={onRefresh}
+              onClearData={onClearData}
+              activeTab={myAccountTab}
+              onTabChange={setMyAccountTab}
+            />
+          )}
+
           </div>
         </main>
       </div>
 
-      {/* ── Right sidebar — desktop ── */}
-      {showRightPanel && (
-        <aside
-          className={`relative z-20 hidden flex-shrink-0 border-l border-[var(--dm-border-default)] bg-white dark:bg-[#0F1020] transition-all duration-300 lg:flex lg:flex-col ${
-            rightCollapsed ? "w-10" : "w-[280px]"
-          }`}
-        >
-          {rightCollapsed ? (
-            <button
-              type="button"
-              onClick={() => setRightCollapsed(false)}
-              className="flex h-full w-full flex-col items-center justify-center gap-2 transition hover:bg-[var(--dm-bg-elevated)]"
-              title="Expandir painel de filtros"
-              style={{ color: "var(--dm-text-tertiary)" }}
-            >
-              <ChevronLeft size={14} />
-              <span
-                className="text-[9px] font-bold uppercase tracking-widest"
-                style={{ color: "var(--dm-text-tertiary)", writingMode: "vertical-rl", transform: "rotate(180deg)" }}
-              >
-                Filtros
-              </span>
-            </button>
-          ) : (
-            <CampaignPanel {...campaignPanelProps} />
-          )}
-        </aside>
-      )}
-
-      {/* ── Right panel — mobile drawer ── */}
-      {showRightPanel && showMobilePanel && (
-        <aside className="fixed inset-y-0 right-0 z-50 flex w-[86vw] max-w-[320px] flex-col border-l border-[var(--dm-border-default)] bg-white dark:bg-[#0F1020] shadow-2xl lg:hidden">
-          <CampaignPanel {...campaignPanelProps} />
-        </aside>
-      )}
+      {/* Right panel removed — campaigns filtered via context bar */}
 
       {pickCategoryOpen && (
         <div

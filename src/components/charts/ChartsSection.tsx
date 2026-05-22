@@ -19,19 +19,17 @@ interface ChartsSectionProps {
   budgetDistribution: BudgetDistributionPoint[];
 }
 
-const PIE_COLORS = [
-  "#3b82f6", // Blue (primary)
-  "#8b5cf6", // Violet (secondary)
-  "#10b981", // Emerald (success)
-  "#f59e0b", // Amber (warning)
-  "#ef4444", // Red (danger)
-  "#ec4899", // Pink
-  "#06b6d4", // Cyan
-  "#84cc16", // Lime
-  "#14b8a6", // Teal
-  "#6366f1", // Indigo
-  "#f97316", // Orange
-  "#d946ef", // Fuchsia
+// ── Data viz palette — minimalista, poucas cores
+// Regra: azul/roxo = dado principal; cinza = comparativo; verde/vermelho = semântico
+const PIE_COLORS_LIGHT = [
+  "#313491", "#4A4FCC", "#6E72FF", "#A5A8FF",
+  "#1FA971", "#F4A93C", "#E14D4D", "#8A8FAD",
+  "#D6D8FF", "#6F7482", "#0891b2", "#A0A5B3",
+];
+const PIE_COLORS_DARK = [
+  "#6C70FF", "#8A8FCC", "#A5A8FF", "#C4C6FF",
+  "#22C55E", "#EAB308", "#EF4444", "#8A8FAD",
+  "#D6D8FF", "#6F7686", "#22D3EE", "#A0A5B3",
 ];
 const MAX_PIE_ITEMS = 10;
 
@@ -41,21 +39,28 @@ function useChartTheme() {
   const { resolvedTheme } = useTheme();
   const dark = resolvedTheme === "dark";
   return {
-    gridStroke:  dark ? "#334155" : "#f1f5f9",
-    tickFill:    dark ? "#64748b" : "#94a3b8",
+    dark,
+    pieColors:   dark ? PIE_COLORS_DARK : PIE_COLORS_LIGHT,
+    /* Primary series: nova paleta minimalista */
+    c1: dark ? "#6C70FF" : "#313491",   /* chart-primary */
+    c2: dark ? "#8A8FAD" : "#A0A5B3",   /* chart-secondary (cinza — dado comparativo) */
+    c3: dark ? "#22C55E" : "#1FA971",   /* chart-success */
+    c4: dark ? "#EAB308" : "#F4A93C",   /* warning/investment */
+    gridStroke:  dark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.05)",
+    tickFill:    dark ? "#6F7686" : "#9CA3AF",
     tooltipStyle: {
       contentStyle: {
-        borderRadius: 16,
-        border: `1px solid ${dark ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.4)"}`,
-        background: dark ? "rgba(15, 23, 42, 0.7)" : "rgba(255, 255, 255, 0.6)",
-        backdropFilter: "blur(16px)",
-        WebkitBackdropFilter: "blur(16px)",
-        boxShadow: "0 8px 32px rgba(0, 0, 0, 0.12)",
+        borderRadius: 14,
+        border: `1px solid ${dark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)"}`,
+        background: dark ? "rgba(13,16,26,0.92)" : "rgba(255,255,255,0.96)",
+        backdropFilter: "blur(12px)",
+        WebkitBackdropFilter: "blur(12px)",
+        boxShadow: "0 4px 24px rgba(0,0,0,0.14)",
         fontSize: 12,
         padding: "8px 12px",
-        color: dark ? "#f1f5f9" : "#0f172a",
+        color: dark ? "#F3F4F6" : "#151821",
       },
-      cursor: { fill: dark ? "#334155" : "#f8fafc" },
+      cursor: { fill: dark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)" },
     },
   };
 }
@@ -94,17 +99,22 @@ function ToggleGroup<T extends string>({
   onChange: (v: T) => void;
 }) {
   return (
-    <div className="flex gap-0.5 rounded-xl bg-slate-100 p-0.5 dark:bg-slate-700">
+    <div
+      className="flex gap-0.5 p-0.5"
+      style={{ borderRadius: "var(--dm-shape-md)", background: "var(--dm-bg-elevated)" }}
+    >
       {options.map((o) => (
         <button
           key={o.value}
           type="button"
           onClick={() => onChange(o.value)}
-          className={`rounded-lg px-3 py-1 text-xs font-semibold transition ${
-            value === o.value
-              ? "bg-white text-blue-700 shadow-sm dark:bg-slate-600 dark:text-blue-300"
-              : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
-          }`}
+          className="px-3 py-1 text-xs font-semibold transition"
+          style={{
+            borderRadius: "var(--dm-shape-sm)",
+            background: value === o.value ? "var(--dm-bg-surface)" : "transparent",
+            color:       value === o.value ? "var(--dm-primary)"   : "var(--dm-text-tertiary)",
+            boxShadow:   value === o.value ? "0 1px 4px rgba(0,0,0,0.08)" : "none",
+          }}
         >
           {o.label}
         </button>
@@ -124,11 +134,16 @@ function ChartCard({
   action?: React.ReactNode;
 }) {
   return (
-    <article className="glass-panel flex flex-col rounded-3xl p-4 sm:p-5 shadow-lg">
+    <article
+      className="dm-chart-card flex flex-col p-4 sm:p-5 shadow-horizon"
+      style={{ borderRadius: "var(--dm-shape-xl)" }}
+    >
       <div className="mb-4 flex flex-col items-start justify-between gap-2 sm:flex-row sm:items-start">
         <div>
-          <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">{title}</h3>
-          {subtitle && <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">{subtitle}</p>}
+          <h3 className="text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>{title}</h3>
+          {subtitle && (
+            <p className="mt-0.5 text-xs" style={{ color: "var(--dm-text-tertiary)" }}>{subtitle}</p>
+          )}
         </div>
         {action}
       </div>
@@ -144,8 +159,8 @@ function DotLegend({ items }: { items: { color: string; label: string }[] }) {
     <div className="mt-4 flex flex-wrap gap-3 sm:gap-4">
       {items.map((i) => (
         <div key={i.label} className="flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: i.color }} />
-          <span className="text-xs text-slate-500 dark:text-slate-400">{i.label}</span>
+          <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: i.color }} />
+          <span className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>{i.label}</span>
         </div>
       ))}
     </div>
@@ -160,10 +175,11 @@ export function ChartsSection({
   const [trendMode, setTrendMode]           = useState<"area" | "bar" | "invest">("area");
   const [comparisonMode, setComparisonMode] = useState<"grouped" | "horizontal">("grouped");
   const [budgetMode, setBudgetMode]         = useState<"donut" | "mensal" | "bar">("donut");
-  const { gridStroke, tickFill, tooltipStyle } = useChartTheme();
+  const { dark, pieColors, c1, c2, c3, c4, gridStroke, tickFill, tooltipStyle } = useChartTheme();
 
   const GRID_PROPS = { strokeDasharray: "3 3", stroke: gridStroke, vertical: false as const };
   const AXIS_STYLE = { stroke: "none", tick: { fontSize: 11, fill: tickFill }, tickLine: false as const, axisLine: false as const };
+  void dark; // used via pieColors/c1-c4
 
   // ── Pie / budget data ─────────────────────────────────────────────────────
   const pieData = useMemo(() => {
@@ -200,8 +216,8 @@ export function ChartsSection({
       <ComposedChart data={dailyTrend} margin={{ top: 4, right: 52, bottom: 0, left: 0 }}>
         <defs>
           <linearGradient id="gradInvest" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%"   stopColor="#f59e0b" stopOpacity={0.3} />
-            <stop offset="100%" stopColor="#f59e0b" stopOpacity={0.05} />
+            <stop offset="0%"   stopColor={c4} stopOpacity={0.3} />
+            <stop offset="100%" stopColor={c4} stopOpacity={0.05} />
           </linearGradient>
         </defs>
         <CartesianGrid {...GRID_PROPS} />
@@ -213,8 +229,8 @@ export function ChartsSection({
           labelFormatter={(v) => formatDatePtBr(String(v))}
           formatter={(v, name) => name === "Investimento" ? [formatCurrency(Number(v)), name] : [formatNumber(Number(v)), name]}
         />
-        <Area yAxisId="inv" type="monotone" dataKey="investment" name="Investimento" stroke="#f59e0b" strokeWidth={3} fill="url(#gradInvest)" />
-        <Line yAxisId="clicks" type="monotone" dataKey="clicks" name="Cliques" stroke="#3b82f6" strokeWidth={2} dot={false} strokeDasharray="4 4" />
+        <Area yAxisId="inv" type="monotone" dataKey="investment" name="Investimento" stroke={c4} strokeWidth={3} fill="url(#gradInvest)" />
+        <Line yAxisId="clicks" type="monotone" dataKey="clicks" name="Cliques" stroke={c2} strokeWidth={2} dot={false} strokeDasharray="4 4" />
       </ComposedChart>
     </ResponsiveContainer>
   ) : trendMode === "area" ? (
@@ -222,20 +238,20 @@ export function ChartsSection({
       <AreaChart data={dailyTrend} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
         <defs>
           <linearGradient id="gradClicks" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%"   stopColor="#3b82f6" stopOpacity={0.3} />
-            <stop offset="100%" stopColor="#3b82f6" stopOpacity={0.05} />
+            <stop offset="0%"   stopColor={c2} stopOpacity={0.3} />
+            <stop offset="100%" stopColor={c2} stopOpacity={0.05} />
           </linearGradient>
           <linearGradient id="gradConv" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%"   stopColor="#10b981" stopOpacity={0.3} />
-            <stop offset="100%" stopColor="#10b981" stopOpacity={0.05} />
+            <stop offset="0%"   stopColor={c3} stopOpacity={0.3} />
+            <stop offset="100%" stopColor={c3} stopOpacity={0.05} />
           </linearGradient>
         </defs>
         <CartesianGrid {...GRID_PROPS} />
         <XAxis dataKey="date" {...AXIS_STYLE} tickFormatter={shortDate} interval={interval} angle={0} textAnchor="middle" height={24} />
         <YAxis {...AXIS_STYLE} tickFormatter={(v) => formatNumber(Number(v))} width={48} />
         <Tooltip {...tooltipStyle} labelFormatter={(v) => formatDatePtBr(String(v))} formatter={(v, name) => [formatNumber(Number(v)), name]} />
-        <Area type="monotone" dataKey="clicks"      name="Cliques"    stroke="#3b82f6" strokeWidth={3} fill="url(#gradClicks)" />
-        <Area type="monotone" dataKey="conversions" name="Conversões" stroke="#10b981" strokeWidth={3} fill="url(#gradConv)" />
+        <Area type="monotone" dataKey="clicks"      name="Cliques"    stroke={c2} strokeWidth={3} fill="url(#gradClicks)" />
+        <Area type="monotone" dataKey="conversions" name="Conversões" stroke={c3} strokeWidth={3} fill="url(#gradConv)" />
       </AreaChart>
     </ResponsiveContainer>
   ) : (
@@ -245,8 +261,8 @@ export function ChartsSection({
         <XAxis dataKey="date" {...AXIS_STYLE} tickFormatter={shortDate} interval={interval} angle={0} textAnchor="middle" height={24} />
         <YAxis {...AXIS_STYLE} tickFormatter={(v) => formatNumber(Number(v))} width={48} />
         <Tooltip {...tooltipStyle} labelFormatter={(v) => formatDatePtBr(String(v))} formatter={(v, name) => [formatNumber(Number(v)), name]} />
-        <Bar dataKey="clicks"      name="Cliques"    fill="#2563eb" radius={[3, 3, 0, 0]} />
-        <Bar dataKey="conversions" name="Conversões" fill="#059669" radius={[3, 3, 0, 0]} />
+        <Bar dataKey="clicks"      name="Cliques"    fill={c2} radius={[3, 3, 0, 0]} />
+        <Bar dataKey="conversions" name="Conversões" fill={c3} radius={[3, 3, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
   );
@@ -280,7 +296,7 @@ export function ChartsSection({
               {monthlyData.map((entry, i) => (
                 <Cell
                   key={`cell-${i}`}
-                  fill={PIE_COLORS[i % PIE_COLORS.length]}
+                  fill={pieColors[i % pieColors.length]}
                 />
               ))}
             </Bar>
@@ -292,17 +308,17 @@ export function ChartsSection({
         {monthlyData.map((m) => (
           <div key={m.key} className="flex flex-col items-center rounded-lg border px-3 py-1.5 text-center"
             style={{ borderColor: "var(--dm-border-subtle)", backgroundColor: "var(--dm-bg-elevated)" }}>
-            <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">{m.label}</span>
-            <span className="text-xs font-bold text-slate-900 dark:text-slate-100">{formatCurrency(m.investment)}</span>
+            <span className="text-[10px] font-semibold" style={{ color: "var(--dm-text-tertiary)" }}>{m.label}</span>
+            <span className="text-xs font-bold" style={{ color: "var(--dm-text-primary)" }}>{formatCurrency(m.investment)}</span>
             {m.delta !== null && (
-              <span className={`text-[10px] font-bold ${m.delta >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+              <span className="text-[10px] font-bold" style={{ color: m.delta >= 0 ? "var(--dm-success-base)" : "var(--dm-error-base)" }}>
                 {m.delta >= 0 ? "▲" : "▼"} {Math.abs(m.delta).toFixed(1)}%
               </span>
             )}
           </div>
         ))}
         {monthlyData.length === 0 && (
-          <p className="text-xs text-slate-400">Sem dados no período.</p>
+          <p className="text-xs" style={{ color: "var(--dm-text-tertiary)" }}>Sem dados no período.</p>
         )}
       </div>
     </div>
@@ -324,7 +340,7 @@ export function ChartsSection({
               endAngle={-270}
             >
               {pieData.map((entry, i) => (
-                <Cell key={`cell-${i}`} fill={PIE_COLORS[i % PIE_COLORS.length]} stroke="none" />
+                <Cell key={`cell-${i}`} fill={pieColors[i % pieColors.length]} stroke="none" />
               ))}
             </Pie>
             <Tooltip
@@ -338,10 +354,10 @@ export function ChartsSection({
         {pieData.map((item, i) => (
           <div key={`leg-${i}`} className="flex items-center justify-between gap-2">
             <div className="flex min-w-0 items-center gap-2">
-              <span className="h-2 w-2 flex-shrink-0 rounded-full" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
-              <span className="truncate text-xs text-slate-600 dark:text-slate-400">{item.campaignName}</span>
+              <span className="h-2 w-2 flex-shrink-0 rounded-full" style={{ backgroundColor: pieColors[i % pieColors.length] }} />
+              <span className="truncate text-xs" style={{ color: "var(--dm-text-secondary)" }}>{item.campaignName}</span>
             </div>
-            <span className="flex-shrink-0 text-xs font-semibold text-slate-900 dark:text-slate-100">{formatCurrency(item.investment)}</span>
+            <span className="flex-shrink-0 text-xs font-semibold" style={{ color: "var(--dm-text-primary)" }}>{formatCurrency(item.investment)}</span>
           </div>
         ))}
       </div>
@@ -364,7 +380,7 @@ export function ChartsSection({
           <Tooltip {...tooltipStyle} formatter={(v) => [formatCurrency(Number(v)), "Investimento"]} />
           <Bar dataKey="investment" name="Investimento" radius={[0, 4, 4, 0]}>
             {pieData.map((_, i) => (
-              <Cell key={`bar-${i}`} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+              <Cell key={`bar-${i}`} fill={pieColors[i % pieColors.length]} />
             ))}
           </Bar>
         </BarChart>
@@ -437,8 +453,8 @@ export function ChartsSection({
             />
             <YAxis {...AXIS_STYLE} tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`} width={52} />
             <Tooltip content={comparisonTooltip.content} cursor={tooltipStyle.cursor} />
-            <Bar dataKey="investment" name="Investimento" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={groupedBarSize} />
-            <Bar dataKey="revenue"    name="Receita"      fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={groupedBarSize} />
+            <Bar dataKey="investment" name="Investimento" fill={c1} radius={[4, 4, 0, 0]} maxBarSize={groupedBarSize} />
+            <Bar dataKey="revenue"    name="Receita"      fill={c3} radius={[4, 4, 0, 0]} maxBarSize={groupedBarSize} />
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -458,8 +474,8 @@ export function ChartsSection({
             tickFormatter={(v: string) => v.length > 24 ? `${v.slice(0, 24)}…` : v}
           />
           <Tooltip content={comparisonTooltip.content} cursor={tooltipStyle.cursor} />
-          <Bar dataKey="investment" name="Investimento" fill="#3b82f6" radius={[0, 4, 4, 0]} maxBarSize={horizontalBarSize} />
-          <Bar dataKey="revenue"    name="Receita"      fill="#10b981" radius={[0, 4, 4, 0]} maxBarSize={horizontalBarSize} />
+          <Bar dataKey="investment" name="Investimento" fill={c1} radius={[0, 4, 4, 0]} maxBarSize={horizontalBarSize} />
+          <Bar dataKey="revenue"    name="Receita"      fill={c3} radius={[0, 4, 4, 0]} maxBarSize={horizontalBarSize} />
         </BarChart>
       </ResponsiveContainer>
     </div>
@@ -488,14 +504,14 @@ export function ChartsSection({
           <div className="h-64 sm:h-72">{trendChart}</div>
           <DotLegend items={
             trendMode === "invest"
-              ? [{ color: "#d97706", label: "Investimento" }, { color: "#3b82f6", label: "Cliques" }]
-              : [{ color: "#2563eb", label: "Cliques" }, { color: "#059669", label: "Conversões" }]
+              ? [{ color: c4, label: "Investimento" }, { color: c2, label: "Cliques" }]
+              : [{ color: c2, label: "Cliques" }, { color: c3, label: "Conversões" }]
           } />
         </ChartCard>
       </div>
 
-      {/* ── Budget chart — 4/12 cols ── */}
-      <div className="xl:col-span-4">
+      {/* ── Budget chart — 4/12 normal, 12/12 quando horizontal ── */}
+      <div className={comparisonMode === "horizontal" ? "xl:col-span-12" : "xl:col-span-4"}>
         <ChartCard
           title="Distribuição de Orçamento"
           subtitle={budgetMode === "mensal" ? "Investimento mês a mês" : "Investimento por campanha"}
@@ -515,8 +531,8 @@ export function ChartsSection({
         </ChartCard>
       </div>
 
-      {/* ── Comparison chart — 8/12 cols ── */}
-      <div className="xl:col-span-8">
+      {/* ── Comparison chart — 8/12 normal, 12/12 quando horizontal ── */}
+      <div className={comparisonMode === "horizontal" ? "xl:col-span-12" : "xl:col-span-8"}>
         <ChartCard
           title="Investimento vs Receita"
           subtitle="Comparativo por campanha no período"
@@ -530,8 +546,8 @@ export function ChartsSection({
         >
           {comparisonChart}
           <DotLegend items={[
-            { color: "#2563eb", label: "Investimento" },
-            { color: "#059669", label: "Receita" },
+            { color: c1, label: "Investimento" },
+            { color: c3, label: "Receita" },
           ]} />
         </ChartCard>
       </div>

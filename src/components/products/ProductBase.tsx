@@ -32,8 +32,8 @@ function ProductCard({ product: p, onView, onEdit, onDuplicate, onDelete }: Prod
 
   return (
     <article
-      className="group relative flex flex-col rounded-[20px] border bg-white dark:bg-[#0F1020] shadow-horizon transition-all hover:-translate-y-0.5"
-      style={{ borderColor: "var(--dm-border-default)", borderLeftWidth: 3, borderLeftColor: accent }}
+      className="group relative flex flex-col border bg-white dark:bg-[#0F1020] shadow-horizon transition-all hover:-translate-y-0.5"
+      style={{ borderColor: "var(--dm-border-default)", borderLeftWidth: 3, borderLeftColor: accent, borderRadius: "var(--dm-shape-xl)" }}
     >
       <div className="flex flex-col flex-1 p-4 gap-3">
         {/* Badges + actions */}
@@ -135,8 +135,8 @@ function BentoTile({
 }: { children: React.ReactNode; className?: string; style?: React.CSSProperties }) {
   return (
     <div
-      className={`rounded-[20px] border p-5 ${className}`}
-      style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)", ...style }}
+      className={`border p-5 ${className}`}
+      style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)", borderRadius: "var(--dm-shape-xl)", ...style }}
     >
       {children}
     </div>
@@ -220,13 +220,14 @@ function ProductViewer({ product: p, onEdit, onClose }: { product: ProductData; 
       </div>
 
       {/* ── Bento Grid body ── */}
-      <div className="flex-1 p-4 lg:p-6">
+      <div className="flex-1 p-5 lg:p-7">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
 
           {/* ── HERO — full width ── */}
+          {/* shape-xl=28px com p-7 acima → top corners 100% visíveis */}
           <div
-            className="col-span-1 md:col-span-2 lg:col-span-3 rounded-[20px] relative overflow-hidden"
-            style={{ background: heroGrad }}
+            className="col-span-1 md:col-span-2 lg:col-span-3 relative overflow-hidden"
+            style={{ background: heroGrad, borderRadius: "var(--dm-shape-xl)" }}
           >
             {/* decorative orb */}
             <div

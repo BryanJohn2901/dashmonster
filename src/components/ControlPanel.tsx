@@ -854,7 +854,7 @@ function CategorySection({
 
 // ─── Tab: Contas & Campanhas ──────────────────────────────────────────────────
 
-interface TabAccountsProps {
+export interface TabAccountsProps {
   categories: UserCategory[];
   accountEntries: UserAccountEntry[];
   onCategoriesChange: (cats: UserCategory[]) => void;
@@ -862,7 +862,7 @@ interface TabAccountsProps {
   onPainelSaveNavigate?: (detail: { entry: UserAccountEntry; categorySlug: string; isCustom: boolean }) => void;
 }
 
-function TabAccounts({ categories, accountEntries, onCategoriesChange, onEntriesChange, onPainelSaveNavigate }: TabAccountsProps) {
+export function TabAccounts({ categories, accountEntries, onCategoriesChange, onEntriesChange, onPainelSaveNavigate }: TabAccountsProps) {
   const [showNewCat, setShowNewCat] = useState(false);
   const [newCatName, setNewCatName] = useState("");
   const [newCatEmoji, setNewCatEmoji] = useState("📌");
@@ -1049,7 +1049,7 @@ function TabAccounts({ categories, accountEntries, onCategoriesChange, onEntries
 
 // ─── Tab: Integrações ─────────────────────────────────────────────────────────
 
-function TabIntegrations({ onSyncNow }: { onSyncNow?: () => void }) {
+export function TabIntegrations({ onSyncNow }: { onSyncNow?: () => void }) {
   // ── Meta Ads state ──
   const [token,    setToken]    = useState(() => loadMetaCredentials().accessToken ?? "");
   const [visible,  setVisible]  = useState(false);
@@ -1181,7 +1181,7 @@ interface TabSyncProps {
   onClearData?:   () => Promise<void>;
 }
 
-function TabSync({ syncStatus, campaignCount, dataSource, onRefresh, onClearData }: TabSyncProps) {
+export function TabSync({ syncStatus, campaignCount, dataSource, onRefresh, onClearData }: TabSyncProps) {
   const [clearing, setClearing] = useState(false);
   const hasToken = Boolean(loadMetaCredentials().accessToken);
   const [lookback, setLookback] = useState<number>(() =>
@@ -1306,14 +1306,14 @@ function TabSync({ syncStatus, campaignCount, dataSource, onRefresh, onClearData
 
 // ─── Tab: Perfil ──────────────────────────────────────────────────────────────
 
-interface TabProfileProps {
+export interface TabProfileProps {
   name: string;
   email: string;
   onUpdateProfile: (name: string) => Promise<void>;
   onSignOut: () => Promise<void>;
 }
 
-function TabProfile({ name, email, onUpdateProfile, onSignOut }: TabProfileProps) {
+export function TabProfile({ name, email, onUpdateProfile, onSignOut }: TabProfileProps) {
   const [editName, setEditName] = useState(name);
   const [saving,   setSaving]   = useState(false);
   const [saved,    setSaved]    = useState(false);

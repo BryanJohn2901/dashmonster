@@ -352,12 +352,12 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
     };
   }, [form]);
 
-  const fieldCls = "h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 dark:focus:border-blue-500";
+  const fieldCls = "h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-600 dark:bg-[#151821] dark:text-slate-200 dark:focus:border-blue-500";
   const labelCls = "flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-slate-400";
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-8 sm:p-8">
-      <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl dark:bg-slate-800">
+      <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl dark:bg-[#11131A]">
         <div className="flex items-center justify-between border-b border-slate-200 px-4 py-4 sm:px-6 dark:border-slate-700">
           <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
             {isEditing ? "Editar Registro" : "Adicionar Registro"}
@@ -461,7 +461,7 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
                       onChange={(e) => setTagDraft(e.target.value)}
                       onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddTag(); } if (e.key === "Escape") { setShowTagInput(false); setTagDraft(""); } }}
                       placeholder="Nome da tag"
-                      className="h-7 w-32 rounded-full border border-blue-400 bg-white px-3 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-100 dark:bg-slate-700 dark:text-slate-200"
+                      className="h-7 w-32 rounded-full border border-blue-400 bg-white px-3 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-100 dark:bg-[#151821] dark:text-slate-200"
                     />
                     <button type="button" onClick={handleAddTag} className="rounded-full bg-blue-500 px-2 py-0.5 text-xs font-semibold text-white hover:bg-blue-600">OK</button>
                     <button type="button" onClick={() => { setShowTagInput(false); setTagDraft(""); }} className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-400">✕</button>
@@ -496,7 +496,7 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
                 <label className={labelCls}>Compartilhamentos<input value={form.shares} onChange={set("shares")} placeholder="180" className={fieldCls} /></label>
               </div>
               {/* Instagram preview */}
-              <div className="mt-3 bg-slate-50 rounded-lg px-3 py-3 dark:bg-slate-700/40">
+              <div className="mt-3 bg-slate-50 rounded-lg px-3 py-3 dark:bg-[#151821]/40">
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Calculado automaticamente</p>
                 <div className="flex flex-wrap gap-2">
                   {[
@@ -504,7 +504,7 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
                     { label: "CTR Link", val: p(form.reach) > 0 ? `${((p(form.clicks)/p(form.reach))*100).toFixed(2)}%` : "—" },
                     { label: "Tx. Eng.", val: p(form.impressionsCount) > 0 ? `${(((p(form.likes)+p(form.comments)+p(form.shares))/p(form.impressionsCount))*100).toFixed(2)}%` : "—" },
                   ].map(({ label, val }) => (
-                    <div key={label} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 dark:border-slate-600 dark:bg-slate-700">
+                    <div key={label} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 dark:border-slate-600 dark:bg-[#151821]">
                       <p className="text-xs text-slate-400 dark:text-slate-500">{label}</p>
                       <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{val}</p>
                     </div>
@@ -527,7 +527,7 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
                 <label className={labelCls}>MRR (R$)<input value={form.mrr} onChange={set("mrr")} onBlur={blurMoney("mrr")} placeholder="16.309,00" className={fieldCls} /></label>
                 <label className={labelCls}>Churn (%)<input value={form.churn} onChange={set("churn")} placeholder="2.5" className={fieldCls} /></label>
               </div>
-              <div className="mt-3 bg-slate-50 rounded-lg px-3 py-3 dark:bg-slate-700/40">
+              <div className="mt-3 bg-slate-50 rounded-lg px-3 py-3 dark:bg-[#151821]/40">
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Calculado automaticamente</p>
                 <div className="flex flex-wrap gap-2">
                   {[
@@ -537,7 +537,7 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
                     { label: "CAC",      val: preview.cac !== null ? formatCurrency(preview.cac) : "—" },
                     { label: "ROAS",     val: preview.roas !== null ? `${preview.roas.toFixed(2)}x` : "—" },
                   ].map(({ label, val }) => (
-                    <div key={label} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 dark:border-slate-600 dark:bg-slate-700">
+                    <div key={label} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 dark:border-slate-600 dark:bg-[#151821]">
                       <p className="text-xs text-slate-400 dark:text-slate-500">{label}</p>
                       <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{val}</p>
                     </div>
@@ -582,7 +582,7 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
               </div>
 
               {/* Calculado automaticamente */}
-              <div className="bg-slate-50 rounded-lg px-3 py-3 dark:bg-slate-700/40">
+              <div className="bg-slate-50 rounded-lg px-3 py-3 dark:bg-[#151821]/40">
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Calculado automaticamente</p>
                 <div className="flex flex-wrap gap-2">
                   {[
@@ -594,7 +594,7 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
                     { label: "CAC",         val: preview.cacLanc !== null         ? formatCurrency(preview.cacLanc)          : "—" },
                     { label: "ROAS",        val: preview.roasLanc !== null        ? `${preview.roasLanc.toFixed(2)}x`        : "—" },
                   ].map(({ label, val }) => (
-                    <div key={label} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 dark:border-slate-600 dark:bg-slate-700">
+                    <div key={label} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 dark:border-slate-600 dark:bg-[#151821]">
                       <p className="text-xs text-slate-400 dark:text-slate-500">{label}</p>
                       <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{val}</p>
                     </div>
@@ -615,7 +615,7 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
                         </div>
                       )}
                       {preview.fatIngresso !== null && preview.fatPos !== null && (
-                        <div className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 dark:border-slate-600 dark:bg-slate-700">
+                        <div className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 dark:border-slate-600 dark:bg-[#151821]">
                           <p className="text-xs text-slate-400 dark:text-slate-500">Total</p>
                           <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{formatCurrency(preview.fatIngresso + preview.fatPos)}</p>
                         </div>
@@ -641,7 +641,7 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
                 </label>
                 <label className={labelCls}>Faturamento (R$)<input value={form.revenue} onChange={set("revenue")} onBlur={blurMoney("revenue")} placeholder="16.309,00" className={fieldCls} /></label>
               </div>
-              <div className="mt-3 bg-slate-50 rounded-lg px-3 py-3 dark:bg-slate-700/40">
+              <div className="mt-3 bg-slate-50 rounded-lg px-3 py-3 dark:bg-[#151821]/40">
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Calculado automaticamente</p>
                 <div className="flex flex-wrap gap-2">
                   {[
@@ -652,7 +652,7 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
                     { label: "CAC",          val: preview.cac !== null              ? formatCurrency(preview.cac)              : "—" },
                     { label: "ROAS",         val: preview.roas !== null             ? `${preview.roas.toFixed(2)}x`            : "—" },
                   ].map(({ label, val }) => (
-                    <div key={label} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 dark:border-slate-600 dark:bg-slate-700">
+                    <div key={label} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 dark:border-slate-600 dark:bg-[#151821]">
                       <p className="text-xs text-slate-400 dark:text-slate-500">{label}</p>
                       <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{val}</p>
                     </div>
@@ -663,7 +663,7 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
           )}
 
           <div className="flex flex-col-reverse justify-end gap-2 px-4 py-4 sm:flex-row sm:px-6">
-            <button type="button" onClick={onClose} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600">
+            <button type="button" onClick={onClose} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-[#151821] dark:text-slate-300 dark:hover:bg-slate-600">
               Cancelar
             </button>
             <button type="submit" className="rounded-lg bg-brand px-5 py-2 text-sm font-medium text-white transition hover:bg-brand-hover">
@@ -688,7 +688,7 @@ function ProductCell({ product, turma, tag }: { product: string; turma?: string;
         </span>
       )}
       {tag && (
-        <span className="inline-flex items-center gap-0.5 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500 dark:bg-slate-700 dark:text-slate-400">
+        <span className="inline-flex items-center gap-0.5 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500 dark:bg-[#151821] dark:text-slate-400">
           <Tag size={8} />
           {tag}
         </span>
@@ -728,10 +728,20 @@ function StatCard({ label, value, sub, icon: Icon }: StatCardProps) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function HistoricalView() {
+interface HistoricalViewProps {
+  selectedKind?: HistoricalKind;
+  onKindChange?: (kind: HistoricalKind) => void;
+}
+
+export function HistoricalView({ selectedKind: propKind, onKindChange }: HistoricalViewProps = {}) {
   const [rows,  setRowsState]  = useState<HistoricalRow[]>(loadRows);
   const [metas, setMetasState] = useState<HistoricalMeta[]>(loadMetas);
-  const [selectedKind, setSelectedKind] = useState<HistoricalKind>("lancamento");
+  const [internalKind, setInternalKind] = useState<HistoricalKind>("lancamento");
+  const selectedKind = propKind ?? internalKind;
+  const setSelectedKind = (kind: HistoricalKind) => {
+    setInternalKind(kind);
+    onKindChange?.(kind);
+  };
   const [selectedTag, setSelectedTag]   = useState("all");
   const [customTags, setCustomTags]     = useState<Record<HistoricalKind, string[]>>({
     lancamento: [], evento: [], perpetuo: [], instagram: [],
@@ -1027,13 +1037,13 @@ export function HistoricalView() {
 
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
-  const gridStroke   = isDark ? "#334155" : "#f1f5f9";
-  const tickFill     = isDark ? "#64748b" : "#94a3b8";
+  const gridStroke   = isDark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.05)";
+  const tickFill     = isDark ? "#6F7686"                : "#9CA3AF";
   const tooltipStyle = {
-    borderRadius: 8,
-    border: `1px solid ${isDark ? "#334155" : "#e2e8f0"}`,
-    background: isDark ? "#1e293b" : "#ffffff",
-    color: isDark ? "#f1f5f9" : "#0f172a",
+    borderRadius: 10,
+    border: `1px solid ${isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.07)"}`,
+    background: isDark ? "#11131A" : "#FFFFFF",
+    color: isDark ? "#F4F5F7" : "#151821",
     fontSize: 12,
   };
 
@@ -1057,24 +1067,7 @@ export function HistoricalView() {
       )}
 
       <div className="space-y-5">
-        {/* ── Kind tabs ── */}
-        <div className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm dark:border-slate-700 dark:bg-slate-800">
-          {HISTORY_TABS.map(({ id, icon: Icon }) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => { setSelectedKind(id); setSelectedTag("all"); setAddingTag(false); setNewTagDraft(""); }}
-              className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition ${
-                selectedKind === id
-                  ? "bg-brand text-white shadow-sm"
-                  : "text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-700"
-              }`}
-            >
-              <Icon size={14} />
-              <span>{HISTORICAL_KIND_LABELS[id]}</span>
-            </button>
-          ))}
-        </div>
+        {/* Kind tabs moved to sidebar — rendered by Dashboard.tsx */}
 
         {/* ── Dashboard header ── */}
         <div className="glass-panel flex flex-wrap items-start justify-between gap-4 rounded-[2rem] px-5 py-5 sm:px-6 shadow-lg">
@@ -1117,7 +1110,7 @@ export function HistoricalView() {
             <button
               onClick={() => inputRef.current?.click()}
               disabled={loading}
-              className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
+              className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60 dark:border-slate-600 dark:bg-[#151821] dark:text-slate-300 dark:hover:bg-slate-600"
             >
               <Upload size={13} /> {loading ? "Importando…" : "Importar CSV"}
             </button>
@@ -1136,7 +1129,7 @@ export function HistoricalView() {
               {/* "Todos" pill — always visible */}
               <button
                 onClick={() => setSelectedTag("all")}
-                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition ${selectedTag === "all" ? "border-blue-200 bg-brand text-white" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"}`}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition ${selectedTag === "all" ? "border-blue-200 bg-brand text-white" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:bg-[#11131A] dark:text-slate-300 dark:hover:bg-slate-700"}`}
               >
                 <Package size={10} /> Todos
               </button>
@@ -1148,7 +1141,7 @@ export function HistoricalView() {
                   <div key={tag} className="flex items-center gap-0.5">
                     <button
                       onClick={() => setSelectedTag(selectedTag === tag ? "all" : tag)}
-                      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition ${selectedTag === tag ? "border-blue-200 bg-brand text-white" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"}`}
+                      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition ${selectedTag === tag ? "border-blue-200 bg-brand text-white" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:bg-[#11131A] dark:text-slate-300 dark:hover:bg-slate-700"}`}
                     >
                       {isCustom && <Tag size={9} className="opacity-70" />}
                       {tag}
@@ -1191,7 +1184,7 @@ export function HistoricalView() {
                         if (e.key === "Escape") { setAddingTag(false); setNewTagDraft(""); }
                       }}
                       placeholder="Nome da tag…"
-                      className="h-7 rounded-full border border-blue-300 bg-white px-3 text-xs outline-none focus:ring-2 focus:ring-blue-100 dark:border-blue-600 dark:bg-slate-800 dark:text-slate-200"
+                      className="h-7 rounded-full border border-blue-300 bg-white px-3 text-xs outline-none focus:ring-2 focus:ring-blue-100 dark:border-blue-600 dark:bg-[#11131A] dark:text-slate-200"
                     />
                     <button onClick={() => { setAddingTag(false); setNewTagDraft(""); }} className="text-slate-400 hover:text-slate-600"><X size={12} /></button>
                   </div>
@@ -1311,7 +1304,7 @@ export function HistoricalView() {
 
             {/* Funnel — takes 2 cols */}
             {funnel.length > 0 && funnel[0].value > 0 && (
-              <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm xl:col-span-2 dark:border-slate-700 dark:bg-slate-800">
+              <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm xl:col-span-2 dark:border-slate-700 dark:bg-[#11131A]">
                 <h3 className="mb-4 text-sm font-semibold text-slate-800 dark:text-slate-200">Funil de Conversão</h3>
                 <div className="space-y-3">
                   {funnel.map((stage, idx) => {
@@ -1324,7 +1317,7 @@ export function HistoricalView() {
                           <span className="font-medium text-slate-700 dark:text-slate-300">{stage.label}</span>
                           <span className="text-slate-500 dark:text-slate-400">{formatNumber(stage.value)}{idx > 0 ? ` · ${formatPercent(stage.rate)}` : ""}</span>
                         </div>
-                        <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700">
+                        <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-[#151821]">
                           <div className={`h-full rounded-full ${colors[idx]}`} style={{ width: `${widthPct.toFixed(1)}%` }} />
                         </div>
                         {idx < funnel.length - 1 && (
@@ -1343,7 +1336,7 @@ export function HistoricalView() {
 
         {/* ── META comparison ── */}
         {hasData && activeMeta && (
-          <article className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+          <article className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm dark:border-slate-700 dark:bg-[#11131A]">
             <h3 className="mb-3 text-sm font-semibold text-slate-800 dark:text-slate-200">Comparativo vs META</h3>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
               {[
@@ -1365,7 +1358,7 @@ export function HistoricalView() {
                       {beating ? <CheckCircle2 size={11} className="text-emerald-500" /> : <XCircle size={11} className="text-red-400" />}
                       <p className="text-xs text-slate-500 dark:text-slate-400">meta: {fmt(target)}</p>
                     </div>
-                    <div className="mt-1.5 h-1 w-full rounded-full bg-slate-200 dark:bg-slate-700">
+                    <div className="mt-1.5 h-1 w-full rounded-full bg-slate-200 dark:bg-[#151821]">
                       <div className={`h-1 rounded-full ${beating ? "bg-emerald-500" : "bg-red-400"}`} style={{ width: `${Math.min(100, pct).toFixed(0)}%` }} />
                     </div>
                   </div>
@@ -1377,12 +1370,12 @@ export function HistoricalView() {
 
         {/* ── Data table ── */}
         {hasData && (
-          <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+          <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-[#11131A]">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">Dados Mensais Detalhados</h3>
               <div className="flex items-center gap-2">
                 {/* Sort control */}
-                <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 p-0.5 dark:border-slate-600 dark:bg-slate-700">
+                <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 p-0.5 dark:border-slate-600 dark:bg-[#151821]">
                   {([
                     { key: "date-asc",    Icon: ArrowUp,   title: "Mais antigo primeiro" },
                     { key: "date-desc",   Icon: ArrowDown, title: "Mais novo primeiro"   },
@@ -1396,7 +1389,7 @@ export function HistoricalView() {
                       onClick={() => setTableSort(key)}
                       className={`flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-semibold transition ${
                         tableSort === key
-                          ? "bg-white text-blue-600 shadow-sm dark:bg-slate-800 dark:text-blue-400"
+                          ? "bg-white text-blue-600 shadow-sm dark:bg-[#11131A] dark:text-blue-400"
                           : "text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
                       }`}
                     >
@@ -1412,7 +1405,7 @@ export function HistoricalView() {
                   <button
                     type="button"
                     onClick={() => setColWidths({})}
-                    className="flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-400 transition hover:border-blue-300 hover:text-blue-500 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-500 dark:hover:text-blue-400"
+                    className="flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-400 transition hover:border-blue-300 hover:text-blue-500 dark:border-slate-600 dark:bg-[#151821] dark:text-slate-500 dark:hover:text-blue-400"
                     title="Voltar ao ajuste automático"
                   >
                     ↺ Redefinir
@@ -1438,7 +1431,7 @@ export function HistoricalView() {
                 style={hasCustom ? { tableLayout: "fixed", width: totalW } : { tableLayout: "auto", width: "100%" }}
                 className="divide-y divide-slate-200 text-xs dark:divide-slate-700"
               >
-                <thead className="bg-slate-50 text-left uppercase tracking-wide text-slate-500 dark:bg-slate-700/50 dark:text-slate-400">
+                <thead className="bg-slate-50 text-left uppercase tracking-wide text-slate-500 dark:bg-[#151821]/50 dark:text-slate-400">
                   <tr>
                     {headers.map((h) => {
                       const w = colWidths[h] ?? DEFAULT_COL_WIDTHS[h] ?? 90;

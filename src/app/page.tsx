@@ -493,11 +493,15 @@ export default function Home() {
     if (syncStatus.error) toast.error(syncStatus.error);
   }, [syncStatus.error]);
 
-  // Modo dev sem Supabase — mostra onboarding na primeira visita
+  // Modo dev sem Supabase — carrega dados demo automaticamente e mostra onboarding na primeira visita
   useEffect(() => {
     if (isSupabaseConfigured) return;
     try {
       const onboarded = localStorage.getItem("pta_onboarding_v1");
+      // Auto-seed demo data if no campaigns loaded yet (dev preview)
+      if (campaigns.length === 0) {
+        handleLoadDemo();
+      }
       if (!onboarded) setShowOnboarding(true);
     } catch {}
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -627,6 +631,8 @@ export default function Home() {
         currentUser={currentUser}
         categories={userCategories}
         accountEntries={userAccountEntries}
+        onCategoriesChange={setUserCategories}
+        onEntriesChange={replaceUserAccountEntries}
         onImportCsv={handleCsvUpload}
         onImportUrl={handleGenerateDashboard}
         onImportMeta={handleMetaImport}

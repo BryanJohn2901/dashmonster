@@ -19,22 +19,25 @@
   /* ----------------------------------------------------------
      FUNDAÇÃO — Dashfolio Neo: off-white quente, cards brancos
      ---------------------------------------------------------- */
-  --dm-bg-page:          #F4F7FE;
+  --dm-bg-page:          #F7F8FC;
   --dm-bg-surface:       #FFFFFF;
   --dm-bg-sidebar:       #FFFFFF;
-  --dm-bg-elevated:      #EEF2FB;
+  --dm-bg-elevated:      #F1F4FA;
+  --dm-bg-card-soft:     #F1F4FA;
+  --dm-bg-surface-hover: #F1F4FA;
+  --dm-divider:          #E2E6EF;
 
-  --dm-border-subtle:    #F0F0F0;
-  --dm-border-default:   #E5E5E5;
-  --dm-border-strong:    #D4D4D4;
+  --dm-border-subtle:    #EEF1F6;
+  --dm-border-default:   #E2E6EF;
+  --dm-border-strong:    #C8CDD9;
 
   /* ----------------------------------------------------------
      TIPOGRAFIA
      ---------------------------------------------------------- */
-  --dm-text-primary:     #0A0A0A;   /* AAA */
-  --dm-text-secondary:   #6B6B6B;   /* AA  */
-  --dm-text-tertiary:    #A3A3A3;   /* Decorativo */
-  --dm-text-disabled:    #D4D4D4;
+  --dm-text-primary:     #151821;   /* AAA */
+  --dm-text-secondary:   #6F7482;   /* AA  */
+  --dm-text-tertiary:    #A0A5B3;   /* Decorativo */
+  --dm-text-disabled:    #C8CDD9;
   --dm-text-inverse:     #FFFFFF;
 
   /* ----------------------------------------------------------
@@ -52,25 +55,30 @@
   /* ----------------------------------------------------------
      NAV — ESTADOS
      ---------------------------------------------------------- */
-  --dm-nav-active-bg:    rgba(49,52,145,0.08);
+  --dm-nav-active-bg:    rgba(49,52,145,0.10);
   --dm-nav-active-text:  #313491;
   --dm-nav-active-dot:   #313491;
-  --dm-nav-hover-bg:     rgba(49,52,145,0.04);
+  --dm-nav-hover-bg:     rgba(49,52,145,0.05);
   --dm-nav-hover-text:   #313491;
-  --dm-nav-default-text: #707EAE;
+  --dm-nav-default-text: #6F7482;
 
   /* ----------------------------------------------------------
      BOTÕES
      ---------------------------------------------------------- */
+  --dm-primary:          #313491;
+  --dm-primary-hover:    #282B78;
+  --dm-primary-soft:     rgba(49,52,145,0.10);
+  --dm-primary-border:   rgba(49,52,145,0.22);
+  --dm-primary-vivid:    #4B50D9;
   --dm-btn-primary-bg:   #313491;
   --dm-btn-primary-text: #FFFFFF;
-  --dm-btn-primary-hover:#2a2d82;
-  --dm-btn-ghost-bg:     rgba(49,52,145,0.08);
+  --dm-btn-primary-hover:#282B78;
+  --dm-btn-ghost-bg:     rgba(49,52,145,0.10);
   --dm-btn-ghost-text:   #313491;
-  --dm-btn-ghost-hover:  rgba(49,52,145,0.14);
-  --dm-btn-destructive-bg:   #EE5D50;
+  --dm-btn-ghost-hover:  rgba(49,52,145,0.16);
+  --dm-btn-destructive-bg:   #E14D4D;
   --dm-btn-destructive-text: #FFFFFF;
-  --dm-btn-destructive-hover:#DC2626;
+  --dm-btn-destructive-hover:#C43A3A;
 
   /* ----------------------------------------------------------
      CATEGORIAS — sistema semântico (mantido)
@@ -124,20 +132,20 @@
   /* ----------------------------------------------------------
      STATUS
      ---------------------------------------------------------- */
-  --dm-success-bg:     #ECFDF5;
+  --dm-success-bg:     #DDFBEF;
   --dm-success-border: #A7F3D0;
   --dm-success-text:   #065F46;
-  --dm-success-base:   #059669;
+  --dm-success-base:   #1FA971;
 
-  --dm-warning-bg:     #FFFBEB;
+  --dm-warning-bg:     #FEF3C7;
   --dm-warning-border: #FDE68A;
   --dm-warning-text:   #92400E;
-  --dm-warning-base:   #D97706;
+  --dm-warning-base:   #F4A93C;
 
   --dm-error-bg:       #FFF1F2;
   --dm-error-border:   #FECDD3;
   --dm-error-text:     #9F1239;
-  --dm-error-base:     #DC2626;
+  --dm-error-base:     #E14D4D;
 
   --dm-info-bg:        #EFF6FF;
   --dm-info-border:    #BFDBFE;
@@ -173,9 +181,52 @@
   --dm-chart-7:  #A3AED0;
 
   /* ----------------------------------------------------------
+     DATA VIZ — paleta monocromática indigo + status
+     Fonte: guia_visual_tema_my_account_graficos.docx §12
+     ---------------------------------------------------------- */
+  --dm-data-1:       #313491;
+  --dm-data-2:       #575BDB;
+  --dm-data-3:       #7B7FF2;
+  --dm-data-4:       #A3A6FF;
+  --dm-data-5:       #D6D8FF;
+  --dm-data-success: #1FA971;
+  --dm-data-danger:  #E14D4D;
+  --dm-data-warning: #F4A93C;
+  --dm-chart-grid:   rgba(49,52,145,0.08);
+
+  /* ----------------------------------------------------------
+     CHART TOKENS LIGHT
+     ---------------------------------------------------------- */
+  --dm-chart-primary:       #313491;
+  --dm-chart-primary-muted: rgba(49,52,145,0.14);
+  --dm-chart-secondary:     #A0A5B3;
+  --dm-chart-success:       #1FA971;
+  --dm-chart-danger:        #E14D4D;
+
+  /* ----------------------------------------------------------
+     ICON TOKENS LIGHT
+     ---------------------------------------------------------- */
+  --dm-icon-primary:   #6F7482;
+  --dm-icon-muted:     #A0A5B3;
+
+  /* ----------------------------------------------------------
+     TABLE TOKENS LIGHT
+     ---------------------------------------------------------- */
+  --dm-bg-input:             #FFFFFF;
+  --dm-bg-table:             #FFFFFF;
+  --dm-bg-table-header:      #F7F8FC;
+  --dm-bg-table-row:         #FFFFFF;
+  --dm-bg-table-row-hover:   #F7F8FC;
+
+  /* ----------------------------------------------------------
+     SHADOW
+     ---------------------------------------------------------- */
+  --dm-shadow-soft: 0 8px 24px rgba(17,24,39,0.06);
+
+  /* ----------------------------------------------------------
      FOCO
      ---------------------------------------------------------- */
-  --dm-focus-ring: 0 0 0 3px rgba(59, 130, 246, 0.3);
+  --dm-focus-ring: 0 0 0 3px rgba(49,52,145,0.25);
 
   /* ----------------------------------------------------------
      ALIASES LEGACY
@@ -184,6 +235,45 @@
   --foreground:  var(--dm-text-primary);
   --brand:       var(--dm-brand-500);
   --brand-hover: var(--dm-brand-600);
+
+  /* ==========================================================
+     MD3 — SHAPE SCALE
+     Fonte: m3.material.io/foundations/shape
+     none=0 · xs=4 · sm=8 · md=12 · lg=16 · xl=28 · full=∞
+     ========================================================== */
+  --dm-shape-none: 0px;
+  --dm-shape-xs:   4px;
+  --dm-shape-sm:   8px;
+  --dm-shape-md:   12px;
+  --dm-shape-lg:   16px;
+  --dm-shape-xl:   28px;
+  --dm-shape-full: 9999px;
+
+  /* ==========================================================
+     MD3 — STATE LAYERS
+     Fonte: m3.material.io/foundations/interaction/states
+     RGB do primary para composição rgba()
+     ========================================================== */
+  --dm-primary-rgb:    49, 52, 145;
+  --dm-state-hover:    rgba(var(--dm-primary-rgb), 0.08);
+  --dm-state-focus:    rgba(var(--dm-primary-rgb), 0.12);
+  --dm-state-pressed:  rgba(var(--dm-primary-rgb), 0.16);
+
+  /* ==========================================================
+     MD3 — TYPE SCALE (subset prático para dashboard)
+     Fonte: m3.material.io/styles/typography/type-scale-tokens
+     ========================================================== */
+  --dm-type-display:    36px;   /* hero number / valor destaque */
+  --dm-type-headline:   24px;   /* títulos de seção */
+  --dm-type-title-lg:   22px;   /* KPI Tier 1 — valor principal */
+  --dm-type-title-md:   18px;   /* KPI Tier 2 */
+  --dm-type-title-sm:   16px;   /* card headers */
+  --dm-type-body-lg:    14px;   /* corpo / células de tabela */
+  --dm-type-body-md:    13px;   /* corpo secundário */
+  --dm-type-body-sm:    12px;   /* meta, captions */
+  --dm-type-label-lg:   12px;   /* labels */
+  --dm-type-label-md:   11px;   /* small labels */
+  --dm-type-label-sm:   10px;   /* micro labels / uppercase caps */
 }
 
 
@@ -194,25 +284,35 @@
 .dark {
 
   /* ----------------------------------------------------------
-     FUNDAÇÃO — near-black, toque mínimo de cor
+     FUNDAÇÃO — near-black neutro, sem azul dominante
      ---------------------------------------------------------- */
-  --dm-bg-page:          #07080F;
-  --dm-bg-surface:       #0F1020;
-  --dm-bg-sidebar:       #0A0B18;
-  --dm-bg-elevated:      #161830;
+  --dm-bg-page:          #07080C;
+  --dm-bg-surface:       #11131A;
+  --dm-bg-sidebar:       #0B0C12;
+  --dm-bg-elevated:      #151821;
+  --dm-bg-card-soft:     #181B24;
+  --dm-bg-surface-hover: #171A23;
+  --dm-bg-input:         #141720;
+  --dm-bg-table:         #11131A;
+  --dm-bg-table-header:  #151821;
+  --dm-bg-table-row:     #11131A;
+  --dm-bg-table-row-hover: #171A23;
+  --dm-divider:          rgba(255,255,255,0.06);
 
-  --dm-border-subtle:    #1A1C30;
-  --dm-border-default:   #1E2040;
-  --dm-border-strong:    #2A2D52;
+  --dm-border-subtle:    rgba(255,255,255,0.05);
+  --dm-border-default:   rgba(255,255,255,0.08);
+  --dm-border-strong:    rgba(255,255,255,0.12);
 
   /* ----------------------------------------------------------
      TIPOGRAFIA DARK (WCAG AA)
      ---------------------------------------------------------- */
-  --dm-text-primary:     #F1F5F9;
-  --dm-text-secondary:   #8B90B8;
-  --dm-text-tertiary:    #4A4F72;
-  --dm-text-disabled:    #2A2D45;
-  --dm-text-inverse:     #07080F;
+  --dm-text-primary:     #F4F5F7;
+  --dm-text-secondary:   #A4A9B6;
+  --dm-text-tertiary:    #6F7686;
+  --dm-text-disabled:    #3A404F;
+  --dm-text-inverse:     #07080C;
+  --dm-icon-primary:     #C8CCD8;
+  --dm-icon-muted:       #7D8494;
 
   /* ----------------------------------------------------------
      MARCA DARK — indigo vibrante sobre fundo escuro
@@ -229,22 +329,27 @@
   /* ----------------------------------------------------------
      NAV DARK
      ---------------------------------------------------------- */
-  --dm-nav-active-bg:    rgba(99, 102, 241, 0.15);
-  --dm-nav-active-text:  #F1F5F9;
-  --dm-nav-active-dot:   #6366F1;
-  --dm-nav-hover-bg:     rgba(255, 255, 255, 0.05);
-  --dm-nav-hover-text:   #F1F5F9;
-  --dm-nav-default-text: #8B90B8;
+  --dm-nav-active-bg:    rgba(110,114,255,0.16);
+  --dm-nav-active-text:  #6E72FF;
+  --dm-nav-active-dot:   #6E72FF;
+  --dm-nav-hover-bg:     rgba(255,255,255,0.05);
+  --dm-nav-hover-text:   #F4F6FB;
+  --dm-nav-default-text: #A9AFBF;
 
   /* ----------------------------------------------------------
      BOTÕES DARK
      ---------------------------------------------------------- */
-  --dm-btn-primary-bg:   #4A4FCC;
+  --dm-primary:          #6E72FF;
+  --dm-primary-hover:    #8285FF;
+  --dm-primary-soft:     rgba(110,114,255,0.16);
+  --dm-primary-border:   rgba(110,114,255,0.28);
+  --dm-primary-vivid:    #8A8DFF;
+  --dm-btn-primary-bg:   #6E72FF;
   --dm-btn-primary-text: #FFFFFF;
-  --dm-btn-primary-hover:#313491;
-  --dm-btn-ghost-bg:     #111230;
-  --dm-btn-ghost-text:   #818CF8;
-  --dm-btn-ghost-hover:  #161840;
+  --dm-btn-primary-hover:#8285FF;
+  --dm-btn-ghost-bg:     rgba(110,114,255,0.12);
+  --dm-btn-ghost-text:   #6E72FF;
+  --dm-btn-ghost-hover:  rgba(110,114,255,0.20);
   --dm-btn-destructive-bg:   #7F1D1D;
   --dm-btn-destructive-text: #FCA5A5;
   --dm-btn-destructive-hover:#991B1B;
@@ -304,12 +409,12 @@
   --dm-success-bg:     #052E1C;
   --dm-success-border: #065F46;
   --dm-success-text:   #6EE7B7;
-  --dm-success-base:   #10B981;
+  --dm-success-base:   #34D399;
 
   --dm-warning-bg:     #2A1A00;
   --dm-warning-border: #78350F;
   --dm-warning-text:   #FCD34D;
-  --dm-warning-base:   #F59E0B;
+  --dm-warning-base:   #FBBF24;
 
   --dm-error-bg:       #2A0808;
   --dm-error-border:   #7F1D1D;
@@ -352,7 +457,32 @@
   /* ----------------------------------------------------------
      FOCO DARK
      ---------------------------------------------------------- */
-  --dm-focus-ring: 0 0 0 3px rgba(99, 102, 241, 0.35);
+  --dm-focus-ring: 0 0 0 3px rgba(110,114,255,0.35);
+
+  /* ----------------------------------------------------------
+     DATA VIZ DARK — indigo luminoso para contraste
+     ---------------------------------------------------------- */
+  --dm-data-1:       #6E72FF;
+  --dm-data-2:       #8A8DFF;
+  --dm-data-3:       #A7A9FF;
+  --dm-data-4:       #C5C6FF;
+  --dm-data-5:       rgba(108,112,255,0.18);
+  --dm-data-success: #22C55E;
+  --dm-data-danger:  #EF4444;
+  --dm-data-warning: #EAB308;
+  --dm-chart-grid:   rgba(255,255,255,0.07);
+
+  /* SHADOW DARK */
+  --dm-shadow-soft: 0 20px 50px rgba(0,0,0,0.32);
+
+  /* ----------------------------------------------------------
+     CHART TOKENS DARK — nova paleta minimalista
+     ---------------------------------------------------------- */
+  --dm-chart-primary:       #6C70FF;
+  --dm-chart-primary-muted: rgba(108,112,255,0.20);
+  --dm-chart-secondary:     #8A8FAD;
+  --dm-chart-success:       #22C55E;
+  --dm-chart-danger:        #EF4444;
 
   /* ----------------------------------------------------------
      ALIASES
@@ -361,6 +491,33 @@
   --foreground:  var(--dm-text-primary);
   --brand:       var(--dm-brand-500);
   --brand-hover: var(--dm-btn-primary-hover);
+
+  /* MD3 shape e type scale — mesmo em dark (agnósticos) */
+  --dm-shape-none: 0px;
+  --dm-shape-xs:   4px;
+  --dm-shape-sm:   8px;
+  --dm-shape-md:   12px;
+  --dm-shape-lg:   16px;
+  --dm-shape-xl:   28px;
+  --dm-shape-full: 9999px;
+
+  --dm-type-display:    36px;
+  --dm-type-headline:   24px;
+  --dm-type-title-lg:   22px;
+  --dm-type-title-md:   18px;
+  --dm-type-title-sm:   16px;
+  --dm-type-body-lg:    14px;
+  --dm-type-body-md:    13px;
+  --dm-type-body-sm:    12px;
+  --dm-type-label-lg:   12px;
+  --dm-type-label-md:   11px;
+  --dm-type-label-sm:   10px;
+
+  /* MD3 state layers — dark usa #6E72FF */
+  --dm-primary-rgb:   110, 114, 255;
+  --dm-state-hover:   rgba(var(--dm-primary-rgb), 0.08);
+  --dm-state-focus:   rgba(var(--dm-primary-rgb), 0.12);
+  --dm-state-pressed: rgba(var(--dm-primary-rgb), 0.16);
 }
 
 /* Sombras dark — navy Horizon palette */
@@ -403,6 +560,102 @@
   box-shadow: 14px 17px 40px 4px rgba(0, 0, 0, 0.50) !important;
 }
 
+/* ============================================================
+   CLASSES UTILITÁRIAS — Guia Visual §5, §11
+   ============================================================ */
+
+/* Cards */
+.dm-card {
+  background:    var(--dm-bg-surface);
+  border:        1px solid var(--dm-border-default);
+  border-radius: 18px;
+  box-shadow:    var(--dm-shadow-soft);
+  padding:       20px;
+  color:         var(--dm-text-primary);
+}
+.dm-card-soft {
+  background:    var(--dm-bg-card-soft);
+  border:        1px solid var(--dm-border-subtle);
+  border-radius: 16px;
+  padding:       16px;
+}
+
+/* Chart cards */
+.dm-chart-card {
+  background:    var(--dm-bg-surface);
+  border:        1px solid var(--dm-border-default);
+  border-radius: 22px;
+  padding:       22px;
+  box-shadow:    var(--dm-shadow-soft);
+  color:         var(--dm-text-primary);
+}
+.dm-chart-title {
+  font-size:   16px;
+  font-weight: 800;
+  color:       var(--dm-text-primary);
+}
+.dm-chart-value {
+  font-size:      34px;
+  font-weight:    800;
+  letter-spacing: -0.04em;
+  color:          var(--dm-text-primary);
+}
+
+/* Buttons — §11 */
+.btn-primary {
+  background:    linear-gradient(135deg, #313491, #4B50D9);
+  color:         #FFFFFF;
+  border:        none;
+  border-radius: var(--dm-shape-md);
+  font-weight:   700;
+  transition:    opacity 0.18s ease, transform 0.12s ease;
+}
+.btn-primary:hover  { opacity: 0.88; }
+.btn-primary:active { transform: scale(0.97); }
+
+.btn-secondary {
+  background:    var(--dm-bg-surface);
+  color:         var(--dm-text-primary);
+  border:        1px solid var(--dm-border-default);
+  border-radius: var(--dm-shape-md);
+  font-weight:   600;
+  transition:    background 0.18s ease;
+}
+.btn-secondary:hover { background: var(--dm-bg-card-soft); }
+
+.btn-danger {
+  background:    transparent;
+  color:         var(--dm-error-base);
+  border:        1px solid rgba(225,77,77,0.30);
+  border-radius: var(--dm-shape-md);
+  font-weight:   600;
+  transition:    background 0.18s ease;
+}
+.btn-danger:hover { background: var(--dm-error-bg); }
+
+/* ── MD3 State Layer ──────────────────────────────────────────────────────── */
+/* Aplique .dm-state-layer em qualquer elemento interativo para obter os
+   overlays de hover/focus/pressed definidos pela spec MD3.
+   O ::before herda border-radius do pai via "inherit".                        */
+.dm-state-layer {
+  position: relative;
+  isolation: isolate;
+}
+.dm-state-layer::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--dm-state-hover);
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  pointer-events: none;
+  z-index: 0;
+}
+.dm-state-layer:hover::before    { opacity: 1; }
+.dm-state-layer:focus-visible::before { opacity: 1; background: var(--dm-state-focus); }
+.dm-state-layer:active::before   { opacity: 1; background: var(--dm-state-pressed); }
+
 body {
   background: var(--dm-bg-page);
   color: var(--dm-text-primary);
@@ -441,7 +694,7 @@ h1, h2, h3, h4, h5 {
   border: 1px solid rgba(255, 255, 255, 0.6);
 }
 .dark .glass-panel {
-  background-color: rgba(17, 28, 68, 0.85);
+  background-color: rgba(13, 14, 22, 0.92);
   border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
@@ -482,6 +735,297 @@ h1, h2, h3, h4, h5 {
 }
 ::-webkit-scrollbar-corner {
   background: transparent;
+}
+
+/* ============================================================
+   ICON BOX — padrão neutro (cor só em ativo/status real)
+   ============================================================ */
+.icon-box {
+  display:         grid;
+  place-items:     center;
+  width:           36px;
+  height:          36px;
+  border-radius:   12px;
+  background:      rgba(255,255,255,0.045);
+  border:          1px solid rgba(255,255,255,0.08);
+  color:           var(--dm-icon-primary, #C8CCD8);
+  flex-shrink:     0;
+}
+:root .icon-box {
+  background:  rgba(0,0,0,0.04);
+  border-color: rgba(0,0,0,0.06);
+  color:        var(--dm-icon-primary, #6F7482);
+}
+.icon-box.active {
+  background:   rgba(49,52,145,0.22);
+  border-color: rgba(91,96,210,0.42);
+  color:        #FFFFFF;
+}
+.dark .icon-box.active {
+  background:   rgba(108,112,255,0.22);
+  border-color: rgba(108,112,255,0.40);
+}
+.icon-box.success { color: var(--dm-chart-success); }
+.icon-box.danger  { color: var(--dm-chart-danger); }
+.icon-box.warning { color: var(--dm-data-warning); }
+
+/* ============================================================
+   METRIC CARD — neutro com topo highlight opcional
+   ============================================================ */
+.metric-card {
+  background:    var(--dm-bg-surface);
+  border:        1px solid var(--dm-border-default);
+  border-radius: 18px;
+  padding:       20px;
+  box-shadow:    var(--dm-shadow-soft);
+  position:      relative;
+  overflow:      hidden;
+}
+.metric-card::before {
+  content:    "";
+  position:   absolute;
+  inset:      0 0 auto 0;
+  height:     1px;
+  background: rgba(255,255,255,0.10);
+}
+.dark .metric-card::before {
+  background: rgba(255,255,255,0.08);
+}
+.metric-card.is-featured::before {
+  background: linear-gradient(90deg, transparent, rgba(91,96,210,0.85), transparent);
+}
+
+/* ============================================================
+   BADGE — neutro, status só via border+text
+   ============================================================ */
+.dm-badge {
+  height:         28px;
+  padding:        0 10px;
+  border-radius:  9999px;
+  display:        inline-flex;
+  align-items:    center;
+  gap:            6px;
+  background:     rgba(255,255,255,0.045);
+  border:         1px solid rgba(255,255,255,0.08);
+  color:          var(--dm-text-secondary);
+  font-size:      12px;
+  font-weight:    700;
+}
+:root .dm-badge {
+  background:  rgba(0,0,0,0.04);
+  border-color: rgba(0,0,0,0.07);
+}
+.dm-badge.active {
+  background:   rgba(49,52,145,0.18);
+  border-color: rgba(91,96,210,0.38);
+  color:        #FFFFFF;
+}
+.dark .dm-badge.active {
+  background:   rgba(108,112,255,0.18);
+  border-color: rgba(108,112,255,0.36);
+}
+.dm-badge.success {
+  border-color: rgba(34,197,94,0.28);
+  color:        var(--dm-chart-success);
+}
+.dm-badge.danger {
+  border-color: rgba(239,68,68,0.28);
+  color:        var(--dm-chart-danger);
+}
+
+/* ============================================================
+   DATA TABLE — neutro, sem azul dominante
+   ============================================================ */
+.dm-data-table {
+  background:    var(--dm-bg-table);
+  border:        1px solid var(--dm-border-default);
+  border-radius: 22px;
+  overflow:      hidden;
+  width:         100%;
+}
+.dm-data-table thead {
+  background: var(--dm-bg-table-header);
+}
+.dm-data-table th {
+  color:          var(--dm-text-tertiary);
+  font-size:      11px;
+  font-weight:    800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-bottom:  1px solid var(--dm-border-default);
+  padding:        10px 14px;
+}
+.dm-data-table td {
+  color:          var(--dm-text-secondary);
+  border-bottom:  1px solid var(--dm-border-subtle);
+  padding:        10px 14px;
+  font-size:      13px;
+}
+.dm-data-table tr {
+  background: var(--dm-bg-table-row);
+  transition: background 0.12s ease;
+}
+.dm-data-table tr:hover {
+  background: var(--dm-bg-table-row-hover);
+}
+
+/* ============================================================
+   HISTORY — neutro
+   ============================================================ */
+.dm-history-card {
+  background:    var(--dm-bg-surface);
+  border:        1px solid var(--dm-border-default);
+  border-radius: 22px;
+}
+.dm-history-row {
+  background:   transparent;
+  border-bottom: 1px solid var(--dm-border-subtle);
+  transition:    background 0.12s ease;
+}
+.dm-history-row:hover {
+  background: rgba(255,255,255,0.025);
+}
+:root .dm-history-row:hover {
+  background: rgba(0,0,0,0.02);
+}
+
+/* ============================================================
+   APP GRAIN — granulado global muito sutil
+   ============================================================ */
+.app-grain {
+  position:         fixed;
+  inset:            0;
+  pointer-events:   none;
+  z-index:          9999;
+  /* Light: multiply escurece levemente o fundo branco */
+  opacity:          0.055;
+  mix-blend-mode:   multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.68' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeBlend in='SourceGraphic' mode='multiply'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
+  background-size:  256px 256px;
+}
+.dark .app-grain {
+  /* Dark: screen mostra os pixels claros do ruído sobre fundo escuro */
+  opacity:        0.11;
+  mix-blend-mode: screen;
+}
+
+.app-grain-glow {
+  position:       fixed;
+  inset:          0;
+  pointer-events: none;
+  z-index:        9998;
+  /* Light: glow muito suave */
+  opacity:        0.06;
+  background:
+    radial-gradient(ellipse at 12% 88%, rgba(49,52,145,0.20), transparent 40%),
+    radial-gradient(ellipse at 88% 8%,  rgba(49,52,145,0.10), transparent 32%);
+}
+.dark .app-grain-glow {
+  /* Dark: ponto de luz azul canto inferior-esquerdo, igual referência */
+  opacity:   1;
+  background:
+    radial-gradient(ellipse at 12% 90%, rgba(49,52,145,0.45) 0%, transparent 48%),
+    radial-gradient(ellipse at 88% 5%,  rgba(108,112,255,0.18) 0%, transparent 36%),
+    radial-gradient(ellipse at 50% 50%, rgba(49,52,145,0.08) 0%, transparent 70%);
+}
+
+/* ============================================================
+   PROFILE BANNER — Minha conta
+   ============================================================ */
+.profile-banner {
+  height:        220px;
+  border-radius: var(--dm-shape-xl);
+  position:      relative;
+  z-index:       0;
+  overflow:      hidden;
+  border:        1px solid var(--dm-border-default);
+  /* Base escuro fixo + acentos índigo suaves */
+  background:
+    radial-gradient(circle at 20% 60%, rgba(49,52,145,0.32) 0%, transparent 42%),
+    radial-gradient(circle at 80% 20%, rgba(108,112,255,0.20) 0%, transparent 40%),
+    radial-gradient(circle at 50% 100%, rgba(49,52,145,0.14) 0%, transparent 50%),
+    linear-gradient(135deg, #0E0F18 0%, #131525 100%);
+}
+:root .profile-banner {
+  background:
+    radial-gradient(circle at 20% 60%, rgba(49,52,145,0.22) 0%, transparent 42%),
+    radial-gradient(circle at 80% 20%, rgba(108,112,255,0.14) 0%, transparent 40%),
+    linear-gradient(135deg, #1a1d35 0%, #252952 100%);
+}
+.profile-banner-badge {
+  position:        absolute;
+  top:             24px;
+  left:            24px;
+  padding:         7px 12px;
+  border-radius:   9999px;
+  background:      rgba(255,255,255,0.10);
+  color:           var(--dm-text-primary);
+  font-size:       12px;
+  font-weight:     800;
+  letter-spacing:  0.04em;
+  text-transform:  uppercase;
+  backdrop-filter: blur(12px);
+  border:          1px solid rgba(255,255,255,0.10);
+}
+.profile-identity-card {
+  background:    var(--dm-bg-surface);
+  border:        1px solid var(--dm-border-default);
+  border-radius: var(--dm-shape-xl);
+  padding:       20px 28px;
+  display:       flex;
+  align-items:   center;
+  gap:           20px;
+  box-shadow:    0 8px 32px rgba(0,0,0,0.18);
+}
+.account-avatar {
+  width:         112px;
+  height:        112px;
+  border-radius: 9999px;
+  border:        5px solid var(--dm-bg-page);
+  background:    #313491;
+  color:         #FFFFFF;
+  display:       grid;
+  place-items:   center;
+  font-size:     36px;
+  font-weight:   800;
+  box-shadow:    var(--dm-shadow-soft);
+  flex-shrink:   0;
+}
+
+/* ============================================================
+   ACCOUNT TABS — Minha conta sub-abas
+   ============================================================ */
+.account-tabs {
+  display:       flex;
+  gap:           4px;
+  border-bottom: 1px solid var(--dm-border-default);
+  overflow-x:    auto;
+  scrollbar-width: none;
+}
+.account-tabs::-webkit-scrollbar { display: none; }
+.account-tab {
+  padding:         12px 16px;
+  background:      transparent;
+  border:          none;
+  border-bottom:   2px solid transparent;
+  color:           var(--dm-text-secondary);
+  font-size:       14px;
+  font-weight:     600;
+  cursor:          pointer;
+  white-space:     nowrap;
+  transition:      color 0.15s ease, border-color 0.15s ease;
+}
+.account-tab:hover { color: var(--dm-text-primary); }
+.account-tab.active {
+  color:        var(--dm-primary);
+  border-bottom-color: var(--dm-primary);
+}
+.account-content {
+  background:    var(--dm-bg-surface);
+  border:        1px solid var(--dm-border-default);
+  border-radius: var(--dm-shape-xl);
+  padding:       24px;
+  box-shadow:    var(--dm-shadow-soft);
 }
 
 /* ============================================================
@@ -526,6 +1070,33 @@ h1, h2, h3, h4, h5 {
   font-size: 14px;
   font-weight: 700;
   color: var(--dm-text-primary);
+}
+
+/* ── Sidebar collapsed tooltips ── */
+.dm-sidebar-tooltip {
+  position: relative;
+}
+.dm-sidebar-tooltip::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+  white-space: nowrap;
+  background: var(--dm-text-primary);
+  color: var(--dm-bg-page);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease 0.15s;
+  z-index: 200;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+.dm-sidebar-tooltip:hover::after {
+  opacity: 1;
 }
 
 /* 4.4 — Tooltip para métricas abreviadas */

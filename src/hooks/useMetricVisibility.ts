@@ -56,8 +56,16 @@ export function useMetricVisibility() {
     try { localStorage.removeItem(STORAGE_KEY); } catch {}
   };
 
+  const hideAll = () => {
+    const next = new Set<MetricId>(ALL_METRIC_IDS);
+    setHidden(next);
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify([...next])); } catch {}
+  };
+
   const isVisible = (id: MetricId | string): boolean =>
     !hidden.has(id as MetricId);
 
-  return { hidden, toggle, showAll, isVisible };
+  const allVisible = hidden.size === 0;
+
+  return { hidden, toggle, showAll, hideAll, isVisible, allVisible };
 }
