@@ -24,8 +24,10 @@ import {
 import {
   fetchMetaInsights,
   loadMetaCredentials,
+  saveMetaCredentials,
   metaInsightsToCampaignData,
 } from "@/utils/metaApi";
+import { fetchMetaTokenFromDB } from "@/utils/supabaseProfiles";
 import type { AdvertiserProfile } from "@/hooks/useAdvertiserStore";
 import type { UserCategory, UserAccountEntry } from "@/types/userConfig";
 import {
@@ -555,6 +557,15 @@ export default function Home() {
         campaignChannelRef.current = subscribeSupabaseCampaigns(loadSupabaseData);
         sourceChannelRef.current = subscribeSharedDataSource(loadSharedDataSource);
         setRealtimeActive(true);
+
+        // ── Restaura token Meta do Supabase se não estiver em localStorage ──────
+        // (ocorre quando o usuário loga em um novo dispositivo/browser)
+        const localToken = loadMetaCredentials().accessToken;
+        if (!localToken) {
+          fetchMetaTokenFromDB()
+            .then((dbToken) => { if (dbToken) saveMetaCredentials({ accessToken: dbToken }); })
+            .catch(() => {});
+        }
 
         // Auto-sync Meta: se já estava como Meta, ou se há contas no Painel + token (primeira carga com lista fresca).
         const { accessToken } = loadMetaCredentials();

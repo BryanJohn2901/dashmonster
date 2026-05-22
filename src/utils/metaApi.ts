@@ -1,4 +1,5 @@
 import type { CampaignData } from "@/types/campaign";
+import { saveMetaTokenToDB } from "@/utils/supabaseProfiles";
 
 /**
  * Parses a Meta API numeric string ("400.00", "9000000") correctly.
@@ -78,6 +79,10 @@ export function loadMetaCredentials(): MetaCredentials {
 
 export function saveMetaCredentials(creds: MetaCredentials): void {
   try { localStorage.setItem(CREDS_KEY, JSON.stringify(creds)); } catch {}
+  // Background Supabase sync — fire-and-forget
+  if (creds.accessToken) {
+    saveMetaTokenToDB(creds.accessToken).catch(() => {});
+  }
 }
 
 // ─── Insights ─────────────────────────────────────────────────────────────────
