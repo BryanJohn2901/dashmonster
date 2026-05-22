@@ -2618,7 +2618,7 @@ export function Dashboard({
         {/* Top header — contexto em cima, acções agrupadas */}
         {/* ── Frosted pill navbar — Horizon style ── */}
         <header className="relative z-10 mx-4 mt-4 mb-1 flex-shrink-0 rounded-2xl border backdrop-blur-xl bg-white/80 dark:bg-[#0b143780] shadow-sm" style={{ borderColor: "var(--dm-border-default)" }}>
-          <div className="flex min-h-[3.25rem] flex-col gap-2 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:px-4 sm:py-2 md:px-6">
+          <div className="flex min-h-[3.25rem] flex-row items-center justify-between gap-2 px-3 py-2 sm:gap-3 sm:px-4 md:px-6">
             <div className="flex min-w-0 flex-1 items-center gap-3">
               <button
                 onClick={() => setShowMobileNav(true)}
