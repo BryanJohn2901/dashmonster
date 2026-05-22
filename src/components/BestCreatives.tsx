@@ -30,7 +30,7 @@ interface BestCreativesProps {
   selectedGroupName?:    string;
 }
 
-type CreatedPeriod = "all" | "30d" | "90d" | "365d";
+type ActivityFilter = "all" | "with_data" | "no_data";
 
 type SubTab       = "gallery" | "rankings" | "starred";
 type MediaFilter  = "all" | "image" | "video" | "carousel";
@@ -312,7 +312,6 @@ function PreviewModal({
   onNavigate:   (ad: MetaCampaignCreative) => void;
 }) {
   const [showIframe, setShowIframe] = useState(false);
-
   const currentIndex = allAds.findIndex((a) => a.adId === ad.adId);
 
   useEffect(() => {
@@ -330,11 +329,9 @@ function PreviewModal({
     ? new Date(ad.createdTime).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })
     : null;
 
-  // Score
   const score      = computeScore(insight);
   const scoreColor = score === null ? "#6366C8" : score >= 70 ? "#05CD99" : score >= 40 ? "#F4A60D" : "#EE5D50";
 
-  // Campaign peers for comparison
   const campaignPeers = useMemo(() =>
     allAds
       .filter((a) => a.campaignId === ad.campaignId && allInsights.has(a.adId))
@@ -347,146 +344,200 @@ function PreviewModal({
     ? campaignPeers.reduce((s, p) => s + p.ins.ctr, 0) / campaignPeers.length
     : 0;
 
-  // Chips
   const chips = insight ? getChips(insight, peersAvgCtr) : [];
 
-  // Metric cards (4 col grid)
-  const cpl = insight && insight.leads > 0 ? insight.spend / insight.leads : null;
-  const cpa = insight && insight.conversions > 0 ? insight.spend / insight.conversions : null;
-  const metricCards: { label: string; value: string; qual: Quality }[] = insight ? [
-    { label: "CTR",          value: formatPercent(insight.ctr),                              qual: mq("ctr", insight.ctr) },
-    { label: cpl ? "CPL" : cpa ? "CPA" : "CPC", value: formatCurrency(cpl ?? cpa ?? insight.cpc), qual: mq("cpl", cpl ?? cpa ?? insight.cpc) },
-    { label: "Leads",        value: insight.leads > 0 ? String(insight.leads) : "—",        qual: insight.leads > 0 ? "good" : "neutral" },
-    { label: "Investimento", value: formatCurrency(insight.spend),                           qual: "neutral" },
-    { label: "Vendas",       value: insight.conversions > 0 ? String(insight.conversions) : "—", qual: insight.conversions > 0 ? "good" : "neutral" },
-    { label: "Cliques",      value: insight.clicks.toLocaleString("pt-BR"),                  qual: "neutral" },
-    { label: "ROAS",         value: insight.roas > 0 ? `${insight.roas.toFixed(2)}x` : "—", qual: mq("roas", insight.roas) },
-    { label: "CPM",          value: insight.cpm > 0 ? formatCurrency(insight.cpm) : "—",    qual: "neutral" },
-  ] : [];
-
-  // Comparison key
-  const compKey = campaignPeers.some(p => p.ins.leads > 0) ? "leads" : campaignPeers.some(p => p.ins.conversions > 0) ? "conversions" : "clicks";
-  const compMax = Math.max(...campaignPeers.map(p => p.ins[compKey as keyof AdInsight] as number), 1);
-  const compLabel = compKey === "leads" ? "Leads" : compKey === "conversions" ? "Vendas" : "Cliques";
-
-  // Metric cards — simplified color: value color only, null cards dimmed
   const cplVal = insight && insight.leads > 0 ? insight.spend / insight.leads : null;
   const cpaVal = insight && insight.conversions > 0 ? insight.spend / insight.conversions : null;
 
-  const metricCards2: { label: string; value: string | null; valueColor: string }[] = insight ? [
-    {
-      label: "Investimento",
-      value: formatCurrency(insight.spend),
-      valueColor: "var(--dm-text-primary)",
-    },
-    {
-      label: "CTR",
-      value: formatPercent(insight.ctr),
-      valueColor: insight.ctr >= 0.02 ? "#05CD99" : insight.ctr >= 0.01 ? "#F4A60D" : "#EE5D50",
-    },
-    {
-      label: cplVal != null ? "CPL" : cpaVal != null ? "CPA" : "CPC",
-      value: formatCurrency(cplVal ?? cpaVal ?? insight.cpc),
-      valueColor: mq("cpl", cplVal ?? cpaVal ?? insight.cpc) === "good" ? "#05CD99" : "var(--dm-text-primary)",
-    },
-    {
-      label: "Leads",
-      value: insight.leads > 0 ? insight.leads.toLocaleString("pt-BR") : null,
-      valueColor: "#05CD99",
-    },
-    {
-      label: "Vendas",
-      value: insight.conversions > 0 ? insight.conversions.toLocaleString("pt-BR") : null,
-      valueColor: "#05CD99",
-    },
-    {
-      label: "Cliques",
-      value: insight.clicks.toLocaleString("pt-BR"),
-      valueColor: "var(--dm-text-primary)",
-    },
-    {
-      label: "ROAS",
-      value: insight.roas > 0 ? `${insight.roas.toFixed(2)}x` : null,
-      valueColor: mq("roas", insight.roas) === "good" ? "#05CD99" : mq("roas", insight.roas) === "avg" ? "#F4A60D" : "var(--dm-text-primary)",
-    },
-    {
-      label: "CPM",
-      value: insight.cpm > 0 ? formatCurrency(insight.cpm) : null,
-      valueColor: "var(--dm-text-primary)",
-    },
+  const metricCards: { label: string; value: string | null; valueColor: string }[] = insight ? [
+    { label: "Investimento", value: formatCurrency(insight.spend),                                                               valueColor: "var(--dm-text-primary)" },
+    { label: "CTR",          value: formatPercent(insight.ctr),                                                                  valueColor: insight.ctr >= 0.02 ? "#05CD99" : insight.ctr >= 0.01 ? "#F4A60D" : "#EE5D50" },
+    { label: cplVal != null ? "CPL" : cpaVal != null ? "CPA" : "CPC", value: formatCurrency(cplVal ?? cpaVal ?? insight.cpc),   valueColor: mq("cpl", cplVal ?? cpaVal ?? insight.cpc) === "good" ? "#05CD99" : "var(--dm-text-primary)" },
+    { label: "Leads",        value: insight.leads > 0 ? insight.leads.toLocaleString("pt-BR") : null,                           valueColor: "#05CD99" },
+    { label: "Vendas",       value: insight.conversions > 0 ? insight.conversions.toLocaleString("pt-BR") : null,               valueColor: "#05CD99" },
+    { label: "Cliques",      value: insight.clicks.toLocaleString("pt-BR"),                                                      valueColor: "var(--dm-text-primary)" },
+    { label: "ROAS",         value: insight.roas > 0 ? `${insight.roas.toFixed(2)}x` : null,                                    valueColor: mq("roas", insight.roas) === "good" ? "#05CD99" : mq("roas", insight.roas) === "avg" ? "#F4A60D" : "var(--dm-text-primary)" },
+    { label: "CPM",          value: insight.cpm > 0 ? formatCurrency(insight.cpm) : null,                                       valueColor: "var(--dm-text-primary)" },
   ] : [];
 
+  const compKey   = campaignPeers.some(p => p.ins.leads > 0) ? "leads" : campaignPeers.some(p => p.ins.conversions > 0) ? "conversions" : "clicks";
+  const compMax   = Math.max(...campaignPeers.map(p => p.ins[compKey as keyof AdInsight] as number), 1);
+  const compLabel = compKey === "leads" ? "Leads" : compKey === "conversions" ? "Vendas" : "Cliques";
+
   return (
-    <>
-      {/* Dim overlay */}
-      <div className="fixed inset-0 z-40" style={{ backgroundColor: "rgba(0,0,0,0.50)" }} onClick={onClose} />
-
-      {/* Drawer */}
+    /* Full-screen backdrop with blur */
+    <div
+      className="fixed inset-0 z-40 flex items-center justify-center p-4"
+      style={{ backgroundColor: "rgba(0,0,0,0.82)", backdropFilter: "blur(10px)" }}
+      onClick={onClose}
+    >
+      {/* Modal container */}
       <div
-        className="fixed bottom-0 right-0 top-0 z-50 flex flex-col overflow-hidden"
+        className="relative flex w-full overflow-hidden rounded-2xl"
         style={{
-          width: 500,
+          maxWidth: 960,
+          maxHeight: "90vh",
           backgroundColor: "var(--dm-bg-surface)",
-          borderLeft: "1px solid var(--dm-border-default)",
-          boxShadow: "-16px 0 60px rgba(0,0,0,0.22)",
+          border: "1px solid var(--dm-border-default)",
+          boxShadow: "0 40px 100px rgba(0,0,0,0.55)",
         }}
+        onClick={(e) => e.stopPropagation()}
       >
-        {/* Brand top stripe */}
-        <div className="h-[3px] flex-shrink-0" style={{ background: DRAWER_GRAD }} />
+        {/* Brand stripe */}
+        <div className="absolute left-0 right-0 top-0 z-10 h-[3px]" style={{ background: DRAWER_GRAD }} />
 
-        {/* ── Header — GRID layout so arrows never shift ── */}
+        {/* ── LEFT: Phone mockup ── */}
         <div
-          className="grid flex-shrink-0 items-center gap-2 px-4 py-3"
+          className="flex flex-shrink-0 flex-col items-center justify-center gap-5 px-6 py-8"
           style={{
-            gridTemplateColumns: "1fr auto auto",
-            borderBottom: "1px solid var(--dm-border-subtle)",
-            backgroundColor: "var(--dm-bg-surface)",
+            width: 280,
+            backgroundColor: "var(--dm-bg-elevated)",
+            borderRight: "1px solid var(--dm-border-subtle)",
           }}
         >
-          {/* Col 1: badge + title */}
-          <div className="flex min-w-0 items-center gap-2">
+          {/* iPhone frame */}
+          <div
+            className="relative overflow-hidden"
+            style={{
+              width: 210,
+              borderRadius: 36,
+              border: "7px solid #1a1a2e",
+              boxShadow: "0 0 0 1.5px #32325e, 0 24px 48px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(255,255,255,0.06)",
+              backgroundColor: "#000",
+            }}
+          >
+            {/* Notch */}
+            <div style={{
+              position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)",
+              width: 72, height: 20, backgroundColor: "#1a1a2e", borderRadius: "0 0 14px 14px", zIndex: 10,
+            }} />
+            {/* Side buttons (decorative) */}
+            <div style={{ position: "absolute", right: -9, top: 80,  width: 3, height: 40, backgroundColor: "#0d0d1a", borderRadius: 2 }} />
+            <div style={{ position: "absolute", left:  -9, top: 72,  width: 3, height: 28, backgroundColor: "#0d0d1a", borderRadius: 2 }} />
+            <div style={{ position: "absolute", left:  -9, top: 108, width: 3, height: 28, backgroundColor: "#0d0d1a", borderRadius: 2 }} />
+
+            {/* Screen — 9:16 */}
+            <div style={{ aspectRatio: "9/16", position: "relative", overflow: "hidden" }}>
+              {/* IG-style top bar */}
+              <div style={{
+                position: "absolute", top: 0, left: 0, right: 0, zIndex: 5,
+                padding: "22px 8px 8px",
+                background: "linear-gradient(to bottom, rgba(0,0,0,0.65), transparent)",
+                display: "flex", alignItems: "center", gap: 5,
+              }}>
+                <div style={{ width: 20, height: 20, borderRadius: "50%", background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.3)", flexShrink: 0 }} />
+                <span style={{ color: "white", fontSize: 8, fontWeight: 700, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {ad.campaignName.slice(0, 20)}
+                </span>
+                <span style={{ color: "rgba(255,255,255,0.55)", fontSize: 7, flexShrink: 0 }}>Patrocinado</span>
+              </div>
+
+              {/* Ad media */}
+              {showIframe ? (
+                <AdIframe ad={ad} accessToken={accessToken} />
+              ) : ad.thumbnailUrl ? (
+                <img src={ad.thumbnailUrl} alt={ad.adName} className="h-full w-full object-cover" />
+              ) : (
+                <div className="flex h-full flex-col items-center justify-center gap-2" style={{ backgroundColor: "#111", color: "rgba(255,255,255,0.18)" }}>
+                  {ad.mediaType === "video" ? <Film size={28} /> : <ImageIcon size={28} />}
+                  <span style={{ fontSize: 9 }}>Sem preview</span>
+                </div>
+              )}
+
+              {/* Bottom gradient / CTA */}
+              <div style={{
+                position: "absolute", bottom: 0, left: 0, right: 0, zIndex: 5,
+                padding: "20px 8px 8px",
+                background: "linear-gradient(to top, rgba(0,0,0,0.72), transparent)",
+                display: "flex", alignItems: "center", gap: 6,
+              }}>
+                <span style={{ color: "rgba(255,255,255,0.8)", fontSize: 8, flex: 1, fontWeight: 600 }}>Saiba mais</span>
+                <div style={{ backgroundColor: "rgba(255,255,255,0.93)", borderRadius: 5, padding: "3px 7px", color: "#111", fontSize: 8, fontWeight: 700, flexShrink: 0 }}>
+                  Ver mais
+                </div>
+              </div>
+
+              {/* Score badge */}
+              {score !== null && (
+                <div style={{
+                  position: "absolute", top: 26, right: 7, zIndex: 6,
+                  width: 26, height: 26, borderRadius: "50%",
+                  backgroundColor: "rgba(0,0,0,0.72)",
+                  border: `2px solid ${scoreColor}`,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  backdropFilter: "blur(4px)",
+                }}>
+                  <span style={{ color: scoreColor, fontSize: 8, fontWeight: 800 }}>{score}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Nav arrows + counter */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => { setShowIframe(false); onNavigate(allAds[currentIndex - 1]); }}
+              disabled={currentIndex <= 0}
+              className="flex h-8 w-8 items-center justify-center rounded-full text-[16px] font-bold transition hover:opacity-80 disabled:opacity-20"
+              style={{ backgroundColor: "var(--dm-bg-surface)", border: "1px solid var(--dm-border-default)", color: "var(--dm-text-secondary)" }}
+            >‹</button>
+            <span className="text-[10px] font-semibold" style={{ color: "var(--dm-text-tertiary)", minWidth: 52, textAlign: "center" }}>
+              {currentIndex + 1} / {allAds.length}
+            </span>
+            <button
+              type="button"
+              onClick={() => { setShowIframe(false); onNavigate(allAds[currentIndex + 1]); }}
+              disabled={currentIndex >= allAds.length - 1}
+              className="flex h-8 w-8 items-center justify-center rounded-full text-[16px] font-bold transition hover:opacity-80 disabled:opacity-20"
+              style={{ backgroundColor: "var(--dm-bg-surface)", border: "1px solid var(--dm-border-default)", color: "var(--dm-text-secondary)" }}
+            >›</button>
+          </div>
+
+          {/* Interactive preview toggle */}
+          {accessToken && (
+            <button
+              type="button"
+              onClick={() => setShowIframe(!showIframe)}
+              className="flex w-full items-center justify-center gap-1.5 rounded-xl py-2 text-[11px] font-semibold transition hover:opacity-80"
+              style={{
+                backgroundColor: showIframe ? "rgba(99,102,200,0.15)" : "var(--dm-bg-surface)",
+                color: showIframe ? "var(--dm-brand-500)" : "var(--dm-text-secondary)",
+                border: `1px solid ${showIframe ? "rgba(99,102,200,0.35)" : "var(--dm-border-default)"}`,
+              }}
+            >
+              <Play size={10} fill={showIframe ? "currentColor" : "none"} />
+              {showIframe ? "Fechar preview" : "Preview interativo"}
+            </button>
+          )}
+        </div>
+
+        {/* ── RIGHT: Info panel ── */}
+        <div className="flex flex-1 flex-col overflow-hidden">
+
+          {/* Header */}
+          <div
+            className="flex flex-shrink-0 items-center gap-2.5 px-5 pb-4 pt-6"
+            style={{ borderBottom: "1px solid var(--dm-border-subtle)" }}
+          >
             <span className={`flex-shrink-0 rounded-[5px] px-2 py-0.5 text-[9px] font-bold tracking-wide ${TYPE_COLOR[ad.mediaType]}`}>
               {TYPE_LABEL[ad.mediaType].toUpperCase()}
             </span>
             <span
-              className="truncate text-[13px] font-bold"
+              className="min-w-0 flex-1 truncate text-[14px] font-bold"
               style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins), Poppins, sans-serif" }}
               title={ad.adName}
             >
               {ad.adName}
             </span>
-          </div>
-
-          {/* Col 2: nav arrows — fixed, never shifts */}
-          <div className="flex flex-shrink-0 gap-1">
-            <button
-              type="button"
-              aria-label="Criativo anterior"
-              onClick={() => { setShowIframe(false); onNavigate(allAds[currentIndex - 1]); }}
-              disabled={currentIndex <= 0}
-              className="flex h-7 w-7 items-center justify-center rounded-[7px] text-[14px] font-bold transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-25"
-              style={{ backgroundColor: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-default)", color: "var(--dm-text-secondary)" }}
-            >‹</button>
-            <button
-              type="button"
-              aria-label="Próximo criativo"
-              onClick={() => { setShowIframe(false); onNavigate(allAds[currentIndex + 1]); }}
-              disabled={currentIndex >= allAds.length - 1}
-              className="flex h-7 w-7 items-center justify-center rounded-[7px] text-[14px] font-bold transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-25"
-              style={{ backgroundColor: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-default)", color: "var(--dm-text-secondary)" }}
-            >›</button>
-          </div>
-
-          {/* Col 3: star + close */}
-          <div className="flex flex-shrink-0 items-center gap-1.5">
             <button
               type="button"
               onClick={onToggleStar}
-              className="flex items-center gap-1.5 rounded-[8px] px-2.5 py-1.5 text-[11px] font-semibold transition hover:opacity-80"
+              className="flex flex-shrink-0 items-center gap-1.5 rounded-[8px] px-2.5 py-1.5 text-[11px] font-semibold transition hover:opacity-80"
               style={{
-                color: starred ? "#f59e0b" : "var(--dm-text-secondary)",
+                color:           starred ? "#f59e0b" : "var(--dm-text-secondary)",
                 backgroundColor: starred ? "rgba(245,158,11,0.10)" : "var(--dm-bg-elevated)",
-                border: `1px solid ${starred ? "rgba(245,158,11,0.30)" : "var(--dm-border-default)"}`,
+                border:          `1px solid ${starred ? "rgba(245,158,11,0.30)" : "var(--dm-border-default)"}`,
               }}
             >
               <Star size={11} fill={starred ? "#f59e0b" : "none"} stroke={starred ? "#f59e0b" : "currentColor"} />
@@ -496,232 +547,147 @@ function PreviewModal({
               type="button"
               onClick={onClose}
               aria-label="Fechar"
-              className="flex h-7 w-7 items-center justify-center rounded-[7px] transition hover:opacity-70"
+              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-[7px] transition hover:opacity-70"
               style={{ backgroundColor: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-default)", color: "var(--dm-text-tertiary)" }}
             >
-              <X size={13} />
+              <X size={14} />
             </button>
           </div>
-        </div>
 
-        {/* ── Scrollable body ── */}
-        <div className="flex-1 overflow-y-auto">
-          <div className="flex flex-col gap-4 p-4">
+          {/* Scrollable body */}
+          <div className="flex-1 overflow-y-auto">
+            <div className="flex flex-col gap-4 p-5">
 
-            {/* ── Creative preview ── */}
-            <div
-              className="relative w-full overflow-hidden"
-              style={{ aspectRatio: "16/9", borderRadius: 10, background: "#0b1437", border: "1px solid var(--dm-border-subtle)" }}
-            >
-              {showIframe ? (
-                <AdIframe ad={ad} accessToken={accessToken} />
-              ) : ad.thumbnailUrl ? (
-                <img src={ad.thumbnailUrl} alt={ad.adName} className="h-full w-full object-cover" />
-              ) : (
-                <div className="flex h-full flex-col items-center justify-center gap-2" style={{ color: "rgba(255,255,255,0.18)" }}>
-                  {ad.mediaType === "video" ? <Film size={36} /> : <ImageIcon size={36} />}
-                  <p className="text-[10px]">Sem preview</p>
-                </div>
-              )}
-
-              {/* Gradient overlay */}
-              <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.70) 0%, transparent 55%)" }} />
-
-              {/* Bottom info */}
-              <div className="absolute bottom-0 left-0 right-0 flex items-end justify-between p-3">
-                <div className="min-w-0">
-                  <p className="truncate text-[10px] font-semibold" style={{ color: "rgba(255,255,255,0.80)" }}>{ad.campaignName}</p>
-                  {createdLabel && <p className="mt-0.5 flex items-center gap-1 text-[9px]" style={{ color: "rgba(255,255,255,0.45)" }}><CalendarDays size={8} />{createdLabel}</p>}
-                </div>
-                {/* Score badge — clean, no "SCORE" label */}
-                {score !== null && (
-                  <div
-                    className="ml-2 flex flex-shrink-0 h-10 w-10 items-center justify-center rounded-full"
-                    style={{ background: "rgba(0,0,0,0.65)", border: `2px solid ${scoreColor}`, backdropFilter: "blur(6px)" }}
-                  >
-                    <span className="text-[15px] font-bold leading-none" style={{ color: scoreColor, fontFamily: "var(--font-poppins), Poppins, sans-serif" }}>{score}</span>
-                  </div>
+              {/* Campaign + date */}
+              <div className="flex items-center justify-between gap-2">
+                <p className="truncate text-[11px]" style={{ color: "var(--dm-text-secondary)" }} title={ad.campaignName}>
+                  📢 {ad.campaignName}
+                </p>
+                {createdLabel && (
+                  <span className="flex flex-shrink-0 items-center gap-1 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                    <CalendarDays size={9} />{createdLabel}
+                  </span>
                 )}
               </div>
 
-              {/* Interactive preview button */}
-              {accessToken && !showIframe && (
-                <button
-                  type="button"
-                  onClick={() => setShowIframe(true)}
-                  className="absolute right-2.5 top-2.5 flex items-center gap-1 rounded-[6px] px-2 py-1 text-[10px] font-semibold text-white transition hover:opacity-90"
-                  style={{ background: "rgba(0,0,0,0.55)", border: "1px solid rgba(255,255,255,0.20)", backdropFilter: "blur(4px)" }}
-                >
-                  <Play size={8} fill="white" /> Preview interativo
-                </button>
+              {/* Insight chips */}
+              {chips.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {chips.map((c) => (
+                    <span key={c.label} className="rounded-full px-3 py-1 text-[10px] font-semibold" style={CHIP_STYLE[c.color]}>{c.label}</span>
+                  ))}
+                </div>
               )}
-            </div>
 
-            {/* ── Insight chips ── */}
-            {chips.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                {chips.map((c) => (
-                  <span key={c.label} className="rounded-full px-3 py-1 text-[10px] font-semibold" style={CHIP_STYLE[c.color]}>{c.label}</span>
-                ))}
-              </div>
-            )}
+              {/* Ad copy */}
+              {ad.body && (
+                <div className="rounded-[10px] p-3.5" style={{ backgroundColor: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-subtle)" }}>
+                  <p className="mb-1.5 text-[9px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>Legenda do anúncio</p>
+                  <p className="text-[11px] leading-[1.6]" style={{ color: "var(--dm-text-secondary)", whiteSpace: "pre-line" }}>
+                    {ad.body.length > 320 ? ad.body.slice(0, 320) + "…" : ad.body}
+                  </p>
+                </div>
+              )}
 
-            {/* ── Ad copy / legenda ── */}
-            {ad.body && (
-              <div className="rounded-[10px] p-3.5" style={{ backgroundColor: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-subtle)" }}>
-                <p className="mb-1.5 text-[9px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>Legenda do anúncio</p>
-                <p className="text-[11px] leading-[1.6]" style={{ color: "var(--dm-text-secondary)", whiteSpace: "pre-line" }}>
-                  {ad.body.length > 240 ? ad.body.slice(0, 240) + "…" : ad.body}
-                </p>
-              </div>
-            )}
-
-            {/* ── Metrics grid — clean 4-col, value-colored only ── */}
-            {metricCards2.length > 0 ? (
-              <div>
-                <p className="mb-2.5 text-[9px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>Métricas do período</p>
-                <div className="grid grid-cols-4 gap-1.5">
-                  {metricCards2.map(({ label, value, valueColor }) => {
-                    const hasData = value !== null;
-                    return (
-                      <div
-                        key={label}
-                        className="rounded-[8px] p-2.5 transition-opacity"
-                        style={{
-                          backgroundColor: "var(--dm-bg-elevated)",
-                          border: "1px solid var(--dm-border-subtle)",
-                          opacity: hasData ? 1 : 0.38,
-                        }}
-                      >
-                        <p className="text-[8px] font-semibold uppercase tracking-wide" style={{ color: "var(--dm-text-tertiary)" }}>{label}</p>
-                        <p
-                          className="mt-1.5 text-[13px] font-bold leading-none"
+              {/* Metrics grid */}
+              {metricCards.length > 0 ? (
+                <div>
+                  <p className="mb-2.5 text-[9px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>Métricas do período</p>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {metricCards.map(({ label, value, valueColor }) => {
+                      const hasData = value !== null;
+                      return (
+                        <div
+                          key={label}
+                          className="rounded-[8px] p-2.5"
                           style={{
-                            color: hasData ? valueColor : "var(--dm-text-tertiary)",
-                            fontFamily: "var(--font-poppins), Poppins, sans-serif",
+                            backgroundColor: "var(--dm-bg-elevated)",
+                            border: "1px solid var(--dm-border-subtle)",
+                            opacity: hasData ? 1 : 0.38,
                           }}
                         >
-                          {value ?? "—"}
-                        </p>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : (
-              <div
-                className="rounded-[10px] p-4 text-center text-[11px]"
-                style={{ backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)", border: "1px solid var(--dm-border-subtle)" }}
-              >
-                Aguardando métricas — clique em <strong>Atualizar</strong> ou selecione um período.
-              </div>
-            )}
-
-            {/* ── Comparison bars ── */}
-            {campaignPeers.length > 1 && (
-              <div className="rounded-[10px] p-3.5" style={{ backgroundColor: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-subtle)" }}>
-                <p className="mb-3 text-[9px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>Ranking · {compLabel} na campanha</p>
-                <div className="space-y-2.5">
-                  {campaignPeers.map(({ ad: peer, ins }) => {
-                    const isMe = peer.adId === ad.adId;
-                    const val  = ins[compKey as keyof AdInsight] as number;
-                    const pct  = Math.round((val / compMax) * 100);
-                    return (
-                      <div key={peer.adId} className="flex items-center gap-2.5">
-                        <span
-                          className="w-16 flex-shrink-0 truncate text-[10px] font-semibold"
-                          style={{ color: isMe ? "var(--dm-brand-500)" : "var(--dm-text-secondary)" }}
-                          title={peer.adName}
-                        >
-                          {peer.adName}
-                        </span>
-                        <div className="flex-1 overflow-hidden rounded-full" style={{ height: 4, backgroundColor: "var(--dm-bg-surface)" }}>
-                          <div
-                            className="h-full rounded-full"
-                            style={{ width: `${pct}%`, background: isMe ? DRAWER_GRAD : "var(--dm-border-default)", transition: "width 0.6s ease" }}
-                          />
+                          <p className="text-[8px] font-semibold uppercase tracking-wide" style={{ color: "var(--dm-text-tertiary)" }}>{label}</p>
+                          <p className="mt-1.5 text-[13px] font-bold leading-none"
+                            style={{ color: hasData ? valueColor : "var(--dm-text-tertiary)", fontFamily: "var(--font-poppins), Poppins, sans-serif" }}>
+                            {value ?? "—"}
+                          </p>
                         </div>
-                        <span
-                          className="w-8 flex-shrink-0 text-right text-[10px] font-bold"
-                          style={{ color: isMe ? "var(--dm-brand-500)" : "var(--dm-text-primary)", fontFamily: "var(--font-poppins), Poppins, sans-serif" }}
-                        >{val}</span>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            )}
+              ) : (
+                <div className="rounded-[10px] p-4 text-center text-[11px]"
+                  style={{ backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)", border: "1px solid var(--dm-border-subtle)" }}>
+                  Aguardando métricas — clique em <strong>Atualizar</strong> ou selecione um período.
+                </div>
+              )}
 
-            {/* ── Sparkline placeholder ── */}
-            <div className="rounded-[10px] p-3.5" style={{ backgroundColor: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-subtle)" }}>
-              <div className="mb-3 flex items-center justify-between">
-                <span className="text-[10px] font-semibold" style={{ color: "var(--dm-text-secondary)" }}>Evolução · últimos 7 dias</span>
-                <span className="rounded-full px-2 py-0.5 text-[9px] font-medium" style={{ backgroundColor: "rgba(99,102,200,0.08)", color: "var(--dm-brand-500)", border: "1px solid rgba(99,102,200,0.15)" }}>Em breve</span>
-              </div>
-              <svg width="100%" height="40" viewBox="0 0 460 40" preserveAspectRatio="none">
-                <defs>
-                  <linearGradient id="spkGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#6366C8" stopOpacity="0.18"/>
-                    <stop offset="100%" stopColor="#6366C8" stopOpacity="0"/>
-                  </linearGradient>
-                </defs>
-                <path d="M0,34 L65,28 L130,20 L195,24 L260,12 L325,8 L390,4 L460,1 L460,40 L0,40 Z" fill="url(#spkGrad)"/>
-                <path d="M0,34 L65,28 L130,20 L195,24 L260,12 L325,8 L390,4 L460,1" fill="none" stroke="#6366C8" strokeWidth="1.5" strokeLinejoin="round" opacity="0.45"/>
-                <circle cx="460" cy="1" r="3" fill="#6366C8" opacity="0.5"/>
-              </svg>
-              <div className="mt-2 flex justify-between">
-                {["D-6","D-5","D-4","D-3","D-2","D-1","Hoje"].map((d) => (
-                  <span key={d} className="text-[8px]" style={{ color: "var(--dm-text-tertiary)" }}>{d}</span>
-                ))}
-              </div>
+              {/* Comparison bars */}
+              {campaignPeers.length > 1 && (
+                <div className="rounded-[10px] p-3.5" style={{ backgroundColor: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-subtle)" }}>
+                  <p className="mb-3 text-[9px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>Ranking · {compLabel} na campanha</p>
+                  <div className="space-y-2.5">
+                    {campaignPeers.map(({ ad: peer, ins }) => {
+                      const isMe = peer.adId === ad.adId;
+                      const val  = ins[compKey as keyof AdInsight] as number;
+                      const pct  = Math.round((val / compMax) * 100);
+                      return (
+                        <div key={peer.adId} className="flex items-center gap-2.5">
+                          <span className="w-16 flex-shrink-0 truncate text-[10px] font-semibold"
+                            style={{ color: isMe ? "var(--dm-brand-500)" : "var(--dm-text-secondary)" }}
+                            title={peer.adName}>
+                            {peer.adName}
+                          </span>
+                          <div className="flex-1 overflow-hidden rounded-full" style={{ height: 4, backgroundColor: "var(--dm-bg-surface)" }}>
+                            <div className="h-full rounded-full"
+                              style={{ width: `${pct}%`, background: isMe ? DRAWER_GRAD : "var(--dm-border-default)", transition: "width 0.6s ease" }} />
+                          </div>
+                          <span className="w-8 flex-shrink-0 text-right text-[10px] font-bold"
+                            style={{ color: isMe ? "var(--dm-brand-500)" : "var(--dm-text-primary)", fontFamily: "var(--font-poppins), Poppins, sans-serif" }}>
+                            {val}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
             </div>
+          </div>
 
+          {/* Footer */}
+          <div
+            className="flex flex-shrink-0 items-center gap-2 px-5 py-3"
+            style={{ borderTop: "1px solid var(--dm-border-subtle)", backgroundColor: "var(--dm-bg-elevated)" }}
+          >
+            {ad.previewUrl && ad.previewUrl !== ad.adLink && (
+              <a href={ad.previewUrl} target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-1.5 rounded-[9px] border px-3 py-2 text-[11px] font-semibold transition hover:opacity-80"
+                style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)", backgroundColor: "var(--dm-bg-surface)" }}>
+                <Play size={10} /> Preview
+              </a>
+            )}
+            {ad.instagramUrl && (
+              <a href={ad.instagramUrl} target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-1.5 rounded-[9px] border px-3 py-2 text-[11px] font-semibold transition hover:opacity-80"
+                style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)", backgroundColor: "var(--dm-bg-surface)" }}>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/>
+                </svg>
+                Instagram
+              </a>
+            )}
+            <a href={ad.adLink} target="_blank" rel="noopener noreferrer"
+              className="flex flex-1 items-center justify-center gap-2 rounded-[9px] py-2.5 text-[12px] font-bold text-white transition hover:opacity-90"
+              style={{ background: DRAWER_GRAD, boxShadow: "0 4px 14px rgba(49,52,145,0.22)" }}>
+              <ExternalLink size={12} /> Ver no Gerenciador de Anúncios
+            </a>
           </div>
         </div>
-
-        {/* ── Footer ── */}
-        <div
-          className="flex flex-shrink-0 items-center gap-2 px-4 py-3"
-          style={{ borderTop: "1px solid var(--dm-border-subtle)", backgroundColor: "var(--dm-bg-elevated)" }}
-        >
-          {ad.previewUrl && ad.previewUrl !== ad.adLink && (
-            <a
-              href={ad.previewUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 rounded-[9px] border px-3 py-2 text-[11px] font-semibold transition hover:opacity-80"
-              style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)", backgroundColor: "var(--dm-bg-surface)" }}
-            >
-              <Play size={10} /> Preview
-            </a>
-          )}
-          {ad.instagramUrl && (
-            <a
-              href={ad.instagramUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              title="Ver no Instagram"
-              className="flex items-center gap-1.5 rounded-[9px] border px-3 py-2 text-[11px] font-semibold transition hover:opacity-80"
-              style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)", backgroundColor: "var(--dm-bg-surface)" }}
-            >
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/>
-              </svg>
-              Instagram
-            </a>
-          )}
-          <a
-            href={ad.adLink}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex flex-1 items-center justify-center gap-2 rounded-[9px] py-2.5 text-[12px] font-bold text-white transition hover:opacity-90"
-            style={{ background: DRAWER_GRAD, boxShadow: "0 4px 14px rgba(49,52,145,0.22)" }}
-          >
-            <ExternalLink size={12} /> Ver no Gerenciador de Anúncios
-          </a>
-        </div>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -781,7 +747,7 @@ export function BestCreatives({
 }: BestCreativesProps) {
   const [subTab,        setSubTab]        = useState<SubTab>("gallery");
   const [mediaFilter,   setMediaFilter]   = useState<MediaFilter>("all");
-  const [createdPeriod, setCreatedPeriod] = useState<CreatedPeriod>("all");
+  const [activityFilter, setActivityFilter] = useState<ActivityFilter>("all");
   const [page,          setPage]          = useState(1);
   const [previewAd,       setPreviewAd]       = useState<MetaCampaignCreative | null>(null);
   const [metaAds,         setMetaAds]         = useState<MetaCampaignCreative[]>([]);
@@ -920,18 +886,21 @@ export function BestCreatives({
     // Media type filter
     if (mediaFilter !== "all") base = base.filter((a) => a.mediaType === mediaFilter);
 
-    // Created period filter
-    if (createdPeriod !== "all") {
-      const days = createdPeriod === "30d" ? 30 : createdPeriod === "90d" ? 90 : 365;
-      const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    // Activity filter — insight-based (spend > 0 means ad ran in the selected period)
+    if (activityFilter === "with_data") {
       base = base.filter((a) => {
-        if (!a.createdTime) return true; // keep if unknown
-        return new Date(a.createdTime).getTime() >= cutoff;
+        const ins = adInsights.get(a.adId);
+        return ins != null && ins.spend > 0;
+      });
+    } else if (activityFilter === "no_data") {
+      base = base.filter((a) => {
+        const ins = adInsights.get(a.adId);
+        return ins == null || ins.spend === 0;
       });
     }
 
     return base;
-  }, [metaAds, subTab, selectedCampaignIds, mediaFilter, createdPeriod, store]);
+  }, [metaAds, subTab, selectedCampaignIds, mediaFilter, activityFilter, adInsights, store]);
 
   const pageAds    = useMemo(() => filteredAds.slice(0, page * PAGE_SIZE), [filteredAds, page]);
   const hasMore    = pageAds.length < filteredAds.length;
@@ -1063,17 +1032,16 @@ export function BestCreatives({
                 </div>
               )}
 
-              {/* Period filter */}
+              {/* Activity filter */}
               <div className="flex items-center gap-1 rounded-lg border px-1.5 py-1"
                 style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)" }}>
-                <CalendarDays size={10} style={{ color: "var(--dm-text-tertiary)", marginRight: 2 }} />
-                {(["all", "30d", "90d", "365d"] as const).map((k) => {
-                  const lbl = { all: "Todos", "30d": "30 dias", "90d": "90 dias", "365d": "1 ano" };
+                {(["all", "with_data", "no_data"] as const).map((k) => {
+                  const lbl: Record<typeof k, string> = { all: "Todos", with_data: "Com gasto", no_data: "Sem gasto" };
                   return (
                     <button key={k} type="button"
-                      onClick={() => { setCreatedPeriod(k); setPage(1); }}
+                      onClick={() => { setActivityFilter(k); setPage(1); }}
                       className="rounded px-2 py-0.5 text-[10px] font-semibold transition-all"
-                      style={createdPeriod === k
+                      style={activityFilter === k
                         ? { backgroundColor: "var(--dm-brand-500)", color: "#fff" }
                         : { color: "var(--dm-text-secondary)" }}>
                       {lbl[k]}
