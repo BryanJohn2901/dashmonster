@@ -861,18 +861,22 @@ export function BestCreatives({
       .finally(() => setFetching(false));
   }, [getIds, accessToken, fetchInsights]);
 
-  // On mount: load from cache only (no auto API call)
+  // On mount: load from cache OR auto-fetch if no cache exists
   useEffect(() => {
     const ids = getIds();
     if (!ids.length || !accessToken) return;
-    const cached = readCache(getCacheKey(ids));
+    const cacheKey = getCacheKey(ids);
+    const cached   = readCache(cacheKey);
     if (cached) {
-      const raw = localStorage.getItem(getCacheKey(ids));
+      const raw = localStorage.getItem(cacheKey);
       const ts  = raw ? (JSON.parse(raw) as { ts: number }).ts : Date.now();
       setMetaAds(cached);
       setCacheAge(Date.now() - ts);
       setHasLoaded(true);
       fetchInsights(ids).catch(() => {});
+    } else {
+      // No cache — auto-fetch from Meta API on first open
+      doFetch(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(adAccountId)]);
