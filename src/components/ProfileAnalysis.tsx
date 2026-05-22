@@ -1594,7 +1594,7 @@ function ProfileOverviewPanel({
 // ─── Single-campaign analysis panel ──────────────────────────────────────────
 
 function CampaignAnalysisPanel({
-  adAccountId, campaign, dateFrom, dateTo, template, instagramUserId, forceTab, resultType,
+  adAccountId, campaign, dateFrom, dateTo, template, instagramUserId, forceTab, resultType, hideTabSwitcher,
 }: {
   adAccountId: string;
   campaign: ActiveCampaign;
@@ -1604,6 +1604,9 @@ function CampaignAnalysisPanel({
   instagramUserId?: string;
   forceTab?: "kpis" | "conjunto";
   resultType?: ResultType;
+  /** When true, hides the internal Visão Geral / Análise de Conjunto tab bar
+   *  (used when ProfileDetailView already manages top-level navigation) */
+  hideTabSwitcher?: boolean;
 }) {
   // kpiData: campaign-level daily rows → used for totals + funnel + template table
   // adsetData: adset-level totals → used for Análise de Conjunto
@@ -1794,22 +1797,24 @@ function CampaignAnalysisPanel({
   return (
     <div className="space-y-4">
 
-      {/* ── Tab switcher ─────────────────────────────────────────────────────── */}
-      <div className="flex gap-1 rounded-[14px] p-1" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
-        {([
-          ["kpis",      "Visão Geral"],
-          ["conjunto",  "Análise de Conjunto"],
-          ...(instagramUserId ? [["instagram", "Perfil Ativo"]] : []),
-        ] as [string, string][]).map(([id, label]) => (
-          <button key={id} type="button" onClick={() => setActiveTab(id as "kpis" | "conjunto" | "instagram")}
-            className="flex-1 rounded-[10px] py-2 text-[13px] font-semibold transition-all"
-            style={activeTab === id
-              ? { background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)", color: "#fff", boxShadow: "0 4px 12px rgba(49,52,145,0.28)" }
-              : { color: "var(--dm-text-tertiary)" }}>
-            {label}
-          </button>
-        ))}
-      </div>
+      {/* ── Tab switcher — oculto quando ProfileDetailView gerencia a nav ─── */}
+      {!hideTabSwitcher && (
+        <div className="flex gap-1 rounded-[14px] p-1" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
+          {([
+            ["kpis",      "Visão Geral"],
+            ["conjunto",  "Análise de Conjunto"],
+            ...(instagramUserId ? [["instagram", "Perfil Ativo"]] : []),
+          ] as [string, string][]).map(([id, label]) => (
+            <button key={id} type="button" onClick={() => setActiveTab(id as "kpis" | "conjunto" | "instagram")}
+              className="flex-1 rounded-[10px] py-2 text-[13px] font-semibold transition-all"
+              style={activeTab === id
+                ? { background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)", color: "#fff", boxShadow: "0 4px 12px rgba(49,52,145,0.28)" }
+                : { color: "var(--dm-text-tertiary)" }}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* ── Análise de Conjunto ─────────────────────────────────────────────── */}
       {activeTab === "conjunto" && (() => {
@@ -3247,45 +3252,16 @@ function ProfileDetailView({
 
       {/* ── Campanha — seleção individual ── */}
       {profileTab === "campanha" && hasToken && activeCampaign && (
-        <div className="space-y-3">
-          {/* Tipo de Resultado config bar */}
-          <div className="flex flex-wrap items-center gap-3 rounded-xl border px-4 py-3"
-            style={{ backgroundColor: "var(--dm-bg-elevated)", borderColor: "var(--dm-border-subtle)" }}>
-            <div className="flex items-center gap-1.5">
-              <Zap size={12} style={{ color: "var(--dm-brand-500)" }} />
-              <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
-                Tipo de Resultado
-              </span>
-            </div>
-            <select
-              value={activeCampaign.resultType ?? ""}
-              onChange={(e) => handleSetResultType(activeCampaign.id, (e.target.value as ResultType) || undefined)}
-              className="h-7 rounded-lg border px-2 text-[11px] font-medium outline-none"
-              style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)", color: "var(--dm-text-primary)" }}
-            >
-              <option value="">— Auto (pelo template) —</option>
-              {RESULT_TYPE_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-            {activeCampaign.resultType && (
-              <span className="rounded-full px-2.5 py-0.5 text-[10px] font-bold"
-                style={{ background: "rgba(5,205,153,0.12)", color: "#05CD99" }}>
-                Ativo: {RESULT_TYPE_LABELS[activeCampaign.resultType]}
-              </span>
-            )}
-          </div>
-
-          <CampaignAnalysisPanel
-            key={`${activeCampaign.id}-${dateFrom}-${dateTo}-${templateId}-${JSON.stringify(personalizadoConfig)}-${activeCampaign.resultType ?? ""}`}
-            adAccountId={profile.adAccountId}
-            campaign={activeCampaign}
-            dateFrom={dateFrom}
-            dateTo={dateTo}
-            template={resolvedTemplate}
-            instagramUserId={undefined}
-          />
-        </div>
+        <CampaignAnalysisPanel
+          key={`${activeCampaign.id}-${dateFrom}-${dateTo}-${templateId}-${JSON.stringify(personalizadoConfig)}`}
+          adAccountId={profile.adAccountId}
+          campaign={activeCampaign}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          template={resolvedTemplate}
+          instagramUserId={undefined}
+          hideTabSwitcher
+        />
       )}
       {profileTab === "campanha" && !hasToken && (
         <div className="flex flex-col items-center gap-3 rounded-xl border p-8 text-center"
@@ -3306,6 +3282,7 @@ function ProfileDetailView({
           template={resolvedTemplate}
           instagramUserId={undefined}
           forceTab="conjunto"
+          hideTabSwitcher
         />
       )}
 
