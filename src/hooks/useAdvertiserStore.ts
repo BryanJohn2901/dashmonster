@@ -4,9 +4,19 @@ import { useCallback, useState } from "react";
 
 const STORAGE_KEY = "pta_advertiser_profiles_v2";
 
+/** action_type to use as primary "Resultado" for this campaign */
+export type ResultType =
+  | "purchase"
+  | "lead"
+  | "onsite_conversion.lead_grouped"
+  | "leadgen_grouped"
+  | "omni_complete_registration"
+  | "link_click";
+
 export interface ActiveCampaign {
   id: string;
   name: string;
+  resultType?: ResultType;  // configurable per campaign; auto-detected if absent
 }
 
 export interface AdvertiserProfile {

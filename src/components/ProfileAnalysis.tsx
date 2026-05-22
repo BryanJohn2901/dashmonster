@@ -26,7 +26,7 @@ import type { TemplateId, Template, PersonalizadoConfig } from "@/lib/templates/
 import { TemplateSelector } from "@/components/profiles/TemplateSelector";
 import { PersonalizadoBuilder } from "@/components/profiles/PersonalizadoBuilder";
 import {
-  useAdvertiserStore, AdvertiserProfile, ActiveCampaign,
+  useAdvertiserStore, AdvertiserProfile, ActiveCampaign, ResultType,
 } from "@/hooks/useAdvertiserStore";
 import { useCampaignStore } from "@/hooks/useCampaignStore";
 import type { CampaignConfig } from "@/hooks/useCampaignStore";
@@ -125,7 +125,27 @@ interface AdsetRow {
   cpa: number;
   page_views: number;
   new_followers: number;
+  customResult: number;  // configured resultType value (0 when no resultType)
 }
+
+// Human-readable labels for each result type
+export const RESULT_TYPE_LABELS: Record<ResultType, string> = {
+  "purchase":                       "Compras / Vendas",
+  "lead":                           "Leads",
+  "onsite_conversion.lead_grouped": "Leads no Site",
+  "leadgen_grouped":                "Leads de Formulário",
+  "omni_complete_registration":     "Cadastros",
+  "link_click":                     "Cliques no Link",
+};
+
+export const RESULT_TYPE_OPTIONS: { value: ResultType; label: string }[] = [
+  { value: "purchase",                       label: "Compras / Vendas" },
+  { value: "lead",                           label: "Leads" },
+  { value: "onsite_conversion.lead_grouped", label: "Leads no Site" },
+  { value: "leadgen_grouped",                label: "Leads de Formulário" },
+  { value: "omni_complete_registration",     label: "Cadastros" },
+  { value: "link_click",                     label: "Cliques no Link" },
+];
 
 function todayStr() { return new Date().toISOString().split("T")[0]; }
 function daysAgoStr(n: number) {
@@ -152,7 +172,7 @@ function pickActionValue(avs: MetaInsight["action_values"], ...types: string[]):
   return 0;
 }
 
-function toAdsetRows(data: MetaInsight[]): AdsetRow[] {
+function toAdsetRows(data: MetaInsight[], resultType?: string): AdsetRow[] {
   const map = new Map<string, AdsetRow>();
   data.forEach((d) => {
     const key = d.adset_name ?? d.campaign_name;
@@ -160,7 +180,7 @@ function toAdsetRows(data: MetaInsight[]): AdsetRow[] {
       name: key,
       impressions: 0, reach: 0, clicks: 0, total_clicks: 0, spend: 0, revenue: 0,
       cpm: 0, ctr: 0, ctr_all: 0, purchases: 0, leads: 0, cpa: 0,
-      page_views: 0, new_followers: 0,
+      page_views: 0, new_followers: 0, customResult: 0,
     };
     cur.impressions   += parseMetaNum(d.impressions);
     cur.reach         += parseMetaNum(d.reach);
@@ -181,6 +201,12 @@ function toAdsetRows(data: MetaInsight[]): AdsetRow[] {
     // new_followers: "follow" (ad engagement objective) OR "page_fan_adds" (traffic-to-profile)
     cur.new_followers += getActionValue(d.actions, "follow")
                        + getActionValue(d.actions, "page_fan_adds");
+    // configurable result type — link_click uses inline_link_clicks for consistency
+    if (resultType) {
+      cur.customResult += resultType === "link_click"
+        ? (d.inline_link_clicks != null ? parseMetaNum(d.inline_link_clicks) : parseMetaNum(d.clicks))
+        : getActionValue(d.actions, resultType);
+    }
     map.set(key ?? "", cur);
   });
   return Array.from(map.values()).map((r) => ({
@@ -1568,7 +1594,7 @@ function ProfileOverviewPanel({
 // ─── Single-campaign analysis panel ──────────────────────────────────────────
 
 function CampaignAnalysisPanel({
-  adAccountId, campaign, dateFrom, dateTo, template, instagramUserId, forceTab,
+  adAccountId, campaign, dateFrom, dateTo, template, instagramUserId, forceTab, resultType,
 }: {
   adAccountId: string;
   campaign: ActiveCampaign;
@@ -1577,6 +1603,7 @@ function CampaignAnalysisPanel({
   template: Template;
   instagramUserId?: string;
   forceTab?: "kpis" | "conjunto";
+  resultType?: ResultType;
 }) {
   // kpiData: campaign-level daily rows → used for totals + funnel + template table
   // adsetData: adset-level totals → used for Análise de Conjunto
@@ -1645,8 +1672,8 @@ function CampaignAnalysisPanel({
           campaignIds: [campaign.id],
         }),
       ]);
-      setKpiData(toAdsetRows(rawKpi));
-      setAdsetData(toAdsetRows(rawAdset));
+      setKpiData(toAdsetRows(rawKpi, resultType ?? campaign.resultType));
+      setAdsetData(toAdsetRows(rawAdset, resultType ?? campaign.resultType));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao buscar dados.");
     } finally {
@@ -1666,11 +1693,16 @@ function CampaignAnalysisPanel({
   const totalLeads        = data.reduce((s, r) => s + r.leads,         0);
   const totalPageViews    = data.reduce((s, r) => s + r.page_views,    0);
   const totalNewFollowers = data.reduce((s, r) => s + r.new_followers, 0);
+  const totalCustomResult = data.reduce((s, r) => s + r.customResult,  0);
   const txCaptura        = totalClicks    > 0 ? (totalLeads    / totalClicks)    * 100 : 0;
   const txConversao      = totalLeads     > 0 ? (totalPurchases / totalLeads)    * 100
                          : totalClicks   > 0 ? (totalPurchases / totalClicks)   * 100 : 0;
   const cpaMedia         = totalPurchases > 0 ? totalSpend / totalPurchases : 0;
   const roas             = totalSpend     > 0 ? totalRevenue / totalSpend        : 0;
+  // Resultado variável — only meaningful when resultType is explicitly set
+  const activeResultType = resultType ?? campaign.resultType;
+  const resultCount      = activeResultType ? totalCustomResult : 0;
+  const costPerResult    = resultCount > 0 ? totalSpend / resultCount : 0;
 
   if (loading && data.length === 0) {
     return (
@@ -1971,6 +2003,55 @@ function CampaignAnalysisPanel({
       })()}
 
       {activeTab === "kpis" && <>
+
+      {/* ── Resultado variável ── mostrado quando resultType está configurado ─── */}
+      {activeResultType && resultCount > 0 && (
+        <div className="grid grid-cols-2 gap-3">
+          {/* Resultado */}
+          <article className="flex flex-col rounded-[20px] border shadow-horizon"
+            style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)", padding: "18px",
+              background: "linear-gradient(135deg, rgba(5,205,153,0.08) 0%, rgba(5,205,153,0.02) 100%)" }}>
+            <div className="mb-3 flex items-center gap-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full"
+                style={{ backgroundColor: "rgba(5,205,153,0.15)" }}>
+                <Zap size={15} style={{ color: "#05CD99" }} />
+              </div>
+              <span className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+                style={{ background: "rgba(5,205,153,0.12)", color: "#05CD99" }}>
+                {RESULT_TYPE_LABELS[activeResultType]}
+              </span>
+            </div>
+            <p className="mb-0.5 text-[11px] font-semibold" style={{ color: "var(--dm-text-secondary)" }}>
+              Resultado
+            </p>
+            <p className="text-[28px] font-black tabular-nums leading-tight"
+              style={{ color: "#05CD99", fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>
+              {formatInt(Math.round(resultCount))}
+            </p>
+          </article>
+          {/* Custo por Resultado */}
+          <article className="flex flex-col rounded-[20px] border shadow-horizon"
+            style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)", padding: "18px",
+              background: "linear-gradient(135deg, rgba(99,102,200,0.08) 0%, rgba(99,102,200,0.02) 100%)" }}>
+            <div className="mb-3 flex items-center gap-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full"
+                style={{ backgroundColor: "rgba(99,102,200,0.15)" }}>
+                <Target size={15} style={{ color: "var(--dm-brand-500)" }} />
+              </div>
+            </div>
+            <p className="mb-0.5 text-[11px] font-semibold" style={{ color: "var(--dm-text-secondary)" }}>
+              Custo por Resultado
+            </p>
+            <p className="text-[28px] font-black tabular-nums leading-tight"
+              style={{ color: "var(--dm-brand-500)", fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>
+              {formatBRL(costPerResult)}
+            </p>
+            <p className="mt-1 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
+              {formatInt(Math.round(resultCount))} resultado{resultCount !== 1 ? "s" : ""} · {formatBRL(totalSpend)} investidos
+            </p>
+          </article>
+        </div>
+      )}
 
       {/* ── KPIs dirigidos pelo template ─────────────────────────────────────── */}
       <div>
@@ -2834,7 +2915,7 @@ function ProfileDetailView({
   groupLabel: string;
   onBack: () => void;
 }) {
-  const { addCampaignToProfile, removeCampaignFromProfile } = useAdvertiserStore();
+  const { addCampaignToProfile, removeCampaignFromProfile, updateProfile } = useAdvertiserStore();
   const [activeCampId, setActiveCampId] = useState<string>(profile.campaigns[0]?.id ?? "");
   const [profileTab, setProfileTab] = useState<"overview" | "campanha" | "conjunto" | "instagram">("overview");
 
@@ -2922,6 +3003,14 @@ function ProfileDetailView({
     addCampaignToProfile(profile.id, camp);
     setActiveCampId(camp.id);
     // Panel stays open so user can add more campaigns
+  };
+
+  const handleSetResultType = (campId: string, rt: ResultType | undefined) => {
+    updateProfile(profile.id, {
+      campaigns: profile.campaigns.map((c) =>
+        c.id === campId ? { ...c, resultType: rt } : c,
+      ),
+    });
   };
 
   const handleRemoveCampaign = (campId: string) => {
@@ -3158,15 +3247,45 @@ function ProfileDetailView({
 
       {/* ── Campanha — seleção individual ── */}
       {profileTab === "campanha" && hasToken && activeCampaign && (
-        <CampaignAnalysisPanel
-          key={`${activeCampaign.id}-${dateFrom}-${dateTo}-${templateId}-${JSON.stringify(personalizadoConfig)}`}
-          adAccountId={profile.adAccountId}
-          campaign={activeCampaign}
-          dateFrom={dateFrom}
-          dateTo={dateTo}
-          template={resolvedTemplate}
-          instagramUserId={undefined}
-        />
+        <div className="space-y-3">
+          {/* Tipo de Resultado config bar */}
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border px-4 py-3"
+            style={{ backgroundColor: "var(--dm-bg-elevated)", borderColor: "var(--dm-border-subtle)" }}>
+            <div className="flex items-center gap-1.5">
+              <Zap size={12} style={{ color: "var(--dm-brand-500)" }} />
+              <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
+                Tipo de Resultado
+              </span>
+            </div>
+            <select
+              value={activeCampaign.resultType ?? ""}
+              onChange={(e) => handleSetResultType(activeCampaign.id, (e.target.value as ResultType) || undefined)}
+              className="h-7 rounded-lg border px-2 text-[11px] font-medium outline-none"
+              style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)", color: "var(--dm-text-primary)" }}
+            >
+              <option value="">— Auto (pelo template) —</option>
+              {RESULT_TYPE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+            {activeCampaign.resultType && (
+              <span className="rounded-full px-2.5 py-0.5 text-[10px] font-bold"
+                style={{ background: "rgba(5,205,153,0.12)", color: "#05CD99" }}>
+                Ativo: {RESULT_TYPE_LABELS[activeCampaign.resultType]}
+              </span>
+            )}
+          </div>
+
+          <CampaignAnalysisPanel
+            key={`${activeCampaign.id}-${dateFrom}-${dateTo}-${templateId}-${JSON.stringify(personalizadoConfig)}-${activeCampaign.resultType ?? ""}`}
+            adAccountId={profile.adAccountId}
+            campaign={activeCampaign}
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            template={resolvedTemplate}
+            instagramUserId={undefined}
+          />
+        </div>
       )}
       {profileTab === "campanha" && !hasToken && (
         <div className="flex flex-col items-center gap-3 rounded-xl border p-8 text-center"
