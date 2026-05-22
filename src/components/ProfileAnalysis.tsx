@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis,
   Area, AreaChart,
@@ -21,6 +21,7 @@ import {
 import { formatBRL, formatCompact, formatInt, formatPercent } from "@/lib/format";
 import { getTemplate, TEMPLATE_LIST, DEFAULT_PERSONALIZADO_CONFIG } from "@/lib/templates";
 import { TabLanding } from "@/components/TabLanding";
+import { PerfilAtivoPanel } from "@/components/PerfilAtivoPanel";
 import type { TemplateId, Template, PersonalizadoConfig } from "@/lib/templates/types";
 import { TemplateSelector } from "@/components/profiles/TemplateSelector";
 import { PersonalizadoBuilder } from "@/components/profiles/PersonalizadoBuilder";
@@ -957,16 +958,193 @@ function ProfileCard({
   );
 }
 
+// ─── Profile overview — agrega todas as campanhas do perfil ──────────────────
+
+function ProfileOverviewPanel({
+  adAccountId, campaigns, dateFrom, dateTo, template,
+}: {
+  adAccountId: string;
+  campaigns: ActiveCampaign[];
+  dateFrom: string;
+  dateTo: string;
+  template: Template;
+}) {
+  const [rows, setRows]       = useState<AdsetRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!adAccountId || campaigns.length === 0) return;
+    const { accessToken } = loadMetaCredentials();
+    if (!accessToken) return;
+    setLoading(true); setError(null);
+    const allIds = campaigns.map((c) => c.id);
+    fetchMetaInsights(adAccountId, dateFrom, dateTo, allIds)
+      .then((data) => { setRows(toAdsetRows(data)); })
+      .catch((e) => setError(e instanceof Error ? e.message : "Erro ao buscar dados."))
+      .finally(() => setLoading(false));
+  }, [adAccountId, campaigns, dateFrom, dateTo]);
+
+  const totals = useMemo(() => {
+    const inv  = rows.reduce((s, r) => s + r.spend, 0);
+    const imp  = rows.reduce((s, r) => s + r.impressions, 0);
+    const clk  = rows.reduce((s, r) => s + r.clicks, 0);
+    const rch  = rows.reduce((s, r) => s + r.reach, 0);
+    const conv = rows.reduce((s, r) => s + r.purchases, 0);
+    const rev  = rows.reduce((s, r) => s + r.revenue, 0);
+    const lds  = rows.reduce((s, r) => s + r.leads, 0);
+    return {
+      investment:   inv,
+      impressions:  imp,
+      clicks:       clk,
+      reach:        rch,
+      conversions:  conv,
+      revenue:      rev,
+      leads:        lds,
+      ctr:          imp > 0 ? (clk / imp) * 100 : 0,
+      cpl:          lds > 0 ? inv / lds : 0,
+      cpa:          conv > 0 ? inv / conv : 0,
+      roas:         inv > 0 ? rev / inv : 0,
+    };
+  }, [rows]);
+
+  const kpis = template.kpis;
+
+  const kpiValue = (id: string): string => {
+    switch (id) {
+      case "investment":   return formatBRL(totals.investment);
+      case "revenue":      return formatBRL(totals.revenue);
+      case "roas":         return `${totals.roas.toFixed(2)}x`;
+      case "cpa":          return totals.cpa > 0 ? formatBRL(totals.cpa) : "—";
+      case "ctr":          return `${totals.ctr.toFixed(2)}%`;
+      case "cpl":          return totals.cpl > 0 ? formatBRL(totals.cpl) : "—";
+      case "leads":        return formatInt(totals.leads);
+      case "conversions":  return formatInt(totals.conversions);
+      case "impressions":  return formatInt(totals.impressions);
+      case "reach":        return formatInt(totals.reach);
+      case "clicks":       return formatInt(totals.clicks);
+      default: return "—";
+    }
+  };
+
+  const kpiSub = (id: string): string | undefined => {
+    switch (id) {
+      case "investment":  return `CTR: ${totals.ctr.toFixed(2)}%`;
+      case "leads":       return totals.leads > 0 ? `CPL: ${formatBRL(totals.cpl)}` : undefined;
+      case "conversions": return totals.conversions > 0 ? `CPA: ${formatBRL(totals.cpa)}` : undefined;
+      case "revenue":     return totals.roas > 0 ? `ROAS: ${totals.roas.toFixed(2)}x` : undefined;
+      default: return undefined;
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 size={20} className="animate-spin" style={{ color: "var(--dm-text-tertiary)" }} />
+        <span className="ml-2 text-sm" style={{ color: "var(--dm-text-tertiary)" }}>
+          Agregando {campaigns.length} campanha{campaigns.length !== 1 ? "s" : ""}…
+        </span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-xl border p-6 text-center" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
+        <p className="text-sm text-red-500">{error}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Badge de campanhas agregadas */}
+      <div className="flex items-center gap-2">
+        <span className="rounded-full px-3 py-1 text-[11px] font-semibold"
+          style={{ background: "rgba(99,102,200,0.12)", color: "var(--dm-brand-500)" }}>
+          {campaigns.length} campanha{campaigns.length !== 1 ? "s" : ""} · visão consolidada
+        </span>
+        <span className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
+          {dateFrom} → {dateTo}
+        </span>
+      </div>
+
+      {/* KPIs do template */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        {kpis.map((kpi) => (
+          <div key={kpi.id} className="rounded-xl border p-4 space-y-1"
+            style={{ backgroundColor: "var(--dm-bg-elevated)", borderColor: "var(--dm-border-subtle)" }}>
+            <p className="text-[11px] uppercase tracking-wide" style={{ color: "var(--dm-text-tertiary)" }}>{kpi.label}</p>
+            <p className="text-xl font-black tabular-nums" style={{ color: "var(--dm-text-primary)" }}>{kpiValue(kpi.id)}</p>
+            {kpiSub(kpi.id) && (
+              <p className="text-[11px]" style={{ color: "var(--dm-text-secondary)" }}>{kpiSub(kpi.id)}</p>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Breakdown por campanha */}
+      {campaigns.length > 1 && rows.length > 0 && (
+        <div className="rounded-xl border overflow-hidden" style={{ borderColor: "var(--dm-border-subtle)" }}>
+          <div className="px-4 py-3 border-b" style={{ borderColor: "var(--dm-border-subtle)", backgroundColor: "var(--dm-bg-elevated)" }}>
+            <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
+              Breakdown por Campanha
+            </p>
+          </div>
+          <table className="w-full text-xs">
+            <thead>
+              <tr style={{ backgroundColor: "var(--dm-bg-elevated)", borderBottom: "1px solid var(--dm-border-subtle)" }}>
+                {["Campanha", "Investimento", "Alcance", "Leads", "Conv.", "ROAS"].map(h => (
+                  <th key={h} className="px-4 py-2.5 text-left font-semibold uppercase tracking-wider"
+                    style={{ color: "var(--dm-text-tertiary)" }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {campaigns.map((camp) => {
+                const campRows = rows.filter(r => r.name.includes(camp.name.slice(0, 20)));
+                const inv  = campRows.reduce((s, r) => s + r.spend, 0);
+                const rch  = campRows.reduce((s, r) => s + r.reach, 0);
+                const lds  = campRows.reduce((s, r) => s + r.leads, 0);
+                const conv = campRows.reduce((s, r) => s + r.purchases, 0);
+                const rev  = campRows.reduce((s, r) => s + r.revenue, 0);
+                const roas = inv > 0 ? rev / inv : 0;
+                return (
+                  <tr key={camp.id} className="border-b hover:bg-white/5 transition-colors"
+                    style={{ borderColor: "var(--dm-border-subtle)" }}>
+                    <td className="px-4 py-2.5 max-w-[240px] truncate font-medium" style={{ color: "var(--dm-text-primary)" }}>
+                      {camp.name.length > 40 ? camp.name.slice(0, 40) + "…" : camp.name}
+                    </td>
+                    <td className="px-4 py-2.5 tabular-nums" style={{ color: "var(--dm-text-secondary)" }}>{formatBRL(inv)}</td>
+                    <td className="px-4 py-2.5 tabular-nums" style={{ color: "var(--dm-text-secondary)" }}>{formatInt(rch)}</td>
+                    <td className="px-4 py-2.5 tabular-nums" style={{ color: "var(--dm-text-secondary)" }}>{formatInt(lds)}</td>
+                    <td className="px-4 py-2.5 tabular-nums" style={{ color: "var(--dm-text-secondary)" }}>{formatInt(conv)}</td>
+                    <td className="px-4 py-2.5 tabular-nums" style={{ color: roas >= 2 ? "#05CD99" : roas >= 1 ? "#F59E0B" : "var(--dm-text-secondary)" }}>
+                      {inv > 0 ? `${roas.toFixed(2)}x` : "—"}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Single-campaign analysis panel ──────────────────────────────────────────
 
 function CampaignAnalysisPanel({
-  adAccountId, campaign, dateFrom, dateTo, template,
+  adAccountId, campaign, dateFrom, dateTo, template, instagramUserId, forceTab,
 }: {
   adAccountId: string;
   campaign: ActiveCampaign;
   dateFrom: string;
   dateTo: string;
   template: Template;
+  instagramUserId?: string;
+  forceTab?: "kpis" | "conjunto";
 }) {
   // kpiData: campaign-level daily rows → used for totals + funnel + template table
   // adsetData: adset-level totals → used for Análise de Conjunto
@@ -974,7 +1152,7 @@ function CampaignAnalysisPanel({
   const [adsetData, setAdsetData] = useState<AdsetRow[]>([]);
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"kpis" | "conjunto">("kpis");
+  const [activeTab, setActiveTab] = useState<"kpis" | "conjunto" | "instagram">(forceTab ?? "kpis");
 
   // alias so the rest of the KPI-tab code stays unchanged
   const data = kpiData;
@@ -1154,8 +1332,12 @@ function CampaignAnalysisPanel({
 
       {/* ── Tab switcher ─────────────────────────────────────────────────────── */}
       <div className="flex gap-1 rounded-[14px] p-1" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
-        {([ ["kpis", "Visão Geral"], ["conjunto", "Análise de Conjunto"] ] as const).map(([id, label]) => (
-          <button key={id} type="button" onClick={() => setActiveTab(id)}
+        {([
+          ["kpis",      "Visão Geral"],
+          ["conjunto",  "Análise de Conjunto"],
+          ...(instagramUserId ? [["instagram", "Perfil Ativo"]] : []),
+        ] as [string, string][]).map(([id, label]) => (
+          <button key={id} type="button" onClick={() => setActiveTab(id as "kpis" | "conjunto" | "instagram")}
             className="flex-1 rounded-[10px] py-2 text-[13px] font-semibold transition-all"
             style={activeTab === id
               ? { background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)", color: "#fff", boxShadow: "0 4px 12px rgba(49,52,145,0.28)" }
@@ -1781,6 +1963,16 @@ function CampaignAnalysisPanel({
       )}
 
       </> /* end activeTab === "kpis" */}
+
+      {/* ── Perfil Ativo ─────────────────────────────────────────────────────── */}
+      {activeTab === "instagram" && instagramUserId && (
+        <PerfilAtivoPanel
+          igUserId={instagramUserId}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+        />
+      )}
+
     </div>
   );
 }
@@ -1919,16 +2111,42 @@ function ProfileDateRange({
 
 const IG_GRADIENT = "linear-gradient(135deg,#f09433 0%,#e6683c 25%,#dc2743 50%,#cc2366 75%,#bc1888 100%)";
 
-function InstagramInsightsPanel({
+const IG_MOCK_DATA: InstagramProfileInsights = {
+  followersCount: 12847,
+  mediaCount: 234,
+  engagementRate: 4.32,
+  avgLikes: 312,
+  avgComments: 18,
+  followersGrowthToday: 47,
+  followersGrowthWeek: 318,
+  followersGrowthMonth: 1204,
+  followerGrowth: 1204,
+  impressionsTotal: 98400,
+  reachTotal: 54200,
+  profileViewsTotal: 3810,
+  followersSeriesData: Array.from({ length: 30 }, (_, i) => ({
+    x: Date.now() - (29 - i) * 86400000,
+    y: 11600 + Math.round(Math.random() * 100 + i * 42),
+  })),
+  score: { value: 78, label: "Bom" },
+};
+
+export function InstagramInsightsPanel({
   igUserId, dateFrom, dateTo,
 }: { igUserId: string; dateFrom: string; dateTo: string }) {
   const [data, setData]       = useState<InstagramProfileInsights | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState<string | null>(null);
+  const [isMock, setIsMock]   = useState(false);
 
   useEffect(() => {
     const { accessToken } = loadMetaCredentials();
-    if (!accessToken || !igUserId) return;
+    if (!accessToken || !igUserId) {
+      setData(IG_MOCK_DATA);
+      setIsMock(true);
+      return;
+    }
+    setIsMock(false);
     setLoading(true); setError(null);
     fetchInstagramInsights(igUserId, accessToken, dateFrom, dateTo)
       .then(setData)
@@ -1954,6 +2172,12 @@ function InstagramInsightsPanel({
         </div>
         <span className="text-[11px] font-semibold uppercase tracking-wider"
           style={{ color: "var(--dm-text-tertiary)" }}>Instagram Analytics</span>
+        {isMock && (
+          <span className="rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+            style={{ background: "rgba(245,158,11,0.15)", color: "#F59E0B", border: "1px solid rgba(245,158,11,0.3)" }}>
+            demo
+          </span>
+        )}
 
         {/* Score badge */}
         {data && !error && (
@@ -2180,6 +2404,7 @@ function ProfileDetailView({
 }) {
   const { addCampaignToProfile, removeCampaignFromProfile } = useAdvertiserStore();
   const [activeCampId, setActiveCampId] = useState<string>(profile.campaigns[0]?.id ?? "");
+  const [profileTab, setProfileTab] = useState<"overview" | "campanha" | "conjunto" | "instagram">("overview");
 
   // Persist date range per profile so it survives navigation back-and-forth.
   const [dateFrom, setDateFrom] = useState<string>(() => {
@@ -2427,67 +2652,79 @@ function ProfileDetailView({
         )}
       </div>
 
-      {/* No token warning */}
-      {!hasToken && (
-        <div
-          className="flex flex-col items-center gap-3 rounded-xl border p-8 text-center"
-          style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}
-        >
-          <Key size={20} className="text-amber-500" />
-          <div>
-            <p className="text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>Token não configurado</p>
-            <p className="mt-1 text-xs" style={{ color: "var(--dm-text-secondary)" }}>Configure em Importar dados → Meta Ads API</p>
-          </div>
-        </div>
-      )}
-
-      {/* No campaigns state */}
-      {hasToken && profile.campaigns.length === 0 && (
-        <div
-          className="flex flex-col items-center gap-3 rounded-xl border p-10 text-center"
-          style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}
-        >
-          <RefreshCw size={20} style={{ color: "var(--dm-text-tertiary)" }} />
-          <div>
-            <p className="text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>Nenhuma campanha adicionada</p>
-            <p className="mt-1 text-xs" style={{ color: "var(--dm-text-secondary)" }}>
-              Clique em <strong>+ Adicionar Campanha</strong> acima para começar
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Template selector modal — shown on first visit to this profile */}
+      {/* Template selector modal */}
       {showTemplateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div
-            className="w-full max-w-3xl rounded-xl border p-6 shadow-2xl"
-            style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}
-          >
+          <div className="w-full max-w-3xl rounded-xl border p-6 shadow-2xl"
+            style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
             <h2 className="mb-4 text-base font-semibold" style={{ color: "var(--dm-text-primary)" }}>
               Qual tipo de campanha é essa?
             </h2>
-            <TemplateSelector
-              current={templateId}
-              onChange={handleTemplateChange}
-              variant="modal"
-              onOpenBuilder={() => setShowBuilder(true)}
-            />
+            <TemplateSelector current={templateId} onChange={handleTemplateChange}
+              variant="modal" onOpenBuilder={() => setShowBuilder(true)} />
           </div>
         </div>
       )}
 
       {/* Personalizado builder modal */}
       {showBuilder && (
-        <PersonalizadoBuilder
-          config={personalizadoConfig}
-          onChange={handlePersonalizadoChange}
-          onClose={() => setShowBuilder(false)}
-        />
+        <PersonalizadoBuilder config={personalizadoConfig}
+          onChange={handlePersonalizadoChange} onClose={() => setShowBuilder(false)} />
       )}
 
-      {/* Per-campaign analysis */}
-      {hasToken && activeCampaign && (
+      {/* ── Tab bar top-level ── */}
+      <div className="flex gap-1 rounded-[14px] p-1" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
+        {([
+          ["overview",   "Visão Geral"],
+          ["campanha",   "Campanha"],
+          ["conjunto",   "Análise de Conjunto"],
+          ...(profile.instagramUserId ? [["instagram", "Perfil Ativo"]] : []),
+        ] as [string, string][]).map(([id, label]) => (
+          <button key={id} type="button"
+            onClick={() => setProfileTab(id as typeof profileTab)}
+            className="flex-1 rounded-[10px] py-2 text-[13px] font-semibold transition-all"
+            style={profileTab === id
+              ? { background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)", color: "#fff", boxShadow: "0 4px 12px rgba(49,52,145,0.28)" }
+              : { color: "var(--dm-text-tertiary)" }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Visão Geral — agrega todas as campanhas do perfil ── */}
+      {profileTab === "overview" && (
+        hasToken && profile.campaigns.length > 0 ? (
+          <ProfileOverviewPanel
+            key={`overview-${profile.id}-${dateFrom}-${dateTo}-${templateId}`}
+            adAccountId={profile.adAccountId}
+            campaigns={profile.campaigns}
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            template={resolvedTemplate}
+          />
+        ) : !hasToken ? (
+          <div className="flex flex-col items-center gap-3 rounded-xl border p-8 text-center"
+            style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
+            <Key size={20} className="text-amber-500" />
+            <div>
+              <p className="text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>Token não configurado</p>
+              <p className="mt-1 text-xs" style={{ color: "var(--dm-text-secondary)" }}>Configure em Importar dados → Meta Ads API</p>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center gap-3 rounded-xl border p-10 text-center"
+            style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
+            <RefreshCw size={20} style={{ color: "var(--dm-text-tertiary)" }} />
+            <p className="text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>Nenhuma campanha adicionada</p>
+            <p className="mt-1 text-xs" style={{ color: "var(--dm-text-secondary)" }}>
+              Clique em <strong>+ Adicionar Campanha</strong> acima
+            </p>
+          </div>
+        )
+      )}
+
+      {/* ── Campanha — seleção individual ── */}
+      {profileTab === "campanha" && hasToken && activeCampaign && (
         <CampaignAnalysisPanel
           key={`${activeCampaign.id}-${dateFrom}-${dateTo}-${templateId}-${JSON.stringify(personalizadoConfig)}`}
           adAccountId={profile.adAccountId}
@@ -2495,12 +2732,34 @@ function ProfileDetailView({
           dateFrom={dateFrom}
           dateTo={dateTo}
           template={resolvedTemplate}
+          instagramUserId={undefined}
+        />
+      )}
+      {profileTab === "campanha" && !hasToken && (
+        <div className="flex flex-col items-center gap-3 rounded-xl border p-8 text-center"
+          style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
+          <Key size={20} className="text-amber-500" />
+          <p className="text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>Token não configurado</p>
+        </div>
+      )}
+
+      {/* ── Análise de Conjunto ── */}
+      {profileTab === "conjunto" && hasToken && activeCampaign && (
+        <CampaignAnalysisPanel
+          key={`conjunto-${activeCampaign.id}-${dateFrom}-${dateTo}`}
+          adAccountId={profile.adAccountId}
+          campaign={activeCampaign}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          template={resolvedTemplate}
+          instagramUserId={undefined}
+          forceTab="conjunto"
         />
       )}
 
-      {/* Instagram insights — só aparece se perfil tiver conta IG vinculada */}
-      {hasToken && profile.instagramUserId && (
-        <InstagramInsightsPanel
+      {/* ── Perfil Ativo ── */}
+      {profileTab === "instagram" && profile.instagramUserId && (
+        <PerfilAtivoPanel
           key={`${profile.instagramUserId}-${dateFrom}-${dateTo}`}
           igUserId={profile.instagramUserId}
           dateFrom={dateFrom}
