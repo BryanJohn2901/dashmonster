@@ -41,6 +41,7 @@ import { HistoricalView } from "@/components/HistoricalView";
 import { HISTORICAL_KIND_LABELS, type HistoricalKind } from "@/types/historical";
 import { BestCreatives } from "@/components/BestCreatives";
 import { ProfileAnalysis } from "@/components/ProfileAnalysis";
+import { useAdvertiserStore } from "@/hooks/useAdvertiserStore";
 import { ProductBase } from "@/components/products/ProductBase";
 import { DashMonsterLogo } from "@/components/DashMonsterLogo";
 import { TabLanding } from "@/components/TabLanding";
@@ -763,11 +764,7 @@ function ImportPopover({
     setVerifyStatus((p) => ({ ...p, [groupId]: "loading" }));
     setVerifyError((p) => { const c = { ...p }; delete c[groupId]; return c; });
 
-    // Reuse cached data if already fetched for this account
-    if (campaignsByAccount[accountId]) {
-      setVerifyStatus((p) => ({ ...p, [groupId]: "ok" }));
-      return;
-    }
+    // Sempre busca da API — garante que novas campanhas criadas na BM apareçam
 
     try {
       const campaigns = await fetchMetaCampaigns(accountId, accessToken);
@@ -1849,6 +1846,7 @@ export function Dashboard({
   const [showGoals, setShowGoals] = useState(false);
 
   const { getGoals, setGoal, resetGoals } = useGoalsStore();
+  const { profiles: advertiserProfiles } = useAdvertiserStore();
 
   const {
     selectedGroup, selectedTurma, activeCampaigns, campaignConfigs,
@@ -1863,6 +1861,8 @@ export function Dashboard({
   useEffect(() => {
     syncPanelConfig(categories, accountEntries);
   }, [accountEntries, categories, syncPanelConfig]);
+
+  const activeIgUserId = advertiserProfiles.find(p => p.groupId === selectedGroup)?.instagramUserId;
 
   // Goals are per-group; "all" uses the "global" bucket
   const goalsGroupKey = selectedGroup === "all" ? "global" : selectedGroup;
@@ -3105,6 +3105,8 @@ export function Dashboard({
                         title="Leads" value={formatNumber(totals.totalLeads)}
                         subtitle={totals.totalLeads > 0 ? `CPL: ${formatCurrency(totals.averageCpl)}` : undefined}
                         icon={Users} accentColor="violet"
+                        goalValue={goals.leads} goalLabel={goals.leads != null ? formatNumber(goals.leads) : undefined}
+                        goalPct={goals.leads != null ? (totals.totalLeads / goals.leads) * 100 : null}
                       />
                     ),
                     isMetricVisible("cpl") && totals.totalLeads > 0 && (
@@ -3230,7 +3232,7 @@ export function Dashboard({
                       cta={{ label: "Importar dados agora", onClick: () => onOpenControlPanel ? onOpenControlPanel() : openImport("sheets") }}
                     />
                   ) : (
-                    <CampaignAnalysis campaigns={aggregated} selectedCategory={selectedCategory as ProductCategory | null} isMetricVisible={isMetricVisible} />
+                    <CampaignAnalysis campaigns={aggregated} selectedCategory={selectedCategory as ProductCategory | null} isMetricVisible={isMetricVisible} igUserId={activeIgUserId} dateFrom={dateFrom} dateTo={dateTo} />
                   )
                 )}
 

@@ -6,22 +6,26 @@ import {
   Globe, ImageIcon, PauseCircle, Square, Star, TrendingUp,
   XCircle, Zap, ChevronLeft, ChevronRight, BarChart2,
   CalendarDays, Repeat, GraduationCap, BookOpen, Users, Megaphone,
-  ShoppingCart, RefreshCcw, Target, Mail, Ticket, UserCheck,
+  ShoppingCart, RefreshCcw, Target, Mail, Ticket, UserCheck, AtSign,
 } from "lucide-react";
 import { AggregatedCampaign, ProductCategory } from "@/types/campaign";
 import { formatCurrency, formatNumber, formatPercent } from "@/utils/metrics";
+import { PerfilAtivoPanel } from "@/components/PerfilAtivoPanel";
 
 interface CampaignAnalysisProps {
   campaigns: AggregatedCampaign[];
   selectedCategory?: ProductCategory | null;
   isMetricVisible?: (id: string) => boolean;
+  igUserId?: string;
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Priority = "alta" | "média" | "baixa";
 type Category = "criativo" | "orçamento" | "landing" | "targeting" | "escalar" | "pausar";
-type SubTab   = "overview" | "critical" | "positive" | "tasks";
+type SubTab   = "overview" | "critical" | "positive" | "tasks" | "instagram";
 
 interface Issue        { label: string; severity: "critical" | "warning" }
 interface TaskSuggestion {
@@ -817,7 +821,7 @@ function TabTasks({ tasks }: { tasks: TaskSuggestion[] }) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function CampaignAnalysis({ campaigns, selectedCategory, isMetricVisible }: CampaignAnalysisProps) {
+export function CampaignAnalysis({ campaigns, selectedCategory, isMetricVisible, igUserId, dateFrom, dateTo }: CampaignAnalysisProps) {
   const [subTab, setSubTab] = useState<SubTab>("overview");
 
   const tasks    = useMemo(() => generateTasks(campaigns), [campaigns]);
@@ -835,10 +839,11 @@ export function CampaignAnalysis({ campaigns, selectedCategory, isMetricVisible 
   const scoreLabel   = score >= 70 ? "Saudável" : score >= 40 ? "Atenção" : "Crítico";
 
   const TABS = [
-    { id: "overview" as SubTab, label: "Visão Geral",   icon: BarChart2,     count: undefined },
-    { id: "critical" as SubTab, label: "Problemas",     icon: XCircle,       count: issueCount },
-    { id: "positive" as SubTab, label: "Destaques",     icon: CheckCircle2,  count: positive.length },
-    { id: "tasks"    as SubTab, label: "Plano de Ação", icon: CheckSquare,   count: tasksPending },
+    { id: "overview"   as SubTab, label: "Visão Geral",   icon: BarChart2,    count: undefined },
+    { id: "critical"   as SubTab, label: "Problemas",     icon: XCircle,      count: issueCount },
+    { id: "positive"   as SubTab, label: "Destaques",     icon: CheckCircle2, count: positive.length },
+    { id: "tasks"      as SubTab, label: "Plano de Ação", icon: CheckSquare,  count: tasksPending },
+    ...(igUserId ? [{ id: "instagram" as SubTab, label: "Perfil Ativo", icon: AtSign, count: undefined }] : []),
   ];
 
   return (
@@ -900,10 +905,18 @@ export function CampaignAnalysis({ campaigns, selectedCategory, isMetricVisible 
           <SubTabBar active={subTab} onChange={setSubTab} tabs={TABS} />
         </div>
         <div className="px-5 pb-5">
-          {subTab === "overview"  && <TabOverview  campaigns={campaigns} selectedCategory={selectedCategory} />}
-          {subTab === "critical"  && <TabCritical  campaigns={campaigns} />}
-          {subTab === "positive"  && <TabPositive  campaigns={campaigns} isMetricVisible={isMetricVisible} />}
-          {subTab === "tasks"     && <TabTasks     tasks={tasks} />}
+          {subTab === "overview"   && <TabOverview  campaigns={campaigns} selectedCategory={selectedCategory} />}
+          {subTab === "critical"   && <TabCritical  campaigns={campaigns} />}
+          {subTab === "positive"   && <TabPositive  campaigns={campaigns} isMetricVisible={isMetricVisible} />}
+          {subTab === "tasks"      && <TabTasks     tasks={tasks} />}
+          {subTab === "instagram"  && igUserId && (
+            <PerfilAtivoPanel
+              key={`${igUserId}-${dateFrom}-${dateTo}`}
+              igUserId={igUserId}
+              dateFrom={dateFrom ?? ""}
+              dateTo={dateTo ?? ""}
+            />
+          )}
         </div>
       </div>
 
