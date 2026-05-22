@@ -960,9 +960,29 @@ function ProfileCard({
 
 // ─── Profile overview — agrega todas as campanhas do perfil ──────────────────
 
+// ─── localStorage keys for overview-level persistence ────────────────────────
+const OVERVIEW_GOALS_KEY  = "pta_overview_goals_v1";
+const OVERVIEW_FUNNEL_KEY = "pta_overview_funnel_v1";
+
+// Shared color maps (mirrors CampaignAnalysisPanel)
+const KPI_SOLID_OV: Record<string, string> = {
+  brand: "#6366C8", sky: "#0ea5e9", green: "#05CD99",
+  rose: "#EE5D50", amber: "#F4A60D", slate: "#64748b",
+};
+const KPI_BG_OV: Record<string, string> = {
+  brand: "rgba(99,102,200,0.12)", sky: "rgba(14,165,233,0.12)",
+  green: "rgba(5,205,153,0.12)", rose: "rgba(238,93,80,0.12)",
+  amber: "rgba(244,166,13,0.12)", slate: "rgba(100,116,139,0.10)",
+};
+const FUNNEL_COLORS_OV: Record<string, string> = {
+  reach: "#6366C8", impressions: "#8b5cf6", clicks: "#0ea5e9",
+  page_views: "#f59e0b", leads: "#e11d48", sales: "#05CD99",
+};
+
 function ProfileOverviewPanel({
-  adAccountId, campaigns, dateFrom, dateTo, template,
+  profileId, adAccountId, campaigns, dateFrom, dateTo, template,
 }: {
+  profileId: string;
   adAccountId: string;
   campaigns: ActiveCampaign[];
   dateFrom: string;
@@ -973,18 +993,85 @@ function ProfileOverviewPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState<string | null>(null);
 
+  // ── Goals ─────────────────────────────────────────────────────────────────
+  const [goals, setGoals] = useState<Record<string, number>>(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      const stored = JSON.parse(localStorage.getItem(OVERVIEW_GOALS_KEY) ?? "{}") as Record<string, Record<string, number>>;
+      return stored[profileId] ?? {};
+    } catch { return {}; }
+  });
+  const [editGoals, setEditGoals] = useState(false);
+
+  const updateGoal = (kpiId: string, value: number) => {
+    setGoals((prev) => {
+      const next = { ...prev };
+      if (!value || value <= 0) delete next[kpiId]; else next[kpiId] = value;
+      try {
+        const stored = JSON.parse(localStorage.getItem(OVERVIEW_GOALS_KEY) ?? "{}") as Record<string, Record<string, number>>;
+        localStorage.setItem(OVERVIEW_GOALS_KEY, JSON.stringify({ ...stored, [profileId]: next }));
+      } catch {}
+      return next;
+    });
+  };
+
+  // ── Funnel config ─────────────────────────────────────────────────────────
+  const [funnelStepIds, setFunnelStepIds] = useState<ProfileFunnelStepId[]>(() => {
+    if (typeof window === "undefined") return DEFAULT_FUNNEL_STEP_IDS;
+    try {
+      const stored = JSON.parse(localStorage.getItem(OVERVIEW_FUNNEL_KEY) ?? "{}") as Record<string, string[]>;
+      const ids = stored[profileId];
+      if (!ids) return DEFAULT_FUNNEL_STEP_IDS;
+      const valid = ids.filter((id): id is ProfileFunnelStepId => PROFILE_FUNNEL_STEPS.some((s) => s.id === id));
+      return valid.length > 0 ? valid : DEFAULT_FUNNEL_STEP_IDS;
+    } catch { return DEFAULT_FUNNEL_STEP_IDS; }
+  });
+  const [showFunnelPanel, setShowFunnelPanel] = useState(false);
+  const [funnelView, setFunnelView]           = useState<"bars" | "funnel">("bars");
+
+  const persistFunnelSteps = (next: ProfileFunnelStepId[]) => {
+    const safe = next.length > 0 ? next : DEFAULT_FUNNEL_STEP_IDS;
+    setFunnelStepIds(safe);
+    try {
+      const stored = JSON.parse(localStorage.getItem(OVERVIEW_FUNNEL_KEY) ?? "{}") as Record<string, string[]>;
+      localStorage.setItem(OVERVIEW_FUNNEL_KEY, JSON.stringify({ ...stored, [profileId]: safe }));
+    } catch {}
+  };
+
+  const toggleFunnelStep = (id: ProfileFunnelStepId) => {
+    persistFunnelSteps(
+      funnelStepIds.includes(id)
+        ? funnelStepIds.filter((s) => s !== id)
+        : [...funnelStepIds, id],
+    );
+  };
+
+  const moveFunnelStep = (id: ProfileFunnelStepId, dir: -1 | 1) => {
+    const idx = funnelStepIds.indexOf(id);
+    const next = idx + dir;
+    if (idx < 0 || next < 0 || next >= funnelStepIds.length) return;
+    const arr = [...funnelStepIds];
+    [arr[idx], arr[next]] = [arr[next], arr[idx]];
+    persistFunnelSteps(arr);
+  };
+
+  // ── Fetch at campaign level (one row per campaign — fixes duplicate bug) ──
   useEffect(() => {
     if (!adAccountId || campaigns.length === 0) return;
     const { accessToken } = loadMetaCredentials();
     if (!accessToken) return;
     setLoading(true); setError(null);
-    const allIds = campaigns.map((c) => c.id);
-    fetchMetaInsights(adAccountId, dateFrom, dateTo, allIds)
-      .then((data) => { setRows(toAdsetRows(data)); })
+    fetchMetaInsights(adAccountId, dateFrom, dateTo, {
+      level: "campaign",
+      timeIncrement: "all_days",
+      campaignIds: campaigns.map((c) => c.id),
+    })
+      .then((data) => setRows(toAdsetRows(data)))
       .catch((e) => setError(e instanceof Error ? e.message : "Erro ao buscar dados."))
       .finally(() => setLoading(false));
   }, [adAccountId, campaigns, dateFrom, dateTo]);
 
+  // ── Aggregate totals ──────────────────────────────────────────────────────
   const totals = useMemo(() => {
     const inv  = rows.reduce((s, r) => s + r.spend, 0);
     const imp  = rows.reduce((s, r) => s + r.impressions, 0);
@@ -993,50 +1080,40 @@ function ProfileOverviewPanel({
     const conv = rows.reduce((s, r) => s + r.purchases, 0);
     const rev  = rows.reduce((s, r) => s + r.revenue, 0);
     const lds  = rows.reduce((s, r) => s + r.leads, 0);
-    return {
-      investment:   inv,
-      impressions:  imp,
-      clicks:       clk,
-      reach:        rch,
-      conversions:  conv,
-      revenue:      rev,
-      leads:        lds,
-      ctr:          imp > 0 ? (clk / imp) * 100 : 0,
-      cpl:          lds > 0 ? inv / lds : 0,
-      cpa:          conv > 0 ? inv / conv : 0,
-      roas:         inv > 0 ? rev / inv : 0,
-    };
+    const pv   = rows.reduce((s, r) => s + r.page_views, 0);
+    const fol  = rows.reduce((s, r) => s + r.new_followers, 0);
+    const allC = rows.reduce((s, r) => s + r.total_clicks, 0);
+    return { inv, imp, clk, rch, conv, rev, lds, pv, fol, allC };
   }, [rows]);
 
-  const kpis = template.kpis;
+  // ── Template-driven KPI values ────────────────────────────────────────────
+  const rawValues: Record<string, number> = {
+    impressions:    totals.imp,
+    reach:          totals.rch,
+    clicks:         totals.clk,
+    total_clicks:   totals.allC,
+    spend:          totals.inv,
+    revenue:        totals.rev,
+    leads:          totals.lds,
+    sales:          totals.conv,
+    tickets:        totals.conv,
+    page_views:     totals.pv,
+    profile_visits: 0,
+    new_followers:  totals.fol,
+  };
+  const kpiValues = useMemo(() => ({ ...rawValues, ...template.derive(rawValues) }), [rows, template]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const kpiValue = (id: string): string => {
-    switch (id) {
-      case "investment":   return formatBRL(totals.investment);
-      case "revenue":      return formatBRL(totals.revenue);
-      case "roas":         return `${totals.roas.toFixed(2)}x`;
-      case "cpa":          return totals.cpa > 0 ? formatBRL(totals.cpa) : "—";
-      case "ctr":          return `${totals.ctr.toFixed(2)}%`;
-      case "cpl":          return totals.cpl > 0 ? formatBRL(totals.cpl) : "—";
-      case "leads":        return formatInt(totals.leads);
-      case "conversions":  return formatInt(totals.conversions);
-      case "impressions":  return formatInt(totals.impressions);
-      case "reach":        return formatInt(totals.reach);
-      case "clicks":       return formatInt(totals.clicks);
-      default: return "—";
-    }
+  // ── Funnel step aggregate values ──────────────────────────────────────────
+  const funnelVals: Record<ProfileFunnelStepId, number> = {
+    reach:       totals.rch,
+    impressions: totals.imp,
+    clicks:      totals.clk,
+    page_views:  totals.pv,
+    leads:       totals.lds,
+    sales:       totals.conv,
   };
 
-  const kpiSub = (id: string): string | undefined => {
-    switch (id) {
-      case "investment":  return `CTR: ${totals.ctr.toFixed(2)}%`;
-      case "leads":       return totals.leads > 0 ? `CPL: ${formatBRL(totals.cpl)}` : undefined;
-      case "conversions": return totals.conversions > 0 ? `CPA: ${formatBRL(totals.cpa)}` : undefined;
-      case "revenue":     return totals.roas > 0 ? `ROAS: ${totals.roas.toFixed(2)}x` : undefined;
-      default: return undefined;
-    }
-  };
-
+  // ── Loading / error states ────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -1050,15 +1127,36 @@ function ProfileOverviewPanel({
 
   if (error) {
     return (
-      <div className="rounded-xl border p-6 text-center" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
-        <p className="text-sm text-red-500">{error}</p>
+      <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">
+        <AlertCircle size={14} className="mt-0.5 shrink-0" /> {error}
+        <button onClick={() => {
+          const { accessToken } = loadMetaCredentials();
+          if (!accessToken) return;
+          setLoading(true); setError(null);
+          fetchMetaInsights(adAccountId, dateFrom, dateTo, {
+            level: "campaign", timeIncrement: "all_days",
+            campaignIds: campaigns.map((c) => c.id),
+          }).then((data) => setRows(toAdsetRows(data)))
+            .catch((e) => setError(e instanceof Error ? e.message : "Erro ao buscar dados."))
+            .finally(() => setLoading(false));
+        }} className="ml-auto underline">Tentar novamente</button>
+      </div>
+    );
+  }
+
+  if (rows.length === 0) {
+    return (
+      <div className="rounded-xl border p-8 text-center text-xs"
+        style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)", color: "var(--dm-text-tertiary)" }}>
+        Nenhum dado encontrado para este período.
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
-      {/* Badge de campanhas agregadas */}
+
+      {/* ── Badge + header ─────────────────────────────────────────────────── */}
       <div className="flex items-center gap-2">
         <span className="rounded-full px-3 py-1 text-[11px] font-semibold"
           style={{ background: "rgba(99,102,200,0.12)", color: "var(--dm-brand-500)" }}>
@@ -1069,65 +1167,399 @@ function ProfileOverviewPanel({
         </span>
       </div>
 
-      {/* KPIs do template */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        {kpis.map((kpi) => (
-          <div key={kpi.id} className="rounded-xl border p-4 space-y-1"
-            style={{ backgroundColor: "var(--dm-bg-elevated)", borderColor: "var(--dm-border-subtle)" }}>
-            <p className="text-[11px] uppercase tracking-wide" style={{ color: "var(--dm-text-tertiary)" }}>{kpi.label}</p>
-            <p className="text-xl font-black tabular-nums" style={{ color: "var(--dm-text-primary)" }}>{kpiValue(kpi.id)}</p>
-            {kpiSub(kpi.id) && (
-              <p className="text-[11px]" style={{ color: "var(--dm-text-secondary)" }}>{kpiSub(kpi.id)}</p>
-            )}
-          </div>
-        ))}
+      {/* ── MÉTRICAS PRINCIPAIS ────────────────────────────────────────────── */}
+      <div>
+        <div className="mb-3 flex items-center justify-between">
+          <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>
+            Métricas Principais
+          </p>
+          <button
+            type="button"
+            onClick={() => setEditGoals((v) => !v)}
+            className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-semibold transition"
+            style={editGoals
+              ? { background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)", color: "#fff", boxShadow: "0 4px 12px rgba(49,52,145,0.30)" }
+              : { backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)", border: "1px solid var(--dm-border-default)" }}
+          >
+            <Target size={11} />
+            {editGoals ? "Salvar Metas" : "Definir Metas"}
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          {template.kpis.map((kpi) => {
+            const val      = kpiValues[kpi.id] ?? 0;
+            const display  = val > 0 ? kpi.format(val) : "—";
+            const goalVal  = goals[kpi.id] ?? 0;
+            const goalPct  = goalVal > 0
+              ? kpi.invert ? (goalVal / Math.max(val, 0.001)) * 100 : (val / goalVal) * 100
+              : 0;
+            const goalMet  = goalVal > 0 && (kpi.invert ? val <= goalVal : val >= goalVal);
+            const goalColor = goalMet ? "#05CD99" : goalPct >= 75 ? "#F4A60D" : "#EE5D50";
+            const solid = KPI_SOLID_OV[kpi.color] ?? "#6366C8";
+            const bg    = KPI_BG_OV[kpi.color]    ?? "rgba(99,102,200,0.10)";
+
+            return (
+              <article
+                key={kpi.id}
+                className="flex flex-col rounded-[20px] border shadow-horizon card-hover"
+                style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)", padding: "18px" }}
+              >
+                <div className="mb-4 flex items-center justify-between gap-2">
+                  <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full"
+                    style={{ backgroundColor: bg }}>
+                    <Target size={18} style={{ color: solid }} />
+                  </div>
+                  {editGoals && (
+                    <input
+                      type="number" step="any"
+                      value={goals[kpi.id] ?? ""}
+                      onChange={(e) => { const v = parseFloat(e.target.value); updateGoal(kpi.id, isNaN(v) ? 0 : v); }}
+                      placeholder="Meta"
+                      className="w-20 h-7 rounded-[10px] border px-2 text-[10px] text-right outline-none"
+                      style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
+                    />
+                  )}
+                </div>
+
+                <p className="mb-1 text-[12px] font-semibold" style={{ color: "var(--dm-text-secondary)" }} title={kpi.tooltip}>
+                  {kpi.label}
+                </p>
+                <p className="text-[22px] font-bold tabular-nums tracking-tight leading-tight"
+                  style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins), Poppins, sans-serif" }}>
+                  {display}
+                </p>
+
+                {!editGoals && goalVal > 0 && (
+                  <div className="mt-3 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                        Meta: {kpi.format(goalVal)}
+                      </span>
+                      <span className="text-[10px] font-bold" style={{ color: goalColor }}>
+                        {Math.min(Math.round(goalPct), 999)}%
+                      </span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
+                      <div className="h-full rounded-full transition-all duration-500"
+                        style={{ width: `${Math.min(100, goalPct)}%`, backgroundColor: goalColor }} />
+                    </div>
+                  </div>
+                )}
+              </article>
+            );
+          })}
+        </div>
       </div>
 
-      {/* Breakdown por campanha */}
-      {campaigns.length > 1 && rows.length > 0 && (
-        <div className="rounded-xl border overflow-hidden" style={{ borderColor: "var(--dm-border-subtle)" }}>
-          <div className="px-4 py-3 border-b" style={{ borderColor: "var(--dm-border-subtle)", backgroundColor: "var(--dm-bg-elevated)" }}>
-            <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
-              Breakdown por Campanha
+      {/* ── FUNIL DE CONVERSÃO ─────────────────────────────────────────────── */}
+      <article className="overflow-hidden rounded-[20px] border shadow-horizon"
+        style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
+
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4"
+          style={{ borderColor: "var(--dm-border-subtle)" }}>
+          <div>
+            <h3 className="text-sm font-bold" style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>
+              Funil de Conversão
+            </h3>
+            <p className="mt-0.5 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
+              Jornada consolidada de todas as campanhas
             </p>
           </div>
-          <table className="w-full text-xs">
-            <thead>
-              <tr style={{ backgroundColor: "var(--dm-bg-elevated)", borderBottom: "1px solid var(--dm-border-subtle)" }}>
-                {["Campanha", "Investimento", "Alcance", "Leads", "Conv.", "ROAS"].map(h => (
-                  <th key={h} className="px-4 py-2.5 text-left font-semibold uppercase tracking-wider"
-                    style={{ color: "var(--dm-text-tertiary)" }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {campaigns.map((camp) => {
-                const campRows = rows.filter(r => r.name.includes(camp.name.slice(0, 20)));
-                const inv  = campRows.reduce((s, r) => s + r.spend, 0);
-                const rch  = campRows.reduce((s, r) => s + r.reach, 0);
-                const lds  = campRows.reduce((s, r) => s + r.leads, 0);
-                const conv = campRows.reduce((s, r) => s + r.purchases, 0);
-                const rev  = campRows.reduce((s, r) => s + r.revenue, 0);
-                const roas = inv > 0 ? rev / inv : 0;
+          <div className="flex items-center gap-2">
+            <div className="flex rounded-[10px] p-0.5" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
+              {(["bars", "funnel"] as const).map((v) => (
+                <button key={v} type="button" onClick={() => setFunnelView(v)}
+                  className="flex items-center gap-1.5 rounded-[8px] px-3 py-1.5 text-[11px] font-semibold transition-all"
+                  style={funnelView === v
+                    ? { background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)", color: "#fff", boxShadow: "0 2px 8px rgba(49,52,145,0.28)" }
+                    : { color: "var(--dm-text-tertiary)" }}>
+                  {v === "bars" ? "Barras" : "Funil"}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowFunnelPanel((v) => !v)}
+              className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-semibold transition"
+              style={showFunnelPanel
+                ? { background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)", color: "#fff", boxShadow: "0 4px 12px rgba(49,52,145,0.30)" }
+                : { backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-secondary)", border: "1px solid var(--dm-border-default)" }}
+            >
+              <SlidersHorizontal size={11} />
+              {showFunnelPanel ? "Fechar" : "Personalizar"}
+            </button>
+          </div>
+        </div>
+
+        {/* Funnel customization panel */}
+        {showFunnelPanel && (
+          <div className="border-b px-5 py-4 space-y-3" style={{ borderColor: "var(--dm-border-subtle)", backgroundColor: "var(--dm-bg-elevated)" }}>
+            <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>
+              Etapas visíveis
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {PROFILE_FUNNEL_STEPS.map((step) => {
+                const selected = funnelStepIds.includes(step.id);
+                const index    = funnelStepIds.indexOf(step.id);
                 return (
-                  <tr key={camp.id} className="border-b hover:bg-white/5 transition-colors"
-                    style={{ borderColor: "var(--dm-border-subtle)" }}>
-                    <td className="px-4 py-2.5 max-w-[240px] truncate font-medium" style={{ color: "var(--dm-text-primary)" }}>
-                      {camp.name.length > 40 ? camp.name.slice(0, 40) + "…" : camp.name}
-                    </td>
-                    <td className="px-4 py-2.5 tabular-nums" style={{ color: "var(--dm-text-secondary)" }}>{formatBRL(inv)}</td>
-                    <td className="px-4 py-2.5 tabular-nums" style={{ color: "var(--dm-text-secondary)" }}>{formatInt(rch)}</td>
-                    <td className="px-4 py-2.5 tabular-nums" style={{ color: "var(--dm-text-secondary)" }}>{formatInt(lds)}</td>
-                    <td className="px-4 py-2.5 tabular-nums" style={{ color: "var(--dm-text-secondary)" }}>{formatInt(conv)}</td>
-                    <td className="px-4 py-2.5 tabular-nums" style={{ color: roas >= 2 ? "#05CD99" : roas >= 1 ? "#F59E0B" : "var(--dm-text-secondary)" }}>
-                      {inv > 0 ? `${roas.toFixed(2)}x` : "—"}
-                    </td>
-                  </tr>
+                  <div key={step.id}
+                    className="flex items-center gap-1.5 rounded-[12px] cursor-pointer select-none transition"
+                    style={{
+                      padding: "6px 12px",
+                      backgroundColor: selected ? step.color + "20" : "var(--dm-bg-surface)",
+                      border: `1.5px solid ${selected ? step.color + "66" : "var(--dm-border-default)"}`,
+                      color: selected ? step.color : "var(--dm-text-tertiary)",
+                    }}
+                    onClick={() => !(selected && funnelStepIds.length === 1) && toggleFunnelStep(step.id)}
+                  >
+                    <span className="text-[11px] font-semibold">{step.label}</span>
+                    {selected && (
+                      <div className="flex gap-0.5 ml-0.5">
+                        <button type="button"
+                          onClick={(e) => { e.stopPropagation(); moveFunnelStep(step.id, -1); }}
+                          disabled={index === 0}
+                          className="rounded p-0.5 transition disabled:opacity-20 hover:opacity-80">
+                          <ArrowUp size={9} />
+                        </button>
+                        <button type="button"
+                          onClick={(e) => { e.stopPropagation(); moveFunnelStep(step.id, 1); }}
+                          disabled={index === funnelStepIds.length - 1}
+                          className="rounded p-0.5 transition disabled:opacity-20 hover:opacity-80">
+                          <ArrowDown size={9} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 );
               })}
-            </tbody>
-          </table>
-        </div>
+            </div>
+            <button type="button" onClick={() => persistFunnelSteps(DEFAULT_FUNNEL_STEP_IDS)}
+              className="text-[10px] font-semibold transition hover:opacity-70"
+              style={{ color: "var(--dm-brand-500)" }}>
+              Restaurar padrão
+            </button>
+          </div>
+        )}
+
+        {/* VIEW: BARRAS */}
+        {funnelView === "bars" && (() => {
+          const maxVal = Math.max(...funnelStepIds.map((id) => funnelVals[id] ?? 0), 1);
+          return (
+            <div className="flex flex-col gap-0 px-5 py-5">
+              {funnelStepIds.map((stepId, i) => {
+                const step    = PROFILE_FUNNEL_STEPS.find((s) => s.id === stepId);
+                if (!step) return null;
+                const val     = funnelVals[stepId] ?? 0;
+                const prevId  = i > 0 ? funnelStepIds[i - 1] : null;
+                const prevVal = prevId ? (funnelVals[prevId] ?? 0) : null;
+                const rate    = prevVal !== null && prevVal > 0 ? (val / prevVal) * 100 : null;
+                const color   = FUNNEL_COLORS_OV[stepId] ?? step.color;
+                const pct     = maxVal > 0 ? (val / maxVal) * 100 : 0;
+                return (
+                  <div key={stepId} className="flex flex-col">
+                    {i > 0 && (
+                      <div className="flex items-center gap-3 py-2 pl-[52px]">
+                        <div className="w-px self-stretch" style={{ backgroundColor: "var(--dm-border-default)", minHeight: "12px" }} />
+                        {rate !== null && (
+                          <span className="rounded-full px-3 py-0.5 text-[10px] font-bold"
+                            style={{ backgroundColor: color + "18", color }}>
+                            {formatPercent(rate)}{step.rateLabel ? ` ${step.rateLabel}` : ""}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    <div className="flex items-center gap-4">
+                      <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full text-sm font-bold text-white"
+                        style={{ background: `linear-gradient(135deg,${color} 0%,${color}bb 100%)`, boxShadow: `0 4px 12px ${color}44` }}>
+                        {i + 1}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-baseline justify-between mb-2">
+                          <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color }}>{step.label}</p>
+                          <p className="text-[20px] font-bold tabular-nums leading-none"
+                            style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>
+                            {val > 0 ? formatNumber(val) : <span style={{ color: "var(--dm-text-tertiary)", fontSize: "14px" }}>Sem dados</span>}
+                          </p>
+                        </div>
+                        <div className="h-2 overflow-hidden rounded-full" style={{ backgroundColor: color + "18" }}>
+                          <div className="h-full rounded-full transition-all duration-700"
+                            style={{ width: `${pct}%`, background: `linear-gradient(90deg,${color} 0%,${color}99 100%)` }} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
+
+        {/* VIEW: FUNIL AFUNILADO */}
+        {funnelView === "funnel" && (() => {
+          const total = funnelStepIds.length;
+          return (
+            <div className="flex flex-col items-center px-6 py-6 gap-0">
+              {funnelStepIds.map((stepId, i) => {
+                const step    = PROFILE_FUNNEL_STEPS.find((s) => s.id === stepId);
+                if (!step) return null;
+                const val     = funnelVals[stepId] ?? 0;
+                const prevId  = i > 0 ? funnelStepIds[i - 1] : null;
+                const prevVal = prevId ? (funnelVals[prevId] ?? 0) : null;
+                const rate    = prevVal !== null && prevVal > 0 ? (val / prevVal) * 100 : null;
+                const color   = FUNNEL_COLORS_OV[stepId] ?? step.color;
+                const widthPct = total > 1 ? 100 - (i / (total - 1)) * 50 : 88;
+                return (
+                  <div key={stepId} className="w-full flex flex-col items-center">
+                    {i > 0 && (
+                      <div className="flex flex-col items-center py-2 gap-1">
+                        <div className="w-px h-4" style={{ backgroundColor: "var(--dm-border-default)" }} />
+                        {rate !== null && (
+                          <span className="rounded-full px-3 py-0.5 text-[10px] font-bold"
+                            style={{ backgroundColor: color + "1a", color }}>
+                            {formatPercent(rate)}{step.rateLabel ? ` ${step.rateLabel}` : ""}
+                          </span>
+                        )}
+                        <div className="w-px h-4" style={{ backgroundColor: "var(--dm-border-default)" }} />
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between transition-all"
+                      style={{
+                        width: `${widthPct}%`, borderRadius: "14px", padding: "14px 20px",
+                        background: `linear-gradient(135deg, ${color}22 0%, ${color}0d 100%)`,
+                        border: `1.5px solid ${color}55`,
+                      }}>
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-wider mb-0.5" style={{ color }}>{step.label}</p>
+                        {rate !== null && step.rateLabel && (
+                          <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>{step.rateLabel}</p>
+                        )}
+                      </div>
+                      <p className="text-[22px] font-bold tabular-nums"
+                        style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>
+                        {val > 0 ? formatNumber(val) : <span style={{ color: "var(--dm-text-tertiary)", fontSize: "13px" }}>—</span>}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
+      </article>
+
+      {/* ── VENDAS POR CAMPANHA ────────────────────────────────────────────── */}
+      {campaigns.length > 0 && rows.length > 0 && (
+        <article className="overflow-hidden rounded-[20px] border shadow-horizon"
+          style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
+          <div className="flex items-center justify-between border-b px-5 py-4"
+            style={{ borderColor: "var(--dm-border-subtle)" }}>
+            <div>
+              <h3 className="text-sm font-bold" style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>
+                Vendas por Campanha
+              </h3>
+              <p className="mt-0.5 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                {campaigns.length} campanha{campaigns.length !== 1 ? "s" : ""} · período selecionado
+              </p>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
+                  {["Campanha", "Investimento", "Alcance", "Leads", "Conv.", "Faturamento", "ROAS"].map((h) => (
+                    <th key={h}
+                      className={`border-b px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider whitespace-nowrap ${h === "Campanha" ? "text-left" : "text-right"}`}
+                      style={{ borderColor: "var(--dm-border-subtle)", color: "var(--dm-text-tertiary)" }}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {campaigns.map((camp) => {
+                  // exact match by campaign name (campaign-level fetch gives one row per campaign name)
+                  const row  = rows.find((r) => r.name === camp.name);
+                  const inv  = row?.spend    ?? 0;
+                  const rch  = row?.reach    ?? 0;
+                  const lds  = row?.leads    ?? 0;
+                  const conv = row?.purchases ?? 0;
+                  const rev  = row?.revenue  ?? 0;
+                  const roas = inv > 0 ? rev / inv : 0;
+                  const roasColor = roas >= 2 ? "#05CD99" : roas >= 1 ? "#F4A60D" : inv > 0 ? "#EE5D50" : "var(--dm-text-tertiary)";
+                  return (
+                    <tr key={camp.id} className="border-b transition-colors hover:bg-white/5"
+                      style={{ borderColor: "var(--dm-border-subtle)" }}>
+                      <td className="px-4 py-3 max-w-[260px] truncate font-medium"
+                        style={{ color: "var(--dm-text-primary)" }}>
+                        {camp.name.length > 42 ? camp.name.slice(0, 42) + "…" : camp.name}
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums font-semibold"
+                        style={{ color: "var(--dm-text-primary)" }}>
+                        {inv > 0 ? formatBRL(inv) : <span style={{ color: "var(--dm-text-tertiary)" }}>—</span>}
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums" style={{ color: "var(--dm-text-secondary)" }}>
+                        {rch > 0 ? formatInt(rch) : <span style={{ color: "var(--dm-text-tertiary)" }}>—</span>}
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums" style={{ color: "var(--dm-text-secondary)" }}>
+                        {lds > 0 ? formatInt(lds) : <span style={{ color: "var(--dm-text-tertiary)" }}>—</span>}
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums" style={{ color: "var(--dm-text-secondary)" }}>
+                        {conv > 0 ? formatInt(conv) : <span style={{ color: "var(--dm-text-tertiary)" }}>—</span>}
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums" style={{ color: "var(--dm-text-secondary)" }}>
+                        {rev > 0 ? formatBRL(rev) : <span style={{ color: "var(--dm-text-tertiary)" }}>—</span>}
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums">
+                        <span className="rounded-full px-2.5 py-0.5 text-[11px] font-bold"
+                          style={{ backgroundColor: roasColor + "1a", color: roasColor }}>
+                          {inv > 0 ? `${roas.toFixed(2)}x` : "—"}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              {/* Totals row */}
+              {campaigns.length > 1 && (
+                <tfoot>
+                  <tr style={{ background: "linear-gradient(135deg, rgba(49,52,145,0.06) 0%, rgba(99,102,200,0.04) 100%)", borderTop: "2px solid var(--dm-border-default)" }}>
+                    <td className="px-4 py-3">
+                      <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-brand-500)" }}>Total</span>
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums text-[13px] font-bold" style={{ color: "var(--dm-brand-500)" }}>
+                      {formatBRL(totals.inv)}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums text-[12px] font-semibold" style={{ color: "var(--dm-text-primary)" }}>
+                      {formatInt(totals.rch)}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums text-[12px] font-semibold" style={{ color: "var(--dm-text-primary)" }}>
+                      {formatInt(totals.lds)}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums text-[12px] font-semibold" style={{ color: "var(--dm-text-primary)" }}>
+                      {formatInt(totals.conv)}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums text-[12px] font-semibold" style={{ color: "var(--dm-text-primary)" }}>
+                      {formatBRL(totals.rev)}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums">
+                      {(() => {
+                        const totalRoas = totals.inv > 0 ? totals.rev / totals.inv : 0;
+                        const c = totalRoas >= 2 ? "#05CD99" : totalRoas >= 1 ? "#F4A60D" : "#EE5D50";
+                        return (
+                          <span className="rounded-full px-2.5 py-0.5 text-[11px] font-bold"
+                            style={{ backgroundColor: c + "1a", color: c }}>
+                            {totals.inv > 0 ? `${totalRoas.toFixed(2)}x` : "—"}
+                          </span>
+                        );
+                      })()}
+                    </td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        </article>
       )}
     </div>
   );
@@ -2696,6 +3128,7 @@ function ProfileDetailView({
         hasToken && profile.campaigns.length > 0 ? (
           <ProfileOverviewPanel
             key={`overview-${profile.id}-${dateFrom}-${dateTo}-${templateId}`}
+            profileId={profile.id}
             adAccountId={profile.adAccountId}
             campaigns={profile.campaigns}
             dateFrom={dateFrom}
