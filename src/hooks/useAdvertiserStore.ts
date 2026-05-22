@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { fetchProfilesFromDB, saveProfilesToDB } from "@/utils/supabaseProfiles";
 
 const STORAGE_KEY = "pta_advertiser_profiles_v2";
 
@@ -68,12 +69,33 @@ function loadProfiles(): AdvertiserProfile[] {
 
 function persist(profiles: AdvertiserProfile[]): void {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(profiles)); } catch { /* noop */ }
+  // Background Supabase sync — fire-and-forget, errors silently ignored
+  saveProfilesToDB(profiles).catch(() => {});
 }
 
 export function useAdvertiserStore() {
   // Synchronous init from localStorage (same pattern as useCampaignStore) so the
   // profile list never flashes the empty-state on first render.
   const [profiles, setProfiles] = useState<AdvertiserProfile[]>(loadProfiles);
+
+  // ── On mount: restore profiles from Supabase if user is authenticated ───────
+  // Supabase is the source-of-truth across devices; localStorage is the fast cache.
+  // Merge rule: DB wins for IDs that exist in both → local-only profiles are kept.
+  useEffect(() => {
+    fetchProfilesFromDB()
+      .then((dbProfiles) => {
+        if (dbProfiles.length === 0) return;
+        setProfiles((local) => {
+          const dbIds  = new Set(dbProfiles.map((p) => p.id));
+          const merged = [...dbProfiles, ...local.filter((p) => !dbIds.has(p.id))];
+          // Write merged result back to localStorage (silent — no extra Supabase call)
+          try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch {}
+          return merged;
+        });
+      })
+      .catch(() => { /* not authenticated or Supabase not configured — ignore */ });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const addProfile = useCallback((data: Omit<AdvertiserProfile, "id" | "createdAt">) => {
     const profile: AdvertiserProfile = {
