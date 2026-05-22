@@ -1591,6 +1591,18 @@ function ProfileOverviewPanel({
   );
 }
 
+// ─── KPI IDs to hide from the metrics grid when highlight cards are visible ───
+// When a resultType is configured and the Resultado/Custo-por-Resultado cards
+// are already rendered above, suppress the duplicate KPI cards below.
+const RESULT_HIDDEN_KPIS: Partial<Record<ResultType, string[]>> = {
+  link_click:                       ["clicks", "cpc_link", "cpa"],
+  lead:                             ["leads",  "cpl",      "cpa"],
+  "onsite_conversion.lead_grouped": ["leads",  "cpl",      "cpa"],
+  leadgen_grouped:                  ["leads",  "cpl",      "cpa"],
+  omni_complete_registration:       ["sales",  "cpa"],
+  purchase:                         ["sales",  "cpa"],
+};
+
 // ─── Single-campaign analysis panel ──────────────────────────────────────────
 
 function CampaignAnalysisPanel({
@@ -2079,7 +2091,12 @@ function CampaignAnalysisPanel({
         </div>
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-          {tpl.kpis.map((kpi) => {
+          {tpl.kpis.filter((kpi) => {
+            // Hide KPIs that are already shown in the Resultado/Custo-por-Resultado
+            // highlight cards above — avoids duplicate numbers on screen.
+            if (!activeResultType || resultCount === 0) return true;
+            return !(RESULT_HIDDEN_KPIS[activeResultType] ?? []).includes(kpi.id);
+          }).map((kpi) => {
             const val       = kpiValues[kpi.id] ?? 0;
             const display   = val > 0 ? kpi.format(val) : "—";
             const goalVal   = goals[kpi.id] ?? 0;
