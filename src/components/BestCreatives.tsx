@@ -756,7 +756,9 @@ export function BestCreatives({
   const [fetchError,      setFetchError]      = useState<string | null>(null);
   const [cacheAge,        setCacheAge]        = useState<number | null>(null);
 
-  const [accessToken] = useState(() => loadMetaCredentials().accessToken);
+  // Lê o token em cada render para detectar quando o usuário o salva após o mount.
+  // loadMetaCredentials() é uma leitura síncrona de localStorage — custo negligível.
+  const accessToken = loadMetaCredentials().accessToken;
   const { store, saveCreative } = useCreativeStore();
   const storeRef = useRef(store);
   storeRef.current = store;
@@ -829,6 +831,7 @@ export function BestCreatives({
 
   // On mount: load from cache OR auto-fetch if no cache exists
   useEffect(() => {
+    let cancelled = false;
     const ids = getIds();
     if (!ids.length || !accessToken) return;
     const cacheKey = getCacheKey(ids);
@@ -844,6 +847,7 @@ export function BestCreatives({
       // No cache — auto-fetch from Meta API on first open
       doFetch(false);
     }
+    return () => { cancelled = true; void cancelled; }; // evita setState em unmounted
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(adAccountId)]);
 

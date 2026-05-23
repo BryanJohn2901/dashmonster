@@ -1694,7 +1694,9 @@ function CampaignAnalysisPanel({
     } finally {
       setLoading(false);
     }
-  }, [adAccountId, campaign.id, dateFrom, dateTo]);
+  // resultType e campaign.resultType incluídos: toAdsetRows usa ambos para calcular
+  // customResult / Resultado. Sem eles, trocar o tipo de resultado não re-busca os dados.
+  }, [adAccountId, campaign.id, campaign.resultType, dateFrom, dateTo, resultType]);
 
   useEffect(() => { void load(); }, [load]);
 

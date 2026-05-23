@@ -567,8 +567,11 @@ export default function Home() {
             .catch(() => {});
         }
 
-        // Auto-sync Meta: se já estava como Meta, ou se há contas no Painel + token (primeira carga com lista fresca).
-        const { accessToken } = loadMetaCredentials();
+        // Auto-sync Meta: usa localToken lido acima — a restauração do DB é async e
+        // não estará pronta neste tick. No primeiro login em device novo o auto-sync
+        // é pulado (token chega no próximo reload); nos demais casos o token já está
+        // em localStorage e é lido corretamente aqui.
+        const accessToken = localToken;
         const hasLegacyProfiles = loadStoredProfiles().some((p) => Boolean(p.adAccountId));
         const shouldMetaSync =
           Boolean(accessToken) &&

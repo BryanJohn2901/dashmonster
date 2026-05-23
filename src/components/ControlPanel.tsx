@@ -33,6 +33,7 @@ import {
 import {
 } from "@/utils/instagramApi";
 import type { MetaSyncResult } from "@/utils/supabaseCampaigns";
+import { useAdvertiserStore } from "@/hooks/useAdvertiserStore";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1086,7 +1087,12 @@ function InstagramIntegrationSection() {
   const [syncing,    setSyncing]   = useState(false);
   const [syncResult, setSyncResult] = useState<string | null>(null);
 
-  const profiles = useMemo(() => loadAdvertiserProfiles().filter(p => p.instagramUserId), []);
+  // Usa o store real para reagir ao sync do Supabase (novo device, etc.)
+  const { profiles: allProfiles } = useAdvertiserStore();
+  const profiles = useMemo(
+    () => allProfiles.filter(p => p.instagramUserId),
+    [allProfiles],
+  );
 
   const handleSaveToken = () => {
     saveIgToken(igToken.trim());
@@ -1173,9 +1179,8 @@ function InstagramIntegrationSection() {
         </p>
       </div>
 
-      {/* Register per IBA ID */}
-      {(profiles.length > 0 || true) && (
-        <div className="mt-4 space-y-2">
+      {/* Register per IBA ID — sempre visível para permitir entrada manual de IBA ID */}
+      <div className="mt-4 space-y-2">
           <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>
             Registrar contas
           </p>
@@ -1247,7 +1252,6 @@ function InstagramIntegrationSection() {
             <p className="text-[10px] text-red-500">{statuses[customIba.trim()].message}</p>
           )}
         </div>
-      )}
 
       {/* Sync All */}
       <div className="mt-3">

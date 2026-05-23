@@ -749,6 +749,9 @@ function ImportPopover({
     }
   };
 
+  // Deduplica chamadas simultâneas para o mesmo adAccountId (handleVerifyAll paralelo)
+  const pendingVerifyRef = useRef<Record<string, Promise<MetaCampaign[]>>>({});
+
   /** Verify + fetch campaigns for a single group. Shows green/red status. */
   const handleVerifyGroup = async (groupId: string) => {
     const accountId = adAccountIds[groupId]?.trim();
@@ -764,10 +767,16 @@ function ImportPopover({
     setVerifyStatus((p) => ({ ...p, [groupId]: "loading" }));
     setVerifyError((p) => { const c = { ...p }; delete c[groupId]; return c; });
 
-    // Sempre busca da API — garante que novas campanhas criadas na BM apareçam
+    // Sempre busca da API — garante que novas campanhas criadas na BM apareçam.
+    // Deduplica chamadas para o mesmo accountId (evita rate-limit quando vários
+    // grupos compartilham o mesmo adAccountId no handleVerifyAll paralelo).
+    if (!pendingVerifyRef.current[accountId]) {
+      pendingVerifyRef.current[accountId] = fetchMetaCampaigns(accountId, accessToken)
+        .finally(() => { delete pendingVerifyRef.current[accountId]; });
+    }
 
     try {
-      const campaigns = await fetchMetaCampaigns(accountId, accessToken);
+      const campaigns = await pendingVerifyRef.current[accountId]!;
       setCampaignsByAccount((p) => ({ ...p, [accountId]: campaigns }));
       // Restore previous selection if it exists; otherwise default to all selected
       setSelectedCampaigns((p) => {
