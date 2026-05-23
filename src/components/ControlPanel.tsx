@@ -603,15 +603,47 @@ interface EntryRowProps {
   categorySlug: string;
   onDeleted: (id: string) => void;
   onToggled: (entry: UserAccountEntry) => void;
+  /** Chamado quando selectedCampaignIds é alterado — mesmo shape que onToggled. */
+  onUpdated: (entry: UserAccountEntry) => void;
 }
 
-function EntryRow({ entry, categorySlug, onDeleted, onToggled }: EntryRowProps) {
+function EntryRow({ entry, categorySlug, onDeleted, onToggled, onUpdated }: EntryRowProps) {
   const [deleting,  setDeleting]  = useState(false);
   const [expanded,  setExpanded]  = useState(false);
   const [toggling,  setToggling]  = useState(false);
+  const [saving,    setSaving]    = useState(false);
   const campCount = entry.campaigns.length;
   const selCount  = entry.selectedCampaignIds.length || campCount;
   const filterLabel = getInternalFilterLabel(categorySlug, entry.internalFilter);
+
+  // ── Edição inline de selectedCampaignIds ────────────────────────────────────
+  const allCampIds = useMemo(() => entry.campaigns.map(c => c.id), [entry.campaigns]);
+
+  const isChecked = (campId: string) =>
+    entry.selectedCampaignIds.length === 0 || entry.selectedCampaignIds.includes(campId);
+
+  const persistSelection = async (newSelected: string[]) => {
+    // Convenção: array vazio = todos selecionados
+    const finalSelected = newSelected.length === allCampIds.length ? [] : newSelected;
+    setSaving(true);
+    try {
+      const updated = await upsertUserAccountEntry({ ...entry, selectedCampaignIds: finalSelected });
+      onUpdated(updated);
+    } catch { /* fire-and-forget — state reverts on next render */ } finally { setSaving(false); }
+  };
+
+  const handleToggleCampaign = (campId: string) => {
+    // Expande o array implícito [] → todos os IDs, depois toggle o campId
+    const current = entry.selectedCampaignIds.length === 0 ? allCampIds : [...entry.selectedCampaignIds];
+    const next = current.includes(campId) ? current.filter(id => id !== campId) : [...current, campId];
+    void persistSelection(next);
+  };
+
+  const handleSelectAll  = () => void persistSelection([]); // [] = todos
+  const handleDeselectAll = () => {
+    // Mantém apenas o primeiro para evitar estado "nenhum" que não é suportado
+    void persistSelection(allCampIds.slice(0, 1));
+  };
 
   const handleDelete = async () => {
     setDeleting(true);
@@ -682,23 +714,53 @@ function EntryRow({ entry, categorySlug, onDeleted, onToggled }: EntryRowProps) 
         </button>
       </div>
 
-      {/* Campaign list (expanded) */}
+      {/* Campaign list (expanded) — checkboxes interativos */}
       {expanded && campCount > 0 && (
-        <div className="mx-2 mb-2 max-h-32 overflow-y-auto rounded border p-1"
+        <div className="mx-2 mb-2 rounded border overflow-hidden"
           style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
-          {entry.campaigns.map(c => {
-            const checked = entry.selectedCampaignIds.length === 0 || entry.selectedCampaignIds.includes(c.id);
-            return (
-              <div key={c.id} className="flex items-center gap-2 rounded px-2 py-1">
-                <span className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${checked ? "bg-emerald-500" : "bg-slate-300"}`} />
-                <span className="flex-1 truncate text-[10px]" style={{ color: "var(--dm-text-secondary)" }}
-                  title={c.name}>{c.name}</span>
-                <span className={`text-[9px] font-bold ${c.status === "ACTIVE" ? "text-emerald-500" : "text-amber-400"}`}>
-                  {c.status === "ACTIVE" ? "● ativa" : "◐ pausada"}
-                </span>
-              </div>
-            );
-          })}
+          {/* Bulk actions header */}
+          <div className="flex items-center justify-between gap-2 border-b px-2 py-1.5"
+            style={{ borderColor: "var(--dm-border-subtle)", backgroundColor: "var(--dm-bg-elevated)" }}>
+            <span className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
+              {selCount === campCount ? "Todas as campanhas" : `${selCount} de ${campCount} selecionadas`}
+            </span>
+            <div className="flex gap-2">
+              <button type="button" onClick={handleSelectAll} disabled={saving}
+                className="text-[9px] font-semibold transition hover:opacity-70 disabled:opacity-40"
+                style={{ color: "var(--dm-brand-500)" }}>Selecionar todas</button>
+              <span style={{ color: "var(--dm-border-default)" }}>·</span>
+              <button type="button" onClick={handleDeselectAll} disabled={saving || selCount <= 1}
+                className="text-[9px] font-semibold transition hover:opacity-70 disabled:opacity-40"
+                style={{ color: "var(--dm-text-tertiary)" }}>Limpar</button>
+              {saving && <Loader2 size={9} className="animate-spin" style={{ color: "var(--dm-brand-500)" }} />}
+            </div>
+          </div>
+          {/* Campaign rows */}
+          <div className="max-h-48 overflow-y-auto">
+            {entry.campaigns.map(c => {
+              const checked = isChecked(c.id);
+              return (
+                <button key={c.id} type="button" disabled={saving}
+                  onClick={() => handleToggleCampaign(c.id)}
+                  className="flex w-full items-center gap-2 rounded px-2 py-1 text-left transition hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-50">
+                  {/* Checkbox visual */}
+                  <span className={`flex h-3.5 w-3.5 flex-shrink-0 items-center justify-center rounded border transition
+                    ${checked ? "border-emerald-500 bg-emerald-500" : "border-slate-400"}`}>
+                    {checked && (
+                      <svg width="8" height="6" viewBox="0 0 8 6" fill="none">
+                        <path d="M1 3l2 2 4-4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    )}
+                  </span>
+                  <span className="flex-1 truncate text-[10px]" style={{ color: "var(--dm-text-secondary)" }}
+                    title={c.name}>{c.name}</span>
+                  <span className={`flex-shrink-0 text-[9px] font-bold ${c.status === "ACTIVE" ? "text-emerald-500" : "text-amber-400"}`}>
+                    {c.status === "ACTIVE" ? "● ativa" : "◐ pausada"}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
@@ -718,6 +780,7 @@ interface CategorySectionProps {
   onEntrySaved:    (entry: UserAccountEntry) => void;
   onEntryDeleted:  (id: string) => void;
   onEntryToggled:  (entry: UserAccountEntry) => void;
+  onEntryUpdated:  (entry: UserAccountEntry) => void;
   isCustom?: boolean;
   onDeleteCategory?: (slug: string) => void;
   onPainelSaveNavigate?: (detail: { entry: UserAccountEntry; categorySlug: string; isCustom: boolean }) => void;
@@ -725,7 +788,7 @@ interface CategorySectionProps {
 
 function CategorySection({
   slug, name, emoji, categoryRecord, entries,
-  onCategoryToggle, onCategoryCreated, onEntrySaved, onEntryDeleted, onEntryToggled,
+  onCategoryToggle, onCategoryCreated, onEntrySaved, onEntryDeleted, onEntryToggled, onEntryUpdated,
   isCustom, onDeleteCategory, onPainelSaveNavigate,
 }: CategorySectionProps) {
   const [showAdd,        setShowAdd]        = useState(false);
@@ -818,7 +881,7 @@ function CategorySection({
         <div className="p-3 space-y-2" style={{ borderTop: "1px solid var(--dm-border-default)" }}>
           {entries.map(entry => (
             <EntryRow key={entry.id} entry={entry} categorySlug={slug}
-              onDeleted={onEntryDeleted} onToggled={onEntryToggled} />
+              onDeleted={onEntryDeleted} onToggled={onEntryToggled} onUpdated={onEntryUpdated} />
           ))}
 
           {showAdd && localRecord && (
@@ -953,6 +1016,7 @@ export function TabAccounts({ categories, accountEntries, onCategoriesChange, on
                 onEntrySaved={handleEntrySaved}
                 onEntryDeleted={handleEntryDeleted}
                 onEntryToggled={handleEntryToggled}
+                onEntryUpdated={handleEntryToggled}
                 onPainelSaveNavigate={onPainelSaveNavigate}
               />
             );
@@ -985,6 +1049,7 @@ export function TabAccounts({ categories, accountEntries, onCategoriesChange, on
                   onEntrySaved={handleEntrySaved}
                   onEntryDeleted={handleEntryDeleted}
                   onEntryToggled={handleEntryToggled}
+                  onEntryUpdated={handleEntryToggled}
                   isCustom
                   onDeleteCategory={handleDeleteCustom}
                   onPainelSaveNavigate={onPainelSaveNavigate}

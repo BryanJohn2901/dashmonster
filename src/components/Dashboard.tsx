@@ -3246,7 +3246,7 @@ export function Dashboard({
                 )}
 
                 {dashSubTab === "creatives" && (
-                  aggregated.length === 0 ? (
+                  campaigns.length === 0 ? (
                     <TabLanding
                       icon={ImageIcon}
                       title="Análise de Criativos"
