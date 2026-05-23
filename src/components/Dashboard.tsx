@@ -44,8 +44,9 @@ import { ProfileAnalysis } from "@/components/ProfileAnalysis";
 import { useAdvertiserStore } from "@/hooks/useAdvertiserStore";
 import { ProductBase } from "@/components/products/ProductBase";
 import { DashMonsterLogo } from "@/components/DashMonsterLogo";
-import { TabLanding } from "@/components/TabLanding";
 import { DashboardWelcome } from "@/components/empty/DashboardWelcome";
+import { AnaliseEmpty } from "@/components/empty/AnaliseEmpty";
+import { CriativosEmpty } from "@/components/empty/CriativosEmpty";
 import { PixelFunnelSection } from "@/components/PixelFunnelSection";
 import { MyAccount } from "@/components/MyAccount";
 import { toast } from "@/hooks/useToast";
@@ -3215,21 +3216,8 @@ export function Dashboard({
 
                 {dashSubTab === "analysis" && (
                   aggregated.length === 0 ? (
-                    <TabLanding
-                      icon={BarChart2}
-                      title="Análise de Campanhas"
-                      subtitle="Mergulhe fundo nos dados: diagnósticos automáticos, pontos críticos e oportunidades de melhoria para cada campanha."
-                      features={[
-                        { icon: Target,       label: "Score de Saúde",             description: "Pontuação de 0 a 100 baseada em KPIs reais da campanha." },
-                        { icon: CheckCircle2, label: "Diagnósticos Automáticos",   description: "Pontos positivos, críticos e tarefas de otimização gerados automaticamente." },
-                        { icon: Trophy,       label: "Top Performers",             description: "Identifique os criativos e conjuntos de anúncios com melhor resultado." },
-                      ]}
-                      steps={[
-                        { label: "Importe os dados",     description: "Conecte Meta Ads, Google Sheets ou envie um CSV." },
-                        { label: "Selecione a campanha", description: "Use o painel lateral para escolher o grupo a analisar." },
-                        { label: "Leia o diagnóstico",   description: "Veja o score, alertas e ações recomendadas." },
-                      ]}
-                      cta={{ label: "Importar dados agora", onClick: () => onOpenControlPanel ? onOpenControlPanel() : openImport("sheets") }}
+                    <AnaliseEmpty
+                      onImport={() => onOpenControlPanel ? onOpenControlPanel() : openImport("sheets")}
                     />
                   ) : (
                     <CampaignAnalysis campaigns={aggregated} selectedCategory={selectedCategory as ProductCategory | null} isMetricVisible={isMetricVisible} igUserId={activeIgUserId} dateFrom={dateFrom} dateTo={dateTo} />
@@ -3238,22 +3226,10 @@ export function Dashboard({
 
                 {dashSubTab === "creatives" && (
                   campaigns.length === 0 ? (
-                    <TabLanding
-                      icon={ImageIcon}
-                      title="Análise de Criativos"
-                      subtitle="Identifique quais criativos performam melhor e construa uma biblioteca visual de referências de sucesso."
-                      features={[
-                        { icon: TrendingUp, label: "Ranking de Criativos",      description: "Ordene por CTR, ROAS ou conversões para achar os vencedores." },
-                        { icon: ImageIcon,  label: "Thumbnails Visuais",        description: "Conecte via Meta Ads e veja as imagens reais de cada anúncio." },
-                        { icon: BookOpen,   label: "Biblioteca de Referências", description: "Salve e organize os melhores criativos como referência futura." },
-                      ]}
-                      steps={[
-                        { label: "Conecte o Meta Ads",  description: "Use seu Access Token para trazer dados em tempo real." },
-                        { label: "Selecione campanhas", description: "Escolha quais conjuntos de anúncios monitorar." },
-                        { label: "Veja o ranking",      description: "Criativos ordenados por performance com thumbnails." },
-                      ]}
-                      cta={{ label: "Conectar Meta Ads", onClick: () => onOpenControlPanel ? onOpenControlPanel() : openImport("sheets") }}
-                      ctaSecondary={{ label: "Importar CSV", onClick: () => openImport("csv") }}
+                    <CriativosEmpty
+                      variant="no-data"
+                      onConnect={() => onOpenControlPanel ? onOpenControlPanel() : openImport("sheets")}
+                      onImportCsv={() => openImport("csv")}
                     />
                   ) : (
                     <BestCreatives
@@ -3271,6 +3247,7 @@ export function Dashboard({
                       dateTo={dateTo || undefined}
                       selectedCampaignIds={bestCreativesFilter}
                       selectedGroupName={selectedGroup !== "all" ? (allGroups.find((g) => g.id === selectedGroup)?.label ?? selectedGroup) : undefined}
+                      onConnect={() => onOpenControlPanel ? onOpenControlPanel() : openImport("sheets")}
                     />
                   )
                 )}

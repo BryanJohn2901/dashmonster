@@ -11,6 +11,7 @@ import { useCreativeStore } from "@/hooks/useCreativeStore";
 import type { MetaCampaignCreative, AdInsight } from "@/utils/metaApi";
 import { fetchMetaCreativesPage, fetchAdInsights, loadMetaCredentials } from "@/utils/metaApi";
 import { formatCurrency, formatPercent } from "@/utils/metrics";
+import { CriativosEmpty } from "@/components/empty/CriativosEmpty";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -28,6 +29,8 @@ interface BestCreativesProps {
   selectedCampaignIds?:  string[];
   /** Human-readable label for the active group/filter */
   selectedGroupName?:    string;
+  /** Called when the user clicks "Conectar Meta Ads" in the empty state */
+  onConnect?:            () => void;
 }
 
 type ActivityFilter = "all" | "with_data" | "no_data";
@@ -732,7 +735,7 @@ function RankingRow({
 
 export function BestCreatives({
   campaigns, adAccountId, dateFrom, dateTo,
-  selectedCampaignIds, selectedGroupName,
+  selectedCampaignIds, selectedGroupName, onConnect,
 }: BestCreativesProps) {
   const [subTab,        setSubTab]        = useState<SubTab>("gallery");
   const [mediaFilter,   setMediaFilter]   = useState<MediaFilter>("all");
@@ -935,10 +938,8 @@ export function BestCreatives({
 
   const hasAccountId = Array.isArray(adAccountId) ? adAccountId.length > 0 : Boolean(adAccountId);
   if (!hasAccountId && !campaigns.length) return (
-    <div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
-      <ImageIcon size={32} style={{ color: "var(--dm-text-tertiary)" }} />
-      <p className="text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>Nenhum criativo disponível</p>
-      <p className="text-xs" style={{ color: "var(--dm-text-secondary)" }}>Conecte o Meta Ads para visualizar criativos.</p>
+    <div className="py-8">
+      <CriativosEmpty variant="no-account" onConnect={onConnect} />
     </div>
   );
 
