@@ -164,9 +164,13 @@ export function PerfilAtivoPanel({
         if (dateFrom) params.set("dateFrom", dateFrom);
         if (dateTo)   params.set("dateTo",   dateTo);
         const res  = await fetch(`/api/instagram/history?${params}`);
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error((err as { error?: string }).error ?? `HTTP ${res.status}`);
+        }
         const data = await res.json() as { account: IGTrackedAccount; history: IGHistoryPoint[] };
-        setAccount(data.account);
-        setHistory(data.history);
+        setAccount(data.account ?? null);
+        setHistory(Array.isArray(data.history) ? data.history : []);
         setLoading(false);
       })
       .catch(() => {

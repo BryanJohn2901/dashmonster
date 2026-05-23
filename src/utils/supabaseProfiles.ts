@@ -21,9 +21,14 @@ import type { AdvertiserProfile } from "@/hooks/useAdvertiserStore";
  */
 export async function fetchProfilesFromDB(): Promise<AdvertiserProfile[]> {
   if (!supabaseClient) return [];
+  // Filtra pelo user_id em nível de aplicação além do RLS — defesa em profundidade
+  // para o caso em que a migration 016 ainda não foi aplicada ou o RLS está desabilitado.
+  const { data: { user } } = await supabaseClient.auth.getUser();
+  if (!user) return [];
   const { data, error } = await supabaseClient
     .from("advertiser_profiles")
     .select("profiles")
+    .eq("user_id", user.id)
     .maybeSingle();
   if (error || !data) return [];
   return Array.isArray(data.profiles) ? (data.profiles as AdvertiserProfile[]) : [];

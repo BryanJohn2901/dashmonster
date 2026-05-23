@@ -78,17 +78,19 @@ export function useAdvertiserStore() {
   // profile list never flashes the empty-state on first render.
   const [profiles, setProfiles] = useState<AdvertiserProfile[]>(loadProfiles);
 
-  // ── On mount: restore profiles from Supabase if user is authenticated ───────
-  // Supabase is the source-of-truth across devices; localStorage is the fast cache.
-  // Merge rule: DB wins for IDs that exist in both → local-only profiles are kept.
+  // ── On mount: merge profiles from Supabase with localStorage ───────────────
+  // Merge rule: LOCAL wins for IDs that exist in both (preserva edições feitas neste
+  // device antes do DB sync confirmar); DB contribui apenas perfis ausentes no local.
+  // Isso evita sobrescrever uma edição local recente com uma versão stale do Supabase
+  // (que ainda não recebeu o fire-and-forget write do localStorage).
   useEffect(() => {
     fetchProfilesFromDB()
       .then((dbProfiles) => {
         if (dbProfiles.length === 0) return;
         setProfiles((local) => {
-          const dbIds  = new Set(dbProfiles.map((p) => p.id));
-          const merged = [...dbProfiles, ...local.filter((p) => !dbIds.has(p.id))];
-          // Write merged result back to localStorage (silent — no extra Supabase call)
+          const localIds = new Set(local.map((p) => p.id));
+          // Local mantém seus IDs; DB contribui apenas os que não existem localmente
+          const merged = [...local, ...dbProfiles.filter((p) => !localIds.has(p.id))];
           try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch {}
           return merged;
         });
