@@ -64,10 +64,22 @@ function detectMediaType(ad: MetaAdRaw): MetaCampaignCreative["mediaType"] {
  *
  * Returns ALL active/paused ads with thumbnail, preview link, media type.
  */
+/**
+ * GET /api/meta/creatives?accessToken=EAAx...&adAccountId=act_123[&cursor=ENCODED_URL]
+ *
+ * Retorna UMA página (200 anúncios) por chamada para possibilitar carregamento
+ * progressivo no cliente — o usuário vê os primeiros criativos em ~3 segundos
+ * em vez de esperar 2 min pelo loop completo de 14+ páginas.
+ *
+ * Resposta: { data: MetaCampaignCreative[]; nextCursor?: string }
+ * - nextCursor: URL da próxima página da Meta API (já encodada em base64)
+ *              Ausente quando não há mais páginas.
+ */
 export async function GET(request: NextRequest) {
   const sp          = request.nextUrl.searchParams;
   const accessToken = sp.get("accessToken");
   const adAccountId = sp.get("adAccountId");
+  const cursorB64   = sp.get("cursor");   // base64-encoded next-page URL from Meta
 
   if (!accessToken || !adAccountId) {
     return NextResponse.json(
@@ -76,45 +88,41 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  // Build the URL for the first page OR decode the cursor for subsequent pages.
   const accountId = adAccountId.replace(/^act_/, "");
-  const allAds: MetaAdRaw[] = [];
-
-  let nextUrl: string | null =
-    `https://graph.facebook.com/${META_API_VERSION}/act_${accountId}/ads?` +
-    new URLSearchParams({
-      access_token: accessToken,
-      fields: [
-        "name",
-        "campaign_id",
-        "campaign{name}",
-        "adset_name",
-        "preview_shareable_link",
-        "created_time",
-        "creative{id,thumbnail_url,video_id,instagram_permalink_url,object_story_spec{link_data{link,message,name,description,child_attachments},video_data{image_url,message,title}}}",
-      ].join(","),
-      effective_status: JSON.stringify(["ACTIVE", "PAUSED"]),
-      limit: "200",
-    }).toString();
+  const pageUrl: string = cursorB64
+    ? Buffer.from(cursorB64, "base64").toString("utf-8")
+    : `https://graph.facebook.com/${META_API_VERSION}/act_${accountId}/ads?` +
+      new URLSearchParams({
+        access_token: accessToken,
+        fields: [
+          "name",
+          "campaign_id",
+          "campaign{name}",
+          "adset_name",
+          "preview_shareable_link",
+          "created_time",
+          "creative{id,thumbnail_url,video_id,instagram_permalink_url,object_story_spec{link_data{link,message,name,description,child_attachments},video_data{image_url,message,title}}}",
+        ].join(","),
+        effective_status: JSON.stringify(["ACTIVE", "PAUSED"]),
+        limit: "200",
+      }).toString();
 
   try {
-    while (nextUrl) {
-      const res  = await fetch(nextUrl, { cache: "no-store" });
-      const json = await res.json() as {
-        data?:   MetaAdRaw[];
-        paging?: { next?: string };
-        error?:  { message?: string };
-      };
+    const res  = await fetch(pageUrl, { cache: "no-store" });
+    const json = await res.json() as {
+      data?:   MetaAdRaw[];
+      paging?: { next?: string };
+      error?:  { message?: string };
+    };
 
-      if (!res.ok || json.error) {
-        const msg = json.error?.message ?? `Meta API error ${res.status}`;
-        return NextResponse.json({ error: msg }, { status: 502 });
-      }
-
-      allAds.push(...(json.data ?? []));
-      nextUrl = json.paging?.next ?? null;
+    if (!res.ok || json.error) {
+      const msg = json.error?.message ?? `Meta API error ${res.status}`;
+      return NextResponse.json({ error: msg }, { status: 502 });
     }
 
-    const result: MetaCampaignCreative[] = allAds
+    const rawAds = json.data ?? [];
+    const result: MetaCampaignCreative[] = rawAds
       .filter((ad) => ad.id && ad.name)
       .map((ad) => {
         const spec = ad.creative?.object_story_spec;
@@ -157,7 +165,11 @@ export async function GET(request: NextRequest) {
         } satisfies MetaCampaignCreative;
       });
 
-    return NextResponse.json(result);
+    // Encode next-page URL in base64 so it's safe to pass as a query param.
+    const nextRaw    = json.paging?.next;
+    const nextCursor = nextRaw ? Buffer.from(nextRaw, "utf-8").toString("base64") : undefined;
+
+    return NextResponse.json({ data: result, ...(nextCursor ? { nextCursor } : {}) });
   } catch {
     return NextResponse.json({ error: "Falha ao conectar com Meta API." }, { status: 502 });
   }

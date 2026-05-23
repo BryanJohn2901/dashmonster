@@ -202,15 +202,41 @@ export interface MetaCampaignCreative {
  * Fetches one creative (thumbnail + link) per campaign for the given ad account.
  * Proxied through /api/meta/creatives to avoid CORS.
  */
+/**
+ * Fetches one page of creatives (up to 200 ads).
+ * Pass `cursor` (base64-encoded next-page URL returned by the server) for subsequent pages.
+ * Returns `{ data, nextCursor }` — `nextCursor` is absent on the last page.
+ */
+export async function fetchMetaCreativesPage(
+  adAccountId: string,
+  accessToken: string,
+  cursor?: string,
+): Promise<{ data: MetaCampaignCreative[]; nextCursor?: string }> {
+  if (!adAccountId || !accessToken) return { data: [] };
+  const params: Record<string, string> = { adAccountId, accessToken };
+  if (cursor) params.cursor = cursor;
+  const res  = await fetch(`/api/meta/creatives?${new URLSearchParams(params)}`);
+  const body = await res.json() as { data: MetaCampaignCreative[]; nextCursor?: string } | { error: string };
+  if (!res.ok) throw new Error((body as { error: string }).error ?? `Meta API error ${res.status}`);
+  return body as { data: MetaCampaignCreative[]; nextCursor?: string };
+}
+
+/**
+ * @deprecated Use fetchMetaCreativesPage for progressive loading.
+ * Kept for backward-compatibility; fetches ALL pages sequentially.
+ */
 export async function fetchMetaCreatives(
   adAccountId: string,
   accessToken: string,
 ): Promise<MetaCampaignCreative[]> {
-  if (!adAccountId || !accessToken) return [];
-  const res  = await fetch(`/api/meta/creatives?${new URLSearchParams({ adAccountId, accessToken })}`);
-  const body = await res.json() as MetaCampaignCreative[] | { error: string };
-  if (!res.ok) throw new Error((body as { error: string }).error ?? `Meta API error ${res.status}`);
-  return body as MetaCampaignCreative[];
+  const all: MetaCampaignCreative[] = [];
+  let cursor: string | undefined;
+  do {
+    const { data, nextCursor } = await fetchMetaCreativesPage(adAccountId, accessToken, cursor);
+    all.push(...data);
+    cursor = nextCursor;
+  } while (cursor);
+  return all;
 }
 
 /**

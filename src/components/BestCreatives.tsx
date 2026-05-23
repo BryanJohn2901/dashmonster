@@ -9,7 +9,7 @@ import {
 import { AggregatedCampaign } from "@/types/campaign";
 import { useCreativeStore } from "@/hooks/useCreativeStore";
 import type { MetaCampaignCreative, AdInsight } from "@/utils/metaApi";
-import { fetchMetaCreatives, fetchAdInsights, loadMetaCredentials } from "@/utils/metaApi";
+import { fetchMetaCreativesPage, fetchAdInsights, loadMetaCredentials } from "@/utils/metaApi";
 import { formatCurrency, formatPercent } from "@/utils/metrics";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -135,10 +135,11 @@ function AdIframe({ ad, accessToken }: { ad: MetaCampaignCreative; accessToken: 
     <iframe
       src={src}
       title={ad.adName}
-      scrolling="no"
-      className="absolute inset-0 border-none"
-      style={{ width: "118%", height: "118%", transform: "scale(0.847)", transformOrigin: "top left" }}
-      sandbox="allow-scripts allow-same-origin"
+      className="absolute inset-0 h-full w-full border-none"
+      // Permissões necessárias para o preview interativo do Meta funcionar:
+      // allow-forms: botões de CTA; allow-popups: links externos; allow-modals: diálogos.
+      // allow-same-origin mantém cookies de sessão do Meta para renderizar o anúncio.
+      sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-top-navigation-by-user-activation"
     />
   );
 
@@ -418,12 +419,13 @@ function PreviewModal({
 
             {/* Screen — 9:16 */}
             <div style={{ aspectRatio: "9/16", position: "relative", overflow: "hidden" }}>
-              {/* IG-style top bar */}
+              {/* IG-style top bar — pointer-events:none para não bloquear cliques no iframe */}
               <div style={{
                 position: "absolute", top: 0, left: 0, right: 0, zIndex: 5,
                 padding: "22px 8px 8px",
                 background: "linear-gradient(to bottom, rgba(0,0,0,0.65), transparent)",
                 display: "flex", alignItems: "center", gap: 5,
+                pointerEvents: "none",
               }}>
                 <div style={{ width: 20, height: 20, borderRadius: "50%", background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.3)", flexShrink: 0 }} />
                 <span style={{ color: "white", fontSize: 8, fontWeight: 700, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -444,12 +446,13 @@ function PreviewModal({
                 </div>
               )}
 
-              {/* Bottom gradient / CTA */}
+              {/* Bottom gradient / CTA — pointer-events:none para não bloquear cliques no iframe */}
               <div style={{
                 position: "absolute", bottom: 0, left: 0, right: 0, zIndex: 5,
                 padding: "20px 8px 8px",
                 background: "linear-gradient(to top, rgba(0,0,0,0.72), transparent)",
                 display: "flex", alignItems: "center", gap: 6,
+                pointerEvents: "none",
               }}>
                 <span style={{ color: "rgba(255,255,255,0.8)", fontSize: 8, flex: 1, fontWeight: 600 }}>Saiba mais</span>
                 <div style={{ backgroundColor: "rgba(255,255,255,0.93)", borderRadius: 5, padding: "3px 7px", color: "#111", fontSize: 8, fontWeight: 700, flexShrink: 0 }}>
@@ -457,7 +460,7 @@ function PreviewModal({
                 </div>
               </div>
 
-              {/* Score badge */}
+              {/* Score badge — pointer-events:none para não bloquear cliques no iframe */}
               {score !== null && (
                 <div style={{
                   position: "absolute", top: 26, right: 7, zIndex: 6,
@@ -466,6 +469,7 @@ function PreviewModal({
                   border: `2px solid ${scoreColor}`,
                   display: "flex", alignItems: "center", justifyContent: "center",
                   backdropFilter: "blur(4px)",
+                  pointerEvents: "none",
                 }}>
                   <span style={{ color: scoreColor, fontSize: 8, fontWeight: 800 }}>{score}</span>
                 </div>
@@ -808,23 +812,40 @@ export function BestCreatives({
     setFetchError(null);
     setCacheAge(null);
 
+    // Carregamento progressivo: mostra primeira página (~200 ads) em ~3 segundos
+    // e continua paginando em background. O usuário vê conteúdo imediatamente.
     (async () => {
-      // Sequential creatives fetch (ACTIVE + PAUSED only)
       const seen   = new Set<string>();
       const merged: MetaCampaignCreative[] = [];
+      let firstPageDone = false;
+
       for (const id of ids) {
-        const batch = await fetchMetaCreatives(id, accessToken);
-        for (const ad of batch) {
-          if (!seen.has(ad.adId)) { seen.add(ad.adId); merged.push(ad); }
-        }
+        let cursor: string | undefined;
+        do {
+          const { data, nextCursor } = await fetchMetaCreativesPage(id, accessToken, cursor);
+          for (const ad of data) {
+            if (!seen.has(ad.adId)) { seen.add(ad.adId); merged.push(ad); }
+          }
+
+          // Após a primeira página de qualquer conta: exibe resultados imediatamente
+          if (!firstPageDone) {
+            firstPageDone = true;
+            setMetaAds([...merged]);
+            setHasLoaded(true);
+            // Inicia busca de insights em paralelo sem bloquear o loop de páginas
+            fetchInsights(ids).catch(() => {});
+          }
+
+          cursor = nextCursor;
+        } while (cursor);
       }
 
-      // Parallel ad-level insights
-      await fetchInsights(ids).catch(() => {});
-
-      return merged;
+      // Estado final com todos os anúncios + cache
+      writeCache(cacheKey, merged);
+      setMetaAds([...merged]);
+      setCacheAge(0);
+      setHasLoaded(true);
     })()
-      .then((merged) => { writeCache(cacheKey, merged); setMetaAds(merged); setCacheAge(0); setHasLoaded(true); })
       .catch((err: unknown) => setFetchError(err instanceof Error ? err.message : "Erro ao buscar criativos"))
       .finally(() => setFetching(false));
   }, [getIds, accessToken, fetchInsights]);

@@ -2918,12 +2918,21 @@ export function InstagramInsightsPanel({
 
 function ProfileDetailView({
   profile, groupLabel, onBack,
+  onAddCampaign, onRemoveCampaign, onUpdateProfile,
 }: {
   profile: AdvertiserProfile;
   groupLabel: string;
   onBack: () => void;
+  onAddCampaign:    (profileId: string, campaign: ActiveCampaign) => void;
+  onRemoveCampaign: (profileId: string, campaignId: string) => void;
+  onUpdateProfile:  (id: string, data: Partial<Omit<AdvertiserProfile, "id" | "createdAt">>) => void;
 }) {
-  const { addCampaignToProfile, removeCampaignFromProfile, updateProfile } = useAdvertiserStore();
+  // Ações vêm da instância de store do ProfileAnalysis — assim qualquer mutação
+  // atualiza o profiles[] de ProfileAnalysis e o profile prop flui de volta
+  // corretamente, evitando o stale-prop que impedia o auto-refresh das campanhas.
+  const addCampaignToProfile    = onAddCampaign;
+  const removeCampaignFromProfile = onRemoveCampaign;
+  const updateProfile           = onUpdateProfile;
   const [activeCampId, setActiveCampId] = useState<string>(profile.campaigns[0]?.id ?? "");
   const [profileTab, setProfileTab] = useState<"overview" | "campanha" | "conjunto" | "instagram">("overview");
 
@@ -3305,7 +3314,7 @@ function ProfileDetailView({
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function ProfileAnalysis({ campaignGroupOptions, campaignConfigs }: ProfileAnalysisProps) {
-  const { profiles, addProfile, updateProfile, deleteProfile } = useAdvertiserStore();
+  const { profiles, addProfile, updateProfile, deleteProfile, addCampaignToProfile, removeCampaignFromProfile } = useAdvertiserStore();
   const { customSections } = useCampaignStore();
   const [view, setView]               = useState<"list" | "detail">("list");
   const [showForm, setShowForm]       = useState(false);
@@ -3368,6 +3377,9 @@ export function ProfileAnalysis({ campaignGroupOptions, campaignConfigs }: Profi
         profile={selectedProfile}
         groupLabel={groupLabel(selectedProfile.groupId)}
         onBack={() => { setView("list"); setSelectedId(null); }}
+        onAddCampaign={addCampaignToProfile}
+        onRemoveCampaign={removeCampaignFromProfile}
+        onUpdateProfile={updateProfile}
       />
     );
   }
