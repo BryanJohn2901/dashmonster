@@ -45,6 +45,7 @@ import { useAdvertiserStore } from "@/hooks/useAdvertiserStore";
 import { ProductBase } from "@/components/products/ProductBase";
 import { DashMonsterLogo } from "@/components/DashMonsterLogo";
 import { TabLanding } from "@/components/TabLanding";
+import { DashboardWelcome } from "@/components/empty/DashboardWelcome";
 import { PixelFunnelSection } from "@/components/PixelFunnelSection";
 import { MyAccount } from "@/components/MyAccount";
 import { toast } from "@/hooks/useToast";
@@ -2790,60 +2791,10 @@ export function Dashboard({
                 </div>
               ) : (
                 /* ── Step 1: full tutorial + source picker ───────────────── */
-                <TabLanding
-                  icon={TrendingUp}
-                  title="Bem-vindo ao DashMonster"
-                  subtitle="Conecte sua fonte de dados e tenha uma visão completa de todas as suas campanhas — KPIs, ROAS, CPA, funil de conversão e muito mais, tudo em um só lugar."
-                  features={[
-                    { icon: BarChart2, label: "KPIs em Tempo Real", description: "ROAS, CPA, ROI, CTR, CPC e CPM sempre atualizados conforme seus dados." },
-                    { icon: Target,    label: "Análise por Campanha", description: "Compare campanhas lado a lado e identifique as que mais convertem." },
-                    { icon: Flag,      label: "Metas e Benchmarks",   description: "Defina metas por KPI e acompanhe o progresso com indicadores visuais." },
-                  ]}
-                  steps={[
-                    { label: "Conecte a fonte",     description: "Meta Ads via API, Google Sheets ou upload de CSV exportado." },
-                    { label: "Escolha campanhas",   description: "Selecione quais campanhas deseja monitorar no painel lateral." },
-                    { label: "Analise seus KPIs",   description: "Visualize métricas, funil, gráficos e tendências automaticamente." },
-                  ]}
-                  cta={{ label: "Importar dados", onClick: () => onOpenControlPanel ? onOpenControlPanel() : setInlineImportTab("sheets") }}
-                >
-                  {/* Source picker cards */}
-                  <div>
-                    <p className="mb-3 text-center text-[11px] font-semibold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>
-                      Escolha como conectar
-                    </p>
-                    <div className="grid gap-3 sm:grid-cols-3">
-                      {[
-                        { tab: "meta"   as const, icon: Settings2, label: "Meta Ads",      sub: "Configurar no Painel de Controle" },
-                        { tab: "sheets" as const, icon: Link2,     label: "Google Sheets", sub: "Planilha compartilhada"           },
-                        { tab: "csv"    as const, icon: Upload,    label: "Arquivo CSV",   sub: "Relatório exportado"              },
-                      ].map(({ tab, icon: Icon, label, sub }) => (
-                        <button
-                          key={tab}
-                          type="button"
-                          onClick={() => tab === "meta" ? onOpenControlPanel?.() : setInlineImportTab(tab)}
-                          className="group flex flex-col items-center gap-3 rounded-xl border-2 border-dashed p-6 text-center transition hover:shadow-md"
-                          style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}
-                          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--dm-brand-400)"; }}
-                          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--dm-border-default)"; }}
-                        >
-                          <div
-                            className="flex h-11 w-11 items-center justify-center rounded-xl"
-                            style={{ backgroundColor: "var(--dm-brand-50)", color: "var(--dm-brand-500)" }}
-                          >
-                            <Icon size={20} />
-                          </div>
-                          <div>
-                            <p className="text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>{label}</p>
-                            <p className="mt-0.5 text-[11px]" style={{ color: "var(--dm-text-secondary)" }}>{sub}</p>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                    <p className="mt-4 text-center text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
-                      Recomendado: <strong style={{ color: "var(--dm-text-secondary)" }}>Meta Ads</strong> — dados em tempo real direto da sua conta de anúncios
-                    </p>
-                  </div>
-                </TabLanding>
+                <DashboardWelcome
+                  onOpenControlPanel={onOpenControlPanel}
+                  onSelectTab={(tab) => setInlineImportTab(tab)}
+                />
               )
             ) : (
               /* ── Dashboard com dados (todas as campanhas até escolher categoria no topo) ── */

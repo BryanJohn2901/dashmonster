@@ -8,7 +8,7 @@ import {
 import { ProductData, ProductType, COURSE_GROUPS_PRODUCT } from "@/types/product";
 import { useProductStore } from "@/hooks/useProductStore";
 import { ProductForm } from "./ProductForm";
-import { TabLanding } from "@/components/TabLanding";
+import { ProdutosEmpty } from "@/components/empty/ProdutosEmpty";
 
 const BRAND_GRAD = "linear-gradient(135deg, #6366C8 0%, #313491 100%)";
 
@@ -621,22 +621,9 @@ export function ProductBase() {
   // ── Empty onboarding (no products yet) ────────────────────────────────────
   if (products.length === 0) {
     return (
-      <TabLanding
-        icon={Package}
-        title="Base de Produtos"
-        subtitle="Cadastre seus produtos — pós-graduações e imersões — com promessa, entregáveis e links de venda. Vincule cada produto às campanhas que o promovem."
-        features={[
-          { icon: Package,    label: "Catálogo Centralizado",    description: "Todos os produtos em um lugar: nome, tipo, turma, promessa e entregáveis." },
-          { icon: Users,      label: "Vinculação com Campanhas", description: "Associe cada produto aos grupos de campanha que o promovem no Meta Ads." },
-          { icon: BookOpen,   label: "Links de Venda",           description: "Organize as páginas de venda e materiais de cada produto com facilidade." },
-        ]}
-        steps={[
-          { label: "Cadastre o produto",   description: "Nome, tipo (pós ou imersão), turma e promessa principal." },
-          { label: "Adicione detalhes",    description: "Entregáveis, links de vendas e página de checkout." },
-          { label: "Vincule campanhas",    description: "Relacione com os grupos de campanha do Meta Ads para cruzar dados." },
-        ]}
-        cta={{ label: "Cadastrar primeiro produto", onClick: handleAdd }}
-      />
+      <div className="p-6">
+        <ProdutosEmpty onAddProduct={handleAdd} />
+      </div>
     );
   }
 

@@ -12,7 +12,7 @@ import {
   BarChart2, Package, Cloud, CloudOff, Loader2, CalendarDays, Camera, Repeat, Wallet,
   ArrowUpDown, ArrowUp, ArrowDown, Tag,
 } from "lucide-react";
-import { TabLanding } from "@/components/TabLanding";
+import { HistoricoEmpty } from "@/components/empty/HistoricoEmpty";
 import { HISTORICAL_KIND_LABELS, HistoricalKind, HistoricalMeta, HistoricalRow } from "@/types/historical";
 import { parseHistoricalCsvFile } from "@/utils/parseHistoricalCsv";
 import { formatCurrency, formatNumber, formatPercent } from "@/utils/metrics";
@@ -1245,22 +1245,9 @@ export function HistoricalView({ selectedKind: propKind, onKindChange }: Histori
 
         {/* ── Empty-state onboarding ── */}
         {!hasData && (
-          <TabLanding
-            icon={CalendarDays}
-            title="Histórico de Performance"
-            subtitle="Registre os resultados de cada lançamento mês a mês e acompanhe a evolução de investimento, receita e conversões ao longo do tempo."
-            features={[
-              { icon: TrendingUp, label: "Linha do Tempo Visual",    description: "Gráficos de evolução mensal de investimento e receita por produto." },
-              { icon: BarChart2,  label: "Comparação Entre Períodos", description: "Compare diferentes lançamentos e identifique sazonalidades." },
-              { icon: Target,     label: "Funil Completo",           description: "Do alcance às vendas: veja onde cada lançamento ganhava ou perdia." },
-            ]}
-            steps={[
-              { label: "Importe o CSV histórico", description: "Planilha com funil mensal por produto e por lançamento." },
-              { label: "Ou adicione manualmente", description: "Preencha os dados mês a mês diretamente no dashboard." },
-              { label: "Acompanhe a evolução",    description: "Veja gráficos e compare lançamentos em tempo real." },
-            ]}
-            cta={{ label: "Importar CSV histórico", onClick: () => inputRef.current?.click() }}
-            ctaSecondary={{ label: "Adicionar manualmente", onClick: openAdd }}
+          <HistoricoEmpty
+            onImportCsv={() => inputRef.current?.click()}
+            onAddManual={openAdd}
           />
         )}
 

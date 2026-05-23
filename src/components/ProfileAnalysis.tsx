@@ -20,7 +20,7 @@ import {
 } from "@/utils/instagramApi";
 import { formatBRL, formatCompact, formatInt, formatPercent } from "@/lib/format";
 import { getTemplate, TEMPLATE_LIST, DEFAULT_PERSONALIZADO_CONFIG } from "@/lib/templates";
-import { TabLanding } from "@/components/TabLanding";
+import { PerfilEmpty } from "@/components/empty/PerfilEmpty";
 import { PerfilAtivoPanel } from "@/components/PerfilAtivoPanel";
 import type { TemplateId, Template, PersonalizadoConfig } from "@/lib/templates/types";
 import { TemplateSelector } from "@/components/profiles/TemplateSelector";
@@ -3433,21 +3433,8 @@ export function ProfileAnalysis({ campaignGroupOptions, campaignConfigs }: Profi
 
       {/* Empty state */}
       {profiles.length === 0 && (
-        <TabLanding
-          icon={Users}
-          title="Perfil de Anúncio"
-          subtitle="Crie templates com as configurações ideais para cada anunciante. Use-os como referência ao criar novos anúncios e compare resultados entre perfis."
-          features={[
-            { icon: Users,        label: "Templates de Público",    description: "Salve segmentações, objetivos e configurações de cada tipo de campanha." },
-            { icon: Zap,          label: "Benchmarks por Perfil",   description: "Compare performance entre anunciantes e identifique os padrões vencedores." },
-            { icon: CheckCircle2, label: "Reutilize o que Funciona", description: "Replique configurações validadas para novos lançamentos com agilidade." },
-          ]}
-          steps={[
-            { label: "Crie um perfil",         description: "Defina nome, tipo de produto e configurações do anunciante." },
-            { label: "Conecte ao Meta Ads",     description: "Vincule o Access Token para buscar dados reais da conta." },
-            { label: "Analise e compare",       description: "Veja métricas de cada perfil e compare lado a lado." },
-          ]}
-          cta={{ label: "Criar primeiro perfil", onClick: () => { setEditingId(null); setShowForm(true); } }}
+        <PerfilEmpty
+          onCreateProfile={() => { setEditingId(null); setShowForm(true); }}
         />
       )}
 
