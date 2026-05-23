@@ -176,16 +176,6 @@ function CreativeCard({
       {/* Thumbnail */}
       <AdThumb ad={ad} onClick={onPreview} />
 
-      {/* Score badge — top left over thumbnail */}
-      {score !== null && scoreColor && (
-        <div
-          className="absolute left-2 top-2 z-10 rounded-[6px] px-2 py-0.5 text-[10px] font-bold"
-          style={{ background: "rgba(0,0,0,0.65)", color: scoreColor, border: `1px solid ${scoreColor}50`, backdropFilter: "blur(4px)" }}
-        >
-          {score}
-        </div>
-      )}
-
       {/* Hover overlay actions */}
       <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 z-10">
         <button type="button" onClick={onToggleStar}
@@ -213,11 +203,19 @@ function CreativeCard({
             style={{ color: "var(--dm-text-primary)" }} title={ad.adName}>
             {ad.adName}
           </p>
-          {createdLabel && (
-            <span className="flex-shrink-0 flex items-center gap-0.5 text-[9px]" style={{ color: "var(--dm-text-tertiary)" }}>
-              <CalendarDays size={8} />{createdLabel}
-            </span>
-          )}
+          <div className="flex flex-shrink-0 items-center gap-1">
+            {score !== null && scoreColor && (
+              <span className="rounded-[5px] px-1.5 py-0.5 text-[10px] font-bold leading-none"
+                style={{ background: `${scoreColor}1A`, color: scoreColor, border: `1px solid ${scoreColor}40` }}>
+                {score}
+              </span>
+            )}
+            {createdLabel && (
+              <span className="flex items-center gap-0.5 text-[9px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                <CalendarDays size={8} />{createdLabel}
+              </span>
+            )}
+          </div>
         </div>
         <p className="truncate text-[10px]" style={{ color: "var(--dm-text-tertiary)" }} title={ad.campaignName}>
           {ad.campaignName}
@@ -387,113 +385,88 @@ function PreviewModal({
         {/* Brand stripe */}
         <div className="absolute left-0 right-0 top-0 z-10 h-[3px]" style={{ background: DRAWER_GRAD }} />
 
-        {/* ── LEFT: Phone mockup ── */}
+        {/* ── LEFT: Modern creative viewer ── */}
         <div
-          className="flex flex-shrink-0 flex-col items-center justify-center gap-5 px-6 py-8"
+          className="flex flex-shrink-0 flex-col items-center gap-4 px-5 py-6"
           style={{
-            width: 280,
+            width: 290,
             backgroundColor: "var(--dm-bg-elevated)",
             borderRight: "1px solid var(--dm-border-subtle)",
           }}
         >
-          {/* iPhone frame */}
+          {/* Creative display — clean floating card, no phone frame */}
           <div
-            className="relative overflow-hidden"
+            className="relative w-full overflow-hidden rounded-2xl"
             style={{
-              width: 210,
-              borderRadius: 36,
-              border: "7px solid #1a1a2e",
-              boxShadow: "0 0 0 1.5px #32325e, 0 24px 48px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(255,255,255,0.06)",
-              backgroundColor: "#000",
+              aspectRatio: "9/16",
+              backgroundColor: "#0a0a14",
+              boxShadow: "0 12px 40px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.05)",
             }}
           >
-            {/* Notch */}
+            {/* Media type label — top-left */}
             <div style={{
-              position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)",
-              width: 72, height: 20, backgroundColor: "#1a1a2e", borderRadius: "0 0 14px 14px", zIndex: 10,
-            }} />
-            {/* Side buttons (decorative) */}
-            <div style={{ position: "absolute", right: -9, top: 80,  width: 3, height: 40, backgroundColor: "#0d0d1a", borderRadius: 2 }} />
-            <div style={{ position: "absolute", left:  -9, top: 72,  width: 3, height: 28, backgroundColor: "#0d0d1a", borderRadius: 2 }} />
-            <div style={{ position: "absolute", left:  -9, top: 108, width: 3, height: 28, backgroundColor: "#0d0d1a", borderRadius: 2 }} />
-
-            {/* Screen — 9:16 */}
-            <div style={{ aspectRatio: "9/16", position: "relative", overflow: "hidden" }}>
-              {/* IG-style top bar — pointer-events:none para não bloquear cliques no iframe */}
-              <div style={{
-                position: "absolute", top: 0, left: 0, right: 0, zIndex: 5,
-                padding: "22px 8px 8px",
-                background: "linear-gradient(to bottom, rgba(0,0,0,0.65), transparent)",
-                display: "flex", alignItems: "center", gap: 5,
-                pointerEvents: "none",
-              }}>
-                <div style={{ width: 20, height: 20, borderRadius: "50%", background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.3)", flexShrink: 0 }} />
-                <span style={{ color: "white", fontSize: 8, fontWeight: 700, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {ad.campaignName.slice(0, 20)}
-                </span>
-                <span style={{ color: "rgba(255,255,255,0.55)", fontSize: 7, flexShrink: 0 }}>Patrocinado</span>
-              </div>
-
-              {/* Ad media */}
-              {showIframe ? (
-                <AdIframe ad={ad} accessToken={accessToken} />
-              ) : ad.thumbnailUrl ? (
-                <img src={ad.thumbnailUrl} alt={ad.adName} className="h-full w-full object-cover" />
-              ) : (
-                <div className="flex h-full flex-col items-center justify-center gap-2" style={{ backgroundColor: "#111", color: "rgba(255,255,255,0.18)" }}>
-                  {ad.mediaType === "video" ? <Film size={28} /> : <ImageIcon size={28} />}
-                  <span style={{ fontSize: 9 }}>Sem preview</span>
-                </div>
-              )}
-
-              {/* Bottom gradient / CTA — pointer-events:none para não bloquear cliques no iframe */}
-              <div style={{
-                position: "absolute", bottom: 0, left: 0, right: 0, zIndex: 5,
-                padding: "20px 8px 8px",
-                background: "linear-gradient(to top, rgba(0,0,0,0.72), transparent)",
-                display: "flex", alignItems: "center", gap: 6,
-                pointerEvents: "none",
-              }}>
-                <span style={{ color: "rgba(255,255,255,0.8)", fontSize: 8, flex: 1, fontWeight: 600 }}>Saiba mais</span>
-                <div style={{ backgroundColor: "rgba(255,255,255,0.93)", borderRadius: 5, padding: "3px 7px", color: "#111", fontSize: 8, fontWeight: 700, flexShrink: 0 }}>
-                  Ver mais
-                </div>
-              </div>
-
-              {/* Score badge — pointer-events:none para não bloquear cliques no iframe */}
-              {score !== null && (
-                <div style={{
-                  position: "absolute", top: 26, right: 7, zIndex: 6,
-                  width: 26, height: 26, borderRadius: "50%",
-                  backgroundColor: "rgba(0,0,0,0.72)",
-                  border: `2px solid ${scoreColor}`,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  backdropFilter: "blur(4px)",
-                  pointerEvents: "none",
-                }}>
-                  <span style={{ color: scoreColor, fontSize: 8, fontWeight: 800 }}>{score}</span>
-                </div>
-              )}
+              position: "absolute", top: 10, left: 10, zIndex: 6,
+              padding: "2px 8px", borderRadius: 6,
+              backgroundColor: "rgba(0,0,0,0.62)",
+              backdropFilter: "blur(6px)",
+              pointerEvents: "none",
+            }}>
+              <span style={{ color: "rgba(255,255,255,0.82)", fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em" }}>
+                {TYPE_LABEL[ad.mediaType]}
+              </span>
             </div>
+
+            {/* Score badge — top-right */}
+            {score !== null && (
+              <div style={{
+                position: "absolute", top: 10, right: 10, zIndex: 6,
+                padding: "3px 9px", borderRadius: 6,
+                backgroundColor: "rgba(0,0,0,0.70)",
+                border: `1px solid ${scoreColor}55`,
+                backdropFilter: "blur(6px)",
+                pointerEvents: "none",
+              }}>
+                <span style={{ color: scoreColor, fontSize: 11, fontWeight: 800 }}>{score}</span>
+              </div>
+            )}
+
+            {/* Creative content */}
+            {showIframe ? (
+              <AdIframe ad={ad} accessToken={accessToken} />
+            ) : ad.thumbnailUrl ? (
+              <img src={ad.thumbnailUrl} alt={ad.adName} className="h-full w-full object-cover" />
+            ) : (
+              <div className="flex h-full flex-col items-center justify-center gap-2"
+                style={{ color: "rgba(255,255,255,0.18)" }}>
+                {ad.mediaType === "video" ? <Film size={36} /> : <ImageIcon size={36} />}
+                <span style={{ fontSize: 11, color: "rgba(255,255,255,0.28)" }}>Sem preview</span>
+              </div>
+            )}
+
+            {/* Brand accent stripe at bottom */}
+            <div style={{
+              position: "absolute", bottom: 0, left: 0, right: 0,
+              height: 3, background: DRAWER_GRAD, pointerEvents: "none",
+            }} />
           </div>
 
           {/* Nav arrows + counter */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={() => { setShowIframe(false); onNavigate(allAds[currentIndex - 1]); }}
               disabled={currentIndex <= 0}
-              className="flex h-8 w-8 items-center justify-center rounded-full text-[16px] font-bold transition hover:opacity-80 disabled:opacity-20"
+              className="flex h-8 w-8 items-center justify-center rounded-xl text-[18px] font-bold transition hover:opacity-80 disabled:opacity-20"
               style={{ backgroundColor: "var(--dm-bg-surface)", border: "1px solid var(--dm-border-default)", color: "var(--dm-text-secondary)" }}
             >‹</button>
-            <span className="text-[10px] font-semibold" style={{ color: "var(--dm-text-tertiary)", minWidth: 52, textAlign: "center" }}>
+            <span className="text-[11px] font-semibold" style={{ color: "var(--dm-text-tertiary)", minWidth: 52, textAlign: "center" }}>
               {currentIndex + 1} / {allAds.length}
             </span>
             <button
               type="button"
               onClick={() => { setShowIframe(false); onNavigate(allAds[currentIndex + 1]); }}
               disabled={currentIndex >= allAds.length - 1}
-              className="flex h-8 w-8 items-center justify-center rounded-full text-[16px] font-bold transition hover:opacity-80 disabled:opacity-20"
+              className="flex h-8 w-8 items-center justify-center rounded-xl text-[18px] font-bold transition hover:opacity-80 disabled:opacity-20"
               style={{ backgroundColor: "var(--dm-bg-surface)", border: "1px solid var(--dm-border-default)", color: "var(--dm-text-secondary)" }}
             >›</button>
           </div>
@@ -503,14 +476,14 @@ function PreviewModal({
             <button
               type="button"
               onClick={() => setShowIframe(!showIframe)}
-              className="flex w-full items-center justify-center gap-1.5 rounded-xl py-2 text-[11px] font-semibold transition hover:opacity-80"
+              className="flex w-full items-center justify-center gap-2 rounded-xl py-2 text-[11px] font-semibold transition hover:opacity-80"
               style={{
                 backgroundColor: showIframe ? "rgba(99,102,200,0.15)" : "var(--dm-bg-surface)",
                 color: showIframe ? "var(--dm-brand-500)" : "var(--dm-text-secondary)",
                 border: `1px solid ${showIframe ? "rgba(99,102,200,0.35)" : "var(--dm-border-default)"}`,
               }}
             >
-              <Play size={10} fill={showIframe ? "currentColor" : "none"} />
+              <Play size={11} fill={showIframe ? "currentColor" : "none"} />
               {showIframe ? "Fechar preview" : "Preview interativo"}
             </button>
           )}
@@ -527,6 +500,14 @@ function PreviewModal({
             <span className={`flex-shrink-0 rounded-[5px] px-2 py-0.5 text-[9px] font-bold tracking-wide ${TYPE_COLOR[ad.mediaType]}`}>
               {TYPE_LABEL[ad.mediaType].toUpperCase()}
             </span>
+            {score !== null && (
+              <span
+                className="flex-shrink-0 rounded-[5px] px-2 py-0.5 text-[9px] font-bold"
+                style={{ background: `${scoreColor}18`, color: scoreColor, border: `1px solid ${scoreColor}38` }}
+              >
+                ● {score}
+              </span>
+            )}
             <span
               className="min-w-0 flex-1 truncate text-[14px] font-bold"
               style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins), Poppins, sans-serif" }}
