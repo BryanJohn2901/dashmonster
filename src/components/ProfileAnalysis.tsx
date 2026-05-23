@@ -1019,6 +1019,16 @@ function ProfileOverviewPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState<string | null>(null);
 
+  // ── Tipo de resultado dominante (comum a todas as campanhas do perfil) ────
+  // Só definido se TODAS as campanhas concordam no mesmo resultType.
+  // Alimenta toAdsetRows e rawValues.sales para unificar métricas entre tabs.
+  const dominantResultType = useMemo(() => {
+    const types = campaigns.map(c => c.resultType).filter(Boolean) as ResultType[];
+    if (types.length === 0) return undefined;
+    const first = types[0]!;
+    return types.every(t => t === first) ? first : undefined;
+  }, [campaigns]);
+
   // ── Goals ─────────────────────────────────────────────────────────────────
   const [goals, setGoals] = useState<Record<string, number>>(() => {
     if (typeof window === "undefined") return {};
@@ -1092,10 +1102,10 @@ function ProfileOverviewPanel({
       timeIncrement: "all_days",
       campaignIds: campaigns.map((c) => c.id),
     })
-      .then((data) => setRows(toAdsetRows(data)))
+      .then((data) => setRows(toAdsetRows(data, dominantResultType)))
       .catch((e) => setError(e instanceof Error ? e.message : "Erro ao buscar dados."))
       .finally(() => setLoading(false));
-  }, [adAccountId, campaigns, dateFrom, dateTo]);
+  }, [adAccountId, campaigns, dateFrom, dateTo, dominantResultType]);
 
   // ── Aggregate totals ──────────────────────────────────────────────────────
   const totals = useMemo(() => {
@@ -1109,10 +1119,14 @@ function ProfileOverviewPanel({
     const pv   = rows.reduce((s, r) => s + r.page_views, 0);
     const fol  = rows.reduce((s, r) => s + r.new_followers, 0);
     const allC = rows.reduce((s, r) => s + r.total_clicks, 0);
-    return { inv, imp, clk, rch, conv, rev, lds, pv, fol, allC };
+    const cust = rows.reduce((s, r) => s + r.customResult, 0);
+    return { inv, imp, clk, rch, conv, rev, lds, pv, fol, allC, cust };
   }, [rows]);
 
   // ── Template-driven KPI values ────────────────────────────────────────────
+  // Resultado principal: usa customResult quando dominantResultType está definido e > 0.
+  // Isso garante que "Resultados" e "Custo por Resultado" na Visão Geral mostrem
+  // o mesmo número que a tab Campanha, calculado pelo mesmo template.derive().
   const rawValues: Record<string, number> = {
     impressions:    totals.imp,
     reach:          totals.rch,
@@ -1121,7 +1135,7 @@ function ProfileOverviewPanel({
     spend:          totals.inv,
     revenue:        totals.rev,
     leads:          totals.lds,
-    sales:          totals.conv,
+    sales:          dominantResultType && totals.cust > 0 ? totals.cust : totals.conv,
     tickets:        totals.conv,
     page_views:     totals.pv,
     profile_visits: 0,
@@ -1594,13 +1608,17 @@ function ProfileOverviewPanel({
 // ─── KPI IDs to hide from the metrics grid when highlight cards are visible ───
 // When a resultType is configured and the Resultado/Custo-por-Resultado cards
 // are already rendered above, suppress the duplicate KPI cards below.
+// KPIs a ocultar quando o rawValues.sales já é alimentado por customResult.
+// Evita duplicar o mesmo número com labels diferentes no grid.
+// "sales" e "cpa" não precisam mais ser listados aqui — o template já os calcula
+// corretamente via rawValues.sales = customResult.
 const RESULT_HIDDEN_KPIS: Partial<Record<ResultType, string[]>> = {
-  link_click:                       ["clicks", "cpc_link", "cpa"],
-  lead:                             ["leads",  "cpl",      "cpa"],
-  "onsite_conversion.lead_grouped": ["leads",  "cpl",      "cpa"],
-  leadgen_grouped:                  ["leads",  "cpl",      "cpa"],
-  omni_complete_registration:       ["sales",  "cpa"],
-  purchase:                         ["sales",  "cpa"],
+  link_click:                       ["clicks", "cpc_link"],  // Cliques no link = sales, CPC link = cpa
+  lead:                             ["leads",  "cpl"],        // Leads = sales, CPL = cpa
+  "onsite_conversion.lead_grouped": ["leads",  "cpl"],
+  leadgen_grouped:                  ["leads",  "cpl"],
+  omni_complete_registration:       [],                       // Cadastros não tem KPI específico duplicado
+  purchase:                         [],                       // Purchase é o default — sem duplicata
 };
 
 // ─── Single-campaign analysis panel ──────────────────────────────────────────
@@ -1749,7 +1767,11 @@ function CampaignAnalysisPanel({
     );
   }
 
-  // ── Template-driven values ────────────────────────────────────────────────────
+  // ── Template-driven values ─────────────────────────────────────────────────
+  // Unificação de métricas: quando resultType está configurado, `sales` recebe
+  // customResult (ex: cliques, leads, cadastros) para que os KPIs de template
+  // "Resultados" (id=sales) e "Custo por resultado" (id=cpa = spend/sales)
+  // reflitam o tipo de resultado correto em qualquer view — sem cards separados.
   const tpl = template;
   const rawValues: Record<string, number> = {
     impressions:    totalImpressions,
@@ -1759,7 +1781,8 @@ function CampaignAnalysisPanel({
     spend:          totalSpend,
     revenue:        totalRevenue,
     leads:          totalLeads,
-    sales:          totalPurchases,
+    // Resultado principal: usa customResult quando resultType configurado e > 0
+    sales:          activeResultType && totalCustomResult > 0 ? totalCustomResult : totalPurchases,
     tickets:        totalPurchases,
     page_views:     totalPageViews,
     profile_visits: 0,
@@ -2023,56 +2046,17 @@ function CampaignAnalysisPanel({
 
       {activeTab === "kpis" && <>
 
-      {/* ── Resultado variável ── mostrado quando resultType está configurado ─── */}
+      {/* ── Label do tipo de resultado — exibido acima do grid quando configurado ── */}
       {activeResultType && resultCount > 0 && (
-        <div className="grid grid-cols-2 gap-3">
-          {/* Resultado */}
-          <article className="flex flex-col rounded-[20px] border shadow-horizon"
-            style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)", padding: "18px",
-              background: "linear-gradient(135deg, rgba(5,205,153,0.08) 0%, rgba(5,205,153,0.02) 100%)" }}>
-            <div className="mb-3 flex items-center gap-2">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full"
-                style={{ backgroundColor: "rgba(5,205,153,0.15)" }}>
-                <Zap size={15} style={{ color: "#05CD99" }} />
-              </div>
-              <span className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
-                style={{ background: "rgba(5,205,153,0.12)", color: "#05CD99" }}>
-                {RESULT_TYPE_LABELS[activeResultType]}
-              </span>
-            </div>
-            <p className="mb-0.5 text-[11px] font-semibold" style={{ color: "var(--dm-text-secondary)" }}>
-              Resultado
-            </p>
-            <p className="text-[28px] font-black tabular-nums leading-tight"
-              style={{ color: "#05CD99", fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>
-              {formatInt(Math.round(resultCount))}
-            </p>
-          </article>
-          {/* Custo por Resultado */}
-          <article className="flex flex-col rounded-[20px] border shadow-horizon"
-            style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)", padding: "18px",
-              background: "linear-gradient(135deg, rgba(99,102,200,0.08) 0%, rgba(99,102,200,0.02) 100%)" }}>
-            <div className="mb-3 flex items-center gap-2">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full"
-                style={{ backgroundColor: "rgba(99,102,200,0.15)" }}>
-                <Target size={15} style={{ color: "var(--dm-brand-500)" }} />
-              </div>
-            </div>
-            <p className="mb-0.5 text-[11px] font-semibold" style={{ color: "var(--dm-text-secondary)" }}>
-              Custo por Resultado
-            </p>
-            <p className="text-[28px] font-black tabular-nums leading-tight"
-              style={{ color: "var(--dm-brand-500)", fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>
-              {formatBRL(costPerResult)}
-            </p>
-            <p className="mt-1 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
-              {formatInt(Math.round(resultCount))} resultado{resultCount !== 1 ? "s" : ""} · {formatBRL(totalSpend)} investidos
-            </p>
-          </article>
+        <div className="flex items-center gap-2">
+          <span className="rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider"
+            style={{ background: "rgba(5,205,153,0.12)", color: "#05CD99", border: "1px solid rgba(5,205,153,0.25)" }}>
+            Resultado: {RESULT_TYPE_LABELS[activeResultType]}
+          </span>
         </div>
       )}
 
-      {/* ── KPIs dirigidos pelo template ─────────────────────────────────────── */}
+      {/* ── KPIs dirigidos pelo template — Resultado e CpR incluídos via rawValues ─── */}
       <div>
         {/* Section header with Goals toggle */}
         <div className="mb-3 flex items-center justify-between">
