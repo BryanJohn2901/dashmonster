@@ -217,9 +217,13 @@ function CreativeCard({
             )}
           </div>
         </div>
-        <p className="truncate text-[10px]" style={{ color: "var(--dm-text-tertiary)" }} title={ad.campaignName}>
-          {ad.campaignName}
-        </p>
+        {/* Campaign name pill — more prominent so user knows which campaign this creative belongs to */}
+        <div className="flex items-center gap-1 min-w-0">
+          <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ backgroundColor: "var(--dm-brand-500)" }} />
+          <p className="truncate text-[10px] font-medium" style={{ color: "var(--dm-text-secondary)" }} title={ad.campaignName}>
+            {ad.campaignName}
+          </p>
+        </div>
 
         {/* Metrics row */}
         {insight && (

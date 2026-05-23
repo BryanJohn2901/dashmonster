@@ -2161,6 +2161,46 @@ export function Dashboard({
   const budgetDistribution = buildBudgetDistribution(filteredCampaigns);
   const aggregated         = useMemo(() => aggregateByCampaign(filteredCampaigns), [filteredCampaigns]);
 
+  /**
+   * Campaign ID filter passed to BestCreatives.
+   *
+   * Primary source: explicit header dropdown selection (checkedCampaignIds when isFilterExplicit=true).
+   *
+   * Fallback: ControlPanel entry selection.
+   * Reason: the Dashboard's selectedGroup might have been created by the Meta import flow with a
+   * different group ID than the one computed by syncPanelConfig for the ControlPanel entry (which
+   * uses resolvePanelEntryGroupId). In that case isFilterExplicit=false even though the entry has
+   * selectedCampaignIds. We bridge the gap by looking up entries with a matching adAccountId.
+   *
+   * Ambiguity guard: if multiple entries match the same adAccountId with DIFFERENT selections,
+   * we don't guess — return undefined so all creatives are shown.
+   */
+  const bestCreativesFilter = useMemo<string[] | undefined>(() => {
+    // 1. Explicit header filter always wins
+    if (isFilterExplicit && checkedCampaignIds.length > 0) return checkedCampaignIds;
+    if (selectedGroup === "all") return undefined;
+
+    // 2. ControlPanel entry fallback: find enabled entries with a campaign sub-selection
+    const acctId = (campaignConfigs[selectedGroup]?.adAccountId ?? "").replace(/^act_/, "");
+    if (!acctId) return undefined;
+
+    const matching = accountEntries.filter(
+      (e) =>
+        e.isEnabled &&
+        e.adAccountId.replace(/^act_/, "") === acctId &&
+        e.selectedCampaignIds.length > 0 &&
+        e.selectedCampaignIds.length < e.campaigns.length,
+    );
+    if (matching.length === 0) return undefined;
+
+    // Only apply if all matching entries agree on the same selection (no ambiguity)
+    const canonical = [...matching[0].selectedCampaignIds].sort().join(",");
+    if (matching.every((e) => [...e.selectedCampaignIds].sort().join(",") === canonical)) {
+      return matching[0].selectedCampaignIds;
+    }
+    return undefined; // multiple entries, different selections — don't guess
+  }, [isFilterExplicit, checkedCampaignIds, selectedGroup, campaignConfigs, accountEntries]);
+
   const showRightPanel     = mainTab !== "history" && mainTab !== "profiles" && mainTab !== "products";
   const showCourseGroups   = selectedCategory !== null;
   const sidebarGroups      = selectedCategory
@@ -3278,7 +3318,7 @@ export function Dashboard({
                       }
                       dateFrom={dateFrom || undefined}
                       dateTo={dateTo || undefined}
-                      selectedCampaignIds={isFilterExplicit && checkedCampaignIds.length > 0 ? checkedCampaignIds : undefined}
+                      selectedCampaignIds={bestCreativesFilter}
                       selectedGroupName={selectedGroup !== "all" ? (allGroups.find((g) => g.id === selectedGroup)?.label ?? selectedGroup) : undefined}
                     />
                   )

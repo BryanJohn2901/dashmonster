@@ -347,6 +347,44 @@ export function useCampaignStore() {
         }
       });
 
+      // Bridge the group-ID mismatch: non-panel groups created by the Meta import flow
+      // may have a different ID from the panel entry that represents the same account.
+      // Sync their campaign list + selection from the matching entry so the header
+      // dropdown and creatives filter always reflect the ControlPanel's state.
+      //
+      // Guard: only sync when there is a single unambiguous match — if two enabled entries
+      // share the same adAccountId but have DIFFERENT selectedCampaignIds, skip (don't guess).
+      const enabledEntries = entries.filter((e) => e.isEnabled && e.adAccountId.trim());
+      const entryByAcct = new Map<string, UserAccountEntry[]>();
+      for (const e of enabledEntries) {
+        const acct = e.adAccountId.replace(/^act_/, "");
+        entryByAcct.set(acct, [...(entryByAcct.get(acct) ?? []), e]);
+      }
+
+      for (const nonPanelGroupId of Object.keys(campaignConfigs)) {
+        if (panelGroupIds.has(nonPanelGroupId)) continue; // already handled above
+        const acct = (campaignConfigs[nonPanelGroupId]?.adAccountId ?? "").replace(/^act_/, "");
+        if (!acct) continue;
+        const matchingEntries = entryByAcct.get(acct);
+        if (!matchingEntries?.length) continue;
+
+        // Unambiguous campaign list: all entries agree (same campaigns array length)
+        if (matchingEntries.length === 1 || matchingEntries.every((e) => e.campaigns.length === matchingEntries[0].campaigns.length)) {
+          campaignsByGroup[nonPanelGroupId] = matchingEntries[0].campaigns;
+        }
+
+        // Unambiguous selection: all matching entries have the same selectedCampaignIds
+        const canonical = [...matchingEntries[0].selectedCampaignIds].sort().join(",");
+        const allAgree  = matchingEntries.every((e) => [...e.selectedCampaignIds].sort().join(",") === canonical);
+        if (allAgree) {
+          if (matchingEntries[0].selectedCampaignIds.length > 0) {
+            selectedCampaignsByGroup[nonPanelGroupId] = matchingEntries[0].selectedCampaignIds;
+          } else {
+            delete selectedCampaignsByGroup[nonPanelGroupId];
+          }
+        }
+      }
+
       const previousPanelSections = new Set(prev.panelSectionIds);
       const keptSections = prev.customSections.filter((section) => !previousPanelSections.has(section.id));
       const panelSections = categories
