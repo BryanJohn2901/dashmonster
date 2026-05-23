@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ALL_METRIC_IDS, METRIC_LABELS, useMetricVisibility } from "@/hooks/useMetricVisibility";
+import { useAvatarUrl, resolveAvatarSrc } from "@/hooks/useAvatarUrl";
 import {
   Activity, BadgeDollarSign, BarChart2, BookOpen, CalendarDays,
   CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CircleDollarSign, Dumbbell, FileText,
@@ -1826,6 +1827,11 @@ export function Dashboard({
 
   // ── Metric visibility — shared across all tabs ────────────────────────────
   const { hidden: hiddenMetrics, toggle: toggleMetric, showAll: showAllMetrics, hideAll: hideAllMetrics, isVisible: isMetricVisible, allVisible: allMetricsVisible } = useMetricVisibility();
+
+  // ── User avatar (photo or icon) ────────────────────────────────────────────
+  const { avatarUrl } = useAvatarUrl();
+  const { resolvedTheme } = useTheme();
+  const resolvedAvatarSrc = resolveAvatarSrc(avatarUrl, resolvedTheme === "dark");
   const [showKpiPanel, setShowKpiPanel] = useState(false);
   const [pixelFunnelOpen, setPixelFunnelOpen] = useState(() => {
     try { return localStorage.getItem("pta_pixel_funnel_open_v1") !== "0"; } catch { return true; }
@@ -2571,15 +2577,26 @@ export function Dashboard({
             >
               <div className="flex items-center justify-between mb-3">
                 {/* Avatar */}
-                <div
-                  className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-[13px] font-bold text-white"
-                  style={{ background: "linear-gradient(135deg, var(--dm-primary) 0%, var(--dm-primary-vivid) 100%)", boxShadow: "0 0 0 3px var(--dm-primary-soft)" }}
+                <button
+                  type="button"
+                  onClick={() => { setMainTab("myaccount"); setMyAccountTab("profile"); }}
+                  title="Ir para Meu perfil"
+                  className="relative h-10 w-10 flex-shrink-0 rounded-full overflow-hidden transition hover:opacity-85"
+                  style={{ boxShadow: "0 0 0 2px var(--dm-primary-soft)" }}
                 >
-                  {(currentUser.name.trim()
-                    ? currentUser.name.trim().split(" ").filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("")
-                    : currentUser.email.slice(0, 2).toUpperCase()
+                  {resolvedAvatarSrc ? (
+                    <img src={resolvedAvatarSrc} alt="Avatar" className="h-full w-full object-cover" />
+                  ) : (
+                    <div
+                      className="flex h-full w-full items-center justify-center text-[13px] font-bold text-white"
+                      style={{ background: "linear-gradient(135deg, var(--dm-primary) 0%, var(--dm-primary-vivid) 100%)" }}
+                    >
+                      {currentUser.name.trim()
+                        ? currentUser.name.trim().split(" ").filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("")
+                        : currentUser.email.slice(0, 2).toUpperCase()}
+                    </div>
                   )}
-                </div>
+                </button>
                 <SidebarThemeToggle />
               </div>
               {/* Data */}

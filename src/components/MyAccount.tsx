@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { UserRound, Bell, Lock, Sliders } from "lucide-react";
+import { useRef, useState } from "react";
+import { Camera, Trash2, UserRound, Bell, Lock, Sliders } from "lucide-react";
+import { useTheme } from "next-themes";
+import { useAvatarUrl, resolveAvatarSrc, AVATAR_ICON_COUNT } from "@/hooks/useAvatarUrl";
 import {
   TabProfile, TabAccounts, TabIntegrations, TabSync,
   type TabAccountsProps,
@@ -199,6 +201,35 @@ export function MyAccount({
   };
   const initials = getInitials(userName || userEmail || "U");
 
+  // ── Avatar picker ──────────────────────────────────────────────────────────
+  const { avatarUrl, updateAvatar } = useAvatarUrl();
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
+  const resolvedAvatarSrc = resolveAvatarSrc(avatarUrl, isDark);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAvatarError(null);
+    if (file.size > MAX_BYTES) {
+      setAvatarError("Foto muito grande. Máximo: 5 MB.");
+      e.target.value = "";
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      updateAvatar(reader.result as string);
+      setPickerOpen(false);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  }
+
   const tabAccountsProps: TabAccountsProps = {
     categories,
     accountEntries,
@@ -244,9 +275,39 @@ export function MyAccount({
         className="profile-identity-card"
         style={{ marginTop: -48, position: "relative", zIndex: 2 }}
       >
-        <div className="account-avatar text-2xl flex-shrink-0">
-          {initials || <UserRound size={36} />}
+        {/* ── Clickable avatar ─────────────────────────────────────── */}
+        <div className="relative flex-shrink-0">
+          <button
+            type="button"
+            onClick={() => setPickerOpen(true)}
+            title="Alterar foto de perfil"
+            className="account-avatar text-2xl overflow-hidden transition hover:opacity-85 focus:outline-none"
+            style={{ padding: 0, border: "2px solid rgba(49,52,145,0.35)" }}
+          >
+            {resolvedAvatarSrc ? (
+              <img src={resolvedAvatarSrc} alt="Avatar" className="h-full w-full object-cover" />
+            ) : (
+              <span>{initials || <UserRound size={36} />}</span>
+            )}
+          </button>
+          {/* Camera badge */}
+          <span
+            className="absolute bottom-0 right-0 flex h-6 w-6 items-center justify-center rounded-full border-2 pointer-events-none"
+            style={{ background: "var(--dm-primary)", borderColor: "var(--dm-bg-surface)" }}
+          >
+            <Camera size={11} className="text-white" />
+          </span>
         </div>
+
+        {/* ── Hidden file input ─────────────────────────────────────── */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/gif"
+          className="hidden"
+          onChange={handleFileChange}
+        />
+
         <div className="flex-1 min-w-0">
           <h1
             className="text-[20px] font-bold leading-tight truncate"
@@ -306,6 +367,125 @@ export function MyAccount({
         {activeTab === "notifications"   && <TabNotifications />}
         {activeTab === "personalization" && <TabPersonalization />}
       </div>
+
+      {/* ── Avatar picker modal ───────────────────────────────────────── */}
+      {pickerOpen && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+          onClick={() => setPickerOpen(false)}
+        >
+          <div
+            className="w-full rounded-2xl p-6 shadow-2xl"
+            style={{
+              maxWidth: 380,
+              background: "var(--dm-bg-surface)",
+              border: "1px solid var(--dm-border-default)",
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="mb-5 text-center">
+              <h3 className="text-[17px] font-bold" style={{ color: "var(--dm-text-primary)" }}>
+                Escolher foto
+              </h3>
+              <p className="mt-1 text-[13px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                Formatos aceitos: JPG, PNG, WebP, GIF · Máx. 5 MB
+              </p>
+            </div>
+
+            {/* Current avatar preview */}
+            <div className="flex justify-center mb-5">
+              <div
+                className="h-20 w-20 overflow-hidden rounded-full"
+                style={{ boxShadow: "0 0 0 3px var(--dm-primary-soft)" }}
+              >
+                {resolvedAvatarSrc ? (
+                  <img src={resolvedAvatarSrc} alt="Avatar atual" className="h-full w-full object-cover" />
+                ) : (
+                  <div
+                    className="flex h-full w-full items-center justify-center text-2xl font-bold text-white"
+                    style={{ background: "linear-gradient(135deg, var(--dm-primary) 0%, var(--dm-primary-vivid) 100%)" }}
+                  >
+                    {initials || <UserRound size={32} />}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Error */}
+            {avatarError && (
+              <p className="mb-3 rounded-lg px-3 py-2 text-center text-[12px] font-medium"
+                style={{ background: "rgba(239,68,68,0.1)", color: "#ef4444" }}>
+                {avatarError}
+              </p>
+            )}
+
+            {/* Actions */}
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-[14px] font-semibold transition hover:opacity-90"
+                style={{ background: "var(--dm-primary)", color: "#fff" }}
+              >
+                <Camera size={16} />
+                Enviar foto
+              </button>
+
+              {/* ── Icon grid ──────────────────────────────────────── */}
+              <div>
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider"
+                  style={{ color: "var(--dm-text-tertiary)" }}>
+                  Ícones padrão
+                </p>
+                <div className="grid grid-cols-5 gap-2">
+                  {Array.from({ length: AVATAR_ICON_COUNT }, (_, i) => {
+                    const n = i + 1;
+                    const src = `/avatars/${n} W.webp`;
+                    const isSelected = avatarUrl === `icon:${n}`;
+                    return (
+                      <button
+                        key={n}
+                        type="button"
+                        title={`Ícone ${n}`}
+                        onClick={() => { updateAvatar(`icon:${n}`); setPickerOpen(false); setAvatarError(null); }}
+                        className="aspect-square overflow-hidden rounded-xl transition hover:scale-105 hover:opacity-90"
+                        style={{
+                          border: isSelected ? "2px solid var(--dm-primary)" : "2px solid var(--dm-border-subtle)",
+                          boxShadow: isSelected ? "0 0 0 3px var(--dm-primary-soft)" : undefined,
+                        }}
+                      >
+                        <img src={src} alt={`Ícone ${n}`} className="h-full w-full object-cover" />
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {avatarUrl && (
+                <button
+                  type="button"
+                  onClick={() => { updateAvatar(null); setPickerOpen(false); setAvatarError(null); }}
+                  className="flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-[14px] font-semibold transition hover:opacity-80"
+                  style={{ background: "var(--dm-bg-elevated)", color: "var(--dm-text-secondary)", border: "1px solid var(--dm-border-default)" }}
+                >
+                  <Trash2 size={14} />
+                  Remover foto
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => { setPickerOpen(false); setAvatarError(null); }}
+                className="mt-1 rounded-xl px-4 py-2.5 text-[13px] transition hover:opacity-70"
+                style={{ color: "var(--dm-text-tertiary)" }}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
