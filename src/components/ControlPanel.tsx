@@ -616,33 +616,62 @@ function EntryRow({ entry, categorySlug, onDeleted, onToggled, onUpdated }: Entr
   const selCount  = entry.selectedCampaignIds.length || campCount;
   const filterLabel = getInternalFilterLabel(categorySlug, entry.internalFilter);
 
-  // ── Edição inline de selectedCampaignIds ────────────────────────────────────
+  // ── Edição inline de selectedCampaignIds — draft state ─────────────────────
   const allCampIds = useMemo(() => entry.campaigns.map(c => c.id), [entry.campaigns]);
 
-  const isChecked = (campId: string) =>
-    entry.selectedCampaignIds.length === 0 || entry.selectedCampaignIds.includes(campId);
+  // null = todas selecionadas (espelha a convenção [] do banco); string[] = subset explícito
+  const [draftIds, setDraftIds] = useState<string[] | null>(null);
 
-  const persistSelection = async (newSelected: string[]) => {
-    // Convenção: array vazio = todos selecionados
-    const finalSelected = newSelected.length === allCampIds.length ? [] : newSelected;
+  // Inicializa o draft sempre que o painel é aberto
+  useEffect(() => {
+    if (!expanded) return;
+    setDraftIds(entry.selectedCampaignIds.length === 0 ? null : [...entry.selectedCampaignIds]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expanded]); // omite entry intencionalmente — só reseta ao abrir/fechar
+
+  // isDirty: true quando o draft difere do estado salvo
+  const isDirty = useMemo(() => {
+    if (draftIds === null) return entry.selectedCampaignIds.length !== 0;
+    if (entry.selectedCampaignIds.length === 0) return draftIds.length !== 0;
+    return (
+      draftIds.length !== entry.selectedCampaignIds.length ||
+      draftIds.some(id => !entry.selectedCampaignIds.includes(id))
+    );
+  }, [draftIds, entry.selectedCampaignIds]);
+
+  // Checkbox lê do draft — badge de contagem lê do estado salvo (sem flicker)
+  const isChecked      = (campId: string) => draftIds === null || draftIds.includes(campId);
+  const selCountDraft  = draftIds === null ? campCount : draftIds.length;
+
+  // Handlers de draft — sem chamada de API
+  const handleToggleCampaign = (campId: string) => {
+    setDraftIds(prev => {
+      const current = prev === null ? allCampIds : prev;
+      return current.includes(campId)
+        ? current.filter(id => id !== campId)
+        : [...current, campId];
+    });
+  };
+
+  const handleSelectAll   = () => setDraftIds(null); // null = todas
+  const handleDeselectAll = () => setDraftIds([]);   // [] = nenhuma — usuário escolhe do zero
+
+  // Salvar: uma única chamada ao Supabase com a seleção final
+  const handleSave = async () => {
     setSaving(true);
     try {
-      const updated = await upsertUserAccountEntry({ ...entry, selectedCampaignIds: finalSelected });
+      // Convenção: se draft = todas → armazena [] (significa "todas" no banco)
+      const toStore = draftIds === null || draftIds.length === allCampIds.length ? [] : draftIds;
+      const updated = await upsertUserAccountEntry({ ...entry, selectedCampaignIds: toStore });
       onUpdated(updated);
-    } catch { /* fire-and-forget — state reverts on next render */ } finally { setSaving(false); }
+      setExpanded(false);
+    } catch { /* mantém isDirty — usuário pode tentar novamente */ } finally { setSaving(false); }
   };
 
-  const handleToggleCampaign = (campId: string) => {
-    // Expande o array implícito [] → todos os IDs, depois toggle o campId
-    const current = entry.selectedCampaignIds.length === 0 ? allCampIds : [...entry.selectedCampaignIds];
-    const next = current.includes(campId) ? current.filter(id => id !== campId) : [...current, campId];
-    void persistSelection(next);
-  };
-
-  const handleSelectAll  = () => void persistSelection([]); // [] = todos
-  const handleDeselectAll = () => {
-    // Mantém apenas o primeiro para evitar estado "nenhum" que não é suportado
-    void persistSelection(allCampIds.slice(0, 1));
+  // Cancelar: reverte draft e fecha o painel
+  const handleCancel = () => {
+    setDraftIds(null);
+    setExpanded(false);
   };
 
   const handleDelete = async () => {
@@ -714,7 +743,7 @@ function EntryRow({ entry, categorySlug, onDeleted, onToggled, onUpdated }: Entr
         </button>
       </div>
 
-      {/* Campaign list (expanded) — checkboxes interativos */}
+      {/* Campaign list (expanded) — checkboxes interativos com draft local */}
       {expanded && campCount > 0 && (
         <div className="mx-2 mb-2 rounded border overflow-hidden"
           style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
@@ -722,17 +751,16 @@ function EntryRow({ entry, categorySlug, onDeleted, onToggled, onUpdated }: Entr
           <div className="flex items-center justify-between gap-2 border-b px-2 py-1.5"
             style={{ borderColor: "var(--dm-border-subtle)", backgroundColor: "var(--dm-bg-elevated)" }}>
             <span className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
-              {selCount === campCount ? "Todas as campanhas" : `${selCount} de ${campCount} selecionadas`}
+              {selCountDraft === campCount ? "Todas as campanhas" : `${selCountDraft} de ${campCount} selecionadas`}
             </span>
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2">
               <button type="button" onClick={handleSelectAll} disabled={saving}
                 className="text-[9px] font-semibold transition hover:opacity-70 disabled:opacity-40"
                 style={{ color: "var(--dm-brand-500)" }}>Selecionar todas</button>
               <span style={{ color: "var(--dm-border-default)" }}>·</span>
-              <button type="button" onClick={handleDeselectAll} disabled={saving || selCount <= 1}
+              <button type="button" onClick={handleDeselectAll} disabled={saving || selCountDraft === 0}
                 className="text-[9px] font-semibold transition hover:opacity-70 disabled:opacity-40"
                 style={{ color: "var(--dm-text-tertiary)" }}>Limpar</button>
-              {saving && <Loader2 size={9} className="animate-spin" style={{ color: "var(--dm-brand-500)" }} />}
             </div>
           </div>
           {/* Campaign rows */}
@@ -761,6 +789,23 @@ function EntryRow({ entry, categorySlug, onDeleted, onToggled, onUpdated }: Entr
               );
             })}
           </div>
+          {/* Footer: Salvar / Cancelar — só aparece quando há alterações pendentes */}
+          {isDirty && (
+            <div className="flex items-center justify-end gap-2 border-t px-2 py-1.5"
+              style={{ borderColor: "var(--dm-border-subtle)", backgroundColor: "var(--dm-bg-elevated)" }}>
+              <button type="button" onClick={handleCancel} disabled={saving}
+                className="text-[10px] font-semibold transition hover:opacity-70 disabled:opacity-40"
+                style={{ color: "var(--dm-text-tertiary)" }}>
+                Cancelar
+              </button>
+              <button type="button" onClick={() => void handleSave()} disabled={saving}
+                className="flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+                style={{ backgroundColor: "var(--dm-brand-500)" }}>
+                {saving ? <Loader2 size={9} className="animate-spin" /> : <Save size={9} />}
+                Salvar
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
