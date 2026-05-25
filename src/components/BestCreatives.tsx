@@ -147,7 +147,7 @@ function AdThumb({ ad, onClick, src }: { ad: MetaCampaignCreative; onClick?: () 
         <img
           src={imgSrc}
           alt={ad.adName}
-          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+          className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
           onError={() => setFailed(true)}
         />
       ) : (
@@ -483,9 +483,16 @@ function PreviewModal({
   allInsights:  Map<string, AdInsight>;
   onNavigate:   (ad: MetaCampaignCreative) => void;
 }) {
-  const [showIframe, setShowIframe] = useState(false);
+  const [showIframe, setShowIframe]   = useState(false);
+  const [activeTab,  setActiveTab]    = useState<"imagem" | "nota">("imagem");
   const currentIndex = allAds.findIndex((a) => a.adId === ad.adId);
   const bestThumbnail = useHighResThumbnail(ad, accessToken);
+
+  // Reset view state when navigating to a different ad
+  useEffect(() => {
+    setShowIframe(false);
+    setActiveTab("imagem");
+  }, [ad.adId]);
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
@@ -559,139 +566,203 @@ function PreviewModal({
         {/* Brand stripe */}
         <div className="absolute left-0 right-0 top-0 z-10 h-[3px]" style={{ background: DRAWER_GRAD }} />
 
-        {/* ── LEFT: Modern creative viewer ── */}
+        {/* ── LEFT: Creative viewer ── */}
         <div
-          className="flex flex-shrink-0 flex-col items-center gap-4 overflow-y-auto px-5 py-6"
+          className="flex flex-shrink-0 flex-col gap-3 overflow-y-auto px-5 py-5"
           style={{
             width: 440,
             backgroundColor: "var(--dm-bg-elevated)",
             borderRight: "1px solid var(--dm-border-subtle)",
           }}
         >
-          {/* Creative display — clean floating card, no phone frame */}
+          {/* ── Tabs: IMAGEM | NOTA ── */}
           <div
-            className="relative w-full overflow-hidden rounded-2xl"
-            style={{
-              aspectRatio: getViewerAspect(ad, showIframe),
-              minHeight: showIframe ? 460 : undefined,
-              maxHeight: showIframe ? 620 : (
-                // 9:16 at 440px → 782px natural height — cap so modal stays usable
-                (/\/reel\//.test(ad.instagramUrl ?? "") || ad.mediaType === "video")
-                  ? 580 : undefined
-              ),
-              backgroundColor: "#0a0a14",
-              boxShadow: "0 12px 40px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.05)",
-            }}
+            className="flex w-full gap-1 rounded-xl p-1"
+            style={{ backgroundColor: "var(--dm-bg-surface)", border: "1px solid var(--dm-border-subtle)" }}
           >
-            {/* Media type label — top-left */}
-            <div style={{
-              position: "absolute", top: 10, left: 10, zIndex: 6,
-              padding: "2px 8px", borderRadius: 6,
-              backgroundColor: "rgba(0,0,0,0.62)",
-              backdropFilter: "blur(6px)",
-              pointerEvents: "none",
-            }}>
-              <span style={{ color: "rgba(255,255,255,0.82)", fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em" }}>
-                {TYPE_LABEL[ad.mediaType]}
-              </span>
-            </div>
-
-            {/* Score badge — top-right */}
-            {score !== null && (
-              <div style={{
-                position: "absolute", top: 10, right: 10, zIndex: 6,
-                padding: "3px 9px", borderRadius: 6,
-                backgroundColor: "rgba(0,0,0,0.70)",
-                border: `1px solid ${scoreColor}55`,
-                backdropFilter: "blur(6px)",
-                pointerEvents: "none",
-              }}>
-                <span style={{ color: scoreColor, fontSize: 11, fontWeight: 800 }}>{score}</span>
-              </div>
-            )}
-
-            {/* Creative content */}
-            {showIframe ? (
-              ad.instagramUrl && !/\/stories\//.test(ad.instagramUrl)
-                ? <AdInstagramEmbed ad={ad} fallbackToken={accessToken} />
-                : <AdIframe ad={ad} accessToken={accessToken} />
-            ) : bestThumbnail ? (
-              <img src={bestThumbnail} alt={ad.adName} className="h-full w-full object-cover" />
-            ) : (
-              <div className="flex h-full flex-col items-center justify-center gap-2"
-                style={{ color: "rgba(255,255,255,0.18)" }}>
-                {ad.mediaType === "video" ? <Film size={36} /> : <ImageIcon size={36} />}
-                <span style={{ fontSize: 11, color: "rgba(255,255,255,0.28)" }}>Sem preview</span>
-              </div>
-            )}
-
-            {/* Brand accent stripe at bottom */}
-            <div style={{
-              position: "absolute", bottom: 0, left: 0, right: 0,
-              height: 3, background: DRAWER_GRAD, pointerEvents: "none",
-            }} />
+            {(["imagem", "nota"] as const).map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => setActiveTab(tab)}
+                className="flex-1 rounded-lg py-1.5 text-[11px] font-bold uppercase tracking-wider transition"
+                style={{
+                  backgroundColor: activeTab === tab ? "var(--dm-brand-500)" : "transparent",
+                  color: activeTab === tab ? "#fff" : "var(--dm-text-tertiary)",
+                }}
+              >
+                {tab === "imagem" ? "Imagem" : "Nota"}
+              </button>
+            ))}
           </div>
 
-          {/* Nav arrows + counter */}
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => { setShowIframe(false); onNavigate(allAds[currentIndex - 1]); }}
-              disabled={currentIndex <= 0}
-              className="flex h-8 w-8 items-center justify-center rounded-xl text-[18px] font-bold transition hover:opacity-80 disabled:opacity-20"
-              style={{ backgroundColor: "var(--dm-bg-surface)", border: "1px solid var(--dm-border-default)", color: "var(--dm-text-secondary)" }}
-            >‹</button>
-            <span className="text-[11px] font-semibold" style={{ color: "var(--dm-text-tertiary)", minWidth: 52, textAlign: "center" }}>
-              {currentIndex + 1} / {allAds.length}
-            </span>
-            <button
-              type="button"
-              onClick={() => { setShowIframe(false); onNavigate(allAds[currentIndex + 1]); }}
-              disabled={currentIndex >= allAds.length - 1}
-              className="flex h-8 w-8 items-center justify-center rounded-xl text-[18px] font-bold transition hover:opacity-80 disabled:opacity-20"
-              style={{ backgroundColor: "var(--dm-bg-surface)", border: "1px solid var(--dm-border-default)", color: "var(--dm-text-secondary)" }}
-            >›</button>
-          </div>
+          {/* ── IMAGEM tab ── */}
+          {activeTab === "imagem" && (
+            <>
+              {/* Creative display */}
+              <div
+                className="relative w-full overflow-hidden rounded-2xl"
+                style={{
+                  aspectRatio: getViewerAspect(ad, showIframe),
+                  minHeight: showIframe ? 460 : undefined,
+                  maxHeight: showIframe ? 620 : (
+                    (/\/reel\//.test(ad.instagramUrl ?? "") || ad.mediaType === "video")
+                      ? 580 : undefined
+                  ),
+                  backgroundColor: "#0a0a14",
+                  boxShadow: "0 12px 40px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.05)",
+                }}
+              >
+                {/* Media type label — top-left */}
+                <div style={{
+                  position: "absolute", top: 10, left: 10, zIndex: 6,
+                  padding: "2px 8px", borderRadius: 6,
+                  backgroundColor: "rgba(0,0,0,0.62)",
+                  backdropFilter: "blur(6px)",
+                  pointerEvents: "none",
+                }}>
+                  <span style={{ color: "rgba(255,255,255,0.82)", fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em" }}>
+                    {TYPE_LABEL[ad.mediaType]}
+                  </span>
+                </div>
 
-          {/* Legenda do anúncio */}
-          {ad.body && !showIframe && (
-            <div
-              className="w-full rounded-xl p-3"
-              style={{
-                backgroundColor: "var(--dm-bg-surface)",
-                border: "1px solid var(--dm-border-subtle)",
-                maxHeight: 110,
-                overflowY: "auto",
-              }}
-            >
-              <p className="mb-1 text-[9px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>
-                Legenda
-              </p>
-              <p className="text-[11px] leading-relaxed" style={{ color: "var(--dm-text-secondary)", whiteSpace: "pre-line" }}>
-                {ad.body.length > 300 ? ad.body.slice(0, 300) + "…" : ad.body}
-              </p>
-            </div>
+                {/* Score badge — top-right */}
+                {score !== null && (
+                  <div style={{
+                    position: "absolute", top: 10, right: 10, zIndex: 6,
+                    padding: "3px 9px", borderRadius: 6,
+                    backgroundColor: "rgba(0,0,0,0.70)",
+                    border: `1px solid ${scoreColor}55`,
+                    backdropFilter: "blur(6px)",
+                    pointerEvents: "none",
+                  }}>
+                    <span style={{ color: scoreColor, fontSize: 11, fontWeight: 800 }}>{score}</span>
+                  </div>
+                )}
+
+                {/* Creative content */}
+                {showIframe ? (
+                  ad.instagramUrl && !/\/stories\//.test(ad.instagramUrl)
+                    ? <AdInstagramEmbed ad={ad} fallbackToken={accessToken} />
+                    : <AdIframe ad={ad} accessToken={accessToken} />
+                ) : bestThumbnail ? (
+                  <img src={bestThumbnail} alt={ad.adName} className="absolute inset-0 h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full flex-col items-center justify-center gap-2"
+                    style={{ color: "rgba(255,255,255,0.18)" }}>
+                    {ad.mediaType === "video" ? <Film size={36} /> : <ImageIcon size={36} />}
+                    <span style={{ fontSize: 11, color: "rgba(255,255,255,0.28)" }}>Sem preview</span>
+                  </div>
+                )}
+
+                {/* Brand accent stripe at bottom */}
+                <div style={{
+                  position: "absolute", bottom: 0, left: 0, right: 0,
+                  height: 3, background: DRAWER_GRAD, pointerEvents: "none",
+                }} />
+              </div>
+
+              {/* Legenda do anúncio — always visible in IMAGEM tab */}
+              {ad.body && (
+                <div
+                  className="w-full rounded-xl p-3"
+                  style={{
+                    backgroundColor: "var(--dm-bg-surface)",
+                    border: "1px solid var(--dm-border-subtle)",
+                    maxHeight: 110,
+                    overflowY: "auto",
+                  }}
+                >
+                  <p className="mb-1 text-[9px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>
+                    Legenda
+                  </p>
+                  <p className="text-[11px] leading-relaxed" style={{ color: "var(--dm-text-secondary)", whiteSpace: "pre-line" }}>
+                    {ad.body.length > 300 ? ad.body.slice(0, 300) + "…" : ad.body}
+                  </p>
+                </div>
+              )}
+
+              {/* Nav arrows + counter */}
+              <div className="flex items-center justify-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => { setShowIframe(false); onNavigate(allAds[currentIndex - 1]); }}
+                  disabled={currentIndex <= 0}
+                  className="flex h-8 w-8 items-center justify-center rounded-xl text-[18px] font-bold transition hover:opacity-80 disabled:opacity-20"
+                  style={{ backgroundColor: "var(--dm-bg-surface)", border: "1px solid var(--dm-border-default)", color: "var(--dm-text-secondary)" }}
+                >‹</button>
+                <span className="text-[11px] font-semibold" style={{ color: "var(--dm-text-tertiary)", minWidth: 52, textAlign: "center" }}>
+                  {currentIndex + 1} / {allAds.length}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => { setShowIframe(false); onNavigate(allAds[currentIndex + 1]); }}
+                  disabled={currentIndex >= allAds.length - 1}
+                  className="flex h-8 w-8 items-center justify-center rounded-xl text-[18px] font-bold transition hover:opacity-80 disabled:opacity-20"
+                  style={{ backgroundColor: "var(--dm-bg-surface)", border: "1px solid var(--dm-border-default)", color: "var(--dm-text-secondary)" }}
+                >›</button>
+              </div>
+
+              {/* Visualizar ao vivo — full-width base button */}
+              {(accessToken || ad.instagramUrl) && (
+                <button
+                  type="button"
+                  onClick={() => setShowIframe(!showIframe)}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-[12px] font-bold transition hover:opacity-80"
+                  style={{
+                    background: showIframe ? "var(--dm-bg-surface)" : DRAWER_GRAD,
+                    color: showIframe ? "var(--dm-text-secondary)" : "#fff",
+                    border: showIframe ? "1px solid var(--dm-border-default)" : "none",
+                    boxShadow: showIframe ? "none" : "0 4px 14px rgba(49,52,145,0.28)",
+                  }}
+                >
+                  {showIframe ? (
+                    <><ImageIcon size={12} /> Ver imagem</>
+                  ) : (
+                    <><Play size={12} fill="currentColor" /> Visualizar ao vivo</>
+                  )}
+                </button>
+              )}
+            </>
           )}
 
-          {/* Visualizar ao vivo */}
-          {(accessToken || ad.instagramUrl) && (
-            <button
-              type="button"
-              onClick={() => setShowIframe(!showIframe)}
-              className="flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-[12px] font-bold text-white transition hover:opacity-80"
-              style={{
-                background: showIframe ? "var(--dm-bg-surface)" : DRAWER_GRAD,
-                color: showIframe ? "var(--dm-text-secondary)" : "#fff",
-                border: showIframe ? "1px solid var(--dm-border-default)" : "none",
-                boxShadow: showIframe ? "none" : "0 4px 14px rgba(49,52,145,0.28)",
-              }}
-            >
-              {showIframe ? (
-                <><ImageIcon size={12} /> Ver imagem</>
-              ) : (
-                <><Play size={12} fill="currentColor" /> Visualizar ao vivo</>
+          {/* ── NOTA tab — headline + full copy ── */}
+          {activeTab === "nota" && (
+            <div className="flex w-full flex-col gap-3">
+              {ad.headline && (
+                <div
+                  className="rounded-xl p-4"
+                  style={{ backgroundColor: "var(--dm-bg-surface)", border: "1px solid var(--dm-border-subtle)" }}
+                >
+                  <p className="mb-1.5 text-[9px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>
+                    Headline
+                  </p>
+                  <p className="text-[13px] font-semibold leading-snug" style={{ color: "var(--dm-text-primary)" }}>
+                    {ad.headline}
+                  </p>
+                </div>
               )}
-            </button>
+              {ad.body && (
+                <div
+                  className="rounded-xl p-4"
+                  style={{ backgroundColor: "var(--dm-bg-surface)", border: "1px solid var(--dm-border-subtle)" }}
+                >
+                  <p className="mb-1.5 text-[9px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>
+                    Legenda / Copy
+                  </p>
+                  <p className="text-[12px] leading-relaxed" style={{ color: "var(--dm-text-secondary)", whiteSpace: "pre-line" }}>
+                    {ad.body}
+                  </p>
+                </div>
+              )}
+              {!ad.headline && !ad.body && (
+                <div className="flex flex-1 items-center justify-center py-12">
+                  <p className="text-[12px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                    Nenhum texto disponível para este criativo.
+                  </p>
+                </div>
+              )}
+            </div>
           )}
         </div>
 
