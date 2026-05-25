@@ -64,6 +64,22 @@ export async function GET(request: NextRequest) {
     media_count: number;
   };
 
+  // ── 1b. Quick token validation ───────────────────────────────────────────────
+  const validateRes = await fetch(
+    `https://graph.facebook.com/${META_API_VERSION}/${ibaId}?` +
+    new URLSearchParams({ access_token: acc.access_token, fields: "id,followers_count" }),
+  );
+  const validateJson = await validateRes.json() as { id?: string; error?: { message?: string; code?: number } };
+  if (!validateRes.ok || validateJson.error) {
+    console.warn("[live-history] token invalid:", validateJson.error?.message);
+    return NextResponse.json({
+      error:       "Token inválido ou sem permissão",
+      tokenError:  validateJson.error?.message ?? "Token rejeitado pela Meta API",
+      history:     [],
+      _diag:       { tokenValid: false, tokenError: validateJson.error?.message ?? null },
+    }, { status: 401 });
+  }
+
   const since = toUnix(daysAgo(30));
   const until = toUnix(todayStr()) + 86400;
 
@@ -102,12 +118,20 @@ export async function GET(request: NextRequest) {
 
   // Log diagnostics
   const diag = {
+    tokenValid:     true,
     followsStatus:  followsResult.status,
     followsError:   followsResult.status === "fulfilled" ? (followsResult.value.error?.message ?? null) : String((followsResult as PromiseRejectedResult).reason),
     metricsStatus:  metricsResult.status,
     metricsError:   metricsResult.status === "fulfilled" ? (metricsResult.value.error?.message ?? null) : String((metricsResult as PromiseRejectedResult).reason),
     followsMetrics: followsData.map(d => `${d.name}(${d.values?.length ?? 0}pts)`),
     otherMetrics:   metricsData.map(d => `${d.name}(${d.values?.length ?? 0}pts)`),
+    // Per-metric point counts for UI display
+    metricPts: {
+      follows_and_unfollows: followsData.find(d => d.name === "follows_and_unfollows")?.values?.length ?? 0,
+      reach:                 metricsData.find(d => d.name === "reach")?.values?.length ?? 0,
+      impressions:           metricsData.find(d => d.name === "impressions")?.values?.length ?? 0,
+      profile_visits:        metricsData.find(d => d.name === "profile_visits")?.values?.length ?? 0,
+    },
   };
   console.log("[live-history] diag:", JSON.stringify(diag));
 

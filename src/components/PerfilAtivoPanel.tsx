@@ -162,6 +162,19 @@ function GainsTooltip({ active, payload, label }: {
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
+type LiveDiag = {
+  tokenValid: boolean;
+  tokenError?: string | null;
+  followsError?: string | null;
+  metricsError?: string | null;
+  metricPts?: {
+    follows_and_unfollows: number;
+    reach: number;
+    impressions: number;
+    profile_visits: number;
+  };
+};
+
 export function PerfilAtivoPanel({
   igUserId, dateFrom, dateTo,
 }: { igUserId: string; dateFrom: string; dateTo: string }) {
@@ -170,6 +183,7 @@ export function PerfilAtivoPanel({
   const [loading, setLoading]   = useState(true);
   const [isMock, setIsMock]     = useState(false);
   const [notFound, setNotFound] = useState(false);
+  const [liveDiag, setLiveDiag] = useState<LiveDiag | null>(null);
 
   useEffect(() => {
     if (!igUserId) return;
@@ -204,8 +218,18 @@ export function PerfilAtivoPanel({
             const liveRes = await fetch(
               `/api/instagram/accounts/live-history?ibaId=${encodeURIComponent(igUserId)}`,
             );
+            const liveData = await liveRes.json() as {
+              history?: IGHistoryPoint[];
+              _diag?: LiveDiag & { metricPts?: LiveDiag["metricPts"] };
+              tokenError?: string;
+            };
+            // Capture diagnostic for UI display
+            if (liveData._diag) {
+              setLiveDiag(liveData._diag as LiveDiag);
+            } else if (!liveRes.ok) {
+              setLiveDiag({ tokenValid: false, tokenError: liveData.tokenError ?? `HTTP ${liveRes.status}` });
+            }
             if (liveRes.ok) {
-              const liveData = await liveRes.json() as { history?: IGHistoryPoint[] };
               const liveHistory = Array.isArray(liveData.history) ? liveData.history : [];
               if (liveHistory.length > 0) {
                 // Merge: live data fills dates not yet in Supabase
@@ -319,6 +343,70 @@ export function PerfilAtivoPanel({
           <span className="text-xs" style={{ color: "#F59E0B" }}>
             Dados de demonstração — Supabase não acessível.
           </span>
+        </div>
+      )}
+
+      {/* ── Live API diagnostic bar ── */}
+      {!isMock && liveDiag && (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border px-3 py-2 text-[11px]"
+          style={
+            !liveDiag.tokenValid
+              ? { background: "rgba(238,93,80,0.08)", borderColor: "rgba(238,93,80,0.25)" }
+              : Object.values(liveDiag.metricPts ?? {}).some(v => v > 0)
+                ? { background: "rgba(5,205,153,0.08)", borderColor: "rgba(5,205,153,0.25)" }
+                : { background: "rgba(245,158,11,0.08)", borderColor: "rgba(245,158,11,0.25)" }
+          }>
+          {!liveDiag.tokenValid ? (
+            <>
+              <span style={{ color: "#EE5D50" }} className="font-semibold">⚠ Token inválido</span>
+              <span style={{ color: "var(--dm-text-tertiary)" }}>{liveDiag.tokenError}</span>
+            </>
+          ) : (
+            <>
+              <span className="font-semibold" style={{ color: "var(--dm-text-secondary)" }}>Live API</span>
+              {liveDiag.followsError && (
+                <span className="rounded px-1.5 py-0.5" style={{ background: "rgba(238,93,80,0.15)", color: "#EE5D50" }}>
+                  follows: erro — {liveDiag.followsError.slice(0, 60)}
+                </span>
+              )}
+              {liveDiag.metricsError && (
+                <span className="rounded px-1.5 py-0.5" style={{ background: "rgba(238,93,80,0.15)", color: "#EE5D50" }}>
+                  metrics: erro — {liveDiag.metricsError.slice(0, 60)}
+                </span>
+              )}
+              {liveDiag.metricPts && Object.entries(liveDiag.metricPts).map(([k, v]) => (
+                <span key={k} className="rounded px-1.5 py-0.5 tabular-nums"
+                  style={v > 0
+                    ? { background: "rgba(5,205,153,0.15)", color: "#05CD99" }
+                    : { background: "rgba(148,163,184,0.1)", color: "var(--dm-text-tertiary)" }}>
+                  {k.replace("_and_", "/")}:{" "}<strong>{v}pt{v !== 1 ? "s" : ""}</strong>
+                </span>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── Scarcity banner when data accumulating ── */}
+      {!isMock && history.length < 7 && liveDiag && liveDiag.tokenValid &&
+        liveDiag.metricPts && Object.values(liveDiag.metricPts).every(v => v <= 1) && (
+        <div className="flex items-start gap-2 rounded-lg border px-3 py-2.5"
+          style={{ background: "rgba(96,165,250,0.07)", borderColor: "rgba(96,165,250,0.2)" }}>
+          <span className="mt-0.5 text-sm">📅</span>
+          <div className="space-y-0.5">
+            <p className="text-[12px] font-semibold" style={{ color: "#60A5FA" }}>
+              Acumulando dados diariamente
+            </p>
+            <p className="text-[11px]" style={{ color: "var(--dm-text-secondary)" }}>
+              A Meta API armazena insights a partir da data de conexão. Os gráficos ficarão completos
+              em 30 dias de coleta automática via sync diário.
+            </p>
+            <p className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
+              Se os campos ficam em 0, verifique se <strong>instagram_manage_insights</strong> tem
+              acesso Advanced no Meta App e se o Usuário de Sistema tem papel de{" "}
+              <strong>Administrador</strong> (não apenas Analista).
+            </p>
+          </div>
         </div>
       )}
 

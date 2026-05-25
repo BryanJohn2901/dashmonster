@@ -3085,22 +3085,22 @@ function ProfileDetailView({
             </div>
           </div>
 
-          {/* Template selector + Date range — hidden on instagram tab */}
-          {profileTab !== "instagram" && (
+          {/* Template selector (hidden on instagram tab) + Date range (always visible) */}
           <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto">
-            <TemplateSelector
-              current={templateId}
-              onChange={handleTemplateChange}
-              variant="dropdown"
-              onOpenBuilder={() => setShowBuilder(true)}
-            />
+            {profileTab !== "instagram" && (
+              <TemplateSelector
+                current={templateId}
+                onChange={handleTemplateChange}
+                variant="dropdown"
+                onOpenBuilder={() => setShowBuilder(true)}
+              />
+            )}
             <ProfileDateRange
               dateFrom={dateFrom}
               dateTo={dateTo}
               onApply={(from, to) => { setDateFrom(from); setDateTo(to); persistDates(from, to); }}
             />
           </div>
-          )}
         </div>
 
         {/* Campaign tabs — hidden on instagram tab */}
