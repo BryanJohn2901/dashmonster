@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
       `https://graph.facebook.com/${META_API_VERSION}/${ibaId}/insights?` +
       new URLSearchParams({
         access_token: accessToken,
-        metric: "follows_and_unfollows,profile_visits,reach,impressions",
+        metric: "reach,impressions,profile_visits",
         period: "day",
         since: String(toUnix(daysAgo(30))),
         until: String(toUnix(todayStr()) + 86400),
@@ -129,23 +129,15 @@ export async function POST(request: NextRequest) {
     error?: { message?: string };
   };
 
+  if (insightsJson.error) {
+    console.warn("[IG register] insights error:", insightsJson.error.message);
+  }
   const insightsData = insightsJson.error ? [] : (insightsJson.data ?? []);
 
   const byName = (metric: string) =>
     insightsData.find((d) => d.name === metric)?.values ?? [];
 
-  // follows_and_unfollows: { value: { follows: N, unfollows: N }, end_time }
-  // fallback to follower_count if present (older API)
-  const rawFollows = insightsData.find((d) => d.name === "follows_and_unfollows");
-  const followerDeltas: Array<{ value: number; end_time: string }> = rawFollows
-    ? rawFollows.values.map((v) => {
-        const val = typeof v.value === "object"
-          ? ((v.value as { follows?: number; unfollows?: number }).follows ?? 0)
-            - ((v.value as { follows?: number; unfollows?: number }).unfollows ?? 0)
-          : (v.value as number);
-        return { value: val, end_time: v.end_time };
-      })
-    : byName("follower_count");
+  const followerDeltas: Array<{ value: number; end_time: string }> = [];
 
   const profileViewsArr = byName("profile_visits").length ? byName("profile_visits") : byName("profile_views");
   const reachArr        = byName("reach");
