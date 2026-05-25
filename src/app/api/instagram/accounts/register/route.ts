@@ -203,6 +203,15 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Diagnostic: log what insights returned
+  const insightsDiag = {
+    hasError: Boolean(insightsJson.error),
+    errorMsg: insightsJson.error?.message ?? null,
+    metricsFound: insightsData.map(d => `${d.name}(${d.values?.length ?? 0}pts)`),
+    totalRows: historyRows.length,
+  };
+  console.log("[IG register] insights diag:", JSON.stringify(insightsDiag));
+
   return NextResponse.json({
     account: {
       id:             accountId,
@@ -211,5 +220,6 @@ export async function POST(request: NextRequest) {
       followersCount: (accountData as { followers_count: number }).followers_count,
     },
     daysBackfilled,
+    _diag: insightsDiag,
   });
 }

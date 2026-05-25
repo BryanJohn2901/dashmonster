@@ -1250,11 +1250,12 @@ function InstagramIntegrationSection() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ instagramBusinessAccountId: ibaId.trim(), accessToken: token }),
       });
-      const json = await res.json() as { account?: { username: string }; daysBackfilled?: number; error?: string };
+      const json = await res.json() as { account?: { username: string }; daysBackfilled?: number; error?: string; _diag?: { metricsFound: string[]; errorMsg: string | null } };
       if (!res.ok || json.error) throw new Error(json.error ?? "Erro desconhecido");
+      const diagMsg = json._diag ? ` [diag: ${json._diag.errorMsg ?? json._diag.metricsFound.join(", ") || "sem métricas"}]` : "";
       setStatuses(prev => ({
         ...prev,
-        [ibaId]: { ibaId, state: "success", daysBackfilled: json.daysBackfilled, message: `@${json.account?.username ?? "?"} registrado` },
+        [ibaId]: { ibaId, state: "success", daysBackfilled: json.daysBackfilled, message: `@${json.account?.username ?? "?"} registrado${diagMsg}` },
       }));
       // Limpa campo manual após sucesso
       if (ibaId === customIba.trim()) setCustomIba("");
