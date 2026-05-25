@@ -1218,8 +1218,27 @@ function InstagramIntegrationSection() {
     void fetchIgAccounts(igToken.trim());
   };
 
-  // Carrega contas ao montar se já há token salvo
-  useEffect(() => { void fetchIgAccounts(igToken); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Carrega contas ao montar se já há token salvo + status do Supabase
+  useEffect(() => {
+    void fetchIgAccounts(igToken);
+    // Pre-popula statuses com contas já registradas no Supabase
+    fetch("/api/instagram/history", { method: "POST" })
+      .then(r => r.json())
+      .then((accounts: Array<{ instagramBusinessAccountId: string; username: string; historyDays?: number }>) => {
+        if (!Array.isArray(accounts)) return;
+        setStatuses(prev => {
+          const next = { ...prev };
+          for (const acc of accounts) {
+            const id = acc.instagramBusinessAccountId;
+            if (!next[id] || next[id]!.state === "idle") {
+              next[id] = { ibaId: id, state: "success", daysBackfilled: acc.historyDays ?? 0, message: `@${acc.username} registrado` };
+            }
+          }
+          return next;
+        });
+      })
+      .catch(() => {/* silent */});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const doRegister = async (ibaId: string) => {
     const token = igToken.trim();

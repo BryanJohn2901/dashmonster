@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
       `https://graph.facebook.com/${META_API_VERSION}/${ibaId}/insights?` +
       new URLSearchParams({
         access_token: accessToken,
-        metric: "reach,impressions,profile_visits",
+        metric: "reach,impressions",
         period: "day",
         since: String(toUnix(daysAgo(30))),
         until: String(toUnix(todayStr()) + 86400),

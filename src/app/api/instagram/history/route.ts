@@ -134,7 +134,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const accounts: IGTrackedAccount[] = (data ?? []).map((raw: Record<string, unknown>) => ({
+  // Count history rows per account
+  const accountIds = (data ?? []).map((r: Record<string, unknown>) => r.id as string);
+  const historyCounts = new Map<string, number>();
+  if (accountIds.length > 0) {
+    const { data: histData } = await sb
+      .from("instagram_account_history")
+      .select("account_id")
+      .in("account_id", accountIds);
+    for (const row of (histData ?? []) as Array<{ account_id: string }>) {
+      historyCounts.set(row.account_id, (historyCounts.get(row.account_id) ?? 0) + 1);
+    }
+  }
+
+  const accounts = (data ?? []).map((raw: Record<string, unknown>) => ({
     id:                         raw.id as string,
     instagramBusinessAccountId: raw.instagram_business_account_id as string,
     username:                   raw.username as string,
@@ -149,6 +162,7 @@ export async function POST(request: NextRequest) {
     isFavorite:                 Boolean(raw.is_favorite),
     groupId:                    raw.group_id as string | null,
     updatedAt:                  raw.updated_at as string,
+    historyDays:                historyCounts.get(raw.id as string) ?? 0,
   }));
 
   return NextResponse.json(accounts);
