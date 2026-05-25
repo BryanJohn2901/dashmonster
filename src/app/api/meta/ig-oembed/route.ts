@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
       new URLSearchParams({
         url,
         access_token: accessToken,
+        maxwidth: "1440",   // pede thumbnail até 1440px — cobre retina 3× em container 440px
         fields: "thumbnail_url,author_name,title",
       }).toString();
 

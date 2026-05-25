@@ -256,7 +256,8 @@ function getViewerAspect(ad: MetaCampaignCreative, showIframe: boolean): string 
   const url = ad.instagramUrl ?? "";
   if (/\/reel\//.test(url) || ad.mediaType === "video") return "9/16";
   if (/\/stories\//.test(url)) return "9/16";
-  return "4/5"; // feed image / carousel / unknown
+  if (ad.mediaType === "carousel") return "1/1"; // carrossel é quadrado (1:1) no feed
+  return "4/5"; // feed image
 }
 
 // ─── Creative Card ────────────────────────────────────────────────────────────
@@ -513,7 +514,7 @@ function PreviewModal({
       <div
         className="relative flex w-full overflow-hidden rounded-2xl"
         style={{
-          maxWidth: 960,
+          maxWidth: 1100,
           maxHeight: "90vh",
           backgroundColor: "var(--dm-bg-surface)",
           border: "1px solid var(--dm-border-default)",
@@ -526,9 +527,9 @@ function PreviewModal({
 
         {/* ── LEFT: Modern creative viewer ── */}
         <div
-          className="flex flex-shrink-0 flex-col items-center gap-4 px-5 py-6"
+          className="flex flex-shrink-0 flex-col items-center gap-4 overflow-y-auto px-5 py-6"
           style={{
-            width: 290,
+            width: 440,
             backgroundColor: "var(--dm-bg-elevated)",
             borderRight: "1px solid var(--dm-border-subtle)",
           }}
@@ -538,8 +539,12 @@ function PreviewModal({
             className="relative w-full overflow-hidden rounded-2xl"
             style={{
               aspectRatio: getViewerAspect(ad, showIframe),
-              minHeight: showIframe ? 420 : undefined,
-              maxHeight: showIframe ? 580 : undefined,
+              minHeight: showIframe ? 460 : undefined,
+              maxHeight: showIframe ? 620 : (
+                // 9:16 at 440px → 782px natural height — cap so modal stays usable
+                (/\/reel\//.test(ad.instagramUrl ?? "") || ad.mediaType === "video")
+                  ? 580 : undefined
+              ),
               backgroundColor: "#0a0a14",
               boxShadow: "0 12px 40px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.05)",
             }}
