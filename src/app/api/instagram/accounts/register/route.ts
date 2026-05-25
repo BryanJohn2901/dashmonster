@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
       `https://graph.facebook.com/${META_API_VERSION}/${ibaId}?` +
       new URLSearchParams({
         access_token: accessToken,
-        fields: "id,username,name,biography,profile_picture_url,followers_count,follows_count,media_count,is_verified",
+        fields: "id,username,name,biography,profile_picture_url,followers_count,follows_count,media_count",
       }),
     ),
     fetch(
@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
         followers_count:    profileJson.followers_count ?? 0,
         follows_count:      profileJson.follows_count   ?? 0,
         media_count:        profileJson.media_count     ?? 0,
-        is_verified:        profileJson.is_verified     ?? false,
+        is_verified:        false,
         engagement_rate:    0,
         access_token:       accessToken,
         updated_at:         new Date().toISOString(),
