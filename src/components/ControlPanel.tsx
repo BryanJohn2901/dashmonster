@@ -6,7 +6,7 @@ import { useTheme } from "next-themes";
 import {
   X, Settings2, ChevronDown, ChevronUp, Plus, Trash2, Loader2,
   Zap, User, Activity, CheckCircle2, XCircle, Link2, Eye, EyeOff,
-  RefreshCw, Save, RotateCcw, Sun, Moon, Database, AtSign,
+  RefreshCw, Save, RotateCcw, Sun, Moon, Database, AtSign, Search,
 } from "lucide-react";
 import type { UserCategory, UserAccountEntry } from "@/types/userConfig";
 import { FIXED_CATEGORIES, MAX_CUSTOM_CATEGORIES } from "@/types/userConfig";
@@ -1302,11 +1302,24 @@ function InstagramIntegrationSection() {
         </p>
       </div>
 
-      {/* Register per IBA ID — sempre visível para permitir entrada manual de IBA ID */}
+      {/* Register per IBA ID — busca + fallback manual */}
       <div className="mt-4 space-y-2">
           <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>
             Registrar contas
           </p>
+
+          {/* Search / manual input */}
+          <div className="relative">
+            <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--dm-text-tertiary)" }} />
+            <input
+              type="text"
+              value={customIba}
+              onChange={e => setCustomIba(e.target.value)}
+              placeholder="Buscar por nome, @usuário ou ID…"
+              className="h-8 w-full rounded-lg border pl-7 pr-3 text-[11px] outline-none"
+              style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
+            />
+          </div>
 
           {/* Contas descobertas via Meta API */}
           {loadingAccounts && (
@@ -1315,7 +1328,13 @@ function InstagramIntegrationSection() {
               <span className="text-[10px]">Buscando contas...</span>
             </div>
           )}
-          {igAccounts.map(acc => {
+          {igAccounts.filter(acc => {
+            if (!customIba.trim()) return true;
+            const q = customIba.trim().toLowerCase();
+            return acc.name.toLowerCase().includes(q)
+              || acc.username.toLowerCase().includes(q)
+              || acc.id.includes(q);
+          }).map(acc => {
             const ibaId  = acc.id;
             const status = statuses[ibaId];
             return (
@@ -1351,33 +1370,26 @@ function InstagramIntegrationSection() {
             );
           })}
 
-          {/* Manual IBA ID input */}
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={customIba}
-              onChange={e => setCustomIba(e.target.value)}
-              placeholder="IBA ID manual (ex: 1784145…)"
-              className="h-8 flex-1 rounded-lg border px-2.5 text-[11px] font-mono outline-none"
-              style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
-            />
-            <button type="button"
-              onClick={() => { if (customIba.trim()) { void doRegister(customIba.trim()); } }}
-              disabled={!igToken.trim() || !customIba.trim() || statuses[customIba.trim()]?.state === "loading"}
-              className="flex h-8 items-center gap-1 rounded-lg px-3 text-[10px] font-bold text-white transition disabled:opacity-50 shrink-0"
-              style={{ backgroundColor: "#E1306C" }}>
-              {statuses[customIba.trim()]?.state === "loading"
-                ? <Loader2 size={10} className="animate-spin" />
-                : <Plus size={10} />}
-              Registrar
-            </button>
-          </div>
-          {statuses[customIba.trim()]?.state === "success" && (
+          {/* Botão aparece só quando input parece ID numérico (não encontrado na lista) */}
+          {customIba.trim() && /^\d{10,}$/.test(customIba.trim()) && !igAccounts.find(a => a.id === customIba.trim()) && (
+            <div className="flex gap-2 items-center">
+              <span className="flex-1 text-[10px] font-mono truncate" style={{ color: "var(--dm-text-tertiary)" }}>{customIba.trim()}</span>
+              <button type="button"
+                onClick={() => { void doRegister(customIba.trim()); }}
+                disabled={!igToken.trim() || statuses[customIba.trim()]?.state === "loading"}
+                className="flex h-7 items-center gap-1 rounded-lg px-2.5 text-[10px] font-bold text-white transition disabled:opacity-50 shrink-0"
+                style={{ backgroundColor: statuses[customIba.trim()]?.state === "success" ? "#05CD99" : "#E1306C" }}>
+                {statuses[customIba.trim()]?.state === "loading" ? <Loader2 size={10} className="animate-spin" /> : <Plus size={10} />}
+                Registrar ID
+              </button>
+            </div>
+          )}
+          {statuses[customIba.trim()]?.state === "success" && /^\d{10,}$/.test(customIba.trim()) && (
             <p className="text-[10px]" style={{ color: "#05CD99" }}>
               ✓ {statuses[customIba.trim()].message} · {statuses[customIba.trim()].daysBackfilled} dias importados
             </p>
           )}
-          {statuses[customIba.trim()]?.state === "error" && (
+          {statuses[customIba.trim()]?.state === "error" && /^\d{10,}$/.test(customIba.trim()) && (
             <p className="text-[10px] text-red-500">{statuses[customIba.trim()].message}</p>
           )}
         </div>
