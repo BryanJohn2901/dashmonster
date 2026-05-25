@@ -160,6 +160,66 @@ function AdIframe({ ad, accessToken }: { ad: MetaCampaignCreative; accessToken: 
   return <AdThumb ad={ad} />;
 }
 
+// ─── Instagram post embed (when instagramUrl available) ──────────────────────
+
+function AdInstagramEmbed({
+  ad,
+  fallbackToken,
+}: {
+  ad: MetaCampaignCreative;
+  fallbackToken: string;
+}) {
+  const [loaded, setLoaded] = useState(false);
+
+  const embedUrl = useMemo(() => {
+    if (!ad.instagramUrl) return null;
+    const feedMatch = ad.instagramUrl.match(/instagram\.com\/p\/([A-Za-z0-9_-]+)/);
+    const reelMatch = ad.instagramUrl.match(/instagram\.com\/reel\/([A-Za-z0-9_-]+)/);
+    if (feedMatch) return `https://www.instagram.com/p/${feedMatch[1]}/embed/`;
+    if (reelMatch) return `https://www.instagram.com/reel/${reelMatch[1]}/embed/`;
+    return null; // stories → fallback to Meta iframe
+  }, [ad.instagramUrl]);
+
+  if (!embedUrl) return <AdIframe ad={ad} accessToken={fallbackToken} />;
+
+  return (
+    <div className="relative h-full w-full">
+      {!loaded && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          {ad.thumbnailUrl && (
+            <img
+              src={ad.thumbnailUrl}
+              alt=""
+              className="absolute inset-0 h-full w-full object-cover opacity-30"
+              style={{ filter: "blur(4px)" }}
+            />
+          )}
+          <div className="relative z-10 flex items-center justify-center rounded-xl bg-black/50 p-3">
+            <Loader2 size={22} className="animate-spin text-white/80" />
+          </div>
+        </div>
+      )}
+      <iframe
+        src={embedUrl}
+        title={ad.adName}
+        className="h-full w-full border-none"
+        style={{ opacity: loaded ? 1 : 0, transition: "opacity 0.35s" }}
+        onLoad={() => setLoaded(true)}
+        allow="autoplay; fullscreen"
+      />
+    </div>
+  );
+}
+
+/** Infer best aspect ratio from creative type + Instagram URL pattern. */
+function getViewerAspect(ad: MetaCampaignCreative, showIframe: boolean): string | undefined {
+  if (showIframe) return undefined; // let container use minHeight/maxHeight when iframe active
+  const url = ad.instagramUrl ?? "";
+  if (/\/reel\//.test(url) || ad.mediaType === "video") return "9/16";
+  if (/\/stories\//.test(url)) return "9/16";
+  return "4/5"; // feed image / carousel / unknown
+}
+
 // ─── Creative Card ────────────────────────────────────────────────────────────
 
 function CreativeCard({
@@ -345,7 +405,7 @@ function PreviewModal({
   allInsights:  Map<string, AdInsight>;
   onNavigate:   (ad: MetaCampaignCreative) => void;
 }) {
-  const [showIframe, setShowIframe] = useState(Boolean(accessToken));
+  const [showIframe, setShowIframe] = useState(false);
   const currentIndex = allAds.findIndex((a) => a.adId === ad.adId);
   const bestThumbnail = useHighResThumbnail(ad, accessToken);
 
@@ -353,8 +413,8 @@ function PreviewModal({
     const h = (e: KeyboardEvent) => {
       if (e.key === "Escape") { onClose(); return; }
       const idx = allAds.findIndex((a) => a.adId === ad.adId);
-      if (e.key === "ArrowRight" && allAds[idx + 1]) { setShowIframe(Boolean(accessToken)); onNavigate(allAds[idx + 1]); }
-      if (e.key === "ArrowLeft"  && allAds[idx - 1]) { setShowIframe(Boolean(accessToken)); onNavigate(allAds[idx - 1]); }
+      if (e.key === "ArrowRight" && allAds[idx + 1]) { setShowIframe(false); onNavigate(allAds[idx + 1]); }
+      if (e.key === "ArrowLeft"  && allAds[idx - 1]) { setShowIframe(false); onNavigate(allAds[idx - 1]); }
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
@@ -434,7 +494,9 @@ function PreviewModal({
           <div
             className="relative w-full overflow-hidden rounded-2xl"
             style={{
-              aspectRatio: "9/16",
+              aspectRatio: getViewerAspect(ad, showIframe),
+              minHeight: showIframe ? 420 : undefined,
+              maxHeight: showIframe ? 580 : undefined,
               backgroundColor: "#0a0a14",
               boxShadow: "0 12px 40px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.05)",
             }}
@@ -468,7 +530,9 @@ function PreviewModal({
 
             {/* Creative content */}
             {showIframe ? (
-              <AdIframe ad={ad} accessToken={accessToken} />
+              ad.instagramUrl && !/\/stories\//.test(ad.instagramUrl)
+                ? <AdInstagramEmbed ad={ad} fallbackToken={accessToken} />
+                : <AdIframe ad={ad} accessToken={accessToken} />
             ) : bestThumbnail ? (
               <img src={bestThumbnail} alt={ad.adName} className="h-full w-full object-cover" />
             ) : (
@@ -490,7 +554,7 @@ function PreviewModal({
           <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={() => { setShowIframe(Boolean(accessToken)); onNavigate(allAds[currentIndex - 1]); }}
+              onClick={() => { setShowIframe(false); onNavigate(allAds[currentIndex - 1]); }}
               disabled={currentIndex <= 0}
               className="flex h-8 w-8 items-center justify-center rounded-xl text-[18px] font-bold transition hover:opacity-80 disabled:opacity-20"
               style={{ backgroundColor: "var(--dm-bg-surface)", border: "1px solid var(--dm-border-default)", color: "var(--dm-text-secondary)" }}
@@ -500,7 +564,7 @@ function PreviewModal({
             </span>
             <button
               type="button"
-              onClick={() => { setShowIframe(Boolean(accessToken)); onNavigate(allAds[currentIndex + 1]); }}
+              onClick={() => { setShowIframe(false); onNavigate(allAds[currentIndex + 1]); }}
               disabled={currentIndex >= allAds.length - 1}
               className="flex h-8 w-8 items-center justify-center rounded-xl text-[18px] font-bold transition hover:opacity-80 disabled:opacity-20"
               style={{ backgroundColor: "var(--dm-bg-surface)", border: "1px solid var(--dm-border-default)", color: "var(--dm-text-secondary)" }}
@@ -508,7 +572,7 @@ function PreviewModal({
           </div>
 
           {/* Static / Interactive toggle */}
-          {accessToken && (
+          {(accessToken || ad.instagramUrl) && (
             <button
               type="button"
               onClick={() => setShowIframe(!showIframe)}
@@ -519,10 +583,13 @@ function PreviewModal({
                 border: `1px solid ${showIframe ? "var(--dm-border-default)" : "rgba(99,102,200,0.35)"}`,
               }}
             >
-              {showIframe
-                ? <><ImageIcon size={11} /> Ver imagem</>
-                : <><Play size={11} fill="currentColor" /> Preview interativo</>
-              }
+              {showIframe ? (
+                <><ImageIcon size={11} /> Ver imagem</>
+              ) : ad.instagramUrl && !/\/stories\//.test(ad.instagramUrl) ? (
+                <><Play size={11} fill="currentColor" /> Abrir no Instagram</>
+              ) : (
+                <><Play size={11} fill="currentColor" /> Preview interativo</>
+              )}
             </button>
           )}
         </div>
