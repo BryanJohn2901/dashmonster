@@ -1197,18 +1197,29 @@ function InstagramIntegrationSection() {
   const [syncing,    setSyncing]   = useState(false);
   const [syncResult, setSyncResult] = useState<string | null>(null);
 
-  // Usa o store real para reagir ao sync do Supabase (novo device, etc.)
-  const { profiles: allProfiles } = useAdvertiserStore();
-  const profiles = useMemo(
-    () => allProfiles.filter(p => p.instagramUserId),
-    [allProfiles],
-  );
+  // Contas IG descobertas via Meta API
+  const [igAccounts,      setIgAccounts]      = useState<Array<{ id: string; username: string; name: string; followersCount: number }>>([]);
+  const [loadingAccounts, setLoadingAccounts] = useState(false);
+
+  const fetchIgAccounts = useCallback(async (token: string) => {
+    if (!token.trim()) { setIgAccounts([]); return; }
+    setLoadingAccounts(true);
+    try {
+      const res  = await fetch(`/api/instagram/accounts?accessToken=${encodeURIComponent(token.trim())}`);
+      const json = await res.json() as Array<{ id: string; username: string; name: string; followersCount: number }> | { error?: string };
+      if (Array.isArray(json)) setIgAccounts(json);
+    } catch { /* silent */ } finally { setLoadingAccounts(false); }
+  }, []);
 
   const handleSaveToken = () => {
     saveIgToken(igToken.trim());
     setIgSaved(true);
     setTimeout(() => setIgSaved(false), 2000);
+    void fetchIgAccounts(igToken.trim());
   };
+
+  // Carrega contas ao montar se já há token salvo
+  useEffect(() => { void fetchIgAccounts(igToken); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const doRegister = async (ibaId: string) => {
     const token = igToken.trim();
@@ -1226,6 +1237,8 @@ function InstagramIntegrationSection() {
         ...prev,
         [ibaId]: { ibaId, state: "success", daysBackfilled: json.daysBackfilled, message: `@${json.account?.username ?? "?"} registrado` },
       }));
+      // Limpa campo manual após sucesso
+      if (ibaId === customIba.trim()) setCustomIba("");
     } catch (e) {
       setStatuses(prev => ({
         ...prev,
@@ -1295,18 +1308,24 @@ function InstagramIntegrationSection() {
             Registrar contas
           </p>
 
-          {/* From profiles */}
-          {profiles.map(p => {
-            const ibaId  = p.instagramUserId!;
+          {/* Contas descobertas via Meta API */}
+          {loadingAccounts && (
+            <div className="flex items-center gap-2 py-1" style={{ color: "var(--dm-text-tertiary)" }}>
+              <Loader2 size={11} className="animate-spin" />
+              <span className="text-[10px]">Buscando contas...</span>
+            </div>
+          )}
+          {igAccounts.map(acc => {
+            const ibaId  = acc.id;
             const status = statuses[ibaId];
             return (
-              <div key={p.id} className="flex items-center gap-2 rounded-xl border p-2.5"
+              <div key={ibaId} className="flex items-center gap-2 rounded-xl border p-2.5"
                 style={{ borderColor: "var(--dm-border-subtle)", backgroundColor: "var(--dm-bg-elevated)" }}>
                 <div className="flex-1 min-w-0">
                   <p className="text-[11px] font-semibold truncate" style={{ color: "var(--dm-text-primary)" }}>
-                    {p.name}
-                    {p.instagramUsername && (
-                      <span className="ml-1.5 font-normal" style={{ color: "var(--dm-text-tertiary)" }}>@{p.instagramUsername}</span>
+                    {acc.name}
+                    {acc.username && (
+                      <span className="ml-1.5 font-normal" style={{ color: "var(--dm-text-tertiary)" }}>@{acc.username}</span>
                     )}
                   </p>
                   <p className="text-[10px] font-mono" style={{ color: "var(--dm-text-tertiary)" }}>{ibaId}</p>
