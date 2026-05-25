@@ -2661,7 +2661,9 @@ export function InstagramInsightsPanel({
   const [isMock, setIsMock]   = useState(false);
 
   useEffect(() => {
-    const { accessToken } = loadMetaCredentials();
+    const accessToken = (() => {
+      try { return localStorage.getItem("pta_ig_app_token_v1") ?? ""; } catch { return ""; }
+    })();
     if (!accessToken || !igUserId) {
       setData(IG_MOCK_DATA);
       setIsMock(true);
