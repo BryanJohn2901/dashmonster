@@ -103,7 +103,7 @@ export async function fetchAccountHistory(
 
   let query = client()
     .from("instagram_account_history")
-    .select("date, followers_count, following_count, media_count, daily_followers_gained, profile_views, reach, impressions, engagement_rate")
+    .select("date, followers_count, following_count, media_count, daily_followers_gained, daily_unfollows, profile_views, reach, impressions, engagement_rate")
     .eq("account_id", accountId)
     .gte("date", dateFrom ?? defaultFrom)
     .lte("date", dateTo   ?? today)
@@ -118,6 +118,7 @@ export async function fetchAccountHistory(
     followingCount:       Number(r.following_count),
     mediaCount:           Number(r.media_count),
     dailyFollowersGained: Number(r.daily_followers_gained),
+    dailyUnfollows:       Number(r.daily_unfollows),
     profileViews:         Number(r.profile_views),
     reach:                Number(r.reach),
     impressions:          Number(r.impressions),

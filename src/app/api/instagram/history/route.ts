@@ -14,6 +14,7 @@ export interface IGHistoryPoint {
   followingCount: number;
   mediaCount: number;
   dailyFollowersGained: number;
+  dailyUnfollows: number;
   profileViews: number;
   reach: number;
   impressions: number;
@@ -73,7 +74,7 @@ export async function GET(request: NextRequest) {
       .single(),
     sb
       .from("instagram_account_history")
-      .select("date, followers_count, following_count, media_count, daily_followers_gained, profile_views, reach, impressions, engagement_rate")
+      .select("date, followers_count, following_count, media_count, daily_followers_gained, daily_unfollows, profile_views, reach, impressions, engagement_rate")
       .eq("account_id", accountId)
       .gte("date", dateFrom)
       .lte("date", dateTo)
@@ -108,6 +109,7 @@ export async function GET(request: NextRequest) {
     followingCount:       Number(r.following_count),
     mediaCount:           Number(r.media_count),
     dailyFollowersGained: Number(r.daily_followers_gained),
+    dailyUnfollows:       Number(r.daily_unfollows),
     profileViews:         Number(r.profile_views),
     reach:                Number(r.reach),
     impressions:          Number(r.impressions),

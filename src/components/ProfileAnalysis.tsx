@@ -3085,7 +3085,8 @@ function ProfileDetailView({
             </div>
           </div>
 
-          {/* Template selector + Date range */}
+          {/* Template selector + Date range — hidden on instagram tab */}
+          {profileTab !== "instagram" && (
           <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto">
             <TemplateSelector
               current={templateId}
@@ -3099,9 +3100,12 @@ function ProfileDetailView({
               onApply={(from, to) => { setDateFrom(from); setDateTo(to); persistDates(from, to); }}
             />
           </div>
+          )}
         </div>
 
-        {/* Campaign tabs */}
+        {/* Campaign tabs — hidden on instagram tab */}
+        {profileTab !== "instagram" && (
+        <>
         <div
           className="flex flex-wrap items-center gap-2 border-t px-5 py-3"
           style={{ borderColor: "var(--dm-border-subtle)" }}
@@ -3190,6 +3194,7 @@ function ProfileDetailView({
             />
           </div>
         )}
+        </> )} {/* end profileTab !== "instagram" campaign tabs */}
       </div>
 
       {/* Template selector modal */}

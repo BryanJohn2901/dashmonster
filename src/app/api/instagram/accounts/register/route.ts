@@ -137,11 +137,21 @@ export async function POST(request: NextRequest) {
   const byName = (metric: string) =>
     insightsData.find((d) => d.name === metric)?.values ?? [];
 
-  const followerDeltas: Array<{ value: number; end_time: string }> = [];
+  // follows_and_unfollows returns { follows, unfollows } per day
+  type FollowsVal = { follows?: number; unfollows?: number };
+  const rawFollowsArr = insightsData.find((d) => d.name === "follows_and_unfollows")?.values ?? [];
+  const followsGainedArr: Array<{ value: number; end_time: string }> = rawFollowsArr.map((v) => ({
+    value: typeof v.value === "object" ? ((v.value as FollowsVal).follows ?? 0) : (v.value as number),
+    end_time: v.end_time,
+  }));
+  const followsLostArr: Array<{ value: number; end_time: string }> = rawFollowsArr.map((v) => ({
+    value: typeof v.value === "object" ? ((v.value as FollowsVal).unfollows ?? 0) : 0,
+    end_time: v.end_time,
+  }));
 
+  const reachArr       = byName("reach");
+  const impressionsArr = byName("impressions");
   const profileViewsArr = byName("profile_visits").length ? byName("profile_visits") : byName("profile_views");
-  const reachArr        = byName("reach");
-  const impressionsArr  = byName("impressions");
 
   // Reconstruct absolute followers going backwards from current count
   const followersNow = profileJson.followers_count ?? 0;
@@ -152,37 +162,33 @@ export async function POST(request: NextRequest) {
   const toMap = (arr: Array<{ value: number; end_time: string }>) =>
     new Map(arr.map((v) => [v.end_time.split("T")[0]!, v.value]));
 
+  const gainsMap        = toMap(followsGainedArr);
+  const lossMap         = toMap(followsLostArr);
   const profileViewsMap = toMap(profileViewsArr);
   const reachMap        = toMap(reachArr);
   const impressionsMap  = toMap(impressionsArr);
 
-  // Reconstruct absolute followers per day
-  let running = followersNow;
-  const followersByDate = new Map<string, number>();
-  const deltasByDate    = new Map<string, number>();
-
-  for (const v of [...followerDeltas].reverse()) {
-    const date = v.end_time.split("T")[0]!;
-    followersByDate.set(date, Math.max(0, running));
-    deltasByDate.set(date, v.value);
-    running -= v.value;
-  }
-
   // Collect all dates present in any metric
   const allDates = new Set([
-    ...followersByDate.keys(),
+    ...gainsMap.keys(),
     ...profileViewsMap.keys(),
     ...reachMap.keys(),
     ...impressionsMap.keys(),
   ]);
 
+  // If no history from API, insert at least today's snapshot
+  if (allDates.size === 0) {
+    allDates.add(new Date().toISOString().split("T")[0]!);
+  }
+
   const historyRows = Array.from(allDates).map((date) => ({
     account_id:             accountId,
     date,
-    followers_count:        followersByDate.get(date) ?? followersNow,
+    followers_count:        followersNow,
     following_count:        followsNow,
     media_count:            mediaNow,
-    daily_followers_gained: deltasByDate.get(date)    ?? 0,
+    daily_followers_gained: gainsMap.get(date)        ?? 0,
+    daily_unfollows:        lossMap.get(date)          ?? 0,
     profile_views:          profileViewsMap.get(date)  ?? 0,
     reach:                  reachMap.get(date)          ?? 0,
     impressions:            impressionsMap.get(date)    ?? 0,

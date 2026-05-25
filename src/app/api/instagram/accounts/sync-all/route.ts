@@ -49,7 +49,7 @@ async function syncAccount(sb: ReturnType<typeof supabase>, account: IGAccount):
         `https://graph.facebook.com/${META_API_VERSION}/${ibaId}/insights?` +
         new URLSearchParams({
           access_token: accessToken,
-          metric: "follower_count,profile_views,reach,impressions",
+          metric: "follows_and_unfollows,reach,impressions",
           period: "day",
           since: String(since),
           until: String(since + 86400),
@@ -73,11 +73,16 @@ async function syncAccount(sb: ReturnType<typeof supabase>, account: IGAccount):
     const mediaNow     = profileJson.media_count      ?? account.media_count;
 
     const insightsJson = await insightsRes.json() as {
-      data?: Array<{ name: string; values: Array<{ value: number }> }>;
+      data?: Array<{ name: string; values: Array<{ value: number | { follows?: number; unfollows?: number } }> }>;
     };
     const insightsData = insightsJson.data ?? [];
     const firstVal = (metric: string) =>
       insightsData.find((d) => d.name === metric)?.values[0]?.value ?? 0;
+
+    // Parse follows_and_unfollows — returns {follows, unfollows} object
+    const followsRaw = insightsData.find((d) => d.name === "follows_and_unfollows")?.values[0]?.value;
+    const dailyFollows   = typeof followsRaw === "object" ? (followsRaw as { follows?: number }).follows   ?? 0 : 0;
+    const dailyUnfollows = typeof followsRaw === "object" ? (followsRaw as { unfollows?: number }).unfollows ?? 0 : 0;
 
     await sb
       .from("instagram_account_history")
@@ -88,10 +93,11 @@ async function syncAccount(sb: ReturnType<typeof supabase>, account: IGAccount):
           followers_count:        followersNow,
           following_count:        followsNow,
           media_count:            mediaNow,
-          daily_followers_gained: firstVal("follower_count"),
-          profile_views:          firstVal("profile_views"),
-          reach:                  firstVal("reach"),
-          impressions:            firstVal("impressions"),
+          daily_followers_gained: dailyFollows,
+          daily_unfollows:        dailyUnfollows,
+          profile_views:          Number(firstVal("profile_visits")) || Number(firstVal("profile_views")),
+          reach:                  Number(firstVal("reach")),
+          impressions:            Number(firstVal("impressions")),
           engagement_rate:        0,
         },
         { onConflict: "account_id,date" },

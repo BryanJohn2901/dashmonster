@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from "react";
 import {
-  Area, AreaChart, CartesianGrid, ResponsiveContainer,
-  Tooltip, XAxis, YAxis,
+  Area, AreaChart, Bar, CartesianGrid, ComposedChart, Line,
+  Legend, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import {
   Activity, AtSign, BarChart2, Eye, Heart, Image, Loader2,
-  MessageCircle, TrendingDown, TrendingUp, Users, Zap,
+  MessageCircle, TrendingDown, TrendingUp, Users, UserMinus, Zap,
 } from "lucide-react";
 import type { IGHistoryPoint, IGTrackedAccount } from "@/app/api/instagram/history/route";
 
@@ -33,25 +33,27 @@ const MOCK_ACCOUNT: IGTrackedAccount = {
   updatedAt: new Date().toISOString(),
 };
 const MOCK_HISTORY: IGHistoryPoint[] = Array.from({ length: 30 }, (_, i) => {
-  const base = 40283 + i * 44;
+  const base   = 40283 + i * 44;
   const gained = Math.round(20 + Math.random() * 140);
+  const lost   = Math.round(5  + Math.random() * 40);
   return {
-    date: new Date(now - (29 - i) * 86400000).toISOString().split("T")[0]!,
-    followersCount: base + gained,
-    followingCount: 12,
-    mediaCount: 1299 + Math.floor(i / 3),
+    date:                 new Date(now - (29 - i) * 86400000).toISOString().split("T")[0]!,
+    followersCount:       base + gained,
+    followingCount:       12,
+    mediaCount:           1299 + Math.floor(i / 3),
     dailyFollowersGained: gained,
-    profileViews: Math.round(200 + Math.random() * 600),
-    reach: Math.round(1000 + Math.random() * 3000),
-    impressions: Math.round(2000 + Math.random() * 8000),
-    engagementRate: parseFloat((0.12 + Math.random() * 0.06).toFixed(4)),
+    dailyUnfollows:       lost,
+    profileViews:         Math.round(200 + Math.random() * 600),
+    reach:                Math.round(1000 + Math.random() * 3000),
+    impressions:          Math.round(2000 + Math.random() * 8000),
+    engagementRate:       parseFloat((0.12 + Math.random() * 0.06).toFixed(4)),
   };
 });
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function fmtNum(n: number) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  if (n >= 1_000)     return `${(n / 1_000).toFixed(1)}k`;
   return n.toLocaleString("pt-BR");
 }
 
@@ -135,6 +137,30 @@ function ChartTooltip({ active, payload, label, suffix = "" }: {
   );
 }
 
+// ─── Composed chart tooltip (ganhos/perdas/net) ───────────────────────────────
+function GainsTooltip({ active, payload, label }: {
+  active?: boolean;
+  payload?: Array<{ name: string; value: number; color: string }>;
+  label?: string;
+}) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="rounded-lg border px-3 py-2 text-xs shadow-lg space-y-1"
+      style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
+      <p className="font-semibold" style={{ color: "var(--dm-text-secondary)" }}>{label}</p>
+      {payload.map((entry) => (
+        <div key={entry.name} className="flex items-center gap-2 tabular-nums">
+          <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ background: entry.color }} />
+          <span style={{ color: "var(--dm-text-tertiary)" }}>{entry.name}:</span>
+          <span className="font-bold" style={{ color: "var(--dm-text-primary)" }}>
+            {entry.value.toLocaleString("pt-BR")}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export function PerfilAtivoPanel({
   igUserId, dateFrom, dateTo,
@@ -149,7 +175,6 @@ export function PerfilAtivoPanel({
     if (!igUserId) return;
     setLoading(true); setNotFound(false); setIsMock(false);
 
-    // 1. List all tracked accounts from Supabase
     fetch("/api/instagram/history", { method: "POST" })
       .then(r => r.json())
       .then(async (accounts: IGTrackedAccount[]) => {
@@ -159,7 +184,6 @@ export function PerfilAtivoPanel({
           setLoading(false);
           return;
         }
-        // 2. Fetch history for that account
         const params = new URLSearchParams({ accountId: match.id });
         if (dateFrom) params.set("dateFrom", dateFrom);
         if (dateTo)   params.set("dateTo",   dateTo);
@@ -174,7 +198,6 @@ export function PerfilAtivoPanel({
         setLoading(false);
       })
       .catch(() => {
-        // Supabase not configured or error — show mock
         setAccount(MOCK_ACCOUNT);
         setHistory(MOCK_HISTORY);
         setIsMock(true);
@@ -183,28 +206,47 @@ export function PerfilAtivoPanel({
   }, [igUserId, dateFrom, dateTo]);
 
   // ── Derived stats ────────────────────────────────────────────────────────
-  const sorted   = [...history].sort((a, b) => a.date.localeCompare(b.date));
-  const last7    = sorted.slice(-7);
-  const last30   = sorted.slice(-30);
-  const first    = sorted[0];
-  const latest   = sorted[sorted.length - 1];
+  const sorted  = [...history].sort((a, b) => a.date.localeCompare(b.date));
+  const last7   = sorted.slice(-7);
+  const last30  = sorted.slice(-30);
+  const first   = sorted[0];
+  const latest  = sorted[sorted.length - 1];
 
-  const followersDelta30  = first && latest ? latest.followersCount - first.followersCount : 0;
-  const followersDelta7   = last7.length >= 2
+  const followersDelta30 = first && latest ? latest.followersCount - first.followersCount : 0;
+  const followersDelta7  = last7.length >= 2
     ? (last7[last7.length - 1]?.followersCount ?? 0) - (last7[0]?.followersCount ?? 0) : 0;
-  const growthRate30      = first && first.followersCount > 0
+  const growthRate30     = first && first.followersCount > 0
     ? ((followersDelta30 / first.followersCount) * 100).toFixed(2) : "0.00";
-  const avgEngagement30   = last30.length
+  const avgEngagement30  = last30.length
     ? (last30.reduce((s, p) => s + p.engagementRate, 0) / last30.length * 100).toFixed(2)
     : "0.00";
-  const totalReach        = last30.reduce((s, p) => s + p.reach, 0);
-  const totalImpressions  = last30.reduce((s, p) => s + p.impressions, 0);
-  const totalViews        = last30.reduce((s, p) => s + p.profileViews, 0);
+
+  const totalGained30    = last30.reduce((s, p) => s + p.dailyFollowersGained, 0);
+  const totalLost30      = last30.reduce((s, p) => s + (p.dailyUnfollows ?? 0), 0);
+  const avgReachDay      = last30.length ? Math.round(last30.reduce((s, p) => s + p.reach, 0) / last30.length) : 0;
+  const avgImpDay        = last30.length ? Math.round(last30.reduce((s, p) => s + p.impressions, 0) / last30.length) : 0;
+  const totalViews       = last30.reduce((s, p) => s + p.profileViews, 0);
 
   const score = Math.min(100, parseFloat(growthRate30) * 4 + parseFloat(avgEngagement30) * 10);
 
   // Table: last 30 descending
   const tableRows = [...sorted].reverse().slice(0, 30);
+
+  // Chart data
+  const chartFollowers = sorted.map(p => ({
+    date:  p.date.slice(5),
+    value: p.followersCount,
+  }));
+  const chartEngagement = sorted.map(p => ({
+    date:  p.date.slice(5),
+    value: parseFloat((p.engagementRate * 100).toFixed(3)),
+  }));
+  const chartGains = sorted.map(p => ({
+    date:    p.date.slice(5),
+    Ganhos:  p.dailyFollowersGained,
+    Perdas:  -(p.dailyUnfollows ?? 0),
+    Saldo:   p.dailyFollowersGained - (p.dailyUnfollows ?? 0),
+  }));
 
   // ── Loading ───────────────────────────────────────────────────────────────
   if (loading) {
@@ -237,16 +279,6 @@ export function PerfilAtivoPanel({
 
   if (!account) return null;
 
-  // ── Chart data ─────────────────────────────────────────────────────────────
-  const chartFollowers = sorted.map(p => ({
-    date: p.date.slice(5), // MM-DD
-    value: p.followersCount,
-  }));
-  const chartEngagement = sorted.map(p => ({
-    date: p.date.slice(5),
-    value: parseFloat((p.engagementRate * 100).toFixed(3)),
-  }));
-
   return (
     <div className="space-y-5 pt-3">
 
@@ -265,7 +297,6 @@ export function PerfilAtivoPanel({
       <div className="flex flex-wrap items-center gap-4 rounded-xl border p-4"
         style={{ backgroundColor: "var(--dm-bg-elevated)", borderColor: "var(--dm-border-subtle)" }}>
 
-        {/* Avatar */}
         {account.profilePictureUrl ? (
           <img src={account.profilePictureUrl} alt={account.username}
             className="h-14 w-14 flex-shrink-0 rounded-full object-cover ring-2 ring-[var(--dm-border-default)]" />
@@ -276,7 +307,6 @@ export function PerfilAtivoPanel({
           </div>
         )}
 
-        {/* Info */}
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-base font-black" style={{ color: "var(--dm-text-primary)" }}>
@@ -293,7 +323,6 @@ export function PerfilAtivoPanel({
           )}
         </div>
 
-        {/* Stats */}
         <div className="flex gap-5">
           {[
             { label: "Seguidores", value: fmtNum(account.followersCount), delta: followersDelta30 },
@@ -310,17 +339,19 @@ export function PerfilAtivoPanel({
       </div>
 
       {/* ── KPI grid ── */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <KpiTile icon={TrendingUp}    label="Crescimento 30d"   value={`${growthRate30}%`}       sub={`+${fmtNum(followersDelta30)} seguidores`} color="#05CD99" />
-        <KpiTile icon={Users}         label="Ganho semanal"     value={`+${fmtNum(followersDelta7)}`} sub="últimos 7 dias"                       color="#60A5FA" />
-        <KpiTile icon={Activity}      label="Engajamento"       value={`${avgEngagement30}%`}    sub="média 30 dias"                            color="#F59E0B" />
-        <KpiTile icon={Eye}           label="Alcance 30d"       value={fmtNum(totalReach)}       sub="pessoas únicas"                           color="#A78BFA" />
-        <KpiTile icon={BarChart2}     label="Impressões 30d"    value={fmtNum(totalImpressions)} sub="total"                                    color="#F97316" />
-        <KpiTile icon={Image}         label="Views de perfil"   value={fmtNum(totalViews)}       sub="30 dias"                                  color="#EC4899" />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
+        <KpiTile icon={TrendingUp}   label="Crescimento 30d"    value={`${growthRate30}%`}          sub={`+${fmtNum(followersDelta30)} seg.`} color="#05CD99" />
+        <KpiTile icon={Users}        label="Ganho semanal"      value={`+${fmtNum(followersDelta7)}`} sub="últimos 7 dias"                    color="#60A5FA" />
+        <KpiTile icon={TrendingUp}   label="Ganhos 30d"         value={`+${fmtNum(totalGained30)}`} sub="seguidores ganhos"                   color="#34D399" />
+        <KpiTile icon={UserMinus}    label="Perda 30d"          value={`-${fmtNum(totalLost30)}`}   sub="seguidores perdidos"                 color="#EE5D50" />
+        <KpiTile icon={Activity}     label="Engajamento"        value={`${avgEngagement30}%`}        sub="média 30 dias"                      color="#F59E0B" />
+        <KpiTile icon={Eye}          label="Alcance médio/dia"  value={fmtNum(avgReachDay)}          sub="pessoas únicas"                     color="#A78BFA" />
+        <KpiTile icon={BarChart2}    label="Impressões médio/d" value={fmtNum(avgImpDay)}            sub="média diária"                       color="#F97316" />
+        <KpiTile icon={Image}        label="Views de perfil"    value={fmtNum(totalViews)}           sub="30 dias"                            color="#EC4899" />
       </div>
 
       {/* ── Charts ── */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
 
         {/* Followers chart */}
         <div className="rounded-xl border p-4"
@@ -367,24 +398,45 @@ export function PerfilAtivoPanel({
             </AreaChart>
           </ResponsiveContainer>
         </div>
+
+        {/* Gains vs Losses chart */}
+        <div className="rounded-xl border p-4"
+          style={{ backgroundColor: "var(--dm-bg-elevated)", borderColor: "var(--dm-border-subtle)" }}>
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--dm-text-secondary)" }}>
+            Ganhos vs Perdas diários
+          </p>
+          <ResponsiveContainer width="100%" height={160}>
+            <ComposedChart data={chartGains} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--dm-border-subtle)" />
+              <XAxis dataKey="date" tick={{ fontSize: 10, fill: "var(--dm-text-tertiary)" }} tickLine={false} interval="preserveStartEnd" />
+              <YAxis tick={{ fontSize: 10, fill: "var(--dm-text-tertiary)" }} tickLine={false} axisLine={false} width={36} />
+              <Tooltip content={<GainsTooltip />} />
+              <Legend iconSize={8} wrapperStyle={{ fontSize: 10, color: "var(--dm-text-tertiary)" }} />
+              <Bar dataKey="Ganhos" fill="#34D399" radius={[2, 2, 0, 0]} maxBarSize={14} />
+              <Bar dataKey="Perdas" fill="#EE5D50" radius={[2, 2, 0, 0]} maxBarSize={14} />
+              <Line type="monotone" dataKey="Saldo" stroke="#60A5FA" strokeWidth={1.5} dot={false} />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
       </div>
 
       {/* ── Historical table ── */}
       {tableRows.length > 0 && (
         <div className="rounded-xl border overflow-hidden"
           style={{ borderColor: "var(--dm-border-subtle)" }}>
+          <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
               <tr style={{ backgroundColor: "var(--dm-bg-elevated)", borderBottom: "1px solid var(--dm-border-subtle)" }}>
-                {["Data", "Seguidores", "Seguindo", "Posts", "Engajamento"].map(h => (
-                  <th key={h} className="px-4 py-2.5 text-left font-semibold uppercase tracking-wider"
+                {["Data", "Seguidores", "Seguindo", "Posts", "Ganhos", "Perdas", "Alcance", "Impressões", "Engajamento"].map(h => (
+                  <th key={h} className="px-3 py-2.5 text-left font-semibold uppercase tracking-wider whitespace-nowrap"
                     style={{ color: "var(--dm-text-tertiary)" }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {tableRows.map((row, idx) => {
-                const prev = tableRows[idx + 1];
+                const prev   = tableRows[idx + 1];
                 const fDelta = prev ? row.followersCount - prev.followersCount : 0;
                 const mDelta = prev ? row.mediaCount     - prev.mediaCount     : 0;
                 const eDelta = prev
@@ -395,28 +447,40 @@ export function PerfilAtivoPanel({
                   <tr key={row.date}
                     className="border-b transition-colors hover:bg-white/5"
                     style={{ borderColor: "var(--dm-border-subtle)" }}>
-                    <td className="px-4 py-2.5 font-medium" style={{ color: "var(--dm-text-primary)" }}>
+                    <td className="px-3 py-2.5 font-medium whitespace-nowrap" style={{ color: "var(--dm-text-primary)" }}>
                       {fmtDate(row.date)}{" "}
                       <span className="capitalize text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
                         {fmtDay(row.date)}
                       </span>
                     </td>
-                    <td className="px-4 py-2.5">
+                    <td className="px-3 py-2.5">
                       <span className="tabular-nums font-semibold" style={{ color: "var(--dm-text-primary)" }}>
                         {row.followersCount.toLocaleString("pt-BR")}
                       </span>{" "}
                       {fDelta !== 0 && <DeltaBadge value={fDelta} />}
                     </td>
-                    <td className="px-4 py-2.5 tabular-nums" style={{ color: "var(--dm-text-secondary)" }}>
+                    <td className="px-3 py-2.5 tabular-nums" style={{ color: "var(--dm-text-secondary)" }}>
                       {row.followingCount.toLocaleString("pt-BR")}
                     </td>
-                    <td className="px-4 py-2.5">
+                    <td className="px-3 py-2.5">
                       <span className="tabular-nums" style={{ color: "var(--dm-text-secondary)" }}>
                         {row.mediaCount.toLocaleString("pt-BR")}
                       </span>{" "}
                       {mDelta !== 0 && <DeltaBadge value={mDelta} />}
                     </td>
-                    <td className="px-4 py-2.5">
+                    <td className="px-3 py-2.5 tabular-nums font-semibold" style={{ color: "#34D399" }}>
+                      {row.dailyFollowersGained > 0 ? `+${row.dailyFollowersGained.toLocaleString("pt-BR")}` : "—"}
+                    </td>
+                    <td className="px-3 py-2.5 tabular-nums font-semibold" style={{ color: (row.dailyUnfollows ?? 0) > 0 ? "#EE5D50" : "var(--dm-text-tertiary)" }}>
+                      {(row.dailyUnfollows ?? 0) > 0 ? `-${(row.dailyUnfollows ?? 0).toLocaleString("pt-BR")}` : "—"}
+                    </td>
+                    <td className="px-3 py-2.5 tabular-nums" style={{ color: "var(--dm-text-secondary)" }}>
+                      {row.reach > 0 ? fmtNum(row.reach) : "—"}
+                    </td>
+                    <td className="px-3 py-2.5 tabular-nums" style={{ color: "var(--dm-text-secondary)" }}>
+                      {row.impressions > 0 ? fmtNum(row.impressions) : "—"}
+                    </td>
+                    <td className="px-3 py-2.5">
                       <span className="tabular-nums" style={{ color: "var(--dm-text-secondary)" }}>
                         {(row.engagementRate * 100).toFixed(2)}%
                       </span>{" "}
@@ -427,6 +491,7 @@ export function PerfilAtivoPanel({
               })}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>
