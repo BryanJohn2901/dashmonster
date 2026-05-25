@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
       `https://graph.facebook.com/${META_API_VERSION}/${igUserId}/insights?` +
       new URLSearchParams({
         access_token: accessToken,
-        metric: "impressions,reach,profile_views,follower_count",
+        metric: "impressions,reach,profile_visits,follows_and_unfollows",
         period: "day",
         since: String(since),
         until: String(until),
@@ -113,12 +113,20 @@ export async function GET(request: NextRequest) {
     insightsData.find((d) => d.name === name)?.values
       .reduce((acc, v) => acc + (v.value ?? 0), 0) ?? 0;
 
-  // Daily follower_count series (values are deltas — daily change)
-  const followerValues = insightsData.find((d) => d.name === "follower_count")?.values ?? [];
+  // Daily follower deltas — follows_and_unfollows (v17+) or fallback follower_count
+  const rawFollows = insightsData.find((d) => d.name === "follows_and_unfollows");
+  const followerValues: Array<{ value: number; end_time: string }> = rawFollows
+    ? rawFollows.values.map((v) => {
+        const val = typeof v.value === "object"
+          ? ((v.value as { follows?: number; unfollows?: number }).follows ?? 0)
+            - ((v.value as { follows?: number; unfollows?: number }).unfollows ?? 0)
+          : (v.value as number);
+        return { value: val, end_time: v.end_time };
+      })
+    : (insightsData.find((d) => d.name === "follower_count")?.values ?? []);
 
   // Build followers series data for chart: cumulative from current count going back
   const followersNow = profileJson.followers_count ?? 0;
-  // Reconstruct absolute counts from deltas (reverse)
   const followersSeriesData: SeriesPoint[] = [];
   let running = followersNow;
   const reversed = [...followerValues].reverse();
