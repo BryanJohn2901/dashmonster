@@ -25,7 +25,7 @@ interface MetaAdRaw {
   id: string;
   name: string;
   campaign_id: string;
-  campaign?: { name: string };
+  campaign?: { name: string; start_time?: string };
   adset_name?: string;
   preview_shareable_link?: string;
   created_time?: string;
@@ -98,7 +98,7 @@ export async function GET(request: NextRequest) {
         fields: [
           "name",
           "campaign_id",
-          "campaign{name}",
+          "campaign{name,start_time}",
           "adset_name",
           "preview_shareable_link",
           "created_time",
@@ -159,7 +159,8 @@ export async function GET(request: NextRequest) {
           adLink,
           instagramUrl: ad.creative?.instagram_permalink_url ?? undefined,
           mediaType:    detectMediaType(ad),
-          createdTime:  ad.created_time,
+          createdTime:        ad.created_time,
+          campaignStartTime:  ad.campaign?.start_time ?? undefined,
           body,
           headline,
         } satisfies MetaCampaignCreative;

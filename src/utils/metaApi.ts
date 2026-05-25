@@ -193,9 +193,10 @@ export interface MetaCampaignCreative {
   adLink:        string;           // Ads Library URL or preview link
   instagramUrl?: string;           // Instagram post permalink (if ad ran on Instagram)
   mediaType:     "image" | "video" | "carousel" | "unknown";
-  createdTime?:  string;           // ISO 8601 — when the ad was created in Meta
-  body?:         string;           // ad copy / caption text from object_story_spec
-  headline?:     string;           // link headline (title shown under the creative)
+  createdTime?:       string;      // ISO 8601 — when the ad was created in Meta
+  campaignStartTime?: string;      // ISO 8601 — when the parent campaign became active
+  body?:              string;      // ad copy / caption text from object_story_spec
+  headline?:          string;      // link headline (title shown under the creative)
 }
 
 /**

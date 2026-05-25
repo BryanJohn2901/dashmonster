@@ -64,11 +64,50 @@ function writeCache(key: string, data: MetaCampaignCreative[]) {
   try { localStorage.setItem(key, JSON.stringify({ ts: Date.now(), data })); } catch {}
 }
 
+// ─── High-res card thumbnail cache (module-level, survives re-renders) ────────
+
+const oEmbedCardCache = new Map<string, string>(); // adId → hiResUrl
+
+/** Lazy-fetches oEmbed thumbnail only when the card element enters the viewport. */
+function useCardThumbnail(
+  ad: MetaCampaignCreative,
+  accessToken: string,
+  elRef: React.RefObject<HTMLDivElement | null>,
+): string {
+  const [hiRes, setHiRes] = useState<string>(oEmbedCardCache.get(ad.adId) ?? "");
+
+  useEffect(() => {
+    if (!ad.instagramUrl || !accessToken || hiRes) return;
+    const el = elRef.current;
+    if (!el) return;
+
+    const obs = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return;
+        obs.disconnect();
+        if (oEmbedCardCache.has(ad.adId)) { setHiRes(oEmbedCardCache.get(ad.adId)!); return; }
+        fetch(`/api/meta/ig-oembed?${new URLSearchParams({ url: ad.instagramUrl!, accessToken })}`)
+          .then((r) => r.json())
+          .then((j: { thumbnailUrl?: string }) => {
+            if (j.thumbnailUrl) { oEmbedCardCache.set(ad.adId, j.thumbnailUrl); setHiRes(j.thumbnailUrl); }
+          })
+          .catch(() => {});
+      },
+      { rootMargin: "200px" },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [ad.adId, ad.instagramUrl, accessToken, hiRes, elRef]);
+
+  return hiRes || ad.thumbnailUrl;
+}
+
 // ─── Thumbnail image (static — no iframe) ────────────────────────────────────
 
-function AdThumb({ ad, onClick }: { ad: MetaCampaignCreative; onClick?: () => void }) {
+function AdThumb({ ad, onClick, src }: { ad: MetaCampaignCreative; onClick?: () => void; src?: string }) {
   const [failed, setFailed] = useState(false);
-  const hasImg = Boolean(ad.thumbnailUrl) && !failed;
+  const imgSrc = src || ad.thumbnailUrl;
+  const hasImg = Boolean(imgSrc) && !failed;
 
   return (
     <div
@@ -78,7 +117,7 @@ function AdThumb({ ad, onClick }: { ad: MetaCampaignCreative; onClick?: () => vo
     >
       {hasImg ? (
         <img
-          src={ad.thumbnailUrl}
+          src={imgSrc}
           alt={ad.adName}
           className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
           onError={() => setFailed(true)}
@@ -223,15 +262,18 @@ function getViewerAspect(ad: MetaCampaignCreative, showIframe: boolean): string 
 // ─── Creative Card ────────────────────────────────────────────────────────────
 
 function CreativeCard({
-  ad, insight, starred, onPreview, onToggleStar,
+  ad, insight, starred, onPreview, onToggleStar, accessToken,
 }: {
   ad: MetaCampaignCreative;
   insight?: AdInsight;
   starred: boolean;
   onPreview: () => void;
   onToggleStar: () => void;
+  accessToken?: string;
 }) {
-  const score      = computeScore(insight);
+  const cardRef  = useRef<HTMLDivElement>(null);
+  const thumbSrc = useCardThumbnail(ad, accessToken ?? "", cardRef);
+  const score    = computeScore(insight);
   const scoreColor = score === null ? null : score >= 70 ? "#05CD99" : score >= 40 ? "#F4A60D" : "#EE5D50";
 
   const createdLabel = ad.createdTime
@@ -240,6 +282,7 @@ function CreativeCard({
 
   return (
     <div
+      ref={cardRef}
       className="group relative flex flex-col overflow-hidden rounded-xl border transition-all hover:shadow-lg hover:-translate-y-0.5"
       style={{
         borderColor: starred ? "rgba(245,158,11,0.6)" : "var(--dm-border-default)",
@@ -247,7 +290,7 @@ function CreativeCard({
       }}
     >
       {/* Thumbnail */}
-      <AdThumb ad={ad} onClick={onPreview} />
+      <AdThumb ad={ad} onClick={onPreview} src={thumbSrc} />
 
       {/* Hover overlay actions */}
       <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 z-10">
@@ -571,24 +614,43 @@ function PreviewModal({
             >›</button>
           </div>
 
-          {/* Static / Interactive toggle */}
+          {/* Legenda do anúncio */}
+          {ad.body && !showIframe && (
+            <div
+              className="w-full rounded-xl p-3"
+              style={{
+                backgroundColor: "var(--dm-bg-surface)",
+                border: "1px solid var(--dm-border-subtle)",
+                maxHeight: 110,
+                overflowY: "auto",
+              }}
+            >
+              <p className="mb-1 text-[9px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>
+                Legenda
+              </p>
+              <p className="text-[11px] leading-relaxed" style={{ color: "var(--dm-text-secondary)", whiteSpace: "pre-line" }}>
+                {ad.body.length > 300 ? ad.body.slice(0, 300) + "…" : ad.body}
+              </p>
+            </div>
+          )}
+
+          {/* Visualizar ao vivo */}
           {(accessToken || ad.instagramUrl) && (
             <button
               type="button"
               onClick={() => setShowIframe(!showIframe)}
-              className="flex w-full items-center justify-center gap-2 rounded-xl py-2 text-[11px] font-semibold transition hover:opacity-80"
+              className="flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-[12px] font-bold text-white transition hover:opacity-80"
               style={{
-                backgroundColor: showIframe ? "var(--dm-bg-surface)" : "rgba(99,102,200,0.15)",
-                color: showIframe ? "var(--dm-text-secondary)" : "var(--dm-brand-500)",
-                border: `1px solid ${showIframe ? "var(--dm-border-default)" : "rgba(99,102,200,0.35)"}`,
+                background: showIframe ? "var(--dm-bg-surface)" : DRAWER_GRAD,
+                color: showIframe ? "var(--dm-text-secondary)" : "#fff",
+                border: showIframe ? "1px solid var(--dm-border-default)" : "none",
+                boxShadow: showIframe ? "none" : "0 4px 14px rgba(49,52,145,0.28)",
               }}
             >
               {showIframe ? (
-                <><ImageIcon size={11} /> Ver imagem</>
-              ) : ad.instagramUrl && !/\/stories\//.test(ad.instagramUrl) ? (
-                <><Play size={11} fill="currentColor" /> Abrir no Instagram</>
+                <><ImageIcon size={12} /> Ver imagem</>
               ) : (
-                <><Play size={11} fill="currentColor" /> Preview interativo</>
+                <><Play size={12} fill="currentColor" /> Visualizar ao vivo</>
               )}
             </button>
           )}
@@ -648,16 +710,27 @@ function PreviewModal({
           <div className="flex-1 overflow-y-auto">
             <div className="flex flex-col gap-4 p-5">
 
-              {/* Campaign + date */}
-              <div className="flex items-center justify-between gap-2">
-                <p className="truncate text-[11px]" style={{ color: "var(--dm-text-secondary)" }} title={ad.campaignName}>
+              {/* Campaign + dates */}
+              <div className="flex flex-col gap-1.5">
+                <p className="truncate text-[11px] font-medium" style={{ color: "var(--dm-text-secondary)" }} title={ad.campaignName}>
                   📢 {ad.campaignName}
                 </p>
-                {createdLabel && (
-                  <span className="flex flex-shrink-0 items-center gap-1 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
-                    <CalendarDays size={9} />{createdLabel}
-                  </span>
-                )}
+                <div className="flex flex-col gap-0.5 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                  {ad.campaignStartTime && (
+                    <span className="flex items-center gap-1">
+                      <CalendarDays size={9} />
+                      Campanha ativa desde: <strong style={{ color: "var(--dm-text-secondary)" }}>
+                        {new Date(ad.campaignStartTime).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}
+                      </strong>
+                    </span>
+                  )}
+                  {createdLabel && (
+                    <span className="flex items-center gap-1">
+                      <CalendarDays size={9} />
+                      Criativo enviado: <strong style={{ color: "var(--dm-text-secondary)" }}>{createdLabel}</strong>
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* Insight chips */}
@@ -666,16 +739,6 @@ function PreviewModal({
                   {chips.map((c) => (
                     <span key={c.label} className="rounded-full px-3 py-1 text-[10px] font-semibold" style={CHIP_STYLE[c.color]}>{c.label}</span>
                   ))}
-                </div>
-              )}
-
-              {/* Ad copy */}
-              {ad.body && (
-                <div className="rounded-[10px] p-3.5" style={{ backgroundColor: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-subtle)" }}>
-                  <p className="mb-1.5 text-[9px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>Legenda do anúncio</p>
-                  <p className="text-[11px] leading-[1.6]" style={{ color: "var(--dm-text-secondary)", whiteSpace: "pre-line" }}>
-                    {ad.body.length > 320 ? ad.body.slice(0, 320) + "…" : ad.body}
-                  </p>
                 </div>
               )}
 
@@ -826,6 +889,21 @@ function RankingRow({
         )}
       </div>
     </li>
+  );
+}
+
+// ─── Campaign section divider ─────────────────────────────────────────────────
+
+function CampaignSection({ name, count }: { name: string; count: number }) {
+  return (
+    <div className="flex items-center gap-3 pb-1 pt-2">
+      <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ backgroundColor: "var(--dm-brand-500)" }} />
+      <span className="truncate text-[11px] font-bold" style={{ color: "var(--dm-text-secondary)" }}>{name}</span>
+      <span className="flex-shrink-0 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+        {count} criativo{count !== 1 ? "s" : ""}
+      </span>
+      <div className="h-px flex-1" style={{ backgroundColor: "var(--dm-border-subtle)" }} />
+    </div>
   );
 }
 
@@ -1017,6 +1095,18 @@ export function BestCreatives({
   const hasMore    = pageAds.length < filteredAds.length;
   const starCount  = metaAds.filter((a) => store[a.adId]?.starred).length;
 
+  // Group by campaign for dividers (only when 2+ campaigns in current view)
+  const campaignGroups = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; ads: MetaCampaignCreative[] }>();
+    for (const ad of pageAds) {
+      if (!map.has(ad.campaignId))
+        map.set(ad.campaignId, { id: ad.campaignId, name: ad.campaignName, ads: [] });
+      map.get(ad.campaignId)!.ads.push(ad);
+    }
+    return [...map.values()];
+  }, [pageAds]);
+  const showDividers = campaignGroups.length > 1;
+
   // Rankings (by campaign metrics)
   const byCtr = useMemo(() =>
     [...campaigns].filter((c) => c.impressions > 500).sort((a, b) => b.ctr - a.ctr).slice(0, 8),
@@ -1190,18 +1280,42 @@ export function BestCreatives({
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-                {pageAds.map((ad) => (
-                  <CreativeCard
-                    key={ad.adId}
-                    ad={ad}
-                    insight={adInsights.get(ad.adId)}
-                    starred={store[ad.adId]?.starred ?? false}
-                    onPreview={() => setPreviewAd(ad)}
-                    onToggleStar={() => toggleStar(ad)}
-                  />
-                ))}
-              </div>
+              {showDividers ? (
+                <div className="space-y-2">
+                  {campaignGroups.map((group) => (
+                    <div key={group.id}>
+                      <CampaignSection name={group.name} count={group.ads.length} />
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                        {group.ads.map((ad) => (
+                          <CreativeCard
+                            key={ad.adId}
+                            ad={ad}
+                            insight={adInsights.get(ad.adId)}
+                            starred={store[ad.adId]?.starred ?? false}
+                            onPreview={() => setPreviewAd(ad)}
+                            onToggleStar={() => toggleStar(ad)}
+                            accessToken={accessToken}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                  {pageAds.map((ad) => (
+                    <CreativeCard
+                      key={ad.adId}
+                      ad={ad}
+                      insight={adInsights.get(ad.adId)}
+                      starred={store[ad.adId]?.starred ?? false}
+                      onPreview={() => setPreviewAd(ad)}
+                      onToggleStar={() => toggleStar(ad)}
+                      accessToken={accessToken}
+                    />
+                  ))}
+                </div>
+              )}
 
               {/* Load more */}
               {hasMore && (
