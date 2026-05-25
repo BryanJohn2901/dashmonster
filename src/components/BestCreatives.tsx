@@ -129,8 +129,18 @@ function AdIframe({ ad, accessToken }: { ad: MetaCampaignCreative; accessToken: 
   }, [ad.adId, accessToken, src]);
 
   if (loading) return (
-    <div className="flex h-full items-center justify-center">
-      <Loader2 size={24} className="animate-spin text-slate-500" />
+    <div className="relative flex h-full items-center justify-center">
+      {ad.thumbnailUrl && (
+        <img
+          src={ad.thumbnailUrl}
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover opacity-40"
+          style={{ filter: "blur(4px)" }}
+        />
+      )}
+      <div className="relative z-10 flex items-center justify-center rounded-xl bg-black/50 p-3">
+        <Loader2 size={22} className="animate-spin text-white/80" />
+      </div>
     </div>
   );
 
@@ -303,6 +313,24 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
+// ─── High-res thumbnail via Instagram oEmbed ──────────────────────────────────
+
+/** Returns oEmbed thumbnail (~640px) when instagramUrl available; falls back to thumbnailUrl. */
+function useHighResThumbnail(ad: MetaCampaignCreative, accessToken: string): string {
+  const [hiRes, setHiRes] = useState<string>("");
+  useEffect(() => {
+    if (!ad.instagramUrl || !accessToken) { setHiRes(""); return; }
+    setHiRes("");
+    fetch(`/api/meta/ig-oembed?${new URLSearchParams({ url: ad.instagramUrl, accessToken })}`)
+      .then((r) => r.json())
+      .then((j: { thumbnailUrl?: string }) => { if (j.thumbnailUrl) setHiRes(j.thumbnailUrl); })
+      .catch(() => {});
+  }, [ad.adId, ad.instagramUrl, accessToken]);
+  return hiRes || ad.thumbnailUrl;
+}
+
+// ─── Preview modal ─────────────────────────────────────────────────────────────
+
 function PreviewModal({
   ad, insight, starred, accessToken, onClose, onToggleStar,
   allAds, allInsights, onNavigate,
@@ -317,15 +345,16 @@ function PreviewModal({
   allInsights:  Map<string, AdInsight>;
   onNavigate:   (ad: MetaCampaignCreative) => void;
 }) {
-  const [showIframe, setShowIframe] = useState(false);
+  const [showIframe, setShowIframe] = useState(Boolean(accessToken));
   const currentIndex = allAds.findIndex((a) => a.adId === ad.adId);
+  const bestThumbnail = useHighResThumbnail(ad, accessToken);
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if (e.key === "Escape") { onClose(); return; }
       const idx = allAds.findIndex((a) => a.adId === ad.adId);
-      if (e.key === "ArrowRight" && allAds[idx + 1]) { setShowIframe(false); onNavigate(allAds[idx + 1]); }
-      if (e.key === "ArrowLeft"  && allAds[idx - 1]) { setShowIframe(false); onNavigate(allAds[idx - 1]); }
+      if (e.key === "ArrowRight" && allAds[idx + 1]) { setShowIframe(Boolean(accessToken)); onNavigate(allAds[idx + 1]); }
+      if (e.key === "ArrowLeft"  && allAds[idx - 1]) { setShowIframe(Boolean(accessToken)); onNavigate(allAds[idx - 1]); }
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
@@ -440,8 +469,8 @@ function PreviewModal({
             {/* Creative content */}
             {showIframe ? (
               <AdIframe ad={ad} accessToken={accessToken} />
-            ) : ad.thumbnailUrl ? (
-              <img src={ad.thumbnailUrl} alt={ad.adName} className="h-full w-full object-cover" />
+            ) : bestThumbnail ? (
+              <img src={bestThumbnail} alt={ad.adName} className="h-full w-full object-cover" />
             ) : (
               <div className="flex h-full flex-col items-center justify-center gap-2"
                 style={{ color: "rgba(255,255,255,0.18)" }}>
@@ -461,7 +490,7 @@ function PreviewModal({
           <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={() => { setShowIframe(false); onNavigate(allAds[currentIndex - 1]); }}
+              onClick={() => { setShowIframe(Boolean(accessToken)); onNavigate(allAds[currentIndex - 1]); }}
               disabled={currentIndex <= 0}
               className="flex h-8 w-8 items-center justify-center rounded-xl text-[18px] font-bold transition hover:opacity-80 disabled:opacity-20"
               style={{ backgroundColor: "var(--dm-bg-surface)", border: "1px solid var(--dm-border-default)", color: "var(--dm-text-secondary)" }}
@@ -471,27 +500,29 @@ function PreviewModal({
             </span>
             <button
               type="button"
-              onClick={() => { setShowIframe(false); onNavigate(allAds[currentIndex + 1]); }}
+              onClick={() => { setShowIframe(Boolean(accessToken)); onNavigate(allAds[currentIndex + 1]); }}
               disabled={currentIndex >= allAds.length - 1}
               className="flex h-8 w-8 items-center justify-center rounded-xl text-[18px] font-bold transition hover:opacity-80 disabled:opacity-20"
               style={{ backgroundColor: "var(--dm-bg-surface)", border: "1px solid var(--dm-border-default)", color: "var(--dm-text-secondary)" }}
             >›</button>
           </div>
 
-          {/* Interactive preview toggle */}
+          {/* Static / Interactive toggle */}
           {accessToken && (
             <button
               type="button"
               onClick={() => setShowIframe(!showIframe)}
               className="flex w-full items-center justify-center gap-2 rounded-xl py-2 text-[11px] font-semibold transition hover:opacity-80"
               style={{
-                backgroundColor: showIframe ? "rgba(99,102,200,0.15)" : "var(--dm-bg-surface)",
-                color: showIframe ? "var(--dm-brand-500)" : "var(--dm-text-secondary)",
-                border: `1px solid ${showIframe ? "rgba(99,102,200,0.35)" : "var(--dm-border-default)"}`,
+                backgroundColor: showIframe ? "var(--dm-bg-surface)" : "rgba(99,102,200,0.15)",
+                color: showIframe ? "var(--dm-text-secondary)" : "var(--dm-brand-500)",
+                border: `1px solid ${showIframe ? "var(--dm-border-default)" : "rgba(99,102,200,0.35)"}`,
               }}
             >
-              <Play size={11} fill={showIframe ? "currentColor" : "none"} />
-              {showIframe ? "Fechar preview" : "Preview interativo"}
+              {showIframe
+                ? <><ImageIcon size={11} /> Ver imagem</>
+                : <><Play size={11} fill="currentColor" /> Preview interativo</>
+              }
             </button>
           )}
         </div>
