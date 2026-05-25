@@ -3278,7 +3278,7 @@ function ProfileDetailView({
           dateFrom={dateFrom}
           dateTo={dateTo}
           template={resolvedTemplate}
-          instagramUserId={undefined}
+          instagramUserId={profile.instagramUserId}
           hideTabSwitcher
         />
       )}
@@ -3299,7 +3299,7 @@ function ProfileDetailView({
           dateFrom={dateFrom}
           dateTo={dateTo}
           template={resolvedTemplate}
-          instagramUserId={undefined}
+          instagramUserId={profile.instagramUserId}
           forceTab="conjunto"
           hideTabSwitcher
         />

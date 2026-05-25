@@ -184,17 +184,46 @@ export function PerfilAtivoPanel({
           setLoading(false);
           return;
         }
+
+        // 1. Load stored Supabase history
         const params = new URLSearchParams({ accountId: match.id });
         if (dateFrom) params.set("dateFrom", dateFrom);
         if (dateTo)   params.set("dateTo",   dateTo);
-        const res  = await fetch(`/api/instagram/history?${params}`);
+        const res = await fetch(`/api/instagram/history?${params}`);
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
           throw new Error((err as { error?: string }).error ?? `HTTP ${res.status}`);
         }
         const data = await res.json() as { account: IGTrackedAccount; history: IGHistoryPoint[] };
-        setAccount(data.account ?? null);
-        setHistory(Array.isArray(data.history) ? data.history : []);
+        const storedAccount = data.account ?? null;
+        let storedHistory: IGHistoryPoint[] = Array.isArray(data.history) ? data.history : [];
+
+        // 2. If Supabase history is sparse (< 7 days), augment with live Meta API data
+        if (storedHistory.length < 7) {
+          try {
+            const liveRes = await fetch(
+              `/api/instagram/accounts/live-history?ibaId=${encodeURIComponent(igUserId)}`,
+            );
+            if (liveRes.ok) {
+              const liveData = await liveRes.json() as { history?: IGHistoryPoint[] };
+              const liveHistory = Array.isArray(liveData.history) ? liveData.history : [];
+              if (liveHistory.length > 0) {
+                // Merge: live data fills dates not yet in Supabase
+                const storedDates = new Set(storedHistory.map(h => h.date));
+                const merged = [
+                  ...storedHistory,
+                  ...liveHistory.filter(h => !storedDates.has(h.date)),
+                ];
+                storedHistory = merged.sort((a, b) => a.date.localeCompare(b.date));
+              }
+            }
+          } catch {
+            // Live fetch failed — proceed with whatever Supabase has
+          }
+        }
+
+        setAccount(storedAccount);
+        setHistory(storedHistory);
         setLoading(false);
       })
       .catch(() => {
