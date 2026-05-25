@@ -64,16 +64,44 @@ function writeCache(key: string, data: MetaCampaignCreative[]) {
   try { localStorage.setItem(key, JSON.stringify({ ts: Date.now(), data })); } catch {}
 }
 
-// ─── High-res card thumbnail cache (module-level, survives re-renders) ────────
+// ─── oEmbed thumbnail persistence (survives page refresh via localStorage) ────
 
-const oEmbedCardCache = new Map<string, string>(); // adId → hiResUrl
+const OEMBED_STORE_KEY  = "pta_oembed_v1";
+const oEmbedCardCache   = new Map<string, string>(); // adId → hiResUrl (in-memory fast path)
+let   oEmbedStoreLoaded = false;
 
-/** Lazy-fetches oEmbed thumbnail only when the card element enters the viewport. */
+/** Hydrates oEmbedCardCache from localStorage once (client-side only). */
+function ensureOEmbedStore(): void {
+  if (oEmbedStoreLoaded || typeof window === "undefined") return;
+  oEmbedStoreLoaded = true;
+  try {
+    const raw = localStorage.getItem(OEMBED_STORE_KEY);
+    if (!raw) return;
+    const map = JSON.parse(raw) as Record<string, string>;
+    for (const [id, url] of Object.entries(map)) oEmbedCardCache.set(id, url);
+  } catch {}
+}
+
+/** Writes an oEmbed URL to the in-memory Map AND localStorage so it survives refresh. */
+function persistOEmbedUrl(adId: string, url: string): void {
+  oEmbedCardCache.set(adId, url);
+  if (typeof window === "undefined") return;
+  try {
+    const raw    = localStorage.getItem(OEMBED_STORE_KEY);
+    const stored = raw ? (JSON.parse(raw) as Record<string, string>) : {};
+    stored[adId] = url;
+    localStorage.setItem(OEMBED_STORE_KEY, JSON.stringify(stored));
+  } catch {}
+}
+
+/** Lazy-fetches oEmbed thumbnail only when the card element enters the viewport.
+ *  Result is persisted to localStorage so it survives page refresh. */
 function useCardThumbnail(
   ad: MetaCampaignCreative,
   accessToken: string,
   elRef: React.RefObject<HTMLDivElement | null>,
 ): string {
+  ensureOEmbedStore(); // hydrate Map from localStorage on first client render
   const [hiRes, setHiRes] = useState<string>(oEmbedCardCache.get(ad.adId) ?? "");
 
   useEffect(() => {
@@ -89,7 +117,7 @@ function useCardThumbnail(
         fetch(`/api/meta/ig-oembed?${new URLSearchParams({ url: ad.instagramUrl!, accessToken })}`)
           .then((r) => r.json())
           .then((j: { thumbnailUrl?: string }) => {
-            if (j.thumbnailUrl) { oEmbedCardCache.set(ad.adId, j.thumbnailUrl); setHiRes(j.thumbnailUrl); }
+            if (j.thumbnailUrl) { persistOEmbedUrl(ad.adId, j.thumbnailUrl); setHiRes(j.thumbnailUrl); }
           })
           .catch(() => {});
       },
@@ -417,17 +445,23 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-// ─── High-res thumbnail via Instagram oEmbed ──────────────────────────────────
+// ─── High-res thumbnail via Instagram oEmbed (modal) ─────────────────────────
 
-/** Returns oEmbed thumbnail (~640px) when instagramUrl available; falls back to thumbnailUrl. */
+/** Returns oEmbed thumbnail (up to 1440px) when instagramUrl available; falls back to thumbnailUrl.
+ *  Reads from persistent cache first — no API call if already fetched this session or before. */
 function useHighResThumbnail(ad: MetaCampaignCreative, accessToken: string): string {
-  const [hiRes, setHiRes] = useState<string>("");
+  ensureOEmbedStore(); // hydrate Map from localStorage on first client render
+  const [hiRes, setHiRes] = useState<string>(oEmbedCardCache.get(ad.adId) ?? "");
   useEffect(() => {
     if (!ad.instagramUrl || !accessToken) { setHiRes(""); return; }
+    // Already in cache (this session or from localStorage) — use immediately
+    if (oEmbedCardCache.has(ad.adId)) { setHiRes(oEmbedCardCache.get(ad.adId)!); return; }
     setHiRes("");
     fetch(`/api/meta/ig-oembed?${new URLSearchParams({ url: ad.instagramUrl, accessToken })}`)
       .then((r) => r.json())
-      .then((j: { thumbnailUrl?: string }) => { if (j.thumbnailUrl) setHiRes(j.thumbnailUrl); })
+      .then((j: { thumbnailUrl?: string }) => {
+        if (j.thumbnailUrl) { persistOEmbedUrl(ad.adId, j.thumbnailUrl); setHiRes(j.thumbnailUrl); }
+      })
       .catch(() => {});
   }, [ad.adId, ad.instagramUrl, accessToken]);
   return hiRes || ad.thumbnailUrl;
