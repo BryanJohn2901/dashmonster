@@ -64,19 +64,29 @@ function writeCache(key: string, data: MetaCampaignCreative[]) {
 
 // ─── Thumbnail image (static — no iframe) ────────────────────────────────────
 
-function AdThumb({ ad, onClick }: { ad: MetaCampaignCreative; onClick?: () => void }) {
+function AdThumb({
+  ad, onClick, src, aspectRatio = "4/5",
+}: {
+  ad: MetaCampaignCreative;
+  onClick?: () => void;
+  /** Override for the thumbnail image URL (e.g. HQ source). Falls back to ad.thumbnailUrl. */
+  src?: string;
+  /** CSS aspect-ratio value (e.g. "4/5", "1/1", "9/16"). Defaults to "4/5". */
+  aspectRatio?: string;
+}) {
   const [failed, setFailed] = useState(false);
-  const hasImg = Boolean(ad.thumbnailUrl) && !failed;
+  const imgSrc = src || ad.thumbnailUrl;
+  const hasImg = Boolean(imgSrc) && !failed;
 
   return (
     <div
       onClick={onClick}
       className={`relative w-full overflow-hidden bg-slate-900 ${onClick ? "cursor-pointer" : ""}`}
-      style={{ aspectRatio: "4/5" }}
+      style={{ aspectRatio }}
     >
       {hasImg ? (
         <img
-          src={ad.thumbnailUrl}
+          src={imgSrc}
           alt={ad.adName}
           className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
           onError={() => setFailed(true)}
@@ -108,7 +118,90 @@ function AdThumb({ ad, onClick }: { ad: MetaCampaignCreative; onClick?: () => vo
 
 // ─── Ad Preview iframe (used only in modal) ───────────────────────────────────
 
-const iframeCache = new Map<string, string>();
+const iframeCache   = new Map<string, string>();
+const videoSrcCache = new Map<string, string | null>(); // null = fetch failed/unavailable
+
+// ─── Video Player (native <video> with lazy .mp4 fetch) ───────────────────────
+
+function VideoPlayer({
+  ad,
+  accessToken,
+  posterSrc,
+}: {
+  ad:          MetaCampaignCreative;
+  accessToken: string;
+  posterSrc:   string;
+}) {
+  const [videoSrc, setVideoSrc] = useState<string | null>(
+    videoSrcCache.has(ad.adId) ? videoSrcCache.get(ad.adId)! : null,
+  );
+  const [loading,  setLoading]  = useState(!videoSrcCache.has(ad.adId));
+  const [playing,  setPlaying]  = useState(false);
+
+  useEffect(() => {
+    if (videoSrcCache.has(ad.adId)) {
+      setVideoSrc(videoSrcCache.get(ad.adId) ?? null);
+      setLoading(false);
+      return;
+    }
+    if (!ad.videoId || !accessToken) { setLoading(false); return; }
+
+    setLoading(true);
+    fetch(`/api/meta/video-source?${new URLSearchParams({ videoId: ad.videoId, accessToken })}`)
+      .then((r) => r.json())
+      .then((j: { videoSrc?: string | null }) => {
+        const src = j.videoSrc ?? null;
+        videoSrcCache.set(ad.adId, src);
+        setVideoSrc(src);
+      })
+      .catch((e) => { logSilentError("VideoPlayer fetch video-source", e); videoSrcCache.set(ad.adId, null); })
+      .finally(() => setLoading(false));
+  }, [ad.adId, ad.videoId, accessToken]);
+
+  // Reset play state when navigating to a different ad
+  useEffect(() => { setPlaying(false); }, [ad.adId]);
+
+  if (loading) return (
+    <div className="relative flex h-full items-center justify-center">
+      {posterSrc && (
+        <img src={posterSrc} alt="" className="absolute inset-0 h-full w-full object-cover opacity-40" style={{ filter: "blur(4px)" }} />
+      )}
+      <div className="relative z-10 flex items-center justify-center rounded-xl bg-black/50 p-3">
+        <Loader2 size={22} className="animate-spin text-white/80" />
+      </div>
+    </div>
+  );
+
+  // No source available — fall back to iframe
+  if (!videoSrc) return <AdIframe ad={ad} accessToken={accessToken} />;
+
+  // Poster state: thumbnail + centered play button
+  if (!playing) return (
+    <div
+      className="relative flex h-full cursor-pointer items-center justify-center"
+      onClick={() => setPlaying(true)}
+    >
+      {posterSrc && (
+        <img src={posterSrc} alt={ad.adName} className="absolute inset-0 h-full w-full object-cover" />
+      )}
+      <div className="relative z-10 flex h-16 w-16 items-center justify-center rounded-full bg-black/60 shadow-xl backdrop-blur-sm transition hover:bg-black/80">
+        <Play size={28} fill="white" className="ml-1 text-white" />
+      </div>
+    </div>
+  );
+
+  return (
+    <video
+      className="absolute inset-0 h-full w-full bg-black"
+      style={{ objectFit: "contain" }}
+      src={videoSrc}
+      poster={posterSrc}
+      controls
+      autoPlay
+      playsInline
+    />
+  );
+}
 
 function AdIframe({ ad, accessToken }: { ad: MetaCampaignCreative; accessToken: string }) {
   const [src, setSrc]     = useState<string | null>(iframeCache.get(ad.adId) ?? null);
@@ -304,7 +397,13 @@ function PreviewModal({
   allInsights:  Map<string, AdInsight>;
   onNavigate:   (ad: MetaCampaignCreative) => void;
 }) {
-  const [showIframe, setShowIframe] = useState(false);
+  // Mudança D: imagens abrem estáticas; vídeos abrem no VideoPlayer (não iframe)
+  const [showIframe, setShowIframe] = useState(() => ad.mediaType !== "image" && ad.mediaType !== "video");
+
+  // Reset when navigating between ads
+  useEffect(() => {
+    setShowIframe(ad.mediaType !== "image" && ad.mediaType !== "video");
+  }, [ad.adId, ad.mediaType]);
 
   const currentIndex = allAds.findIndex((a) => a.adId === ad.adId);
 
@@ -312,8 +411,8 @@ function PreviewModal({
     const h = (e: KeyboardEvent) => {
       if (e.key === "Escape") { onClose(); return; }
       const idx = allAds.findIndex((a) => a.adId === ad.adId);
-      if (e.key === "ArrowRight" && allAds[idx + 1]) { setShowIframe(false); onNavigate(allAds[idx + 1]); }
-      if (e.key === "ArrowLeft"  && allAds[idx - 1]) { setShowIframe(false); onNavigate(allAds[idx - 1]); }
+      if (e.key === "ArrowRight" && allAds[idx + 1]) { onNavigate(allAds[idx + 1]); }
+      if (e.key === "ArrowLeft"  && allAds[idx - 1]) { onNavigate(allAds[idx - 1]); }
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
@@ -506,19 +605,24 @@ function PreviewModal({
               className="relative w-full overflow-hidden"
               style={{ aspectRatio: "16/9", borderRadius: 10, background: "#0b1437", border: "1px solid var(--dm-border-subtle)" }}
             >
-              {showIframe ? (
+              {/* Mudança E: vídeos usam VideoPlayer nativo; imagens estáticas; fallback iframe */}
+              {ad.mediaType === "video" ? (
+                <VideoPlayer ad={ad} accessToken={accessToken} posterSrc={ad.thumbnailUrl} />
+              ) : showIframe ? (
                 <AdIframe ad={ad} accessToken={accessToken} />
               ) : ad.thumbnailUrl ? (
-                <img src={ad.thumbnailUrl} alt={ad.adName} className="h-full w-full object-cover" />
+                <img src={ad.thumbnailUrl} alt={ad.adName} className="absolute inset-0 h-full w-full object-cover" />
               ) : (
                 <div className="flex h-full flex-col items-center justify-center gap-2" style={{ color: "rgba(255,255,255,0.18)" }}>
-                  {ad.mediaType === "video" ? <Film size={36} /> : <ImageIcon size={36} />}
-                  <p className="text-[10px]">Sem preview</p>
+                  <ImageIcon size={36} />
+                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.28)" }}>Sem preview</span>
                 </div>
               )}
 
-              {/* Gradient overlay */}
-              <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.70) 0%, transparent 55%)" }} />
+              {/* Gradient overlay — não mostrar sobre video player ativo */}
+              {ad.mediaType !== "video" && (
+                <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.70) 0%, transparent 55%)" }} />
+              )}
 
               {/* Bottom info */}
               <div className="absolute bottom-0 left-0 right-0 flex items-end justify-between p-3">
@@ -537,8 +641,8 @@ function PreviewModal({
                 )}
               </div>
 
-              {/* Interactive preview button */}
-              {accessToken && !showIframe && (
+              {/* Mudança F: vídeos têm VideoPlayer próprio — não mostrar toggle iframe */}
+              {ad.mediaType !== "video" && accessToken && !showIframe && (
                 <button
                   type="button"
                   onClick={() => setShowIframe(true)}
