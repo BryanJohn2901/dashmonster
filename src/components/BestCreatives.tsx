@@ -120,13 +120,23 @@ function useCardThumbnail(
         if (oEmbedCardCache.has(ad.adId)) { setHiRes(oEmbedCardCache.get(ad.adId)!); return; }
 
         if (ad.instagramUrl) {
+          // Instagram oEmbed → up to ~640px for images and videos (poster frame)
           fetch(`/api/meta/ig-oembed?${new URLSearchParams({ url: ad.instagramUrl, accessToken })}`)
             .then((r) => r.json())
             .then((j: { thumbnailUrl?: string }) => {
               if (j.thumbnailUrl) { persistOEmbedUrl(ad.adId, j.thumbnailUrl); setHiRes(j.thumbnailUrl); }
             })
             .catch(() => {});
+        } else if (ad.videoId) {
+          // Meta video poster frame → /{videoId}?fields=picture (good quality, ~640px)
+          fetch(`/api/meta/video-thumbnail?${new URLSearchParams({ videoId: ad.videoId, accessToken })}`)
+            .then((r) => r.json())
+            .then((j: { thumbnailUrl?: string }) => {
+              if (j.thumbnailUrl) { persistOEmbedUrl(ad.adId, j.thumbnailUrl); setHiRes(j.thumbnailUrl); }
+            })
+            .catch(() => {});
         } else if (ad.creativeId) {
+          // AdCreative image_url — last resort (often returns ~64px)
           fetch(`/api/meta/creative-image?${new URLSearchParams({ creativeId: ad.creativeId, accessToken })}`)
             .then((r) => r.json())
             .then((j: { imageUrl?: string }) => {
@@ -317,13 +327,15 @@ function AdInstagramEmbed({
 }
 
 /** Infer best aspect ratio from creative type + Instagram URL pattern.
- *  Always returns a concrete ratio — iframe and thumbnail share the same container dimensions. */
+ *  Reels and stories are 9:16 (vertical). Feed videos and images use 4:5 (standard ad format).
+ *  Using 9:16 for non-reel videos was wrong — feed videos are typically 4:5 or 1:1,
+ *  not vertical, so the container would be too tall and show Instagram footer chrome. */
 function getViewerAspect(ad: MetaCampaignCreative): string {
   const url = ad.instagramUrl ?? "";
-  if (/\/reel\//.test(url) || ad.mediaType === "video") return "9/16";
-  if (/\/stories\//.test(url)) return "9/16";
-  if (ad.mediaType === "carousel") return "1/1";
-  return "4/5";
+  if (/\/reel\//.test(url)) return "9/16";       // reels: always vertical 9:16
+  if (/\/stories\//.test(url)) return "9/16";    // stories: always vertical 9:16
+  if (ad.mediaType === "carousel") return "1/1"; // carousels: square
+  return "4/5";                                  // images + feed videos: standard ad format
 }
 
 // ─── Card Live Preview ────────────────────────────────────────────────────────
@@ -421,16 +433,22 @@ function CreativeCard({
     ? new Date(ad.createdTime).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "2-digit" })
     : null;
 
+  // Static hi-res thumbnail — lazy-loaded when card enters viewport.
+  // Priority: oEmbed (Instagram) > video poster (Meta) > creative image > 64px fallback.
+  const cardRef  = useRef<HTMLDivElement>(null);
+  const thumbSrc = useCardThumbnail(ad, accessToken ?? "", cardRef);
+
   return (
     <div
+      ref={cardRef}
       className="group relative flex flex-col overflow-hidden rounded-xl border transition-all hover:shadow-lg hover:-translate-y-0.5"
       style={{
         borderColor: starred ? "rgba(245,158,11,0.6)" : "var(--dm-border-default)",
         backgroundColor: "var(--dm-bg-surface)",
       }}
     >
-      {/* Live preview */}
-      <CardLivePreview ad={ad} accessToken={accessToken ?? ""} onClick={onPreview} />
+      {/* Static thumbnail — no iframe, no chrome issues */}
+      <AdThumb ad={ad} onClick={onPreview} src={thumbSrc} />
 
       {/* Hover overlay actions — z-30 para ficar acima do click overlay do iframe (z-10) */}
       <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 z-30">

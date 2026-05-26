@@ -198,6 +198,7 @@ export interface MetaCampaignCreative {
   body?:              string;      // ad copy / caption text from object_story_spec
   headline?:          string;      // link headline (title shown under the creative)
   creativeId?:        string;      // AdCreative ID — used to fetch image_url at native resolution
+  videoId?:           string;      // Meta video ID — used to fetch poster frame via /{videoId}?fields=picture
 }
 
 /**

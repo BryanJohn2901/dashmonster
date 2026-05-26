@@ -163,7 +163,8 @@ export async function GET(request: NextRequest) {
           campaignStartTime:  ad.campaign?.start_time ?? undefined,
           body,
           headline,
-          creativeId:         ad.creative?.id ?? undefined,
+          creativeId:         ad.creative?.id       ?? undefined,
+          videoId:            ad.creative?.video_id  ?? undefined,
         } satisfies MetaCampaignCreative;
       });
 
