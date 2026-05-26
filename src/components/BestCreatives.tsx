@@ -292,14 +292,14 @@ function AdInstagramEmbed({
   );
 }
 
-/** Infer best aspect ratio from creative type + Instagram URL pattern. */
-function getViewerAspect(ad: MetaCampaignCreative, showIframe: boolean): string | undefined {
-  if (showIframe) return undefined; // let container use minHeight/maxHeight when iframe active
+/** Infer best aspect ratio from creative type + Instagram URL pattern.
+ *  Always returns a concrete ratio — iframe and thumbnail share the same container dimensions. */
+function getViewerAspect(ad: MetaCampaignCreative): string {
   const url = ad.instagramUrl ?? "";
   if (/\/reel\//.test(url) || ad.mediaType === "video") return "9/16";
   if (/\/stories\//.test(url)) return "9/16";
-  if (ad.mediaType === "carousel") return "1/1"; // carrossel é quadrado (1:1) no feed
-  return "4/5"; // feed image
+  if (ad.mediaType === "carousel") return "1/1";
+  return "4/5";
 }
 
 // ─── Creative Card ────────────────────────────────────────────────────────────
@@ -511,17 +511,15 @@ function PreviewModal({
   allInsights:  Map<string, AdInsight>;
   onNavigate:   (ad: MetaCampaignCreative) => void;
 }) {
-  // useDirectImage obtém imagem de alta res para TODOS os ads:
-  //   com instagramUrl → oEmbed (até 1440px)
-  //   sem instagramUrl → AdCreative image_url (resolução original)
-  // showIframe sempre inicia false — iframe só abre quando o usuário clicar "Visualizar ao vivo"
-  const [showIframe, setShowIframe] = useState(false);
+  // Modal abre direto no live preview para todos os ads.
+  // "Ver imagem estática" ainda disponível como opção.
+  const [showIframe, setShowIframe] = useState(true);
   const currentIndex = allAds.findIndex((a) => a.adId === ad.adId);
   const bestThumbnail = useDirectImage(ad, accessToken);
 
-  // Reseta ao trocar de ad
+  // Reseta para live preview ao trocar de ad
   useEffect(() => {
-    setShowIframe(false);
+    setShowIframe(true);
   }, [ad.adId]);
 
   useEffect(() => {
@@ -605,16 +603,11 @@ function PreviewModal({
             borderRight: "1px solid var(--dm-border-subtle)",
           }}
         >
-          {/* Creative display */}
+          {/* Creative display — aspect-ratio sempre fixo, mesma proporção para iframe e imagem */}
           <div
             className="relative w-full overflow-hidden rounded-2xl"
             style={{
-              aspectRatio: getViewerAspect(ad, showIframe),
-              minHeight: showIframe ? 460 : undefined,
-              maxHeight: showIframe ? 620 : (
-                (/\/reel\//.test(ad.instagramUrl ?? "") || ad.mediaType === "video")
-                  ? 580 : undefined
-              ),
+              aspectRatio: getViewerAspect(ad),
               backgroundColor: "#0a0a14",
               boxShadow: "0 12px 40px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.05)",
             }}
