@@ -1,4 +1,5 @@
-import { LucideIcon, TrendingDown, TrendingUp } from "lucide-react";
+import { useState } from "react";
+import { LucideIcon, Pencil, TrendingDown, TrendingUp } from "lucide-react";
 
 interface KpiCardProps {
   title: string;
@@ -14,6 +15,12 @@ interface KpiCardProps {
   goalLabel?: string;
   goalPct?: number | null;
   goalInvert?: boolean;
+  /** true quando este KPI pode receber valor manual (API retornou 0) */
+  editable?: boolean;
+  /** true quando o valor atual veio de override manual */
+  isManual?: boolean;
+  /** Callback chamado com o novo valor numérico digitado pelo usuário */
+  onEdit?: (newValue: number) => void;
 }
 
 const ACCENT = {
@@ -38,8 +45,11 @@ export function KpiCard({
   accentColor = "blue",
   invertTrend = false,
   goalValue, goalLabel, goalPct, goalInvert = false,
+  editable = false, isManual = false, onEdit,
 }: KpiCardProps) {
   const a = ACCENT[accentColor];
+  const [editing, setEditing] = useState(false);
+  const [draft,   setDraft]   = useState("");
 
   const isPositiveTrend = trend !== undefined
     ? (invertTrend ? trend < 0 : trend > 0)
@@ -62,8 +72,15 @@ export function KpiCard({
   return (
     <article
       className="card-hover group relative overflow-hidden rounded-[20px] border bg-white dark:bg-[#0F1020] shadow-horizon transition-all duration-300 hover:-translate-y-0.5"
-      style={{ borderColor: "var(--dm-border-default)" }}
+      style={{ borderColor: isManual ? "rgba(245,158,11,0.4)" : "var(--dm-border-default)" }}
     >
+      {/* Manual override badge */}
+      {isManual && (
+        <span className="absolute right-2 top-2 rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-500 bg-amber-50 dark:bg-amber-900/20">
+          Manual
+        </span>
+      )}
+
       <div className="flex items-center gap-4 p-5">
         {/* Icon — LEFT, circular, Horizon style */}
         <span
@@ -74,21 +91,59 @@ export function KpiCard({
 
         {/* Text block */}
         <div className="min-w-0 flex-1">
-          {/* Label */}
-          <p
-            className="dm-metric-label mb-1"
-            {...(tooltip ? { "data-dm-tip": tooltip } : {})}
-          >
-            {title}
-          </p>
+          {/* Label + edit button */}
+          <div className="mb-1 flex items-center gap-1">
+            <p
+              className="dm-metric-label"
+              {...(tooltip ? { "data-dm-tip": tooltip } : {})}
+            >
+              {title}
+            </p>
+            {editable && onEdit && (
+              <button
+                type="button"
+                onClick={() => { setDraft(""); setEditing(true); }}
+                className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity"
+                title={isManual ? "Editar valor manual" : "API retornou 0 — inserir valor manualmente"}
+              >
+                <Pencil size={10} className="text-amber-500" />
+              </button>
+            )}
+          </div>
 
-          {/* Value */}
-          <p
-            className="text-xl font-bold leading-tight tracking-tight font-[family-name:var(--font-poppins)]"
-            style={{ color: "var(--dm-text-primary)" }}
-          >
-            {value}
-          </p>
+          {/* Value — inline edit or display */}
+          {editing ? (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const n = parseFloat(draft.replace(",", "."));
+                if (!isNaN(n) && onEdit) { onEdit(n); }
+                setEditing(false);
+              }}
+              className="flex items-center gap-1"
+            >
+              <input
+                autoFocus
+                type="text"
+                inputMode="decimal"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Escape") setEditing(false); }}
+                className="w-20 rounded border px-1 py-0.5 text-sm font-bold focus:outline-none"
+                style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
+                placeholder="0"
+              />
+              <button type="submit" className="text-[10px] text-emerald-500 font-semibold">✓</button>
+              <button type="button" onClick={() => setEditing(false)} className="text-[10px] text-slate-400">✕</button>
+            </form>
+          ) : (
+            <p
+              className="text-xl font-bold leading-tight tracking-tight font-[family-name:var(--font-poppins)]"
+              style={{ color: "var(--dm-text-primary)" }}
+            >
+              {value}
+            </p>
+          )}
 
           {/* Trend + subtitle */}
           {(trend !== undefined || subtitle) && (

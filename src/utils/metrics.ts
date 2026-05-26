@@ -6,6 +6,7 @@ import {
   DashboardTotals,
   DailyTrendPoint,
 } from "@/types/campaign";
+import type { ManualOverrideStore } from "@/hooks/useManualMetrics";
 
 const safeDivide = (numerator: number, denominator: number, ctx?: string): number => {
   if (denominator === 0) {
@@ -191,6 +192,33 @@ export const aggregateByCampaign = (campaigns: CampaignData[]): AggregatedCampai
   }));
 };
 
+/**
+ * Applies manual metric overrides to campaigns where the API returned 0.
+ *
+ * Rule: API data always wins — override only applies when apiValue === 0.
+ * This way, if a pixel is eventually configured and returns real data, the
+ * manual override is transparently ignored without needing to delete it.
+ */
+export function applyOverrides(
+  campaigns: CampaignData[],
+  overrides: ManualOverrideStore,
+): CampaignData[] {
+  return campaigns.map((c) => {
+    const ov = overrides[c.id];
+    if (!ov) return c;
+
+    const apply = (apiVal: number, overrideVal?: number) =>
+      apiVal === 0 && overrideVal !== undefined ? overrideVal : apiVal;
+
+    return calculateDerivedMetrics({
+      ...c,
+      conversions: apply(c.conversions, ov.conversions),
+      leads:       apply(c.leads ?? 0, ov.leads),
+      revenue:     apply(c.revenue, ov.revenue),
+    }, 0);
+  });
+}
+
 export const formatDatePtBr = (value: string): string => {
   const parsedDate = new Date(`${value}T00:00:00`);
   if (Number.isNaN(parsedDate.getTime())) {
@@ -199,3 +227,4 @@ export const formatDatePtBr = (value: string): string => {
 
   return new Intl.DateTimeFormat("pt-BR").format(parsedDate);
 };
+

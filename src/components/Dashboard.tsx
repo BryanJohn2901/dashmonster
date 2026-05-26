@@ -29,9 +29,10 @@ import { LEADS_MIGRATION_FILE, type MetaSyncResult } from "@/utils/supabaseCampa
 import type { MetaAdAccount, MetaCampaign } from "@/utils/metaApi";
 import { CategoryGate, CATEGORY_LABEL, CATEGORY_ICON, CATEGORY_DOT, ICON_MAP, COLOR_HEX } from "@/components/CategoryGate";
 import {
-  aggregateByCampaign, aggregateTotals, buildBudgetDistribution,
+  aggregateByCampaign, aggregateTotals, applyOverrides, buildBudgetDistribution,
   buildCampaignComparison, buildDailyTrend, formatCurrency, formatDatePtBr, formatNumber, formatPercent,
 } from "@/utils/metrics";
+import { useManualMetrics } from "@/hooks/useManualMetrics";
 import { KpiCard } from "@/components/KpiCard";
 import { FunnelCard } from "@/components/FunnelCard";
 import { ChartsSection } from "@/components/charts/ChartsSection";
@@ -1753,7 +1754,12 @@ export function Dashboard({
     }
   }, [filteredCampaigns, sortBy]);
 
-  const totals             = aggregateTotals(filteredCampaigns);
+  const { overrides, setOverride } = useManualMetrics();
+  const campaignsWithOverrides = useMemo(
+    () => applyOverrides(filteredCampaigns, overrides),
+    [filteredCampaigns, overrides],
+  );
+  const totals             = aggregateTotals(campaignsWithOverrides);
   const allCampaignTotals  = useMemo(() => aggregateTotals(campaigns), [campaigns]);
   const needsLeadsMigration = !campaignMetricsHasLeadsColumn;
   const needsLeadsResync =
@@ -2490,6 +2496,9 @@ export function Dashboard({
                         icon={Target} accentColor="blue"
                         goalValue={goals.conversions} goalLabel={goals.conversions != null ? formatNumber(goals.conversions) : undefined}
                         goalPct={goals.conversions != null ? (totals.totalConversions / goals.conversions) * 100 : null}
+                        editable={filteredCampaigns.length === 1}
+                        isManual={filteredCampaigns.length === 1 && overrides[filteredCampaigns[0]?.id]?.conversions !== undefined}
+                        onEdit={(v) => filteredCampaigns[0] && setOverride(filteredCampaigns[0].id, { conversions: v })}
                       />
                     ),
                     isMetricVisible("leads") && (
@@ -2497,6 +2506,9 @@ export function Dashboard({
                         title="Leads" value={formatNumber(totals.totalLeads)}
                         subtitle={totals.totalLeads > 0 ? `CPL: ${formatCurrency(totals.cpl)}` : undefined}
                         icon={Users} accentColor="violet"
+                        editable={filteredCampaigns.length === 1}
+                        isManual={filteredCampaigns.length === 1 && overrides[filteredCampaigns[0]?.id]?.leads !== undefined}
+                        onEdit={(v) => filteredCampaigns[0] && setOverride(filteredCampaigns[0].id, { leads: v })}
                       />
                     ),
                     isMetricVisible("cpl") && totals.totalLeads > 0 && (
