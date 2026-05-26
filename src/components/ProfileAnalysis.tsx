@@ -15,6 +15,7 @@ import {
   loadMetaCredentials, MetaInsight, MetaAdAccount,
   extractConversions, extractLeads, extractRevenue,
 } from "@/utils/metaApi";
+import { useDateRange } from "@/hooks/useDateRange";
 import {
   fetchInstagramAccounts, fetchInstagramInsights,
   InstagramAccount, InstagramProfileInsights,
@@ -2180,28 +2181,8 @@ function ProfileDetailView({
   const { addCampaignToProfile, removeCampaignFromProfile } = useAdvertiserStore();
   const [activeCampId, setActiveCampId] = useState<string>(profile.campaigns[0]?.id ?? "");
 
-  // Persist date range per profile so it survives navigation back-and-forth.
-  const [dateFrom, setDateFrom] = useState<string>(() => {
-    if (typeof window === "undefined") return daysAgoStr(14);
-    try {
-      const stored = JSON.parse(localStorage.getItem(DATES_LS_KEY) ?? "{}") as Record<string, { from: string; to: string }>;
-      return stored[profile.id]?.from ?? daysAgoStr(14);
-    } catch { return daysAgoStr(14); }
-  });
-  const [dateTo, setDateTo] = useState<string>(() => {
-    if (typeof window === "undefined") return todayStr();
-    try {
-      const stored = JSON.parse(localStorage.getItem(DATES_LS_KEY) ?? "{}") as Record<string, { from: string; to: string }>;
-      return stored[profile.id]?.to ?? todayStr();
-    } catch { return todayStr(); }
-  });
-
-  const persistDates = (from: string, to: string) => {
-    try {
-      const stored = JSON.parse(localStorage.getItem(DATES_LS_KEY) ?? "{}") as Record<string, { from: string; to: string }>;
-      localStorage.setItem(DATES_LS_KEY, JSON.stringify({ ...stored, [profile.id]: { from, to } }));
-    } catch {}
-  };
+  // Shared date range — stays in sync with Dashboard (same hook, same localStorage key).
+  const { dateFrom, dateTo, setDateFrom, setDateTo } = useDateRange();
   const [showAddPanel, setShowAddPanel] = useState(false);
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
   const hasToken = Boolean(loadMetaCredentials().accessToken);
@@ -2330,7 +2311,7 @@ function ProfileDetailView({
             <ProfileDateRange
               dateFrom={dateFrom}
               dateTo={dateTo}
-              onApply={(from, to) => { setDateFrom(from); setDateTo(to); persistDates(from, to); }}
+              onApply={(from, to) => { setDateFrom(from); setDateTo(to); }}
             />
           </div>
         </div>

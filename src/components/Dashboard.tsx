@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ALL_METRIC_IDS, METRIC_LABELS, useMetricVisibility } from "@/hooks/useMetricVisibility";
+import { useDateRange } from "@/hooks/useDateRange";
 import {
   Activity, BadgeDollarSign, BarChart2, BookOpen, CalendarDays,
   CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CircleDollarSign, Dumbbell, FileText,
@@ -1435,20 +1436,7 @@ export function Dashboard({
 }: DashboardProps) {
   const [mainTab, setMainTab]               = useState<MainTab>("overview");
   const [dashSubTab, setDashSubTab]         = useState<DashSubTab>("overview");
-  const [dateFrom, setDateFrom]             = useState<string>(() => {
-    try { return localStorage.getItem("pta_date_from_v1") ?? ""; } catch { return ""; }
-  });
-  const [dateTo, setDateTo]                 = useState<string>(() => {
-    try { return localStorage.getItem("pta_date_to_v1") ?? ""; } catch { return ""; }
-  });
-  const setDateFromPersist = (v: string) => {
-    setDateFrom(v);
-    try { v ? localStorage.setItem("pta_date_from_v1", v) : localStorage.removeItem("pta_date_from_v1"); } catch {}
-  };
-  const setDateToPersist = (v: string) => {
-    setDateTo(v);
-    try { v ? localStorage.setItem("pta_date_to_v1", v) : localStorage.removeItem("pta_date_to_v1"); } catch {}
-  };
+  const { dateFrom, dateTo, setDateFrom: setDateFromPersist, setDateTo: setDateToPersist } = useDateRange();
 
   // ── Metric visibility — shared across all tabs ────────────────────────────
   const { hidden: hiddenMetrics, toggle: toggleMetric, showAll: showAllMetrics, isVisible: isMetricVisible } = useMetricVisibility();
