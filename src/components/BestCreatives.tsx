@@ -94,18 +94,22 @@ function persistOEmbedUrl(adId: string, url: string): void {
   } catch {}
 }
 
-/** Lazy-fetches oEmbed thumbnail only when the card element enters the viewport.
+/** Fetches the best available image for a card, lazy-loading via IntersectionObserver.
+ *  - Has instagramUrl → oEmbed (up to 1440px)
+ *  - No instagramUrl, has creativeId → AdCreative image_url (native resolution)
+ *  - Fallback → ad.thumbnailUrl (Meta low-res, 64px)
  *  Result is persisted to localStorage so it survives page refresh. */
 function useCardThumbnail(
   ad: MetaCampaignCreative,
   accessToken: string,
   elRef: React.RefObject<HTMLDivElement | null>,
 ): string {
-  ensureOEmbedStore(); // hydrate Map from localStorage on first client render
+  ensureOEmbedStore();
   const [hiRes, setHiRes] = useState<string>(oEmbedCardCache.get(ad.adId) ?? "");
 
   useEffect(() => {
-    if (!ad.instagramUrl || !accessToken || hiRes) return;
+    if (!accessToken || hiRes) return;
+    if (!ad.instagramUrl && !ad.creativeId) return;
     const el = elRef.current;
     if (!el) return;
 
@@ -114,18 +118,28 @@ function useCardThumbnail(
         if (!entry.isIntersecting) return;
         obs.disconnect();
         if (oEmbedCardCache.has(ad.adId)) { setHiRes(oEmbedCardCache.get(ad.adId)!); return; }
-        fetch(`/api/meta/ig-oembed?${new URLSearchParams({ url: ad.instagramUrl!, accessToken })}`)
-          .then((r) => r.json())
-          .then((j: { thumbnailUrl?: string }) => {
-            if (j.thumbnailUrl) { persistOEmbedUrl(ad.adId, j.thumbnailUrl); setHiRes(j.thumbnailUrl); }
-          })
-          .catch(() => {});
+
+        if (ad.instagramUrl) {
+          fetch(`/api/meta/ig-oembed?${new URLSearchParams({ url: ad.instagramUrl, accessToken })}`)
+            .then((r) => r.json())
+            .then((j: { thumbnailUrl?: string }) => {
+              if (j.thumbnailUrl) { persistOEmbedUrl(ad.adId, j.thumbnailUrl); setHiRes(j.thumbnailUrl); }
+            })
+            .catch(() => {});
+        } else if (ad.creativeId) {
+          fetch(`/api/meta/creative-image?${new URLSearchParams({ creativeId: ad.creativeId, accessToken })}`)
+            .then((r) => r.json())
+            .then((j: { imageUrl?: string }) => {
+              if (j.imageUrl) { persistOEmbedUrl(ad.adId, j.imageUrl); setHiRes(j.imageUrl); }
+            })
+            .catch(() => {});
+        }
       },
       { rootMargin: "200px" },
     );
     obs.observe(el);
     return () => obs.disconnect();
-  }, [ad.adId, ad.instagramUrl, accessToken, hiRes, elRef]);
+  }, [ad.adId, ad.instagramUrl, ad.creativeId, accessToken, hiRes, elRef]);
 
   return hiRes || ad.thumbnailUrl;
 }
@@ -445,25 +459,39 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-// ─── High-res thumbnail via Instagram oEmbed (modal) ─────────────────────────
+// ─── Unified hi-res image hook (modal) ───────────────────────────────────────
 
-/** Returns oEmbed thumbnail (up to 1440px) when instagramUrl available; falls back to thumbnailUrl.
- *  Reads from persistent cache first — no API call if already fetched this session or before. */
-function useHighResThumbnail(ad: MetaCampaignCreative, accessToken: string): string {
-  ensureOEmbedStore(); // hydrate Map from localStorage on first client render
+/** Returns the best available static image for any ad, immediately (no lazy-load).
+ *  - Has instagramUrl → oEmbed (up to 1440px)
+ *  - No instagramUrl, has creativeId → AdCreative image_url (native resolution)
+ *  - Fallback → ad.thumbnailUrl (Meta low-res 64px, only if everything else fails)
+ *  Reads from persistent cache first — no API call if already fetched. */
+function useDirectImage(ad: MetaCampaignCreative, accessToken: string): string {
+  ensureOEmbedStore();
   const [hiRes, setHiRes] = useState<string>(oEmbedCardCache.get(ad.adId) ?? "");
+
   useEffect(() => {
-    if (!ad.instagramUrl || !accessToken) { setHiRes(""); return; }
-    // Already in cache (this session or from localStorage) — use immediately
+    if (!accessToken) return;
     if (oEmbedCardCache.has(ad.adId)) { setHiRes(oEmbedCardCache.get(ad.adId)!); return; }
     setHiRes("");
-    fetch(`/api/meta/ig-oembed?${new URLSearchParams({ url: ad.instagramUrl, accessToken })}`)
-      .then((r) => r.json())
-      .then((j: { thumbnailUrl?: string }) => {
-        if (j.thumbnailUrl) { persistOEmbedUrl(ad.adId, j.thumbnailUrl); setHiRes(j.thumbnailUrl); }
-      })
-      .catch(() => {});
-  }, [ad.adId, ad.instagramUrl, accessToken]);
+
+    if (ad.instagramUrl) {
+      fetch(`/api/meta/ig-oembed?${new URLSearchParams({ url: ad.instagramUrl, accessToken })}`)
+        .then((r) => r.json())
+        .then((j: { thumbnailUrl?: string }) => {
+          if (j.thumbnailUrl) { persistOEmbedUrl(ad.adId, j.thumbnailUrl); setHiRes(j.thumbnailUrl); }
+        })
+        .catch(() => {});
+    } else if (ad.creativeId) {
+      fetch(`/api/meta/creative-image?${new URLSearchParams({ creativeId: ad.creativeId, accessToken })}`)
+        .then((r) => r.json())
+        .then((j: { imageUrl?: string }) => {
+          if (j.imageUrl) { persistOEmbedUrl(ad.adId, j.imageUrl); setHiRes(j.imageUrl); }
+        })
+        .catch(() => {});
+    }
+  }, [ad.adId, ad.instagramUrl, ad.creativeId, accessToken]);
+
   return hiRes || ad.thumbnailUrl;
 }
 
@@ -483,16 +511,18 @@ function PreviewModal({
   allInsights:  Map<string, AdInsight>;
   onNavigate:   (ad: MetaCampaignCreative) => void;
 }) {
-  // Sem instagramUrl → thumbnail é 64px da Meta CDN → abre direto no iframe
-  // Com instagramUrl → oEmbed devolve até 1440px → mostra thumbnail hi-res
-  const [showIframe, setShowIframe] = useState(() => !ad.instagramUrl);
+  // useDirectImage obtém imagem de alta res para TODOS os ads:
+  //   com instagramUrl → oEmbed (até 1440px)
+  //   sem instagramUrl → AdCreative image_url (resolução original)
+  // showIframe sempre inicia false — iframe só abre quando o usuário clicar "Visualizar ao vivo"
+  const [showIframe, setShowIframe] = useState(false);
   const currentIndex = allAds.findIndex((a) => a.adId === ad.adId);
-  const bestThumbnail = useHighResThumbnail(ad, accessToken);
+  const bestThumbnail = useDirectImage(ad, accessToken);
 
-  // Recalcula showIframe ao trocar de ad via seta
+  // Reseta ao trocar de ad
   useEffect(() => {
-    setShowIframe(!ad.instagramUrl);
-  }, [ad.adId, ad.instagramUrl]);
+    setShowIframe(false);
+  }, [ad.adId]);
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {

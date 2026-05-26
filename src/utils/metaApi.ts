@@ -197,6 +197,7 @@ export interface MetaCampaignCreative {
   campaignStartTime?: string;      // ISO 8601 — when the parent campaign became active
   body?:              string;      // ad copy / caption text from object_story_spec
   headline?:          string;      // link headline (title shown under the creative)
+  creativeId?:        string;      // AdCreative ID — used to fetch image_url at native resolution
 }
 
 /**

@@ -163,6 +163,7 @@ export async function GET(request: NextRequest) {
           campaignStartTime:  ad.campaign?.start_time ?? undefined,
           body,
           headline,
+          creativeId:         ad.creative?.id ?? undefined,
         } satisfies MetaCampaignCreative;
       });
 
