@@ -7,7 +7,7 @@ import {
   Activity, BadgeDollarSign, BarChart2, BookOpen, CalendarDays,
   CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CircleDollarSign, Dumbbell, FileText,
   FileUp, Filter, Flag, GraduationCap, Home, ImageIcon, Link2, Loader2, LogOut, Menu, Moon,
-  MousePointerClick, Package, Pencil, Plus, Repeat, RotateCcw, Settings2, SlidersHorizontal, Sun,
+  GripVertical, MousePointerClick, Package, Pencil, Plus, Repeat, RotateCcw, Settings2, SlidersHorizontal, Sun,
   Target, Trash2, TrendingUp, Trophy, Upload, UserRound, Users, Wallet, X, XCircle, Zap,
   LayoutDashboard, History, LineChart, Sparkles, Database, Dna, Weight, HeartPulse,
   Medal, PersonStanding, Flame, BookText, MonitorSmartphone, Ticket, Library, VenetianMask
@@ -33,6 +33,11 @@ import {
   buildCampaignComparison, buildDailyTrend, formatCurrency, formatDatePtBr, formatNumber, formatPercent,
 } from "@/utils/metrics";
 import { useManualMetrics } from "@/hooks/useManualMetrics";
+import { useDashboardLayout, type KpiId } from "@/hooks/useDashboardLayout";
+import { DndContext, closestCenter } from "@dnd-kit/core";
+import type { DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, useSortable, rectSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { KpiCard } from "@/components/KpiCard";
 import { FunnelCard } from "@/components/FunnelCard";
 import { ChartsSection } from "@/components/charts/ChartsSection";
@@ -1416,6 +1421,49 @@ function CampaignPanel({
   );
 }
 
+// ─── Sortable KPI wrapper (drag-and-drop edit mode) ──────────────────────────
+
+function SortableKpiItem({
+  id,
+  editMode,
+  children,
+}: {
+  id: string;
+  editMode: boolean;
+  children: React.ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : 1,
+        position: "relative",
+        zIndex: isDragging ? 10 : undefined,
+      }}
+      className="group"
+    >
+      {editMode && (
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          className="absolute left-1.5 top-1.5 z-10 cursor-grab rounded p-0.5 opacity-60 hover:opacity-100 active:cursor-grabbing"
+          style={{ color: "var(--dm-text-tertiary)" }}
+          aria-label="Arrastar card"
+        >
+          <GripVertical size={12} />
+        </button>
+      )}
+      {children}
+    </div>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function Dashboard({
@@ -1755,6 +1803,7 @@ export function Dashboard({
   }, [filteredCampaigns, sortBy]);
 
   const { overrides, setOverride } = useManualMetrics();
+  const { layout: kpiLayout, editMode: kpiEditMode, setEditMode: setKpiEditMode, reorder: reorderKpi, resetLayout: resetKpiLayout } = useDashboardLayout();
   const campaignsWithOverrides = useMemo(
     () => applyOverrides(filteredCampaigns, overrides),
     [filteredCampaigns, overrides],
@@ -2416,7 +2465,29 @@ export function Dashboard({
                         Indicadores principais
                       </h2>
                     </div>
-                    <div className="relative sm:mb-0.5">
+                    <div className="relative flex items-center gap-2 sm:mb-0.5">
+                    {kpiEditMode && (
+                      <button
+                        type="button"
+                        onClick={resetKpiLayout}
+                        className="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-amber-500 hover:underline transition"
+                        title="Restaurar ordem padrão"
+                      >
+                        Resetar
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setKpiEditMode((v: boolean) => !v)}
+                      className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition hover:opacity-80"
+                      style={{
+                        borderColor: kpiEditMode ? "var(--dm-value-positive)" : "var(--dm-border-default)",
+                        backgroundColor: kpiEditMode ? "var(--dm-value-positive-bg)" : "var(--dm-bg-elevated)",
+                        color: kpiEditMode ? "var(--dm-value-positive)" : "var(--dm-text-secondary)",
+                      }}
+                    >
+                      <GripVertical size={11} aria-hidden /> {kpiEditMode ? "Concluir" : "Reordenar"}
+                    </button>
                     <button
                       type="button"
                       onClick={() => setShowKpiPanel((v) => !v)}
@@ -2461,36 +2532,45 @@ export function Dashboard({
                   </div>
                 </div>
 
-                {/* All KPI cards in one adaptive grid */}
+                {/* All KPI cards in one adaptive grid — drag-and-drop ordered */}
                 {(() => {
-                  const visibleCards = [
-                    isMetricVisible("investment") && (
-                      <KpiCard key="investment"
-                        title="Total Investido"  value={formatCurrency(totals.totalInvestment)}
+                  const kpiCardMap: Partial<Record<KpiId, React.ReactNode>> = {
+                    investment: isMetricVisible("investment") ? (
+                      <KpiCard
+                        title="Total Investido" value={formatCurrency(totals.totalInvestment)}
                         subtitle={`CTR médio: ${formatPercent(totals.ctr)}`}
                         icon={Wallet} accentColor="blue"
                         goalValue={goals.investment} goalLabel={goals.investment != null ? formatCurrency(goals.investment) : undefined}
                         goalPct={goals.investment != null ? (totals.totalInvestment / goals.investment) * 100 : null}
                       />
-                    ),
-                    isMetricVisible("revenue") && (
-                      <KpiCard key="revenue"
+                    ) : null,
+                    revenue: isMetricVisible("revenue") ? (
+                      <KpiCard
                         title="Receita Total" value={formatCurrency(totals.totalRevenue)}
                         subtitle={`ROAS: ${totals.roas.toFixed(2)}x`}
                         icon={CircleDollarSign} accentColor="blue"
                       />
-                    ),
-                    isMetricVisible("roas") && (
-                      <KpiCard key="roas"
+                    ) : null,
+                    roas: isMetricVisible("roas") ? (
+                      <KpiCard
                         title="ROAS" value={`${totals.roas.toFixed(2)}x`}
                         subtitle={undefined}
                         icon={TrendingUp} accentColor="blue"
                         goalValue={goals.roas} goalLabel={goals.roas != null ? `${goals.roas.toFixed(1)}x` : undefined}
                         goalPct={goals.roas != null ? (totals.roas / goals.roas) * 100 : null}
                       />
-                    ),
-                    isMetricVisible("conversions") && (
-                      <KpiCard key="conversions"
+                    ) : null,
+                    roi: isMetricVisible("roi") ? (
+                      <KpiCard
+                        title="ROI" value={formatPercent(totals.roi)}
+                        subtitle={undefined}
+                        icon={TrendingUp} accentColor="blue"
+                        goalValue={goals.roi} goalLabel={goals.roi != null ? `${goals.roi.toFixed(0)}%` : undefined}
+                        goalPct={goals.roi != null ? (totals.roi / goals.roi) * 100 : null}
+                      />
+                    ) : null,
+                    conversions: isMetricVisible("conversions") ? (
+                      <KpiCard
                         title="Conversões" value={formatNumber(totals.totalConversions)}
                         subtitle={`Tx.: ${formatPercent(totals.conversionRate)}`}
                         icon={Target} accentColor="blue"
@@ -2500,9 +2580,9 @@ export function Dashboard({
                         isManual={filteredCampaigns.length === 1 && overrides[filteredCampaigns[0]?.id]?.conversions !== undefined}
                         onEdit={(v) => filteredCampaigns[0] && setOverride(filteredCampaigns[0].id, { conversions: v })}
                       />
-                    ),
-                    isMetricVisible("leads") && (
-                      <KpiCard key="leads"
+                    ) : null,
+                    leads: isMetricVisible("leads") ? (
+                      <KpiCard
                         title="Leads" value={formatNumber(totals.totalLeads)}
                         subtitle={totals.totalLeads > 0 ? `CPL: ${formatCurrency(totals.cpl)}` : undefined}
                         icon={Users} accentColor="violet"
@@ -2510,25 +2590,9 @@ export function Dashboard({
                         isManual={filteredCampaigns.length === 1 && overrides[filteredCampaigns[0]?.id]?.leads !== undefined}
                         onEdit={(v) => filteredCampaigns[0] && setOverride(filteredCampaigns[0].id, { leads: v })}
                       />
-                    ),
-                    isMetricVisible("cpl") && totals.totalLeads > 0 && (
-                      <KpiCard key="cpl"
-                        title="CPL Médio" value={formatCurrency(totals.cpl)}
-                        subtitle={undefined}
-                        icon={UserRound} accentColor="violet"
-                      />
-                    ),
-                    isMetricVisible("roi") && (
-                      <KpiCard key="roi"
-                        title="ROI" value={formatPercent(totals.roi)}
-                        subtitle={undefined}
-                        icon={TrendingUp} accentColor="blue"
-                        goalValue={goals.roi} goalLabel={goals.roi != null ? `${goals.roi.toFixed(0)}%` : undefined}
-                        goalPct={goals.roi != null ? (totals.roi / goals.roi) * 100 : null}
-                      />
-                    ),
-                    isMetricVisible("cpa") && (
-                      <KpiCard key="cpa"
+                    ) : null,
+                    cpa: isMetricVisible("cpa") ? (
+                      <KpiCard
                         title="CPA Médio" value={formatCurrency(totals.cpa)}
                         subtitle={undefined}
                         icon={BadgeDollarSign} accentColor="blue" invertTrend
@@ -2536,18 +2600,25 @@ export function Dashboard({
                         goalPct={goals.cpa != null && totals.cpa > 0 ? (goals.cpa / totals.cpa) * 100 : null}
                         goalInvert
                       />
-                    ),
-                    isMetricVisible("ctr") && (
-                      <KpiCard key="ctr"
+                    ) : null,
+                    cpl: isMetricVisible("cpl") && totals.totalLeads > 0 ? (
+                      <KpiCard
+                        title="CPL Médio" value={formatCurrency(totals.cpl)}
+                        subtitle={undefined}
+                        icon={UserRound} accentColor="violet"
+                      />
+                    ) : null,
+                    ctr: isMetricVisible("ctr") ? (
+                      <KpiCard
                         title="CTR Médio" value={formatPercent(totals.ctr)}
                         subtitle={undefined}
                         icon={MousePointerClick} accentColor="blue"
                         goalValue={goals.ctr} goalLabel={goals.ctr != null ? `${goals.ctr.toFixed(1)}%` : undefined}
                         goalPct={goals.ctr != null ? (totals.ctr / goals.ctr) * 100 : null}
                       />
-                    ),
-                    isMetricVisible("cpc") && (
-                      <KpiCard key="cpc"
+                    ) : null,
+                    cpc: isMetricVisible("cpc") ? (
+                      <KpiCard
                         title="CPC Médio" value={formatCurrency(totals.cpc)}
                         subtitle={undefined}
                         icon={BadgeDollarSign} accentColor="blue" invertTrend
@@ -2555,9 +2626,9 @@ export function Dashboard({
                         goalPct={goals.cpc != null && totals.cpc > 0 ? (goals.cpc / totals.cpc) * 100 : null}
                         goalInvert
                       />
-                    ),
-                    isMetricVisible("cpm") && (
-                      <KpiCard key="cpm"
+                    ) : null,
+                    cpm: isMetricVisible("cpm") ? (
+                      <KpiCard
                         title="CPM Médio" value={formatCurrency(totals.cpm)}
                         subtitle={undefined}
                         icon={Zap} accentColor="blue" invertTrend
@@ -2565,31 +2636,65 @@ export function Dashboard({
                         goalPct={goals.cpm != null && totals.cpm > 0 ? (goals.cpm / totals.cpm) * 100 : null}
                         goalInvert
                       />
-                    ),
-                    isMetricVisible("clicks") && (
-                      <KpiCard key="clicks"
+                    ) : null,
+                    clicks: isMetricVisible("clicks") ? (
+                      <KpiCard
                         title="Cliques" value={formatNumber(totals.totalClicks)}
                         subtitle={`${formatNumber(totals.totalImpressions)} impressões`}
                         icon={MousePointerClick} accentColor="blue"
                       />
-                    ),
-                    isMetricVisible("impressions") && (
-                      <KpiCard key="impressions"
+                    ) : null,
+                    impressions: isMetricVisible("impressions") ? (
+                      <KpiCard
                         title="Impressões" value={formatNumber(totals.totalImpressions)}
                         subtitle={undefined}
                         icon={Activity} accentColor="blue"
                       />
-                    ),
-                  ].filter(Boolean);
+                    ) : null,
+                    conversionRate: null, // shown as subtitle of "conversions"
+                  };
 
-                  return visibleCards.length > 0 ? (
+                  const orderedItems = kpiLayout.kpiOrder
+                    .map((id) => ({ id, node: kpiCardMap[id] ?? null }))
+                    .filter(({ node }) => node !== null);
+
+                  if (orderedItems.length === 0) {
+                    return (
+                      <div className="flex items-center justify-center rounded-xl border py-6" style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-tertiary)" }}>
+                        <p className="text-xs">Nenhuma métrica visível. <button className="text-blue-500 underline" onClick={showAllMetrics}>Mostrar todas</button></p>
+                      </div>
+                    );
+                  }
+
+                  const grid = (
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-                      {visibleCards}
+                      {orderedItems.map(({ id, node }) => (
+                        <SortableKpiItem key={id} id={id} editMode={kpiEditMode}>
+                          {node}
+                        </SortableKpiItem>
+                      ))}
                     </div>
-                  ) : (
-                    <div className="flex items-center justify-center rounded-xl border py-6" style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-tertiary)" }}>
-                      <p className="text-xs">Nenhuma métrica visível. <button className="text-blue-500 underline" onClick={showAllMetrics}>Mostrar todas</button></p>
-                    </div>
+                  );
+
+                  if (!kpiEditMode) return grid;
+
+                  return (
+                    <DndContext
+                      collisionDetection={closestCenter}
+                      onDragEnd={(event: DragEndEvent) => {
+                        const { active, over } = event;
+                        if (over && active.id !== over.id) {
+                          reorderKpi(active.id as KpiId, over.id as KpiId);
+                        }
+                      }}
+                    >
+                      <SortableContext
+                        items={orderedItems.map(({ id }) => id)}
+                        strategy={rectSortingStrategy}
+                      >
+                        {grid}
+                      </SortableContext>
+                    </DndContext>
                   );
                 })()}
                 </section>
