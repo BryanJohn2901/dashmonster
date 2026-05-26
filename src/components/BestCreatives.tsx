@@ -302,6 +302,82 @@ function getViewerAspect(ad: MetaCampaignCreative): string {
   return "4/5";
 }
 
+// ─── Card Live Preview ────────────────────────────────────────────────────────
+// Mostra o live preview (embed/iframe) diretamente no card da galeria.
+// Lazy-loaded via IntersectionObserver: só carrega quando o card entra no viewport.
+// Click overlay (z-10) intercepta cliques → abre modal. Hover actions ficam em z-30.
+
+function CardLivePreview({
+  ad, accessToken, onClick,
+}: {
+  ad:          MetaCampaignCreative;
+  accessToken: string;
+  onClick?:    () => void;
+}) {
+  const [shouldLoad, setShouldLoad] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) { setShouldLoad(true); obs.disconnect(); } },
+      { rootMargin: "150px" },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
+  return (
+    <div
+      ref={ref}
+      className="relative w-full overflow-hidden bg-slate-900"
+      style={{ aspectRatio: getViewerAspect(ad) }}
+    >
+      {/* Live preview — carrega quando entra no viewport */}
+      {shouldLoad && (
+        ad.instagramUrl && !/\/stories\//.test(ad.instagramUrl)
+          ? (
+            <div className="absolute inset-0">
+              <AdInstagramEmbed ad={ad} fallbackToken={accessToken} />
+            </div>
+          )
+          : <AdIframe ad={ad} accessToken={accessToken} />
+      )}
+
+      {/* Placeholder borrado enquanto não carregou */}
+      {!shouldLoad && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          {ad.thumbnailUrl && (
+            <img
+              src={ad.thumbnailUrl} alt=""
+              className="absolute inset-0 h-full w-full object-cover opacity-40"
+              style={{ filter: "blur(6px)", transform: "scale(1.08)" }}
+            />
+          )}
+          <Loader2 size={18} className="relative z-10 animate-spin text-white/30" />
+        </div>
+      )}
+
+      {/* Media type badge */}
+      <span
+        className={`absolute left-2 top-2 z-10 rounded-full px-2 py-0.5 text-[10px] font-bold backdrop-blur-sm ${TYPE_COLOR[ad.mediaType]}`}
+        style={{ backgroundColor: "rgba(0,0,0,0.45)" }}
+      >
+        {TYPE_LABEL[ad.mediaType]}
+      </span>
+
+      {/* Click overlay — intercepta cliques para abrir modal sem ativar o iframe */}
+      {onClick && (
+        <div
+          className="absolute inset-0 z-10 cursor-pointer"
+          onClick={onClick}
+        />
+      )}
+    </div>
+  );
+}
+
 // ─── Creative Card ────────────────────────────────────────────────────────────
 
 function CreativeCard({
@@ -314,8 +390,6 @@ function CreativeCard({
   onToggleStar: () => void;
   accessToken?: string;
 }) {
-  const cardRef  = useRef<HTMLDivElement>(null);
-  const thumbSrc = useCardThumbnail(ad, accessToken ?? "", cardRef);
   const score    = computeScore(insight);
   const scoreColor = score === null ? null : score >= 70 ? "#05CD99" : score >= 40 ? "#F4A60D" : "#EE5D50";
 
@@ -325,18 +399,17 @@ function CreativeCard({
 
   return (
     <div
-      ref={cardRef}
       className="group relative flex flex-col overflow-hidden rounded-xl border transition-all hover:shadow-lg hover:-translate-y-0.5"
       style={{
         borderColor: starred ? "rgba(245,158,11,0.6)" : "var(--dm-border-default)",
         backgroundColor: "var(--dm-bg-surface)",
       }}
     >
-      {/* Thumbnail */}
-      <AdThumb ad={ad} onClick={onPreview} src={thumbSrc} />
+      {/* Live preview */}
+      <CardLivePreview ad={ad} accessToken={accessToken ?? ""} onClick={onPreview} />
 
-      {/* Hover overlay actions */}
-      <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 z-10">
+      {/* Hover overlay actions — z-30 para ficar acima do click overlay do iframe (z-10) */}
+      <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 z-30">
         <button type="button" onClick={onToggleStar}
           className="flex h-7 w-7 items-center justify-center rounded-lg bg-black/60 backdrop-blur-sm hover:bg-black/80">
           <Star size={12} fill={starred ? "#f59e0b" : "none"} stroke={starred ? "#f59e0b" : "white"} />
