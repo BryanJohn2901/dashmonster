@@ -7,7 +7,7 @@ import {
   Activity, BadgeDollarSign, BarChart2, BookOpen, CalendarDays,
   CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CircleDollarSign, Dumbbell, FileText,
   FileUp, Filter, Flag, GraduationCap, Home, ImageIcon, Link2, Loader2, LogOut, Menu, Moon,
-  GripVertical, MousePointerClick, Package, Pencil, Plus, Repeat, RotateCcw, Settings2, SlidersHorizontal, Sun,
+  Download, GripVertical, MousePointerClick, Package, Pencil, Plus, Repeat, RotateCcw, Settings2, SlidersHorizontal, Sun,
   Target, Trash2, TrendingUp, Trophy, Upload, UserRound, Users, Wallet, X, XCircle, Zap,
   LayoutDashboard, History, LineChart, Sparkles, Database, Dna, Weight, HeartPulse,
   Medal, PersonStanding, Flame, BookText, MonitorSmartphone, Ticket, Library, VenetianMask
@@ -34,6 +34,7 @@ import {
 } from "@/utils/metrics";
 import { useManualMetrics } from "@/hooks/useManualMetrics";
 import { useDashboardLayout, type KpiId } from "@/hooks/useDashboardLayout";
+import { exportCampaignsCsv } from "@/utils/exportCsv";
 import { DndContext, closestCenter } from "@dnd-kit/core";
 import type { DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, useSortable, rectSortingStrategy } from "@dnd-kit/sortable";
@@ -2466,6 +2467,15 @@ export function Dashboard({
                       </h2>
                     </div>
                     <div className="relative flex items-center gap-2 sm:mb-0.5">
+                    <button
+                      type="button"
+                      onClick={() => exportCampaignsCsv(campaignsWithOverrides, { dateFrom, dateTo })}
+                      className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition hover:opacity-80"
+                      style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-secondary)" }}
+                      title="Exportar campanhas visíveis como CSV"
+                    >
+                      <Download size={11} aria-hidden /> Exportar CSV
+                    </button>
                     {kpiEditMode && (
                       <button
                         type="button"
