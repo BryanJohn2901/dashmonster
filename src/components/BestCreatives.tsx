@@ -263,8 +263,15 @@ function AdInstagramEmbed({
 
   if (!embedUrl) return <AdIframe ad={ad} accessToken={fallbackToken} />;
 
+  // O embed do Instagram tem um header (~62px) com foto de perfil, nome e "Ver perfil".
+  // Técnica: deslocar o iframe para cima em 62px dentro de um container overflow-hidden →
+  // o header sai do campo de visão e o criativo preenche o espaço visível.
+  // O container se expande 62px para baixo (bottom: -62) para compensar o deslocamento.
+  const HEADER_CROP = 62;
+
   return (
-    <div className="relative h-full w-full">
+    <div className="absolute inset-0 overflow-hidden">
+      {/* Loading state — centralizado na área visível */}
       {!loaded && (
         <div className="absolute inset-0 flex items-center justify-center">
           {ad.thumbnailUrl && (
@@ -280,14 +287,26 @@ function AdInstagramEmbed({
           </div>
         </div>
       )}
-      <iframe
-        src={embedUrl}
-        title={ad.adName}
-        className="h-full w-full border-none"
-        style={{ opacity: loaded ? 1 : 0, transition: "opacity 0.35s" }}
-        onLoad={() => setLoaded(true)}
-        allow="autoplay; fullscreen"
-      />
+
+      {/* Iframe deslocado para cima → header cortado pelo overflow-hidden do pai */}
+      <div
+        style={{
+          position: "absolute",
+          top:    -HEADER_CROP,
+          left:   0,
+          right:  0,
+          bottom: -HEADER_CROP,
+        }}
+      >
+        <iframe
+          src={embedUrl}
+          title={ad.adName}
+          className="h-full w-full border-none"
+          style={{ opacity: loaded ? 1 : 0, transition: "opacity 0.35s" }}
+          onLoad={() => setLoaded(true)}
+          allow="autoplay; fullscreen"
+        />
+      </div>
     </div>
   );
 }
