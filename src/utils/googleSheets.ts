@@ -25,6 +25,8 @@ const COLUMN_ALIASES: Record<keyof typeof REQUIRED_COLUMNS, string[]> = {
   revenue: ["receita", "receitar", "revenue", "faturamento"],
 };
 
+const LEADS_ALIASES = ["leads", "cadastros", "inscricoes", "inscricoes", "lead"];
+
 const normalizeKey = (value: string): string => {
   return value
     .trim()
@@ -119,6 +121,7 @@ const validateColumns = (row: CampaignRawRow): void => {
 };
 
 const toCampaignRawRow = (row: GenericCsvRow): CampaignRawRow => {
+  const leads = findColumnValue(row, LEADS_ALIASES);
   return {
     Data: String(findColumnValue(row, COLUMN_ALIASES.date) ?? "").trim(),
     "Nome da Campanha": String(
@@ -129,6 +132,7 @@ const toCampaignRawRow = (row: GenericCsvRow): CampaignRawRow => {
     Impressões: findColumnValue(row, COLUMN_ALIASES.impressions) ?? "",
     Conversões: findColumnValue(row, COLUMN_ALIASES.conversions) ?? "",
     "Receita (R$)": findColumnValue(row, COLUMN_ALIASES.revenue) ?? "",
+    ...(leads !== undefined && { Leads: leads }),
   };
 };
 
@@ -254,7 +258,7 @@ const parseCampaignRows = (rows: GenericCsvRow[]): CampaignData[] => {
         clicks: normalizeNumber(row.Cliques),
         impressions: normalizeNumber(row.Impressões),
         conversions: normalizeNumber(row.Conversões),
-        leads: 0,
+        leads: row.Leads !== undefined ? normalizeNumber(row.Leads) : 0,
         revenue: normalizeNumber(row["Receita (R$)"]),
       },
       index,

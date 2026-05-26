@@ -13,6 +13,7 @@ export interface CampaignRawRow {
   Impressões: string | number;
   Conversões: string | number;
   "Receita (R$)": string | number;
+  Leads?: string | number;
 }
 
 export interface CampaignData {

@@ -10,6 +10,7 @@ import { AggregatedCampaign } from "@/types/campaign";
 import { useCreativeStore } from "@/hooks/useCreativeStore";
 import type { MetaCampaignCreative, AdInsight } from "@/utils/metaApi";
 import { fetchMetaCreatives, fetchAdInsights, loadMetaCredentials } from "@/utils/metaApi";
+import { logSilentError } from "@/utils/logSilentError";
 import { formatCurrency, formatPercent } from "@/utils/metrics";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -121,7 +122,7 @@ function AdIframe({ ad, accessToken }: { ad: MetaCampaignCreative; accessToken: 
       .then((j: { iframeSrc?: string }) => {
         if (j.iframeSrc) { iframeCache.set(ad.adId, j.iframeSrc); setSrc(j.iframeSrc); }
       })
-      .catch(() => {})
+      .catch((e) => logSilentError("AdIframe fetch ad-preview", e))
       .finally(() => setLoading(false));
   }, [ad.adId, accessToken, src]);
 
@@ -808,7 +809,7 @@ export function BestCreatives({
         setCacheAge(Date.now() - ts);
         setHasLoaded(true);
         // Also fetch fresh insights for the selected date range
-        fetchInsights(ids).catch(() => {});
+        fetchInsights(ids).catch((e) => logSilentError("fetchInsights", e));
         return;
       }
     }
@@ -829,7 +830,7 @@ export function BestCreatives({
       }
 
       // Parallel ad-level insights
-      await fetchInsights(ids).catch(() => {});
+      await fetchInsights(ids).catch((e) => logSilentError("fetchInsights", e));
 
       return merged;
     })()
@@ -849,7 +850,7 @@ export function BestCreatives({
       setMetaAds(cached);
       setCacheAge(Date.now() - ts);
       setHasLoaded(true);
-      fetchInsights(ids).catch(() => {});
+      fetchInsights(ids).catch((e) => logSilentError("fetchInsights", e));
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(adAccountId)]);
@@ -859,7 +860,7 @@ export function BestCreatives({
     if (!hasLoaded) return;
     const ids = getIds();
     if (!ids.length) return;
-    fetchInsights(ids).catch(() => {});
+    fetchInsights(ids).catch((e) => logSilentError("fetchInsights", e));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateFrom, dateTo]);
 
