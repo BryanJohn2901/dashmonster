@@ -94,6 +94,52 @@ function persistOEmbedUrl(adId: string, url: string): void {
   } catch {}
 }
 
+// ─── Creative aspect ratio cache (detected from oEmbed thumbnail dimensions) ──
+// Stored separately from the thumbnail URL so both caches stay independent.
+// Values: "1/1" | "4/5" | "9/16" — the three standard Instagram ad formats.
+
+const RATIO_STORE_KEY  = "pta_ratio_v1";
+const ratioCache       = new Map<string, string>(); // adId → ratio string
+let   ratioCacheLoaded = false;
+
+function ensureRatioStore(): void {
+  if (ratioCacheLoaded || typeof window === "undefined") return;
+  ratioCacheLoaded = true;
+  try {
+    const raw = localStorage.getItem(RATIO_STORE_KEY);
+    if (!raw) return;
+    const map = JSON.parse(raw) as Record<string, string>;
+    for (const [id, r] of Object.entries(map)) ratioCache.set(id, r);
+  } catch {}
+}
+
+/**
+ * Derives the CSS aspect-ratio string from oEmbed thumbnail dimensions.
+ * Thresholds cover the 3 standard Instagram ad formats:
+ *   ratio > 0.90 → square  → "1/1"
+ *   ratio < 0.65 → tall    → "9/16"  (reels, stories)
+ *   otherwise    → portrait → "4/5"  (standard feed ads)
+ */
+function computeRatioFromDims(w: number, h: number): string {
+  const r = w / h;
+  if (r > 0.90) return "1/1";
+  if (r < 0.65) return "9/16";
+  return "4/5";
+}
+
+function persistRatio(adId: string, w: number, h: number): string {
+  const ratio = computeRatioFromDims(w, h);
+  ratioCache.set(adId, ratio);
+  if (typeof window === "undefined") return ratio;
+  try {
+    const raw    = localStorage.getItem(RATIO_STORE_KEY);
+    const stored = raw ? (JSON.parse(raw) as Record<string, string>) : {};
+    stored[adId] = ratio;
+    localStorage.setItem(RATIO_STORE_KEY, JSON.stringify(stored));
+  } catch {}
+  return ratio;
+}
+
 /** Fetches the best available image for a card, lazy-loading via IntersectionObserver.
  *  - Has instagramUrl → oEmbed (up to 1440px)
  *  - No instagramUrl, has creativeId → AdCreative image_url (native resolution)
@@ -120,11 +166,12 @@ function useCardThumbnail(
         if (oEmbedCardCache.has(ad.adId)) { setHiRes(oEmbedCardCache.get(ad.adId)!); return; }
 
         if (ad.instagramUrl) {
-          // Instagram oEmbed → up to ~640px for images and videos (poster frame)
+          // Instagram oEmbed → up to ~640px; also captures thumbnail dimensions for ratio detection
           fetch(`/api/meta/ig-oembed?${new URLSearchParams({ url: ad.instagramUrl, accessToken })}`)
             .then((r) => r.json())
-            .then((j: { thumbnailUrl?: string }) => {
+            .then((j: { thumbnailUrl?: string; thumbnailWidth?: number; thumbnailHeight?: number }) => {
               if (j.thumbnailUrl) { persistOEmbedUrl(ad.adId, j.thumbnailUrl); setHiRes(j.thumbnailUrl); }
+              if (j.thumbnailWidth && j.thumbnailHeight) persistRatio(ad.adId, j.thumbnailWidth, j.thumbnailHeight);
             })
             .catch(() => {});
         } else if (ad.videoId) {
@@ -326,16 +373,47 @@ function AdInstagramEmbed({
   );
 }
 
-/** Infer best aspect ratio from creative type + Instagram URL pattern.
- *  Reels and stories are 9:16 (vertical). Feed videos and images use 4:5 (standard ad format).
- *  Using 9:16 for non-reel videos was wrong — feed videos are typically 4:5 or 1:1,
- *  not vertical, so the container would be too tall and show Instagram footer chrome. */
+/**
+ * Sync aspect-ratio lookup. Checks ratioCache (populated from oEmbed dimensions) first.
+ * Falls back to URL/type heuristics for ads not yet fetched.
+ */
 function getViewerAspect(ad: MetaCampaignCreative): string {
+  ensureRatioStore();
+  const cached = ratioCache.get(ad.adId);
+  if (cached) return cached;
   const url = ad.instagramUrl ?? "";
   if (/\/reel\//.test(url)) return "9/16";       // reels: always vertical 9:16
   if (/\/stories\//.test(url)) return "9/16";    // stories: always vertical 9:16
   if (ad.mediaType === "carousel") return "1/1"; // carousels: square
   return "4/5";                                  // images + feed videos: standard ad format
+}
+
+/**
+ * Reactive hook: returns CSS aspect-ratio string for the given ad, updating when
+ * the oEmbed response arrives with exact thumbnail dimensions.
+ * Starts with heuristic value → upgrades to exact ratio once cached/fetched.
+ */
+function useCreativeRatio(ad: MetaCampaignCreative, accessToken: string): string {
+  const [ratio, setRatio] = useState<string>(() => getViewerAspect(ad));
+
+  useEffect(() => {
+    ensureRatioStore();
+    const cached = ratioCache.get(ad.adId);
+    if (cached) { setRatio(cached); return; }
+    if (!ad.instagramUrl || !accessToken) return;
+
+    fetch(`/api/meta/ig-oembed?${new URLSearchParams({ url: ad.instagramUrl, accessToken })}`)
+      .then((r) => r.json())
+      .then((j: { thumbnailUrl?: string; thumbnailWidth?: number; thumbnailHeight?: number }) => {
+        if (j.thumbnailUrl) persistOEmbedUrl(ad.adId, j.thumbnailUrl);
+        if (j.thumbnailWidth && j.thumbnailHeight) {
+          setRatio(persistRatio(ad.adId, j.thumbnailWidth, j.thumbnailHeight));
+        }
+      })
+      .catch(() => {});
+  }, [ad.adId, ad.instagramUrl, accessToken]);
+
+  return ratio;
 }
 
 // ─── Card Live Preview ────────────────────────────────────────────────────────
@@ -351,7 +429,8 @@ function CardLivePreview({
   onClick?:    () => void;
 }) {
   const [shouldLoad, setShouldLoad] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const ref         = useRef<HTMLDivElement>(null);
+  const aspectRatio = useCreativeRatio(ad, accessToken);
 
   useEffect(() => {
     const el = ref.current;
@@ -368,7 +447,7 @@ function CardLivePreview({
     <div
       ref={ref}
       className="relative w-full overflow-hidden bg-slate-900"
-      style={{ aspectRatio: getViewerAspect(ad) }}
+      style={{ aspectRatio }}
     >
       {/* Live preview — carrega quando entra no viewport */}
       {shouldLoad && (
@@ -433,22 +512,16 @@ function CreativeCard({
     ? new Date(ad.createdTime).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "2-digit" })
     : null;
 
-  // Static hi-res thumbnail — lazy-loaded when card enters viewport.
-  // Priority: oEmbed (Instagram) > video poster (Meta) > creative image > 64px fallback.
-  const cardRef  = useRef<HTMLDivElement>(null);
-  const thumbSrc = useCardThumbnail(ad, accessToken ?? "", cardRef);
-
   return (
     <div
-      ref={cardRef}
       className="group relative flex flex-col overflow-hidden rounded-xl border transition-all hover:shadow-lg hover:-translate-y-0.5"
       style={{
         borderColor: starred ? "rgba(245,158,11,0.6)" : "var(--dm-border-default)",
         backgroundColor: "var(--dm-bg-surface)",
       }}
     >
-      {/* Static thumbnail — no iframe, no chrome issues */}
-      <AdThumb ad={ad} onClick={onPreview} src={thumbSrc} />
+      {/* Live preview — iframe lazy-loads on scroll; chrome cropped by IG_CHROME offsets */}
+      <CardLivePreview ad={ad} accessToken={accessToken ?? ""} onClick={onPreview} />
 
       {/* Hover overlay actions — z-30 para ficar acima do click overlay do iframe (z-10) */}
       <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 z-30">
@@ -593,8 +666,9 @@ function useDirectImage(ad: MetaCampaignCreative, accessToken: string): string {
     if (ad.instagramUrl) {
       fetch(`/api/meta/ig-oembed?${new URLSearchParams({ url: ad.instagramUrl, accessToken })}`)
         .then((r) => r.json())
-        .then((j: { thumbnailUrl?: string }) => {
+        .then((j: { thumbnailUrl?: string; thumbnailWidth?: number; thumbnailHeight?: number }) => {
           if (j.thumbnailUrl) { persistOEmbedUrl(ad.adId, j.thumbnailUrl); setHiRes(j.thumbnailUrl); }
+          if (j.thumbnailWidth && j.thumbnailHeight) persistRatio(ad.adId, j.thumbnailWidth, j.thumbnailHeight);
         })
         .catch(() => {});
     } else if (ad.creativeId) {
@@ -629,8 +703,9 @@ function PreviewModal({
   // Modal abre direto no live preview para todos os ads.
   // "Ver imagem estática" ainda disponível como opção.
   const [showIframe, setShowIframe] = useState(true);
-  const currentIndex = allAds.findIndex((a) => a.adId === ad.adId);
+  const currentIndex  = allAds.findIndex((a) => a.adId === ad.adId);
   const bestThumbnail = useDirectImage(ad, accessToken);
+  const aspectRatio   = useCreativeRatio(ad, accessToken);
 
   // Reseta para live preview ao trocar de ad
   useEffect(() => {
@@ -718,11 +793,11 @@ function PreviewModal({
             borderRight: "1px solid var(--dm-border-subtle)",
           }}
         >
-          {/* Creative display — aspect-ratio sempre fixo, mesma proporção para iframe e imagem */}
+          {/* Creative display — aspect-ratio detectado via oEmbed, mesma proporção para iframe e imagem */}
           <div
             className="relative w-full overflow-hidden rounded-2xl"
             style={{
-              aspectRatio: getViewerAspect(ad),
+              aspectRatio,
               backgroundColor: "#0a0a14",
               boxShadow: "0 12px 40px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.05)",
             }}

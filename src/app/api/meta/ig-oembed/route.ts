@@ -6,8 +6,9 @@ const META_API_VERSION = "v21.0";
  * GET /api/meta/ig-oembed?url=IG_URL&accessToken=TOKEN
  *
  * Wraps graph.facebook.com instagram_oembed endpoint.
- * Returns { thumbnailUrl?: string } — higher-res thumbnail (~640px) for
- * Instagram posts compared to Meta Ads thumbnail_url (~256px).
+ * Returns { thumbnailUrl, thumbnailWidth, thumbnailHeight } so the caller
+ * can compute the exact creative aspect ratio (1:1 / 4:5 / 9:16) and size
+ * the container correctly — no bars, no letterboxing.
  *
  * Token: existing Meta Ads user access token works — no extra scope needed.
  */
@@ -25,16 +26,18 @@ export async function GET(request: NextRequest) {
       new URLSearchParams({
         url,
         access_token: accessToken,
-        maxwidth: "1440",   // pede thumbnail até 1440px — cobre retina 3× em container 440px
-        fields: "thumbnail_url,author_name,title",
+        maxwidth: "1440",
+        fields: "thumbnail_url,thumbnail_width,thumbnail_height,author_name,title",
       }).toString();
 
     const res  = await fetch(apiUrl, { cache: "no-store" });
     const json = await res.json() as {
-      thumbnail_url?: string;
-      author_name?:   string;
-      title?:         string;
-      error?:         { message?: string };
+      thumbnail_url?:    string;
+      thumbnail_width?:  number;
+      thumbnail_height?: number;
+      author_name?:      string;
+      title?:            string;
+      error?:            { message?: string };
     };
 
     if (!res.ok || json.error) {
@@ -44,7 +47,11 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ thumbnailUrl: json.thumbnail_url ?? null });
+    return NextResponse.json({
+      thumbnailUrl:    json.thumbnail_url    ?? null,
+      thumbnailWidth:  json.thumbnail_width  ?? null,
+      thumbnailHeight: json.thumbnail_height ?? null,
+    });
   } catch {
     return NextResponse.json({ error: "Falha ao conectar com Meta oEmbed API." }, { status: 502 });
   }
