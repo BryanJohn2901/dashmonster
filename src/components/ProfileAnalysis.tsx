@@ -13,6 +13,7 @@ import {
 import {
   fetchMetaCampaigns, fetchMetaInsights, fetchMetaAdAccounts,
   loadMetaCredentials, MetaInsight, MetaAdAccount,
+  extractConversions, extractLeads, extractRevenue,
 } from "@/utils/metaApi";
 import {
   fetchInstagramAccounts, fetchInstagramInsights,
@@ -170,11 +171,9 @@ function toAdsetRows(data: MetaInsight[]): AdsetRow[] {
     // raw clicks = all clicks (reactions, shares, profile visits, etc.)
     cur.total_clicks  += parseMetaNum(d.clicks);
     cur.spend         += parseMetaNum(d.spend);
-    cur.purchases     += getActionValue(d.actions, "purchase");
-    cur.leads         += getActionValue(d.actions, "lead")
-                       + getActionValue(d.actions, "onsite_conversion.lead_grouped");
-    cur.revenue       += pickActionValue(d.action_values, "purchase", "omni_purchase",
-                         "offsite_conversion.fb_pixel_purchase");
+    cur.purchases     += extractConversions(d.actions);
+    cur.leads         += extractLeads(d.actions);       // first-match-wins: evita double-count lead + lead_grouped
+    cur.revenue       += extractRevenue(d.action_values);
     // landing_page_view: more reliable than link clicks for LP-funnel templates.
     cur.page_views    += getActionValue(d.actions, "landing_page_view");
     // new_followers: "follow" (ad engagement objective) OR "page_fan_adds" (traffic-to-profile)
