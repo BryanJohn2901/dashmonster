@@ -2,11 +2,12 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ALL_METRIC_IDS, METRIC_LABELS, useMetricVisibility } from "@/hooks/useMetricVisibility";
+import { useDateRange } from "@/hooks/useDateRange";
 import {
   Activity, BadgeDollarSign, BarChart2, BookOpen, CalendarDays,
   CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CircleDollarSign, Dumbbell, FileText,
   FileUp, Filter, Flag, GraduationCap, Home, ImageIcon, Link2, Loader2, LogOut, Menu, Moon,
-  MousePointerClick, Package, Pencil, Plus, Repeat, RotateCcw, Search, Settings2, SlidersHorizontal, Sun,
+  Download, GripVertical, MousePointerClick, Package, Pencil, Plus, Repeat, RotateCcw, Search, Settings2, SlidersHorizontal, Sun,
   Target, Trash2, TrendingUp, Trophy, Upload, UserRound, Users, Wallet, X, XCircle, Zap,
   LayoutDashboard, History, LineChart, Sparkles, Database, Dna, Weight, HeartPulse,
   Medal, PersonStanding, Flame, BookText, MonitorSmartphone, Ticket, Library, VenetianMask
@@ -28,9 +29,16 @@ import { LEADS_MIGRATION_FILE, type MetaSyncResult } from "@/utils/supabaseCampa
 import type { MetaAdAccount, MetaCampaign } from "@/utils/metaApi";
 import { CategoryGate, CATEGORY_LABEL, CATEGORY_ICON, CATEGORY_DOT, ICON_MAP, COLOR_HEX } from "@/components/CategoryGate";
 import {
-  aggregateByCampaign, aggregateTotals, buildBudgetDistribution,
+  aggregateByCampaign, aggregateTotals, applyOverrides, buildBudgetDistribution,
   buildCampaignComparison, buildDailyTrend, formatCurrency, formatDatePtBr, formatNumber, formatPercent,
 } from "@/utils/metrics";
+import { useManualMetrics } from "@/hooks/useManualMetrics";
+import { useDashboardLayout, type KpiId } from "@/hooks/useDashboardLayout";
+import { exportCampaignsCsv } from "@/utils/exportCsv";
+import { DndContext, closestCenter } from "@dnd-kit/core";
+import type { DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, useSortable, rectSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { KpiCard } from "@/components/KpiCard";
 import { FunnelCard } from "@/components/FunnelCard";
 import { ChartsSection } from "@/components/charts/ChartsSection";
@@ -1782,6 +1790,49 @@ function CampaignPanel({
   );
 }
 
+// ─── Sortable KPI wrapper (drag-and-drop edit mode) ──────────────────────────
+
+function SortableKpiItem({
+  id,
+  editMode,
+  children,
+}: {
+  id: string;
+  editMode: boolean;
+  children: React.ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : 1,
+        position: "relative",
+        zIndex: isDragging ? 10 : undefined,
+      }}
+      className="group"
+    >
+      {editMode && (
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          className="absolute left-1.5 top-1.5 z-10 cursor-grab rounded p-0.5 opacity-60 hover:opacity-100 active:cursor-grabbing"
+          style={{ color: "var(--dm-text-tertiary)" }}
+          aria-label="Arrastar card"
+        >
+          <GripVertical size={12} />
+        </button>
+      )}
+      {children}
+    </div>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function Dashboard({
@@ -1807,20 +1858,7 @@ export function Dashboard({
   const [dashSubTab, setDashSubTab]         = useState<DashSubTab>("overview");
   const [histKind, setHistKind]             = useState<HistoricalKind>("lancamento");
   const [myAccountTab, setMyAccountTab]     = useState<MyAccountTabId>("profile");
-  const [dateFrom, setDateFrom]             = useState<string>(() => {
-    try { return localStorage.getItem("pta_date_from_v1") ?? ""; } catch { return ""; }
-  });
-  const [dateTo, setDateTo]                 = useState<string>(() => {
-    try { return localStorage.getItem("pta_date_to_v1") ?? ""; } catch { return ""; }
-  });
-  const setDateFromPersist = (v: string) => {
-    setDateFrom(v);
-    try { v ? localStorage.setItem("pta_date_from_v1", v) : localStorage.removeItem("pta_date_from_v1"); } catch {}
-  };
-  const setDateToPersist = (v: string) => {
-    setDateTo(v);
-    try { v ? localStorage.setItem("pta_date_to_v1", v) : localStorage.removeItem("pta_date_to_v1"); } catch {}
-  };
+  const { dateFrom, dateTo, setDateFrom: setDateFromPersist, setDateTo: setDateToPersist } = useDateRange();
 
   // ── Metric visibility — shared across all tabs ────────────────────────────
   const { hidden: hiddenMetrics, toggle: toggleMetric, showAll: showAllMetrics, hideAll: hideAllMetrics, isVisible: isMetricVisible, allVisible: allMetricsVisible } = useMetricVisibility();
@@ -2147,7 +2185,13 @@ export function Dashboard({
     }
   }, [filteredCampaigns, sortBy]);
 
-  const totals             = aggregateTotals(filteredCampaigns);
+  const { overrides, setOverride } = useManualMetrics();
+  const { layout: kpiLayout, editMode: kpiEditMode, setEditMode: setKpiEditMode, reorder: reorderKpi, resetLayout: resetKpiLayout } = useDashboardLayout();
+  const campaignsWithOverrides = useMemo(
+    () => applyOverrides(filteredCampaigns, overrides),
+    [filteredCampaigns, overrides],
+  );
+  const totals             = aggregateTotals(campaignsWithOverrides);
   const allCampaignTotals  = useMemo(() => aggregateTotals(campaigns), [campaigns]);
   const needsLeadsMigration = !campaignMetricsHasLeadsColumn;
   const needsLeadsResync =
@@ -2927,7 +2971,38 @@ export function Dashboard({
                         </h2>
                       )}
                     </div>
-                    <div className="relative sm:mb-0.5">
+                    <div className="relative flex items-center gap-2 sm:mb-0.5">
+                    <button
+                      type="button"
+                      onClick={() => exportCampaignsCsv(campaignsWithOverrides, { dateFrom, dateTo })}
+                      className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition hover:opacity-80"
+                      style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-secondary)" }}
+                      title="Exportar campanhas visíveis como CSV"
+                    >
+                      <Download size={11} aria-hidden /> Exportar CSV
+                    </button>
+                    {kpiEditMode && (
+                      <button
+                        type="button"
+                        onClick={resetKpiLayout}
+                        className="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-amber-500 hover:underline transition"
+                        title="Restaurar ordem padrão"
+                      >
+                        Resetar
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setKpiEditMode((v: boolean) => !v)}
+                      className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition hover:opacity-80"
+                      style={{
+                        borderColor: kpiEditMode ? "var(--dm-value-positive)" : "var(--dm-border-default)",
+                        backgroundColor: kpiEditMode ? "var(--dm-value-positive-bg)" : "var(--dm-bg-elevated)",
+                        color: kpiEditMode ? "var(--dm-value-positive)" : "var(--dm-text-secondary)",
+                      }}
+                    >
+                      <GripVertical size={11} aria-hidden /> {kpiEditMode ? "Concluir" : "Reordenar"}
+                    </button>
                     <button
                       type="button"
                       onClick={() => setShowKpiPanel((v) => !v)}
@@ -3010,174 +3085,168 @@ export function Dashboard({
                   </div>
                 </div>
 
-                {/* ── KPI 3-Tier layout ── */}
+                {/* All KPI cards in one adaptive grid — drag-and-drop ordered */}
                 {(() => {
-                  /* Tier 1 — Financeiro */
-                  const tier1 = [
-                    isMetricVisible("investment") && (
-                      <KpiCard key="investment" tier={1}
+                  const kpiCardMap: Partial<Record<KpiId, React.ReactNode>> = {
+                    investment: isMetricVisible("investment") ? (
+                      <KpiCard
                         title="Total Investido" value={formatCurrency(totals.totalInvestment)}
-                        subtitle={`CTR médio: ${formatPercent(totals.averageCtr)}`}
-                        icon={Wallet} accentColor="red" invertTrend
+                        subtitle={`CTR médio: ${formatPercent(totals.ctr)}`}
+                        icon={Wallet} accentColor="blue"
                         goalValue={goals.investment} goalLabel={goals.investment != null ? formatCurrency(goals.investment) : undefined}
                         goalPct={goals.investment != null ? (totals.totalInvestment / goals.investment) * 100 : null}
                         goalInvert
                       />
-                    ),
-                    isMetricVisible("revenue") && (
-                      <KpiCard key="revenue" tier={1}
+                    ) : null,
+                    revenue: isMetricVisible("revenue") ? (
+                      <KpiCard
                         title="Receita Total" value={formatCurrency(totals.totalRevenue)}
                         subtitle={`ROAS: ${totals.roas.toFixed(2)}x`}
                         icon={CircleDollarSign} accentColor="green"
                       />
-                    ),
-                    isMetricVisible("roas") && (
-                      <KpiCard key="roas" tier={1}
+                    ) : null,
+                    roas: isMetricVisible("roas") ? (
+                      <KpiCard
                         title="ROAS" value={`${totals.roas.toFixed(2)}x`}
                         icon={TrendingUp} accentColor="primary"
                         goalValue={goals.roas} goalLabel={goals.roas != null ? `${goals.roas.toFixed(1)}x` : undefined}
                         goalPct={goals.roas != null ? (totals.roas / goals.roas) * 100 : null}
                       />
-                    ),
-                  ].filter(Boolean);
-
-                  /* Tier 2 — Eficiência */
-                  const tier2 = [
-                    isMetricVisible("roi") && (
-                      <KpiCard key="roi" tier={2}
+                    ) : null,
+                    roi: isMetricVisible("roi") ? (
+                      <KpiCard
                         title="ROI" value={formatPercent(totals.roi)}
                         icon={TrendingUp} accentColor="primary"
                         goalValue={goals.roi} goalLabel={goals.roi != null ? `${goals.roi.toFixed(0)}%` : undefined}
                         goalPct={goals.roi != null ? (totals.roi / goals.roi) * 100 : null}
                       />
-                    ),
-                    isMetricVisible("cpa") && (
-                      <KpiCard key="cpa" tier={2}
-                        title="CPA Médio" value={formatCurrency(totals.averageCpa)}
-                        icon={BadgeDollarSign} accentColor="amber" invertTrend
-                        goalValue={goals.cpa} goalLabel={goals.cpa != null ? formatCurrency(goals.cpa) : undefined}
-                        goalPct={goals.cpa != null && totals.averageCpa > 0 ? (goals.cpa / totals.averageCpa) * 100 : null}
-                        goalInvert
-                      />
-                    ),
-                    isMetricVisible("ctr") && (
-                      <KpiCard key="ctr" tier={2}
-                        title="CTR Médio" value={formatPercent(totals.averageCtr)}
-                        icon={MousePointerClick} accentColor="blue"
-                        goalValue={goals.ctr} goalLabel={goals.ctr != null ? `${goals.ctr.toFixed(1)}%` : undefined}
-                        goalPct={goals.ctr != null ? (totals.averageCtr / goals.ctr) * 100 : null}
-                      />
-                    ),
-                    isMetricVisible("cpc") && (
-                      <KpiCard key="cpc" tier={2}
-                        title="CPC Médio" value={formatCurrency(totals.averageCpc)}
-                        icon={BadgeDollarSign} accentColor="amber" invertTrend
-                        goalValue={goals.cpc} goalLabel={goals.cpc != null ? formatCurrency(goals.cpc) : undefined}
-                        goalPct={goals.cpc != null && totals.averageCpc > 0 ? (goals.cpc / totals.averageCpc) * 100 : null}
-                        goalInvert
-                      />
-                    ),
-                    isMetricVisible("conversions") && (
-                      <KpiCard key="conversions" tier={2}
+                    ) : null,
+                    conversions: isMetricVisible("conversions") ? (
+                      <KpiCard
                         title="Conversões" value={formatNumber(totals.totalConversions)}
-                        subtitle={`Tx.: ${formatPercent(totals.averageConversionRate)}`}
-                        icon={Target} accentColor="green"
+                        subtitle={`Tx.: ${formatPercent(totals.conversionRate)}`}
+                        icon={Target} accentColor="blue"
                         goalValue={goals.conversions} goalLabel={goals.conversions != null ? formatNumber(goals.conversions) : undefined}
                         goalPct={goals.conversions != null ? (totals.totalConversions / goals.conversions) * 100 : null}
+                        editable={filteredCampaigns.length === 1}
+                        isManual={filteredCampaigns.length === 1 && overrides[filteredCampaigns[0]?.id]?.conversions !== undefined}
+                        onEdit={(v) => filteredCampaigns[0] && setOverride(filteredCampaigns[0].id, { conversions: v })}
                       />
-                    ),
-                  ].filter(Boolean);
-
-                  /* Tier 3 — Volume */
-                  const tier3 = [
-                    isMetricVisible("impressions") && (
-                      <KpiCard key="impressions" tier={3}
-                        title="Impressões" value={formatNumber(totals.totalImpressions)}
-                        icon={Activity} accentColor="blue"
-                      />
-                    ),
-                    isMetricVisible("clicks") && (
-                      <KpiCard key="clicks" tier={3}
-                        title="Cliques" value={formatNumber(totals.totalClicks)}
-                        subtitle={`CTR: ${formatPercent(totals.averageCtr)}`}
-                        icon={MousePointerClick} accentColor="primary"
-                      />
-                    ),
-                    isMetricVisible("cpm") && (
-                      <KpiCard key="cpm" tier={3}
-                        title="CPM Médio" value={formatCurrency(totals.averageCpm)}
-                        icon={Zap} accentColor="amber" invertTrend
-                      />
-                    ),
-                    isMetricVisible("leads") && (
-                      <KpiCard key="leads" tier={3}
+                    ) : null,
+                    leads: isMetricVisible("leads") ? (
+                      <KpiCard
                         title="Leads" value={formatNumber(totals.totalLeads)}
-                        subtitle={totals.totalLeads > 0 ? `CPL: ${formatCurrency(totals.averageCpl)}` : undefined}
+                        subtitle={totals.totalLeads > 0 ? `CPL: ${formatCurrency(totals.cpl)}` : undefined}
                         icon={Users} accentColor="violet"
-                        goalValue={goals.leads} goalLabel={goals.leads != null ? formatNumber(goals.leads) : undefined}
-                        goalPct={goals.leads != null ? (totals.totalLeads / goals.leads) * 100 : null}
+                        editable={filteredCampaigns.length === 1}
+                        isManual={filteredCampaigns.length === 1 && overrides[filteredCampaigns[0]?.id]?.leads !== undefined}
+                        onEdit={(v) => filteredCampaigns[0] && setOverride(filteredCampaigns[0].id, { leads: v })}
                       />
-                    ),
-                    isMetricVisible("cpl") && totals.totalLeads > 0 && (
-                      <KpiCard key="cpl" tier={3}
-                        title="CPL Médio" value={formatCurrency(totals.averageCpl)}
+                    ) : null,
+                    cpa: isMetricVisible("cpa") ? (
+                      <KpiCard
+                        title="CPA Médio" value={formatCurrency(totals.cpa)}
+                        subtitle={undefined}
+                        icon={BadgeDollarSign} accentColor="blue" invertTrend
+                        goalValue={goals.cpa} goalLabel={goals.cpa != null ? formatCurrency(goals.cpa) : undefined}
+                        goalPct={goals.cpa != null && totals.cpa > 0 ? (goals.cpa / totals.cpa) * 100 : null}
+                        goalInvert
+                      />
+                    ) : null,
+                    cpl: isMetricVisible("cpl") && totals.totalLeads > 0 ? (
+                      <KpiCard
+                        title="CPL Médio" value={formatCurrency(totals.cpl)}
+                        subtitle={undefined}
                         icon={UserRound} accentColor="violet"
                       />
-                    ),
-                  ].filter(Boolean);
+                    ) : null,
+                    ctr: isMetricVisible("ctr") ? (
+                      <KpiCard
+                        title="CTR Médio" value={formatPercent(totals.ctr)}
+                        subtitle={undefined}
+                        icon={MousePointerClick} accentColor="blue"
+                        goalValue={goals.ctr} goalLabel={goals.ctr != null ? `${goals.ctr.toFixed(1)}%` : undefined}
+                        goalPct={goals.ctr != null ? (totals.ctr / goals.ctr) * 100 : null}
+                      />
+                    ) : null,
+                    cpc: isMetricVisible("cpc") ? (
+                      <KpiCard
+                        title="CPC Médio" value={formatCurrency(totals.cpc)}
+                        subtitle={undefined}
+                        icon={BadgeDollarSign} accentColor="blue" invertTrend
+                        goalValue={goals.cpc} goalLabel={goals.cpc != null ? formatCurrency(goals.cpc) : undefined}
+                        goalPct={goals.cpc != null && totals.cpc > 0 ? (goals.cpc / totals.cpc) * 100 : null}
+                        goalInvert
+                      />
+                    ) : null,
+                    cpm: isMetricVisible("cpm") ? (
+                      <KpiCard
+                        title="CPM Médio" value={formatCurrency(totals.cpm)}
+                        subtitle={undefined}
+                        icon={Zap} accentColor="blue" invertTrend
+                        goalValue={goals.cpm} goalLabel={goals.cpm != null ? formatCurrency(goals.cpm) : undefined}
+                        goalPct={goals.cpm != null && totals.cpm > 0 ? (goals.cpm / totals.cpm) * 100 : null}
+                        goalInvert
+                      />
+                    ) : null,
+                    clicks: isMetricVisible("clicks") ? (
+                      <KpiCard
+                        title="Cliques" value={formatNumber(totals.totalClicks)}
+                        subtitle={`${formatNumber(totals.totalImpressions)} impressões`}
+                        icon={MousePointerClick} accentColor="blue"
+                      />
+                    ) : null,
+                    impressions: isMetricVisible("impressions") ? (
+                      <KpiCard
+                        title="Impressões" value={formatNumber(totals.totalImpressions)}
+                        subtitle={undefined}
+                        icon={Activity} accentColor="blue"
+                      />
+                    ) : null,
+                    conversionRate: null,
+                  };
 
-                  const hasAny = tier1.length + tier2.length + tier3.length > 0;
+                  const orderedItems = kpiLayout.kpiOrder
+                    .map((id) => ({ id, node: kpiCardMap[id] ?? null }))
+                    .filter(({ node }) => node !== null);
 
-                  /* Tier label separator */
-                  const TierLabel = ({ label }: { label: string }) => (
-                    <div className="flex items-center gap-2 pt-1">
-                      <span
-                        className="flex-shrink-0 text-[10px] font-semibold uppercase"
-                        style={{ color: "var(--dm-text-tertiary)", letterSpacing: "0.09em" }}
-                      >
-                        {label}
-                      </span>
-                      <div className="flex-1 h-px" style={{ background: "var(--dm-border-default)" }} />
+                  if (orderedItems.length === 0) {
+                    return (
+                      <div className="flex items-center justify-center rounded-xl border py-6" style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-tertiary)" }}>
+                        <p className="text-xs">Nenhuma métrica visível. <button className="text-blue-500 underline" onClick={showAllMetrics}>Mostrar todas</button></p>
+                      </div>
+                    );
+                  }
+
+                  const grid = (
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                      {orderedItems.map(({ id, node }) => (
+                        <SortableKpiItem key={id} id={id} editMode={kpiEditMode}>
+                          {node}
+                        </SortableKpiItem>
+                      ))}
                     </div>
                   );
 
-                  return hasAny ? (
-                    <div className="space-y-3">
-                      {tier1.length > 0 && (
-                        <>
-                          <TierLabel label="Financeiro" />
-                          <div className="grid grid-cols-1 gap-[10px] sm:grid-cols-2 lg:grid-cols-3">
-                            {tier1}
-                          </div>
-                        </>
-                      )}
-                      {tier2.length > 0 && (
-                        <>
-                          <TierLabel label="Eficiência" />
-                          <div className="grid grid-cols-2 gap-[10px] sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-                            {tier2}
-                          </div>
-                        </>
-                      )}
-                      {tier3.length > 0 && (
-                        <>
-                          <TierLabel label="Volume" />
-                          <div className="grid grid-cols-2 gap-[10px] sm:grid-cols-3 lg:grid-cols-5">
-                            {tier3}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-center rounded-xl border py-6"
-                      style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-tertiary)" }}>
-                      <p className="text-xs">
-                        Nenhuma métrica visível.{" "}
-                        <button className="underline" style={{ color: "var(--dm-primary)" }} onClick={showAllMetrics}>
-                          Mostrar todas
-                        </button>
-                      </p>
-                    </div>
+                  if (!kpiEditMode) return grid;
+
+                  return (
+                    <DndContext
+                      collisionDetection={closestCenter}
+                      onDragEnd={(event: DragEndEvent) => {
+                        const { active, over } = event;
+                        if (over && active.id !== over.id) {
+                          reorderKpi(active.id as KpiId, over.id as KpiId);
+                        }
+                      }}
+                    >
+                      <SortableContext
+                        items={orderedItems.map(({ id }) => id)}
+                        strategy={rectSortingStrategy}
+                      >
+                        {grid}
+                      </SortableContext>
+                    </DndContext>
                   );
                 })()}
                 </section>

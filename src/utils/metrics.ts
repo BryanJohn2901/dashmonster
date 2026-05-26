@@ -6,9 +6,14 @@ import {
   DashboardTotals,
   DailyTrendPoint,
 } from "@/types/campaign";
+import type { ManualOverrideStore } from "@/hooks/useManualMetrics";
 
-const safeDivide = (numerator: number, denominator: number): number => {
+const safeDivide = (numerator: number, denominator: number, ctx?: string): number => {
   if (denominator === 0) {
+    // Suspicious: positive numerator with zero denominator signals corrupted/missing data.
+    if (numerator > 0 && ctx && process.env.NODE_ENV !== "production") {
+      console.warn(`[safeDivide] ${ctx}: numerator=${numerator} but denominator=0`);
+    }
     return 0;
   }
   return numerator / denominator;
@@ -21,11 +26,11 @@ export const calculateDerivedMetrics = (
   >,
   index: number,
 ): CampaignData => {
-  const ctr = safeDivide(row.clicks, row.impressions) * 100;
-  const cpc = safeDivide(row.investment, row.clicks);
-  const cpa = safeDivide(row.investment, row.conversions);
-  const roas = safeDivide(row.revenue, row.investment);
-  const conversionRate = safeDivide(row.conversions, row.clicks) * 100;
+  const ctr = safeDivide(row.clicks, row.impressions, "ctr") * 100;
+  const cpc = safeDivide(row.investment, row.clicks, "cpc");
+  const cpa = safeDivide(row.investment, row.conversions, "cpa");
+  const roas = safeDivide(row.revenue, row.investment, "roas");
+  const conversionRate = safeDivide(row.conversions, row.clicks, "conversionRate") * 100;
 
   return {
     ...row,
@@ -59,25 +64,27 @@ export const aggregateTotals = (campaigns: CampaignData[]): DashboardTotals => {
     },
   );
 
-  const roas = safeDivide(totals.totalRevenue, totals.totalInvestment);
+  const roas = safeDivide(totals.totalRevenue, totals.totalInvestment, "roas");
   const roi = (roas - 1) * 100;
-  const averageCpa = safeDivide(totals.totalInvestment, totals.totalConversions);
-  const averageCtr = safeDivide(totals.totalClicks, totals.totalImpressions) * 100;
-  const averageConversionRate = safeDivide(totals.totalConversions, totals.totalClicks) * 100;
-  const averageCpc = safeDivide(totals.totalInvestment, totals.totalClicks);
-  const averageCpm = safeDivide(totals.totalInvestment, totals.totalImpressions) * 1000;
-  const averageCpl = safeDivide(totals.totalInvestment, totals.totalLeads);
+  // Derived metrics: ratio of sums (weighted average by volume),
+  // NOT arithmetic mean of per-campaign rates.
+  const cpa = safeDivide(totals.totalInvestment, totals.totalConversions, "cpa");
+  const ctr = safeDivide(totals.totalClicks, totals.totalImpressions, "ctr") * 100;
+  const conversionRate = safeDivide(totals.totalConversions, totals.totalClicks, "conversionRate") * 100;
+  const cpc = safeDivide(totals.totalInvestment, totals.totalClicks, "cpc");
+  const cpm = safeDivide(totals.totalInvestment, totals.totalImpressions, "cpm") * 1000;
+  const cpl = safeDivide(totals.totalInvestment, totals.totalLeads, "cpl");
 
   return {
     ...totals,
     roi,
     roas,
-    averageCpa,
-    averageCtr,
-    averageConversionRate,
-    averageCpc,
-    averageCpm,
-    averageCpl,
+    cpa,
+    ctr,
+    conversionRate,
+    cpc,
+    cpm,
+    cpl,
   };
 };
 
@@ -185,6 +192,33 @@ export const aggregateByCampaign = (campaigns: CampaignData[]): AggregatedCampai
   }));
 };
 
+/**
+ * Applies manual metric overrides to campaigns where the API returned 0.
+ *
+ * Rule: API data always wins — override only applies when apiValue === 0.
+ * This way, if a pixel is eventually configured and returns real data, the
+ * manual override is transparently ignored without needing to delete it.
+ */
+export function applyOverrides(
+  campaigns: CampaignData[],
+  overrides: ManualOverrideStore,
+): CampaignData[] {
+  return campaigns.map((c) => {
+    const ov = overrides[c.id];
+    if (!ov) return c;
+
+    const apply = (apiVal: number, overrideVal?: number) =>
+      apiVal === 0 && overrideVal !== undefined ? overrideVal : apiVal;
+
+    return calculateDerivedMetrics({
+      ...c,
+      conversions: apply(c.conversions, ov.conversions),
+      leads:       apply(c.leads ?? 0, ov.leads),
+      revenue:     apply(c.revenue, ov.revenue),
+    }, 0);
+  });
+}
+
 export const formatDatePtBr = (value: string): string => {
   const parsedDate = new Date(`${value}T00:00:00`);
   if (Number.isNaN(parsedDate.getTime())) {
@@ -193,3 +227,4 @@ export const formatDatePtBr = (value: string): string => {
 
   return new Intl.DateTimeFormat("pt-BR").format(parsedDate);
 };
+

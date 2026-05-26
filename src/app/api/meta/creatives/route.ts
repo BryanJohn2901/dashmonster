@@ -152,6 +152,7 @@ export async function GET(request: NextRequest) {
           instagramUrl: ad.creative?.instagram_permalink_url ?? undefined,
           mediaType:    detectMediaType(ad),
           createdTime:  ad.created_time,
+          ...(ad.creative?.video_id ? { videoId: ad.creative.video_id } : {}),
           body,
           headline,
         } satisfies MetaCampaignCreative;

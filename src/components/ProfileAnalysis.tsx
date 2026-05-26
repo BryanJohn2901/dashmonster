@@ -13,7 +13,9 @@ import {
 import {
   fetchMetaCampaigns, fetchMetaInsights, fetchMetaAdAccounts,
   loadMetaCredentials, MetaInsight, MetaAdAccount,
+  extractConversions, extractLeads, extractRevenue,
 } from "@/utils/metaApi";
+import { useDateRange } from "@/hooks/useDateRange";
 import {
   fetchInstagramAccounts, fetchInstagramInsights,
   InstagramAccount, InstagramProfileInsights,
@@ -191,11 +193,9 @@ function toAdsetRows(data: MetaInsight[], resultType?: string): AdsetRow[] {
     // raw clicks = all clicks (reactions, shares, profile visits, etc.)
     cur.total_clicks  += parseMetaNum(d.clicks);
     cur.spend         += parseMetaNum(d.spend);
-    cur.purchases     += getActionValue(d.actions, "purchase");
-    cur.leads         += getActionValue(d.actions, "lead")
-                       + getActionValue(d.actions, "onsite_conversion.lead_grouped");
-    cur.revenue       += pickActionValue(d.action_values, "purchase", "omni_purchase",
-                         "offsite_conversion.fb_pixel_purchase");
+    cur.purchases     += extractConversions(d.actions);
+    cur.leads         += extractLeads(d.actions);       // first-match-wins: evita double-count lead + lead_grouped
+    cur.revenue       += extractRevenue(d.action_values);
     // landing_page_view: more reliable than link clicks for LP-funnel templates.
     cur.page_views    += getActionValue(d.actions, "landing_page_view");
     // new_followers: "follow" (ad engagement objective) OR "page_fan_adds" (traffic-to-profile)
@@ -2943,28 +2943,8 @@ function ProfileDetailView({
   const [activeCampId, setActiveCampId] = useState<string>(profile.campaigns[0]?.id ?? "");
   const [profileTab, setProfileTab] = useState<"overview" | "campanha" | "conjunto" | "instagram">("overview");
 
-  // Persist date range per profile so it survives navigation back-and-forth.
-  const [dateFrom, setDateFrom] = useState<string>(() => {
-    if (typeof window === "undefined") return daysAgoStr(14);
-    try {
-      const stored = JSON.parse(localStorage.getItem(DATES_LS_KEY) ?? "{}") as Record<string, { from: string; to: string }>;
-      return stored[profile.id]?.from ?? daysAgoStr(14);
-    } catch { return daysAgoStr(14); }
-  });
-  const [dateTo, setDateTo] = useState<string>(() => {
-    if (typeof window === "undefined") return todayStr();
-    try {
-      const stored = JSON.parse(localStorage.getItem(DATES_LS_KEY) ?? "{}") as Record<string, { from: string; to: string }>;
-      return stored[profile.id]?.to ?? todayStr();
-    } catch { return todayStr(); }
-  });
-
-  const persistDates = (from: string, to: string) => {
-    try {
-      const stored = JSON.parse(localStorage.getItem(DATES_LS_KEY) ?? "{}") as Record<string, { from: string; to: string }>;
-      localStorage.setItem(DATES_LS_KEY, JSON.stringify({ ...stored, [profile.id]: { from, to } }));
-    } catch {}
-  };
+  // Shared date range — stays in sync with Dashboard (same hook, same localStorage key).
+  const { dateFrom, dateTo, setDateFrom, setDateTo } = useDateRange();
   const [showAddPanel, setShowAddPanel] = useState(false);
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
   const hasToken = Boolean(loadMetaCredentials().accessToken);
@@ -3101,7 +3081,7 @@ function ProfileDetailView({
             <ProfileDateRange
               dateFrom={dateFrom}
               dateTo={dateTo}
-              onApply={(from, to) => { setDateFrom(from); setDateTo(to); persistDates(from, to); }}
+              onApply={(from, to) => { setDateFrom(from); setDateTo(to); }}
             />
           </div>
         </div>

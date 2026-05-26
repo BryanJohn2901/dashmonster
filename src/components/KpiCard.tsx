@@ -1,4 +1,5 @@
-import { LucideIcon, TrendingDown, TrendingUp } from "lucide-react";
+import { useState } from "react";
+import { LucideIcon, Pencil, TrendingDown, TrendingUp } from "lucide-react";
 
 /* ─── Tier types ─────────────────────────────────────────────────────────── */
 export type KpiTier = 1 | 2 | 3;
@@ -7,13 +8,12 @@ export type KpiTier = 1 | 2 | 3;
 type AccentKey = "red" | "green" | "primary" | "blue" | "emerald" | "violet" | "amber" | "rose";
 
 interface AccentStyle {
-  iconBg:   string;   // CSS value
-  iconText: string;   // CSS value
-  topBar:   string;   // hex — Tier 1 only
+  iconBg:   string;
+  iconText: string;
+  topBar:   string;
 }
 
 // Padrão: iconBg neutro translúcido, cor só em status semântico (success/danger)
-// "Cor não é decoração; cor é informação" — guia visual §3
 const NEUTRAL_ICON_BG   = "rgba(255,255,255,0.045)";
 const NEUTRAL_ICON_TEXT = "var(--dm-icon-primary, #C8CCD8)";
 
@@ -22,7 +22,6 @@ const ACCENT: Record<AccentKey, AccentStyle> = {
   blue:    { iconBg: NEUTRAL_ICON_BG, iconText: NEUTRAL_ICON_TEXT, topBar: "#313491" },
   violet:  { iconBg: NEUTRAL_ICON_BG, iconText: NEUTRAL_ICON_TEXT, topBar: "#8B5CF6" },
   amber:   { iconBg: NEUTRAL_ICON_BG, iconText: NEUTRAL_ICON_TEXT, topBar: "#F59E0B" },
-  // Semânticos: texto colorido, fundo ainda neutro
   green:   { iconBg: NEUTRAL_ICON_BG, iconText: "var(--dm-chart-success, #22C55E)", topBar: "#10B981" },
   emerald: { iconBg: NEUTRAL_ICON_BG, iconText: "var(--dm-chart-success, #22C55E)", topBar: "#10B981" },
   red:     { iconBg: NEUTRAL_ICON_BG, iconText: "var(--dm-chart-danger,  #EF4444)", topBar: "#EF4444" },
@@ -55,6 +54,12 @@ export interface KpiCardProps {
   goalInvert?:  boolean;
   /** Visual tier: 1 = Financeiro (large), 2 = Eficiência (medium), 3 = Volume (compact) */
   tier?:        KpiTier;
+  /** true quando este KPI pode receber valor manual (API retornou 0) */
+  editable?:    boolean;
+  /** true quando o valor atual veio de override manual */
+  isManual?:    boolean;
+  /** Callback chamado com o novo valor numérico digitado pelo usuário */
+  onEdit?:      (newValue: number) => void;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────── */
@@ -66,15 +71,18 @@ export function KpiCard({
   invertTrend = false,
   goalValue, goalLabel, goalPct, goalInvert = false,
   tier = 1,
+  editable = false, isManual = false, onEdit,
 }: KpiCardProps) {
   const a = ACCENT[accentColor];
+  const [editing, setEditing] = useState(false);
+  const [draft,   setDraft]   = useState("");
 
   const isPositiveTrend = trend !== undefined
     ? (invertTrend ? trend < 0 : trend > 0)
     : null;
 
-  const hasGoal = goalValue != null && goalPct != null;
-  const gc      = hasGoal ? goalColor(goalPct!, goalInvert) : null;
+  const hasGoal  = goalValue != null && goalPct != null;
+  const gc       = hasGoal ? goalColor(goalPct!, goalInvert) : null;
   const barWidth = hasGoal ? Math.min(goalPct!, 100) : 0;
 
   const deltaStyle = isPositiveTrend !== null ? {
@@ -85,41 +93,47 @@ export function KpiCard({
   /* ── Tier-driven sizing ────────────────────────────────────────────────── */
   const t1 = tier === 1;
   const t2 = tier === 2;
-  // tier 3 = smallest
 
-  const cardPadding    = t1 ? "p-5"        : t2 ? "px-4 py-3.5"  : "px-3 py-2.5";
-  const iconSize       = t1 ? 34           : t2 ? 28              : 22;
-  const iconRadius     = t1 ? "rounded-[10px]" : "rounded-lg";
-  // MD3 type scale — font-size via CSS var (não Tailwind) para usar tokens semânticos
-  const valueFontSize  = t1
-    ? "var(--dm-type-title-lg)"   /* 22px */
+  const cardPadding   = t1 ? "p-5"            : t2 ? "px-4 py-3.5"  : "px-3 py-2.5";
+  const iconSize      = t1 ? 34               : t2 ? 28              : 22;
+  const iconRadius    = t1 ? "rounded-[10px]" : "rounded-lg";
+  const valueFontSize = t1
+    ? "var(--dm-type-title-lg)"
     : t2
-    ? "var(--dm-type-title-md)"   /* 18px */
-    : "var(--dm-type-body-lg)";   /* 14px */
-  const valueSize      = "";
-  const valueWeight    = t1 ? "font-bold"       : t2 ? "font-bold"    : "font-semibold";
-  const valueColor     = t1 || t2 ? "var(--dm-text-primary)" : "var(--dm-text-secondary)";
-  const labelColor     = "var(--dm-text-tertiary)";
-  const gap            = t1 ? "gap-3.5"    : t2 ? "gap-2.5"      : "gap-2";
+    ? "var(--dm-type-title-md)"
+    : "var(--dm-type-body-lg)";
+  const valueWeight   = t1 ? "font-bold"   : t2 ? "font-bold"   : "font-semibold";
+  const valueColor    = t1 || t2 ? "var(--dm-text-primary)" : "var(--dm-text-secondary)";
+  const labelColor    = "var(--dm-text-tertiary)";
+  const gap           = t1 ? "gap-3.5"     : t2 ? "gap-2.5"     : "gap-2";
 
   const shapeRadius = t1
-    ? "var(--dm-shape-lg)"    /* 16px — MD3 large */
+    ? "var(--dm-shape-lg)"
     : t2
-    ? "var(--dm-shape-md)"   /* 12px — MD3 medium */
-    : "var(--dm-shape-sm)";  /* 8px  — MD3 small  */
+    ? "var(--dm-shape-md)"
+    : "var(--dm-shape-sm)";
 
   return (
     <article
       className="dm-state-layer card-hover group relative overflow-hidden border shadow-horizon transition-all duration-300 hover:-translate-y-0.5"
       style={{
         background:   "var(--dm-bg-surface)",
-        borderColor:  t1 ? "var(--dm-border-default)" : t2 ? "transparent" : "var(--dm-border-subtle)",
+        borderColor:  isManual
+          ? "rgba(245,158,11,0.4)"
+          : t1 ? "var(--dm-border-default)" : t2 ? "transparent" : "var(--dm-border-subtle)",
         borderRadius: shapeRadius,
       }}
     >
       {/* Tier 1 — top accent bar */}
       {t1 && (
         <div className="h-[3px] w-full" style={{ background: a.topBar }} />
+      )}
+
+      {/* Manual override badge */}
+      {isManual && (
+        <span className="absolute right-2 top-2 rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-500 bg-amber-50 dark:bg-amber-900/20">
+          Manual
+        </span>
       )}
 
       <div className={`flex items-center ${gap} ${cardPadding}`}>
@@ -138,22 +152,60 @@ export function KpiCard({
 
         {/* Text */}
         <div className="min-w-0 flex-1">
-          {/* Label — MD3 Label Small */}
-          <p
-            className="dm-metric-label mb-0.5"
-            {...(tooltip ? { "data-dm-tip": tooltip } : {})}
-            style={{ color: labelColor, fontSize: "var(--dm-type-label-sm)" }}
-          >
-            {title}
-          </p>
+          {/* Label + optional edit button */}
+          <div className="mb-0.5 flex items-center gap-1">
+            <p
+              className="dm-metric-label"
+              {...(tooltip ? { "data-dm-tip": tooltip } : {})}
+              style={{ color: labelColor, fontSize: "var(--dm-type-label-sm)" }}
+            >
+              {title}
+            </p>
+            {editable && onEdit && (
+              <button
+                type="button"
+                onClick={() => { setDraft(""); setEditing(true); }}
+                className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity"
+                title={isManual ? "Editar valor manual" : "API retornou 0 — inserir valor manualmente"}
+              >
+                <Pencil size={10} className="text-amber-500" />
+              </button>
+            )}
+          </div>
 
-          {/* Value — MD3 type scale via CSS var */}
-          <p
-            className={`${valueWeight} leading-tight tracking-tight font-[family-name:var(--font-poppins)]`}
-            style={{ color: valueColor, fontSize: valueFontSize }}
-          >
-            {value}
-          </p>
+          {/* Value — inline edit or display */}
+          {editing ? (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const n = parseFloat(draft.replace(",", "."));
+                if (!isNaN(n) && onEdit) { onEdit(n); }
+                setEditing(false);
+              }}
+              className="flex items-center gap-1"
+            >
+              <input
+                autoFocus
+                type="text"
+                inputMode="decimal"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Escape") setEditing(false); }}
+                className="w-20 rounded border px-1 py-0.5 text-sm font-bold focus:outline-none"
+                style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
+                placeholder="0"
+              />
+              <button type="submit" className="text-[10px] text-emerald-500 font-semibold">✓</button>
+              <button type="button" onClick={() => setEditing(false)} className="text-[10px] text-slate-400">✕</button>
+            </form>
+          ) : (
+            <p
+              className={`${valueWeight} leading-tight tracking-tight font-[family-name:var(--font-poppins)]`}
+              style={{ color: valueColor, fontSize: valueFontSize }}
+            >
+              {value}
+            </p>
+          )}
 
           {/* Trend + subtitle — Tier 1 and 2 only */}
           {tier < 3 && (trend !== undefined || subtitle) && (

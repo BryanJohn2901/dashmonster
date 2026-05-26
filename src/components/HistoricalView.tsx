@@ -25,6 +25,7 @@ import {
 import {
   fetchUserTags, addUserTag, deleteUserTag,
 } from "@/utils/supabaseProducts";
+import { logSilentError } from "@/utils/logSilentError";
 
 // ─── Predefined product category tags (per kind) ─────────────────────────────
 
@@ -1061,7 +1062,7 @@ export function HistoricalView({ selectedKind: propKind, onKindChange }: Histori
           onAddTag={async (tag) => {
             const next = { ...customTags, [form.kind]: [...(customTags[form.kind] ?? []), tag] };
             setCustomTags(next);
-            if (isSupabaseConfigured) addUserTag(form.kind, tag).catch(() => {});
+            if (isSupabaseConfigured) addUserTag(form.kind, tag).catch((e) => logSilentError("addUserTag", e));
           }}
         />
       )}

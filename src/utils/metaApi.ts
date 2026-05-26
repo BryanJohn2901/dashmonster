@@ -194,6 +194,7 @@ export interface MetaCampaignCreative {
   instagramUrl?: string;           // Instagram post permalink (if ad ran on Instagram)
   mediaType:     "image" | "video" | "carousel" | "unknown";
   createdTime?:  string;           // ISO 8601 — when the ad was created in Meta
+  videoId?:      string;           // Meta video ID — present on video ads; used to fetch .mp4 source
   body?:         string;           // ad copy / caption text from object_story_spec
   headline?:     string;           // link headline (title shown under the creative)
 }
@@ -284,7 +285,7 @@ function pickActionRaw(
   if (!actions) return 0;
   for (const type of types) {
     const found = actions.find((a) => a.action_type === type);
-    if (found) return parseFloat(found.value) || 0;
+    if (found) return parseMetaNum(found.value);
   }
   return 0;
 }
@@ -295,13 +296,52 @@ function pickActionRaw(
  * Returns the value of the FIRST matching action_type found (for mutually-exclusive
  * purchase hierarchies: purchase > omni_purchase > fb_pixel_purchase).
  */
-function pickAction(actions: MetaAction[] | undefined, ...types: string[]): number {
+export function pickAction(actions: MetaAction[] | undefined, ...types: string[]): number {
   if (!actions) return 0;
   for (const type of types) {
     const found = actions.find((a) => a.action_type === type);
-    if (found) return parseFloat(found.value) || 0;
+    if (found) return parseMetaNum(found.value);
   }
   return 0;
+}
+
+/**
+ * Counts conversions (purchases/sales) using first-match-wins.
+ * Action types are mutually exclusive at campaign level.
+ */
+export function extractConversions(actions: MetaAction[] | undefined): number {
+  return pickAction(
+    actions,
+    "purchase",
+    "omni_purchase",
+    "offsite_conversion.fb_pixel_purchase",
+  );
+}
+
+/**
+ * Counts leads using first-match-wins.
+ * IMPORTANT: "lead" and "onsite_conversion.lead_grouped" are REDUNDANT —
+ * Meta returns the same value in both. Summing = double-count.
+ */
+export function extractLeads(actions: MetaAction[] | undefined): number {
+  return pickAction(
+    actions,
+    "onsite_conversion.lead_grouped",
+    "lead",
+    "offsite_conversion.fb_pixel_lead",
+  );
+}
+
+/**
+ * Extracts purchase revenue from the action_values array.
+ */
+export function extractRevenue(actionValues: MetaAction[] | undefined): number {
+  return pickAction(
+    actionValues,
+    "purchase",
+    "omni_purchase",
+    "offsite_conversion.fb_pixel_purchase",
+  );
 }
 
 
