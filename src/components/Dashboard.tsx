@@ -2461,7 +2461,7 @@ export function Dashboard({
                     isMetricVisible("investment") && (
                       <KpiCard key="investment"
                         title="Total Investido"  value={formatCurrency(totals.totalInvestment)}
-                        subtitle={`CTR médio: ${formatPercent(totals.averageCtr)}`}
+                        subtitle={`CTR médio: ${formatPercent(totals.ctr)}`}
                         icon={Wallet} accentColor="blue"
                         goalValue={goals.investment} goalLabel={goals.investment != null ? formatCurrency(goals.investment) : undefined}
                         goalPct={goals.investment != null ? (totals.totalInvestment / goals.investment) * 100 : null}
@@ -2486,7 +2486,7 @@ export function Dashboard({
                     isMetricVisible("conversions") && (
                       <KpiCard key="conversions"
                         title="Conversões" value={formatNumber(totals.totalConversions)}
-                        subtitle={`Tx.: ${formatPercent(totals.averageConversionRate)}`}
+                        subtitle={`Tx.: ${formatPercent(totals.conversionRate)}`}
                         icon={Target} accentColor="blue"
                         goalValue={goals.conversions} goalLabel={goals.conversions != null ? formatNumber(goals.conversions) : undefined}
                         goalPct={goals.conversions != null ? (totals.totalConversions / goals.conversions) * 100 : null}
@@ -2495,13 +2495,13 @@ export function Dashboard({
                     isMetricVisible("leads") && (
                       <KpiCard key="leads"
                         title="Leads" value={formatNumber(totals.totalLeads)}
-                        subtitle={totals.totalLeads > 0 ? `CPL: ${formatCurrency(totals.averageCpl)}` : undefined}
+                        subtitle={totals.totalLeads > 0 ? `CPL: ${formatCurrency(totals.cpl)}` : undefined}
                         icon={Users} accentColor="violet"
                       />
                     ),
                     isMetricVisible("cpl") && totals.totalLeads > 0 && (
                       <KpiCard key="cpl"
-                        title="CPL Médio" value={formatCurrency(totals.averageCpl)}
+                        title="CPL Médio" value={formatCurrency(totals.cpl)}
                         subtitle={undefined}
                         icon={UserRound} accentColor="violet"
                       />
@@ -2517,40 +2517,40 @@ export function Dashboard({
                     ),
                     isMetricVisible("cpa") && (
                       <KpiCard key="cpa"
-                        title="CPA Médio" value={formatCurrency(totals.averageCpa)}
+                        title="CPA Médio" value={formatCurrency(totals.cpa)}
                         subtitle={undefined}
                         icon={BadgeDollarSign} accentColor="blue" invertTrend
                         goalValue={goals.cpa} goalLabel={goals.cpa != null ? formatCurrency(goals.cpa) : undefined}
-                        goalPct={goals.cpa != null && totals.averageCpa > 0 ? (goals.cpa / totals.averageCpa) * 100 : null}
+                        goalPct={goals.cpa != null && totals.cpa > 0 ? (goals.cpa / totals.cpa) * 100 : null}
                         goalInvert
                       />
                     ),
                     isMetricVisible("ctr") && (
                       <KpiCard key="ctr"
-                        title="CTR Médio" value={formatPercent(totals.averageCtr)}
+                        title="CTR Médio" value={formatPercent(totals.ctr)}
                         subtitle={undefined}
                         icon={MousePointerClick} accentColor="blue"
                         goalValue={goals.ctr} goalLabel={goals.ctr != null ? `${goals.ctr.toFixed(1)}%` : undefined}
-                        goalPct={goals.ctr != null ? (totals.averageCtr / goals.ctr) * 100 : null}
+                        goalPct={goals.ctr != null ? (totals.ctr / goals.ctr) * 100 : null}
                       />
                     ),
                     isMetricVisible("cpc") && (
                       <KpiCard key="cpc"
-                        title="CPC Médio" value={formatCurrency(totals.averageCpc)}
+                        title="CPC Médio" value={formatCurrency(totals.cpc)}
                         subtitle={undefined}
                         icon={BadgeDollarSign} accentColor="blue" invertTrend
                         goalValue={goals.cpc} goalLabel={goals.cpc != null ? formatCurrency(goals.cpc) : undefined}
-                        goalPct={goals.cpc != null && totals.averageCpc > 0 ? (goals.cpc / totals.averageCpc) * 100 : null}
+                        goalPct={goals.cpc != null && totals.cpc > 0 ? (goals.cpc / totals.cpc) * 100 : null}
                         goalInvert
                       />
                     ),
                     isMetricVisible("cpm") && (
                       <KpiCard key="cpm"
-                        title="CPM Médio" value={formatCurrency(totals.averageCpm)}
+                        title="CPM Médio" value={formatCurrency(totals.cpm)}
                         subtitle={undefined}
                         icon={Zap} accentColor="blue" invertTrend
                         goalValue={goals.cpm} goalLabel={goals.cpm != null ? formatCurrency(goals.cpm) : undefined}
-                        goalPct={goals.cpm != null && totals.averageCpm > 0 ? (goals.cpm / totals.averageCpm) * 100 : null}
+                        goalPct={goals.cpm != null && totals.cpm > 0 ? (goals.cpm / totals.cpm) * 100 : null}
                         goalInvert
                       />
                     ),
