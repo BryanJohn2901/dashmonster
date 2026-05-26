@@ -263,11 +263,16 @@ function AdInstagramEmbed({
 
   if (!embedUrl) return <AdIframe ad={ad} accessToken={fallbackToken} />;
 
-  // O embed do Instagram tem um header (~62px) com foto de perfil, nome e "Ver perfil".
-  // Técnica: deslocar o iframe para cima em 62px dentro de um container overflow-hidden →
-  // o header sai do campo de visão e o criativo preenche o espaço visível.
-  // O container se expande 62px para baixo (bottom: -62) para compensar o deslocamento.
-  const HEADER_CROP = 62;
+  // Chrome dimensions of the Instagram embed (px, fixed in Instagram's stylesheet).
+  // If Instagram redesigns their embed UI, update these constants.
+  //
+  // Layout: [header 62px] + [CRIATIVO] + [footer 160px]
+  // Technique: shift the iframe wrapper beyond the container edges → overflow:hidden clips it.
+  // The container aspect-ratio already matches the creative content, so only chrome is clipped.
+  const IG_CHROME = {
+    header: 62,   // profile photo (32px) + name + "Ver perfil" button
+    footer: 160,  // "Ver mais no Instagram" + action bar + likes count + comment input + branding
+  } as const;
 
   return (
     <div className="absolute inset-0 overflow-hidden">
@@ -288,14 +293,14 @@ function AdInstagramEmbed({
         </div>
       )}
 
-      {/* Iframe deslocado para cima → header cortado pelo overflow-hidden do pai */}
+      {/* Iframe wrapper deslocado além das bordas do container → chrome cortado pelo overflow-hidden */}
       <div
         style={{
           position: "absolute",
-          top:    -HEADER_CROP,
+          top:    -IG_CHROME.header,   // -62px  → header sai da área visível
           left:   0,
           right:  0,
-          bottom: -HEADER_CROP,
+          bottom: -IG_CHROME.footer,   // -160px → footer sai da área visível
         }}
       >
         <iframe
