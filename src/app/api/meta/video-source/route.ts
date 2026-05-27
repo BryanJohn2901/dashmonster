@@ -5,9 +5,9 @@ const META_API_VERSION = "v21.0";
 /**
  * GET /api/meta/video-source?videoId=XXX&accessToken=YYY
  *
- * Returns the native .mp4 CDN URL and poster thumbnail for a Meta video.
+ * Returns the native .mp4 CDN URL and best poster thumbnail for a Meta video.
  * `source` is a signed CDN URL valid ~24h — playable in a <video> element.
- * `picture` is a poster frame (~640px).
+ * `thumbnails` may include larger frames; fallback to `picture`.
  */
 export async function GET(request: NextRequest) {
   const sp          = request.nextUrl.searchParams;
@@ -24,11 +24,12 @@ export async function GET(request: NextRequest) {
   try {
     const res = await fetch(
       `https://graph.facebook.com/${META_API_VERSION}/${videoId}?` +
-        new URLSearchParams({ access_token: accessToken, fields: "source,picture" }).toString(),
+        new URLSearchParams({ access_token: accessToken, fields: "source,thumbnails,picture" }).toString(),
       { cache: "no-store" },
     );
     const json = await res.json() as {
       source?:  string;
+      thumbnails?: { data?: Array<{ uri?: string; width?: number; height?: number }> };
       picture?: string;
       error?:   { message?: string };
     };
@@ -40,9 +41,16 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const bestThumb =
+      json.thumbnails?.data
+        ?.filter((t) => Boolean(t.uri))
+        .sort((a, b) => (b.width ?? 0) - (a.width ?? 0))[0]?.uri
+      ?? json.picture
+      ?? null;
+
     return NextResponse.json({
       videoSrc:     json.source  ?? null,
-      thumbnailUrl: json.picture ?? null,
+      thumbnailUrl: bestThumb,
     });
   } catch {
     return NextResponse.json({ error: "Falha ao conectar com Meta API." }, { status: 502 });

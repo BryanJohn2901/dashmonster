@@ -166,21 +166,21 @@ function useCardThumbnail(
         obs.disconnect();
         if (oEmbedCardCache.has(ad.adId)) { setHiRes(oEmbedCardCache.get(ad.adId)!); return; }
 
-        if (ad.instagramUrl) {
+        if (ad.mediaType === "video" && ad.videoId) {
+          // Vídeo: prioriza thumbnail própria do vídeo (normalmente mais nítida que oEmbed)
+          fetch(`/api/meta/video-thumbnail?${new URLSearchParams({ videoId: ad.videoId, accessToken })}`)
+            .then((r) => r.json())
+            .then((j: { thumbnailUrl?: string }) => {
+              if (j.thumbnailUrl) { persistOEmbedUrl(ad.adId, j.thumbnailUrl); setHiRes(j.thumbnailUrl); }
+            })
+            .catch(() => {});
+        } else if (ad.instagramUrl) {
           // Instagram oEmbed → up to ~640px; also captures thumbnail dimensions for ratio detection
           fetch(`/api/meta/ig-oembed?${new URLSearchParams({ url: ad.instagramUrl, accessToken })}`)
             .then((r) => r.json())
             .then((j: { thumbnailUrl?: string; thumbnailWidth?: number; thumbnailHeight?: number }) => {
               if (j.thumbnailUrl) { persistOEmbedUrl(ad.adId, j.thumbnailUrl); setHiRes(j.thumbnailUrl); }
               if (j.thumbnailWidth && j.thumbnailHeight) persistRatio(ad.adId, j.thumbnailWidth, j.thumbnailHeight);
-            })
-            .catch(() => {});
-        } else if (ad.videoId) {
-          // Meta video poster frame → /{videoId}?fields=picture (good quality, ~640px)
-          fetch(`/api/meta/video-thumbnail?${new URLSearchParams({ videoId: ad.videoId, accessToken })}`)
-            .then((r) => r.json())
-            .then((j: { thumbnailUrl?: string }) => {
-              if (j.thumbnailUrl) { persistOEmbedUrl(ad.adId, j.thumbnailUrl); setHiRes(j.thumbnailUrl); }
             })
             .catch(() => {});
         } else if (ad.creativeId) {
@@ -682,7 +682,14 @@ function useDirectImage(ad: MetaCampaignCreative, accessToken: string): string {
     if (oEmbedCardCache.has(ad.adId)) { setHiRes(oEmbedCardCache.get(ad.adId)!); return; }
     setHiRes("");
 
-    if (ad.instagramUrl) {
+    if (ad.mediaType === "video" && ad.videoId) {
+      fetch(`/api/meta/video-source?${new URLSearchParams({ videoId: ad.videoId, accessToken })}`)
+        .then((r) => r.json())
+        .then((j: { thumbnailUrl?: string }) => {
+          if (j.thumbnailUrl) { persistOEmbedUrl(ad.adId, j.thumbnailUrl); setHiRes(j.thumbnailUrl); }
+        })
+        .catch(() => {});
+    } else if (ad.instagramUrl) {
       fetch(`/api/meta/ig-oembed?${new URLSearchParams({ url: ad.instagramUrl, accessToken })}`)
         .then((r) => r.json())
         .then((j: { thumbnailUrl?: string; thumbnailWidth?: number; thumbnailHeight?: number }) => {

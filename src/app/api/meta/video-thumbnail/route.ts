@@ -6,8 +6,8 @@ const META_API_VERSION = "v21.0";
  * GET /api/meta/video-thumbnail?videoId=XXX&accessToken=YYY
  *
  * Fetches the poster frame (cover image) of a Meta video ad.
- * Uses /{videoId}?fields=picture — returns the video thumbnail at a usable resolution
- * (~640px), unlike thumbnail_url on the AdCreative which returns ~64px.
+ * Uses /{videoId}?fields=thumbnails,picture and picks the highest-resolution thumbnail.
+ * Falls back to `picture` when the thumbnails list is unavailable.
  *
  * Returns: { thumbnailUrl: string | null }
  */
@@ -26,10 +26,11 @@ export async function GET(request: NextRequest) {
   try {
     const res = await fetch(
       `https://graph.facebook.com/${META_API_VERSION}/${videoId}?` +
-        new URLSearchParams({ access_token: accessToken, fields: "picture" }).toString(),
+        new URLSearchParams({ access_token: accessToken, fields: "thumbnails,picture" }).toString(),
       { cache: "no-store" },
     );
     const json = await res.json() as {
+      thumbnails?: { data?: Array<{ uri?: string; width?: number; height?: number }> };
       picture?: string;
       error?:   { message?: string };
     };
@@ -41,7 +42,14 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ thumbnailUrl: json.picture ?? null });
+    const bestThumb =
+      json.thumbnails?.data
+        ?.filter((t) => Boolean(t.uri))
+        .sort((a, b) => (b.width ?? 0) - (a.width ?? 0))[0]?.uri
+      ?? json.picture
+      ?? null;
+
+    return NextResponse.json({ thumbnailUrl: bestThumb });
   } catch {
     return NextResponse.json({ error: "Falha ao conectar com Meta API." }, { status: 502 });
   }
