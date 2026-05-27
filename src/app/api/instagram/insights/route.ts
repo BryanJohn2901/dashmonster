@@ -26,6 +26,9 @@ type SeriesPoint = { x: number; y: number };
  *   - impressions, reach, profile views (sum over period)
  *   - followersSeriesData for chart [{x: timestamp_ms, y: count}]
  *   - score { value: 0-100, label }
+ *
+ * NOTE: follows_and_unfollows is fetched in a SEPARATE optional call so a
+ * permission error (#100 — Advanced required) never blocks the main metrics.
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
@@ -45,8 +48,15 @@ export async function GET(request: NextRequest) {
   // 'until' is exclusive in Meta API — add 1 day to include dateTo
   const until    = toUnix(dateTo) + 86400;
 
-  // ── 1. Profile fields (parallel) ───────────────────────────────────────────
-  const [profileRes, insightsRes, mediaRes] = await Promise.all([
+  const insightsParams = new URLSearchParams({
+    access_token: accessToken,
+    period: "day",
+    since: String(since),
+    until: String(until),
+  });
+
+  // ── 1. Parallel fetches ─────────────────────────────────────────────────────
+  const [profileRes, insightsRes, followsRes, mediaRes] = await Promise.all([
     // Profile: followers + media count
     fetch(
       `https://graph.facebook.com/${META_API_VERSION}/${igUserId}?` +
@@ -55,17 +65,22 @@ export async function GET(request: NextRequest) {
         fields: "followers_count,media_count,name,username,biography,website",
       }),
     ),
-    // Daily insights for the period
+    // Daily insights — basic metrics (always available with instagram_manage_insights)
     fetch(
       `https://graph.facebook.com/${META_API_VERSION}/${igUserId}/insights?` +
       new URLSearchParams({
-        access_token: accessToken,
-        metric: "impressions,reach,profile_visits,follows_and_unfollows",
-        period: "day",
-        since: String(since),
-        until: String(until),
+        ...Object.fromEntries(insightsParams),
+        metric: "impressions,reach,profile_visits,follower_count",
       }),
     ),
+    // follows_and_unfollows — Advanced permission only; silently ignored on failure
+    fetch(
+      `https://graph.facebook.com/${META_API_VERSION}/${igUserId}/insights?` +
+      new URLSearchParams({
+        ...Object.fromEntries(insightsParams),
+        metric: "follows_and_unfollows",
+      }),
+    ).catch(() => null),
     // Recent media for engagement calculation (last 20 posts)
     fetch(
       `https://graph.facebook.com/${META_API_VERSION}/${igUserId}/media?` +
@@ -106,21 +121,30 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // insights may fail with 400 if account < 100 followers or missing permission
-  const insightsData = insightsJson.error ? [] : (insightsJson.data ?? []);
+  const insightsData = insightsJson.data ?? [];
+
+  // Parse follows_and_unfollows (optional — Advanced permission)
+  let followsData: Array<{ name: string; values: Array<{ value: unknown; end_time: string }> }> = [];
+  if (followsRes && followsRes.ok) {
+    const followsJson = await followsRes.json() as {
+      data?: typeof followsData;
+      error?: { message?: string };
+    };
+    if (!followsJson.error) followsData = followsJson.data ?? [];
+  }
 
   const sum = (name: string) =>
     insightsData.find((d) => d.name === name)?.values
       .reduce((acc, v) => acc + (v.value ?? 0), 0) ?? 0;
 
-  // Daily follower deltas — follows_and_unfollows (v17+) or fallback follower_count
-  const rawFollows = insightsData.find((d) => d.name === "follows_and_unfollows");
+  // Daily follower deltas — prefer follows_and_unfollows (net), fallback to follower_count
+  const rawFollows = followsData.find((d) => d.name === "follows_and_unfollows");
   const followerValues: Array<{ value: number; end_time: string }> = rawFollows
     ? rawFollows.values.map((v) => {
-        const val = typeof v.value === "object"
+        const val = typeof v.value === "object" && v.value !== null
           ? ((v.value as { follows?: number; unfollows?: number }).follows ?? 0)
             - ((v.value as { follows?: number; unfollows?: number }).unfollows ?? 0)
-          : (v.value as number);
+          : Number(v.value);
         return { value: val, end_time: v.end_time };
       })
     : (insightsData.find((d) => d.name === "follower_count")?.values ?? []);
@@ -171,14 +195,12 @@ export async function GET(request: NextRequest) {
     : 0;
 
   // ── 5. Score ────────────────────────────────────────────────────────────────
-  // Based on ER + growth trend (similar to InsTrack scoring logic)
   let scoreValue = 0;
   if      (engagementRate >= 6)  scoreValue = 85 + Math.min(15, engagementRate - 6);
   else if (engagementRate >= 3)  scoreValue = 60 + ((engagementRate - 3) / 3) * 25;
   else if (engagementRate >= 1)  scoreValue = 30 + ((engagementRate - 1) / 2) * 30;
   else                           scoreValue = Math.max(0, engagementRate * 30);
 
-  // Growth bonus: +5 if growing this week, -5 if declining
   if (growthWeek > 0) scoreValue = Math.min(100, scoreValue + 5);
   if (growthWeek < 0) scoreValue = Math.max(0,   scoreValue - 5);
 
@@ -204,10 +226,12 @@ export async function GET(request: NextRequest) {
     // Aggregated insights
     impressionsTotal:  sum("impressions"),
     reachTotal:        sum("reach"),
-    profileViewsTotal: sum("profile_views"),
+    profileViewsTotal: sum("profile_visits"),
     // Chart data
     followersSeriesData,
     // Score
     score: { value: scoreRounded, label: scoreLabel },
+    // Indicates whether Advanced metrics are available
+    hasAdvancedInsights: rawFollows !== undefined,
   });
 }
