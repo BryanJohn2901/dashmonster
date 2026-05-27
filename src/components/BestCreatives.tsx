@@ -153,6 +153,7 @@ function useCardThumbnail(
 ): string {
   ensureOEmbedStore();
   const [hiRes, setHiRes] = useState<string>(oEmbedCardCache.get(ad.adId) ?? "");
+  const [allowFallback, setAllowFallback] = useState(false);
 
   useEffect(() => {
     if (!accessToken || hiRes) return;
@@ -207,10 +208,17 @@ function useCardThumbnail(
     return () => obs.disconnect();
   }, [ad.adId, ad.instagramUrl, ad.creativeId, accessToken, hiRes, elRef]);
 
+  useEffect(() => {
+    setAllowFallback(false);
+    if (hiRes) return;
+    const t = window.setTimeout(() => setAllowFallback(true), 3000);
+    return () => window.clearTimeout(t);
+  }, [ad.adId, hiRes]);
+
   // Regra de qualidade: para formatos visuais principais, só exibimos fonte hi-res.
   // Evita mostrar thumbnail 64px borrada no card.
   if (ad.mediaType === "video" || ad.mediaType === "image" || ad.mediaType === "carousel") {
-    return hiRes || "";
+    return hiRes || (allowFallback ? ad.thumbnailUrl : "");
   }
   return hiRes || ad.thumbnailUrl;
 }
@@ -712,6 +720,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 function useDirectImage(ad: MetaCampaignCreative, accessToken: string): string {
   ensureOEmbedStore();
   const [hiRes, setHiRes] = useState<string>(oEmbedCardCache.get(ad.adId) ?? "");
+  const [allowFallback, setAllowFallback] = useState(false);
 
   useEffect(() => {
     if (!accessToken) return;
@@ -750,9 +759,16 @@ function useDirectImage(ad: MetaCampaignCreative, accessToken: string): string {
     }
   }, [ad.adId, ad.instagramUrl, ad.creativeId, accessToken]);
 
+  useEffect(() => {
+    setAllowFallback(false);
+    if (hiRes) return;
+    const t = window.setTimeout(() => setAllowFallback(true), 2500);
+    return () => window.clearTimeout(t);
+  }, [ad.adId, hiRes]);
+
   // Regra de qualidade no modal: não cair para thumbnail baixa nos formatos principais.
   if (ad.mediaType === "video" || ad.mediaType === "image" || ad.mediaType === "carousel") {
-    return hiRes || "";
+    return hiRes || (allowFallback ? ad.thumbnailUrl : "");
   }
   return hiRes || ad.thumbnailUrl;
 }
