@@ -439,12 +439,14 @@ function CardLivePreview({
   accessToken: string;
   onClick?:    () => void;
 }) {
-  const [shouldLoad, setShouldLoad] = useState(false);
   const ref         = useRef<HTMLDivElement>(null);
   const aspectRatio = useCreativeRatio(ad, accessToken);
   const cardThumb   = useCardThumbnail(ad, accessToken, ref);
+  const useStaticCardPreview = ad.mediaType === "video" || ad.mediaType === "image";
+  const [shouldLoad, setShouldLoad] = useState(useStaticCardPreview);
 
   useEffect(() => {
+    if (useStaticCardPreview) return;
     const el = ref.current;
     if (!el) return;
     const obs = new IntersectionObserver(
@@ -453,11 +455,11 @@ function CardLivePreview({
     );
     obs.observe(el);
     return () => obs.disconnect();
-  }, []);
+  }, [useStaticCardPreview]);
 
   return (
     <div ref={ref} className="relative w-full">
-      {ad.mediaType === "video" ? (
+      {useStaticCardPreview ? (
         <AdThumb ad={ad} onClick={onClick} src={cardThumb} aspectRatio={aspectRatio} />
       ) : (
         <div
@@ -956,7 +958,17 @@ function PreviewModal({
             }}
           >
             {/* Creative content */}
-            {showIframe ? (
+            {ad.mediaType === "image" ? (
+              bestThumbnail ? (
+                <img src={bestThumbnail} alt={ad.adName} className="absolute inset-0 h-full w-full object-cover" />
+              ) : (
+                <div className="flex h-full flex-col items-center justify-center gap-2"
+                  style={{ color: "rgba(255,255,255,0.18)" }}>
+                  <ImageIcon size={36} />
+                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.28)" }}>Sem preview</span>
+                </div>
+              )
+            ) : showIframe ? (
               ad.mediaType === "video" && ad.videoId
                 ? <VideoPlayer ad={ad} accessToken={accessToken} posterSrc={bestThumbnail} />
                 : ad.instagramUrl && !/\/stories\//.test(ad.instagramUrl)
@@ -1021,7 +1033,7 @@ function PreviewModal({
           </div>
 
           {/* Visualizar ao vivo — full-width base button */}
-          {(accessToken || ad.instagramUrl) && (
+          {(accessToken || ad.instagramUrl) && ad.mediaType !== "image" && (
             <button
               type="button"
               onClick={() => setShowIframe(!showIframe)}
