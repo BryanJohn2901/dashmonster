@@ -207,6 +207,11 @@ function useCardThumbnail(
     return () => obs.disconnect();
   }, [ad.adId, ad.instagramUrl, ad.creativeId, accessToken, hiRes, elRef]);
 
+  // Regra de qualidade: para formatos visuais principais, só exibimos fonte hi-res.
+  // Evita mostrar thumbnail 64px borrada no card.
+  if (ad.mediaType === "video" || ad.mediaType === "image" || ad.mediaType === "carousel") {
+    return hiRes || "";
+  }
   return hiRes || ad.thumbnailUrl;
 }
 
@@ -468,7 +473,30 @@ function CardLivePreview({
   return (
     <div ref={ref} className="relative w-full">
       {useStaticCardPreview ? (
-        <AdThumb ad={ad} onClick={onClick} src={cardThumb} aspectRatio={aspectRatio} />
+        cardThumb ? (
+          <AdThumb ad={ad} onClick={onClick} src={cardThumb} aspectRatio={aspectRatio} />
+        ) : (
+          <div
+            className="relative w-full overflow-hidden bg-slate-900"
+            style={{ aspectRatio }}
+          >
+            <div className="absolute inset-0 flex items-center justify-center">
+              <Loader2 size={18} className="animate-spin text-white/35" />
+            </div>
+            <span
+              className={`absolute left-2 top-2 z-10 rounded-full px-2 py-0.5 text-[10px] font-bold backdrop-blur-sm ${TYPE_COLOR[ad.mediaType]}`}
+              style={{ backgroundColor: "rgba(0,0,0,0.45)" }}
+            >
+              {TYPE_LABEL[ad.mediaType]}
+            </span>
+            {onClick && (
+              <div
+                className="absolute inset-0 z-10 cursor-pointer"
+                onClick={onClick}
+              />
+            )}
+          </div>
+        )
       ) : (
         <div
           className="relative w-full overflow-hidden bg-slate-900"
@@ -722,6 +750,10 @@ function useDirectImage(ad: MetaCampaignCreative, accessToken: string): string {
     }
   }, [ad.adId, ad.instagramUrl, ad.creativeId, accessToken]);
 
+  // Regra de qualidade no modal: não cair para thumbnail baixa nos formatos principais.
+  if (ad.mediaType === "video" || ad.mediaType === "image" || ad.mediaType === "carousel") {
+    return hiRes || "";
+  }
   return hiRes || ad.thumbnailUrl;
 }
 
