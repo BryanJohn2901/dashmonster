@@ -174,6 +174,14 @@ function useCardThumbnail(
               if (j.thumbnailUrl) { persistOEmbedUrl(ad.adId, j.thumbnailUrl); setHiRes(j.thumbnailUrl); }
             })
             .catch(() => {});
+        } else if (ad.mediaType === "image" && ad.creativeId) {
+          // Imagem: prioriza asset original do creative para máxima nitidez
+          fetch(`/api/meta/creative-image?${new URLSearchParams({ creativeId: ad.creativeId, accessToken })}`)
+            .then((r) => r.json())
+            .then((j: { imageUrl?: string }) => {
+              if (j.imageUrl) { persistOEmbedUrl(ad.adId, j.imageUrl); setHiRes(j.imageUrl); }
+            })
+            .catch(() => {});
         } else if (ad.instagramUrl) {
           // Instagram oEmbed → up to ~640px; also captures thumbnail dimensions for ratio detection
           fetch(`/api/meta/ig-oembed?${new URLSearchParams({ url: ad.instagramUrl, accessToken })}`)
@@ -687,6 +695,13 @@ function useDirectImage(ad: MetaCampaignCreative, accessToken: string): string {
         .then((r) => r.json())
         .then((j: { thumbnailUrl?: string }) => {
           if (j.thumbnailUrl) { persistOEmbedUrl(ad.adId, j.thumbnailUrl); setHiRes(j.thumbnailUrl); }
+        })
+        .catch(() => {});
+    } else if (ad.mediaType === "image" && ad.creativeId) {
+      fetch(`/api/meta/creative-image?${new URLSearchParams({ creativeId: ad.creativeId, accessToken })}`)
+        .then((r) => r.json())
+        .then((j: { imageUrl?: string }) => {
+          if (j.imageUrl) { persistOEmbedUrl(ad.adId, j.imageUrl); setHiRes(j.imageUrl); }
         })
         .catch(() => {});
     } else if (ad.instagramUrl) {
