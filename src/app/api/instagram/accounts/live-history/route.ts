@@ -101,7 +101,7 @@ export async function GET(request: NextRequest) {
       `https://graph.facebook.com/${META_API_VERSION}/${ibaId}/insights?` +
       new URLSearchParams({
         access_token: acc.access_token,
-        metric:       "reach,impressions,profile_visits",
+        metric:       "reach,impressions,profile_views",
         period:       "day",
         since:        String(since),
         until:        String(until),
@@ -130,7 +130,7 @@ export async function GET(request: NextRequest) {
       follows_and_unfollows: followsData.find(d => d.name === "follows_and_unfollows")?.values?.length ?? 0,
       reach:                 metricsData.find(d => d.name === "reach")?.values?.length ?? 0,
       impressions:           metricsData.find(d => d.name === "impressions")?.values?.length ?? 0,
-      profile_visits:        metricsData.find(d => d.name === "profile_visits")?.values?.length ?? 0,
+      profile_views:         metricsData.find(d => d.name === "profile_views")?.values?.length ?? 0,
     },
   };
   console.log("[live-history] diag:", JSON.stringify(diag));
@@ -160,9 +160,7 @@ export async function GET(request: NextRequest) {
 
   const reachArr        = byName(metricsData, "reach");
   const impressionsArr  = byName(metricsData, "impressions");
-  const profileViewsArr = byName(metricsData, "profile_visits").length
-    ? byName(metricsData, "profile_visits")
-    : byName(metricsData, "profile_views");
+  const profileViewsArr = byName(metricsData, "profile_views");
 
   const gainsMap       = toMap(gainsArr);
   const lossMap        = toMap(lossArr);

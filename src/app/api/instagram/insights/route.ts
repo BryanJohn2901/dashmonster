@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
       `https://graph.facebook.com/${META_API_VERSION}/${igUserId}/insights?` +
       new URLSearchParams({
         ...Object.fromEntries(insightsParams),
-        metric: "impressions,reach,profile_visits,follower_count",
+        metric: "impressions,reach,profile_views,follower_count",
       }),
     ),
     // follows_and_unfollows — Advanced permission only; silently ignored on failure
@@ -226,7 +226,7 @@ export async function GET(request: NextRequest) {
     // Aggregated insights
     impressionsTotal:  sum("impressions"),
     reachTotal:        sum("reach"),
-    profileViewsTotal: sum("profile_visits"),
+    profileViewsTotal: sum("profile_views"),
     // Chart data
     followersSeriesData,
     // Score
