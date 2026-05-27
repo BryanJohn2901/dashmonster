@@ -204,7 +204,17 @@ function useCardThumbnail(
 
 // ─── Thumbnail image (static — no iframe) ────────────────────────────────────
 
-function AdThumb({ ad, onClick, src }: { ad: MetaCampaignCreative; onClick?: () => void; src?: string }) {
+function AdThumb({
+  ad,
+  onClick,
+  src,
+  aspectRatio = "4/5",
+}: {
+  ad: MetaCampaignCreative;
+  onClick?: () => void;
+  src?: string;
+  aspectRatio?: string;
+}) {
   const [failed, setFailed] = useState(false);
   const imgSrc = src || ad.thumbnailUrl;
   const hasImg = Boolean(imgSrc) && !failed;
@@ -213,7 +223,7 @@ function AdThumb({ ad, onClick, src }: { ad: MetaCampaignCreative; onClick?: () 
     <div
       onClick={onClick}
       className={`relative w-full overflow-hidden bg-slate-900 ${onClick ? "cursor-pointer" : ""}`}
-      style={{ aspectRatio: "4/5" }}
+      style={{ aspectRatio }}
     >
       {hasImg ? (
         <img
@@ -432,6 +442,7 @@ function CardLivePreview({
   const [shouldLoad, setShouldLoad] = useState(false);
   const ref         = useRef<HTMLDivElement>(null);
   const aspectRatio = useCreativeRatio(ad, accessToken);
+  const cardThumb   = useCardThumbnail(ad, accessToken, ref);
 
   useEffect(() => {
     const el = ref.current;
@@ -445,50 +456,55 @@ function CardLivePreview({
   }, []);
 
   return (
-    <div
-      ref={ref}
-      className="relative w-full overflow-hidden bg-slate-900"
-      style={{ aspectRatio }}
-    >
-      {/* Live preview — carrega quando entra no viewport */}
-      {shouldLoad && (
-        ad.instagramUrl && !/\/stories\//.test(ad.instagramUrl)
-          ? (
-            <div className="absolute inset-0">
-              <AdInstagramEmbed ad={ad} fallbackToken={accessToken} />
-            </div>
-          )
-          : <AdIframe ad={ad} accessToken={accessToken} />
-      )}
+    <div ref={ref} className="relative w-full">
+      {ad.mediaType === "video" ? (
+        <AdThumb ad={ad} onClick={onClick} src={cardThumb} aspectRatio={aspectRatio} />
+      ) : (
+        <div
+          className="relative w-full overflow-hidden bg-slate-900"
+          style={{ aspectRatio }}
+        >
+          {/* Live preview — carrega quando entra no viewport */}
+          {shouldLoad && (
+            ad.instagramUrl && !/\/stories\//.test(ad.instagramUrl)
+              ? (
+                <div className="absolute inset-0">
+                  <AdInstagramEmbed ad={ad} fallbackToken={accessToken} />
+                </div>
+              )
+              : <AdIframe ad={ad} accessToken={accessToken} />
+          )}
 
-      {/* Placeholder borrado enquanto não carregou */}
-      {!shouldLoad && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          {ad.thumbnailUrl && (
-            <img
-              src={ad.thumbnailUrl} alt=""
-              className="absolute inset-0 h-full w-full object-cover opacity-40"
-              style={{ filter: "blur(6px)", transform: "scale(1.08)" }}
+          {/* Placeholder borrado enquanto não carregou */}
+          {!shouldLoad && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              {ad.thumbnailUrl && (
+                <img
+                  src={ad.thumbnailUrl} alt=""
+                  className="absolute inset-0 h-full w-full object-cover opacity-40"
+                  style={{ filter: "blur(6px)", transform: "scale(1.08)" }}
+                />
+              )}
+              <Loader2 size={18} className="relative z-10 animate-spin text-white/30" />
+            </div>
+          )}
+
+          {/* Media type badge */}
+          <span
+            className={`absolute left-2 top-2 z-10 rounded-full px-2 py-0.5 text-[10px] font-bold backdrop-blur-sm ${TYPE_COLOR[ad.mediaType]}`}
+            style={{ backgroundColor: "rgba(0,0,0,0.45)" }}
+          >
+            {TYPE_LABEL[ad.mediaType]}
+          </span>
+
+          {/* Click overlay — intercepta cliques para abrir modal sem ativar o iframe */}
+          {onClick && (
+            <div
+              className="absolute inset-0 z-10 cursor-pointer"
+              onClick={onClick}
             />
           )}
-          <Loader2 size={18} className="relative z-10 animate-spin text-white/30" />
         </div>
-      )}
-
-      {/* Media type badge */}
-      <span
-        className={`absolute left-2 top-2 z-10 rounded-full px-2 py-0.5 text-[10px] font-bold backdrop-blur-sm ${TYPE_COLOR[ad.mediaType]}`}
-        style={{ backgroundColor: "rgba(0,0,0,0.45)" }}
-      >
-        {TYPE_LABEL[ad.mediaType]}
-      </span>
-
-      {/* Click overlay — intercepta cliques para abrir modal sem ativar o iframe */}
-      {onClick && (
-        <div
-          className="absolute inset-0 z-10 cursor-pointer"
-          onClick={onClick}
-        />
       )}
     </div>
   );
@@ -700,6 +716,8 @@ function VideoPlayer({
   const [videoSrc, setVideoSrc] = useState<string | null>(cached ?? null);
   const [loading, setLoading]   = useState(cached === undefined && Boolean(ad.videoId));
   const [playing, setPlaying]   = useState(false);
+  const [posterOverride, setPosterOverride] = useState<string>("");
+  const START_OFFSET_S = 0.8;
 
   useEffect(() => {
     if (!ad.videoId || !accessToken || videoSrcCache.has(ad.adId)) return;
@@ -716,6 +734,59 @@ function VideoPlayer({
   }, [ad.adId, ad.videoId, accessToken]);
 
   useEffect(() => { setPlaying(false); }, [ad.adId]);
+  useEffect(() => { setPosterOverride(""); }, [ad.adId]);
+
+  // Evita frame branco inicial em alguns vídeos capturando poster em ~0.8s.
+  useEffect(() => {
+    if (!videoSrc) return;
+    let cancelled = false;
+    const probe = document.createElement("video");
+    probe.crossOrigin = "anonymous";
+    probe.muted = true;
+    probe.playsInline = true;
+    probe.preload = "auto";
+    probe.src = videoSrc;
+
+    const cleanup = () => {
+      probe.onloadeddata = null;
+      probe.onseeked = null;
+      probe.onerror = null;
+      probe.removeAttribute("src");
+      probe.load();
+    };
+
+    probe.onloadeddata = () => {
+      const target = Math.min(
+        Math.max(START_OFFSET_S, 0.15),
+        Math.max((probe.duration || START_OFFSET_S) - 0.15, 0.15),
+      );
+      try { probe.currentTime = target; } catch {}
+    };
+
+    probe.onseeked = () => {
+      if (cancelled || !probe.videoWidth || !probe.videoHeight) return;
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = probe.videoWidth;
+        canvas.height = probe.videoHeight;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        ctx.drawImage(probe, 0, 0, canvas.width, canvas.height);
+        const frame = canvas.toDataURL("image/jpeg", 0.88);
+        if (!cancelled && frame) setPosterOverride(frame);
+      } catch {
+        // fallback para poster original
+      } finally {
+        cleanup();
+      }
+    };
+
+    probe.onerror = () => cleanup();
+    return () => {
+      cancelled = true;
+      cleanup();
+    };
+  }, [videoSrc]);
 
   if (loading) return (
     <div className="relative flex h-full items-center justify-center">
@@ -734,8 +805,8 @@ function VideoPlayer({
   if (!playing) return (
     <div className="relative flex h-full cursor-pointer items-center justify-center"
       onClick={() => setPlaying(true)}>
-      {posterSrc && (
-        <img src={posterSrc} alt={ad.adName} className="absolute inset-0 h-full w-full object-cover" />
+      {(posterOverride || posterSrc) && (
+        <img src={posterOverride || posterSrc} alt={ad.adName} className="absolute inset-0 h-full w-full object-cover" />
       )}
       <div className="relative z-10 flex h-16 w-16 items-center justify-center rounded-full bg-black/60 shadow-xl backdrop-blur-sm transition hover:bg-black/80">
         <Play size={28} fill="white" className="ml-1 text-white" />
@@ -748,10 +819,20 @@ function VideoPlayer({
       className="absolute inset-0 h-full w-full bg-black"
       style={{ objectFit: "contain" }}
       src={videoSrc}
-      poster={posterSrc}
+      poster={posterOverride || posterSrc}
       controls
       autoPlay
       playsInline
+      onLoadedMetadata={(e) => {
+        const v = e.currentTarget;
+        const target = Math.min(
+          Math.max(START_OFFSET_S, 0.15),
+          Math.max((v.duration || START_OFFSET_S) - 0.15, 0.15),
+        );
+        if (Number.isFinite(target) && target > 0 && v.currentTime < target) {
+          try { v.currentTime = target; } catch {}
+        }
+      }}
     />
   );
 }
@@ -876,9 +957,11 @@ function PreviewModal({
           >
             {/* Creative content */}
             {showIframe ? (
-              ad.instagramUrl && !/\/stories\//.test(ad.instagramUrl)
-                ? <AdInstagramEmbed ad={ad} fallbackToken={accessToken} />
-                : <AdIframe ad={ad} accessToken={accessToken} />
+              ad.mediaType === "video" && ad.videoId
+                ? <VideoPlayer ad={ad} accessToken={accessToken} posterSrc={bestThumbnail} />
+                : ad.instagramUrl && !/\/stories\//.test(ad.instagramUrl)
+                  ? <AdInstagramEmbed ad={ad} fallbackToken={accessToken} />
+                  : <AdIframe ad={ad} accessToken={accessToken} />
             ) : bestThumbnail ? (
               <img src={bestThumbnail} alt={ad.adName} className="absolute inset-0 h-full w-full object-cover" />
             ) : (
