@@ -271,15 +271,15 @@ export async function fetchAdInsights(
   return rows
     .filter((r) => r.ad_id)
     .map((r) => {
-      const spend       = parseFloat(String(r.spend))       || 0;
-      const impressions = parseFloat(String(r.impressions)) || 0;
+      const spend       = parseMetaNum(r.spend);
+      const impressions = parseMetaNum(r.impressions);
       const clicks      = r.inline_link_clicks != null
-        ? parseFloat(String(r.inline_link_clicks)) || 0
-        : parseFloat(String(r.clicks)) || 0;
+        ? parseMetaNum(r.inline_link_clicks)
+        : parseMetaNum(r.clicks);
       const ctrPct      = r.inline_link_click_ctr != null
-        ? parseFloat(String(r.inline_link_click_ctr))
-        : parseFloat(String(r.ctr)) || 0;
-      const cpm         = parseFloat(String(r.cpm)) || 0;
+        ? parseMetaNum(r.inline_link_click_ctr)
+        : parseMetaNum(r.ctr);
+      const cpm         = parseMetaNum(r.cpm);
 
       const conversions = pickActionRaw(r.actions, "purchase", "omni_purchase", "offsite_conversion.fb_pixel_purchase");
       const leads       = pickActionRaw(r.actions, "onsite_conversion.lead_grouped", "lead", "offsite_conversion.fb_pixel_lead");
@@ -313,7 +313,7 @@ function pickActionRaw(
   if (!actions) return 0;
   for (const type of types) {
     const found = actions.find((a) => a.action_type === type);
-    if (found) return parseFloat(found.value) || 0;
+    if (found) return parseMetaNum(found.value);
   }
   return 0;
 }
@@ -333,6 +333,32 @@ function pickAction(actions: MetaAction[] | undefined, ...types: string[]): numb
   return 0;
 }
 
+// Single source of truth for conversion/lead/revenue extraction.
+// Use these everywhere — never call pickAction inline — so Meta deprecations are fixed once.
+
+/** Counts conversions (purchases). First-match-wins among mutually-exclusive types. */
+export function extractConversions(actions: MetaAction[] | undefined): number {
+  return pickAction(actions, "purchase", "omni_purchase", "offsite_conversion.fb_pixel_purchase");
+}
+
+/**
+ * Counts leads. First-match-wins.
+ * IMPORTANT: "lead" and "onsite_conversion.lead_grouped" are redundant — Meta returns
+ * the same value in both. Summing them = double-count.
+ */
+export function extractLeads(actions: MetaAction[] | undefined): number {
+  return pickAction(
+    actions,
+    "onsite_conversion.lead_grouped",
+    "lead",
+    "offsite_conversion.fb_pixel_lead",
+  );
+}
+
+/** Extracts purchase revenue from action_values. */
+export function extractRevenue(actionValues: MetaAction[] | undefined): number {
+  return pickAction(actionValues, "purchase", "omni_purchase", "offsite_conversion.fb_pixel_purchase");
+}
 
 /**
  * Converts Meta Insights API rows into CampaignData records compatible

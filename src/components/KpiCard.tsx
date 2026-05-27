@@ -1,4 +1,5 @@
-import { LucideIcon, TrendingDown, TrendingUp } from "lucide-react";
+import { useState } from "react";
+import { LucideIcon, Pencil, TrendingDown, TrendingUp } from "lucide-react";
 
 /* ─── Tier types ─────────────────────────────────────────────────────────── */
 export type KpiTier = 1 | 2 | 3;
@@ -55,6 +56,12 @@ export interface KpiCardProps {
   goalInvert?:  boolean;
   /** Visual tier: 1 = Financeiro (large), 2 = Eficiência (medium), 3 = Volume (compact) */
   tier?:        KpiTier;
+  /** Shows pencil edit button — use when API value is 0 so user can enter manual data. */
+  editable?:    boolean;
+  /** Marks the value as coming from a manual override (shows amber badge). */
+  isManual?:    boolean;
+  /** Called with the numeric value the user typed. Only fires when editable=true. */
+  onEdit?:      (newValue: number) => void;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────── */
@@ -66,8 +73,13 @@ export function KpiCard({
   invertTrend = false,
   goalValue, goalLabel, goalPct, goalInvert = false,
   tier = 1,
+  editable = false,
+  isManual = false,
+  onEdit,
 }: KpiCardProps) {
   const a = ACCENT[accentColor];
+  const [editing, setEditing]   = useState(false);
+  const [editVal, setEditVal]   = useState("");
 
   const isPositiveTrend = trend !== undefined
     ? (invertTrend ? trend < 0 : trend > 0)
@@ -122,8 +134,53 @@ export function KpiCard({
         <div className="h-[3px] w-full" style={{ background: a.topBar }} />
       )}
 
+      {/* Manual override badge */}
+      {isManual && (
+        <span className="absolute right-2 top-2 z-10 rounded-md bg-amber-500/90 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
+          Manual
+        </span>
+      )}
+
+      {/* Inline edit form */}
+      {editing && (
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 rounded-[20px] bg-white/95 dark:bg-[#111c44]/95 p-4">
+          <p className="text-xs font-semibold" style={{ color: "var(--dm-text-primary)" }}>
+            Inserir valor manual
+          </p>
+          <input
+            type="number"
+            autoFocus
+            value={editVal}
+            onChange={(e) => setEditVal(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                const n = parseFloat(editVal);
+                if (!isNaN(n)) { onEdit?.(n); }
+                setEditing(false);
+              }
+              if (e.key === "Escape") setEditing(false);
+            }}
+            placeholder="0"
+            className="w-full rounded-lg border px-3 py-1.5 text-sm"
+            style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-primary)", background: "var(--dm-bg-surface)" }}
+          />
+          <div className="flex gap-2">
+            <button type="button" onClick={() => {
+              const n = parseFloat(editVal);
+              if (!isNaN(n)) { onEdit?.(n); }
+              setEditing(false);
+            }} className="rounded-lg bg-amber-500 px-3 py-1 text-xs font-semibold text-white hover:bg-amber-600">
+              Salvar
+            </button>
+            <button type="button" onClick={() => setEditing(false)}
+              className="rounded-lg border px-3 py-1 text-xs font-medium" style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className={`flex items-center ${gap} ${cardPadding}`}>
-        {/* Icon */}
         <span
           className={`flex flex-shrink-0 items-center justify-center ${iconRadius}`}
           style={{
@@ -139,13 +196,22 @@ export function KpiCard({
         {/* Text */}
         <div className="min-w-0 flex-1">
           {/* Label — MD3 Label Small */}
-          <p
-            className="dm-metric-label mb-0.5"
-            {...(tooltip ? { "data-dm-tip": tooltip } : {})}
-            style={{ color: labelColor, fontSize: "var(--dm-type-label-sm)" }}
-          >
-            {title}
-          </p>
+          <div className="mb-0.5 flex items-center gap-1">
+            <p
+              className="dm-metric-label"
+              {...(tooltip ? { "data-dm-tip": tooltip } : {})}
+              style={{ color: labelColor, fontSize: "var(--dm-type-label-sm)" }}
+            >
+              {title}
+            </p>
+            {editable && (
+              <button type="button" onClick={() => { setEditVal(""); setEditing(true); }}
+                className="ml-auto flex h-5 w-5 items-center justify-center rounded text-amber-500 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-amber-500/10"
+                title={isManual ? "Editar valor manual" : "Inserir valor manualmente"}>
+                <Pencil size={10} />
+              </button>
+            )}
+          </div>
 
           {/* Value — MD3 type scale via CSS var */}
           <p

@@ -29,6 +29,7 @@ interface MetaAdRaw {
   adset_name?: string;
   preview_shareable_link?: string;
   created_time?: string;
+  instagram_permalink_url?: string;
   creative?: {
     id?: string;
     thumbnail_url?: string;
@@ -102,6 +103,7 @@ export async function GET(request: NextRequest) {
           "adset_name",
           "preview_shareable_link",
           "created_time",
+          "instagram_permalink_url",
           "creative{id,thumbnail_url,video_id,instagram_permalink_url,object_story_spec{link_data{link,message,name,description,child_attachments},video_data{image_url,message,title}}}",
         ].join(","),
         effective_status: JSON.stringify(["ACTIVE", "PAUSED"]),
@@ -157,7 +159,7 @@ export async function GET(request: NextRequest) {
           thumbnailUrl,
           previewUrl:   ad.preview_shareable_link ?? "",
           adLink,
-          instagramUrl: ad.creative?.instagram_permalink_url ?? undefined,
+          instagramUrl: ad.creative?.instagram_permalink_url ?? ad.instagram_permalink_url ?? undefined,
           mediaType:    detectMediaType(ad),
           createdTime:        ad.created_time,
           campaignStartTime:  ad.campaign?.start_time ?? undefined,

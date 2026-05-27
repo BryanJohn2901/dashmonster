@@ -41,12 +41,13 @@ export interface DashboardTotals {
   totalLeads: number;
   roi: number;
   roas: number;
-  averageCpa: number;
-  averageCtr: number;
-  averageConversionRate: number;
-  averageCpc: number;
-  averageCpm: number;
-  averageCpl: number;
+  // Weighted-average (ratio-of-sums) metrics — NOT arithmetic averages of per-campaign rates.
+  cpa: number;
+  ctr: number;
+  conversionRate: number;
+  cpc: number;
+  cpm: number;
+  cpl: number;
 }
 
 export interface DailyTrendPoint {

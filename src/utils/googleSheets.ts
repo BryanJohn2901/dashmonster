@@ -25,6 +25,8 @@ const COLUMN_ALIASES: Record<keyof typeof REQUIRED_COLUMNS, string[]> = {
   revenue: ["receita", "receitar", "revenue", "faturamento"],
 };
 
+const LEADS_ALIASES = ["leads", "cadastros", "inscricoes", "inscricoes", "lead"];
+
 const normalizeKey = (value: string): string => {
   return value
     .trim()
@@ -245,8 +247,11 @@ const parseCampaignRows = (rows: GenericCsvRow[]): CampaignData[] => {
 
   validateColumns(validRows[0]);
 
-  return validRows.map((row, index) =>
-    calculateDerivedMetrics(
+  return validRows.map((row, index) => {
+    const leadsRaw = findColumnValue(row as unknown as GenericCsvRow, LEADS_ALIASES);
+    const leads    = leadsRaw !== undefined ? normalizeNumber(leadsRaw as string | number) : 0;
+
+    return calculateDerivedMetrics(
       {
         date: parseDate(row.Data),
         campaignName: row["Nome da Campanha"]?.toString().trim(),
@@ -254,12 +259,12 @@ const parseCampaignRows = (rows: GenericCsvRow[]): CampaignData[] => {
         clicks: normalizeNumber(row.Cliques),
         impressions: normalizeNumber(row.Impressões),
         conversions: normalizeNumber(row.Conversões),
-        leads: 0,
+        leads,
         revenue: normalizeNumber(row["Receita (R$)"]),
       },
       index,
-    ),
-  );
+    );
+  });
 };
 
 export const fetchCampaignSheetData = async (

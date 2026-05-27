@@ -8,6 +8,7 @@ import {
 
 import { AggregatedCampaign } from "@/types/campaign";
 import { useCreativeStore } from "@/hooks/useCreativeStore";
+import { logSilentError } from "@/utils/logSilentError";
 import type { MetaCampaignCreative, AdInsight } from "@/utils/metaApi";
 import { fetchMetaCreativesPage, fetchAdInsights, loadMetaCredentials } from "@/utils/metaApi";
 import { formatCurrency, formatPercent } from "@/utils/metrics";
@@ -262,7 +263,7 @@ function AdIframe({ ad, accessToken }: { ad: MetaCampaignCreative; accessToken: 
       .then((j: { iframeSrc?: string }) => {
         if (j.iframeSrc) { iframeCache.set(ad.adId, j.iframeSrc); setSrc(j.iframeSrc); }
       })
-      .catch(() => {})
+      .catch((e) => logSilentError("CardLivePreview/ad-preview", e))
       .finally(() => setLoading(false));
   }, [ad.adId, accessToken, src]);
 
@@ -684,7 +685,78 @@ function useDirectImage(ad: MetaCampaignCreative, accessToken: string): string {
   return hiRes || ad.thumbnailUrl;
 }
 
-// ─── Preview modal ─────────────────────────────────────────────────────────────
+// ─── Video Player (native .mp4 — no iframe chrome) ───────────────────────────
+
+const videoSrcCache = new Map<string, string | null>();
+
+function VideoPlayer({
+  ad, accessToken, posterSrc,
+}: {
+  ad:          MetaCampaignCreative;
+  accessToken: string;
+  posterSrc:   string;
+}) {
+  const cached    = videoSrcCache.has(ad.adId) ? videoSrcCache.get(ad.adId) ?? null : undefined;
+  const [videoSrc, setVideoSrc] = useState<string | null>(cached ?? null);
+  const [loading, setLoading]   = useState(cached === undefined && Boolean(ad.videoId));
+  const [playing, setPlaying]   = useState(false);
+
+  useEffect(() => {
+    if (!ad.videoId || !accessToken || videoSrcCache.has(ad.adId)) return;
+    setLoading(true);
+    fetch(`/api/meta/video-source?${new URLSearchParams({ videoId: ad.videoId, accessToken })}`)
+      .then((r) => r.json())
+      .then((j: { videoSrc?: string }) => {
+        const src = j.videoSrc ?? null;
+        videoSrcCache.set(ad.adId, src);
+        setVideoSrc(src);
+      })
+      .catch((e) => { logSilentError("VideoPlayer/video-source", e); videoSrcCache.set(ad.adId, null); })
+      .finally(() => setLoading(false));
+  }, [ad.adId, ad.videoId, accessToken]);
+
+  useEffect(() => { setPlaying(false); }, [ad.adId]);
+
+  if (loading) return (
+    <div className="relative flex h-full items-center justify-center">
+      {posterSrc && (
+        <img src={posterSrc} alt="" className="absolute inset-0 h-full w-full object-cover opacity-40"
+          style={{ filter: "blur(4px)" }} />
+      )}
+      <div className="relative z-10 flex items-center justify-center rounded-xl bg-black/50 p-3">
+        <Loader2 size={22} className="animate-spin text-white/80" />
+      </div>
+    </div>
+  );
+
+  if (!videoSrc) return <AdIframe ad={ad} accessToken={accessToken} />;
+
+  if (!playing) return (
+    <div className="relative flex h-full cursor-pointer items-center justify-center"
+      onClick={() => setPlaying(true)}>
+      {posterSrc && (
+        <img src={posterSrc} alt={ad.adName} className="absolute inset-0 h-full w-full object-cover" />
+      )}
+      <div className="relative z-10 flex h-16 w-16 items-center justify-center rounded-full bg-black/60 shadow-xl backdrop-blur-sm transition hover:bg-black/80">
+        <Play size={28} fill="white" className="ml-1 text-white" />
+      </div>
+    </div>
+  );
+
+  return (
+    <video
+      className="absolute inset-0 h-full w-full bg-black"
+      style={{ objectFit: "contain" }}
+      src={videoSrc}
+      poster={posterSrc}
+      controls
+      autoPlay
+      playsInline
+    />
+  );
+}
+
+// ─── Preview Modal ────────────────────────────────────────────────────────────
 
 function PreviewModal({
   ad, insight, starred, accessToken, onClose, onToggleStar,

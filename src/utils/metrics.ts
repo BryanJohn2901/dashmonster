@@ -6,9 +6,13 @@ import {
   DashboardTotals,
   DailyTrendPoint,
 } from "@/types/campaign";
+import type { ManualOverrideStore } from "@/hooks/useManualMetrics";
 
-const safeDivide = (numerator: number, denominator: number): number => {
+const safeDivide = (numerator: number, denominator: number, ctx?: string): number => {
   if (denominator === 0) {
+    if (numerator > 0 && ctx && process.env.NODE_ENV !== "production") {
+      console.warn(`[safeDivide] ${ctx}: num=${numerator} but den=0`);
+    }
     return 0;
   }
   return numerator / denominator;
@@ -61,23 +65,23 @@ export const aggregateTotals = (campaigns: CampaignData[]): DashboardTotals => {
 
   const roas = safeDivide(totals.totalRevenue, totals.totalInvestment);
   const roi = (roas - 1) * 100;
-  const averageCpa = safeDivide(totals.totalInvestment, totals.totalConversions);
-  const averageCtr = safeDivide(totals.totalClicks, totals.totalImpressions) * 100;
-  const averageConversionRate = safeDivide(totals.totalConversions, totals.totalClicks) * 100;
-  const averageCpc = safeDivide(totals.totalInvestment, totals.totalClicks);
-  const averageCpm = safeDivide(totals.totalInvestment, totals.totalImpressions) * 1000;
-  const averageCpl = safeDivide(totals.totalInvestment, totals.totalLeads);
+  const cpa = safeDivide(totals.totalInvestment, totals.totalConversions);
+  const ctr = safeDivide(totals.totalClicks, totals.totalImpressions) * 100;
+  const conversionRate = safeDivide(totals.totalConversions, totals.totalClicks) * 100;
+  const cpc = safeDivide(totals.totalInvestment, totals.totalClicks);
+  const cpm = safeDivide(totals.totalInvestment, totals.totalImpressions) * 1000;
+  const cpl = safeDivide(totals.totalInvestment, totals.totalLeads);
 
   return {
     ...totals,
     roi,
     roas,
-    averageCpa,
-    averageCtr,
-    averageConversionRate,
-    averageCpc,
-    averageCpm,
-    averageCpl,
+    cpa,
+    ctr,
+    conversionRate,
+    cpc,
+    cpm,
+    cpl,
   };
 };
 
@@ -193,3 +197,33 @@ export const formatDatePtBr = (value: string): string => {
 
   return new Intl.DateTimeFormat("pt-BR").format(parsedDate);
 };
+
+/**
+ * Applies manual overrides to campaigns where the API returned 0 for a metric.
+ * Only substitutes when the API value is 0 and an override exists.
+ */
+export function applyOverrides(
+  campaigns: CampaignData[],
+  overrides: ManualOverrideStore,
+): CampaignData[] {
+  return campaigns.map((c) => {
+    const ov = overrides[c.id];
+    if (!ov) return c;
+
+    const apply = (apiVal: number, overrideVal: number | undefined) =>
+      apiVal === 0 && overrideVal !== undefined ? overrideVal : apiVal;
+
+    const conversions = apply(c.conversions, ov.conversions);
+    const leads       = apply(c.leads ?? 0, ov.leads);
+    const revenue     = apply(c.revenue, ov.revenue);
+    return {
+      ...c,
+      conversions,
+      leads,
+      revenue,
+      cpa:            conversions > 0 ? c.investment / conversions : 0,
+      roas:           c.investment > 0 ? revenue / c.investment : 0,
+      conversionRate: c.clicks > 0 ? (conversions / c.clicks) * 100 : 0,
+    };
+  });
+}

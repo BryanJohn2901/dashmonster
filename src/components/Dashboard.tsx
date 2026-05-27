@@ -5,7 +5,7 @@ import { ALL_METRIC_IDS, METRIC_LABELS, useMetricVisibility } from "@/hooks/useM
 import { useAvatarUrl, resolveAvatarSrc } from "@/hooks/useAvatarUrl";
 import {
   Activity, BadgeDollarSign, BarChart2, BookOpen, CalendarDays,
-  CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CircleDollarSign, Dumbbell, FileText,
+  CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CircleDollarSign, Download, Dumbbell, FileText,
   FileUp, Filter, Flag, GraduationCap, Home, ImageIcon, Link2, Loader2, LogOut, Menu, Moon,
   MousePointerClick, Package, Pencil, Plus, Repeat, RotateCcw, Search, Settings2, SlidersHorizontal, Sun,
   Target, Trash2, TrendingUp, Trophy, Upload, UserRound, Users, Wallet, X, XCircle, Zap,
@@ -29,7 +29,7 @@ import { LEADS_MIGRATION_FILE, type MetaSyncResult } from "@/utils/supabaseCampa
 import type { MetaAdAccount, MetaCampaign } from "@/utils/metaApi";
 import { CategoryGate, CATEGORY_LABEL, CATEGORY_ICON, CATEGORY_DOT, ICON_MAP, COLOR_HEX } from "@/components/CategoryGate";
 import {
-  aggregateByCampaign, aggregateTotals, buildBudgetDistribution,
+  aggregateByCampaign, aggregateTotals, applyOverrides, buildBudgetDistribution,
   buildCampaignComparison, buildDailyTrend, formatCurrency, formatDatePtBr, formatNumber, formatPercent,
 } from "@/utils/metrics";
 import { KpiCard } from "@/components/KpiCard";
@@ -51,6 +51,8 @@ import { CriativosEmpty } from "@/components/empty/CriativosEmpty";
 import { PixelFunnelSection } from "@/components/PixelFunnelSection";
 import { MyAccount } from "@/components/MyAccount";
 import { toast } from "@/hooks/useToast";
+import { exportDashboardCsv } from "@/utils/exportCsv";
+import { useManualMetrics } from "@/hooks/useManualMetrics";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1810,20 +1812,11 @@ export function Dashboard({
   const [dashSubTab, setDashSubTab]         = useState<DashSubTab>("overview");
   const [histKind, setHistKind]             = useState<HistoricalKind>("lancamento");
   const [myAccountTab, setMyAccountTab]     = useState<MyAccountTabId>("profile");
-  const [dateFrom, setDateFrom]             = useState<string>(() => {
-    try { return localStorage.getItem("pta_date_from_v1") ?? ""; } catch { return ""; }
-  });
-  const [dateTo, setDateTo]                 = useState<string>(() => {
-    try { return localStorage.getItem("pta_date_to_v1") ?? ""; } catch { return ""; }
-  });
-  const setDateFromPersist = (v: string) => {
-    setDateFrom(v);
-    try { v ? localStorage.setItem("pta_date_from_v1", v) : localStorage.removeItem("pta_date_from_v1"); } catch {}
-  };
-  const setDateToPersist = (v: string) => {
-    setDateTo(v);
-    try { v ? localStorage.setItem("pta_date_to_v1", v) : localStorage.removeItem("pta_date_to_v1"); } catch {}
-  };
+  const {
+    dateFrom, dateTo,
+    setDateFrom: setDateFromPersist,
+    setDateTo:   setDateToPersist,
+  } = useDateRange();
 
   // ── Metric visibility — shared across all tabs ────────────────────────────
   const { hidden: hiddenMetrics, toggle: toggleMetric, showAll: showAllMetrics, hideAll: hideAllMetrics, isVisible: isMetricVisible, allVisible: allMetricsVisible } = useMetricVisibility();
@@ -1864,6 +1857,7 @@ export function Dashboard({
 
   const { getGoals, setGoal, resetGoals } = useGoalsStore();
   const { profiles: advertiserProfiles } = useAdvertiserStore();
+  const { overrides: manualOverrides } = useManualMetrics();
 
   const {
     selectedGroup, selectedTurma, activeCampaigns, campaignConfigs,
@@ -2155,7 +2149,11 @@ export function Dashboard({
     }
   }, [filteredCampaigns, sortBy]);
 
-  const totals             = aggregateTotals(filteredCampaigns);
+  const campaignsWithOverrides = useMemo(
+    () => applyOverrides(filteredCampaigns, manualOverrides),
+    [filteredCampaigns, manualOverrides],
+  );
+  const totals             = aggregateTotals(campaignsWithOverrides);
   const allCampaignTotals  = useMemo(() => aggregateTotals(campaigns), [campaigns]);
   const needsLeadsMigration = !campaignMetricsHasLeadsColumn;
   const needsLeadsResync =
@@ -2771,7 +2769,25 @@ export function Dashboard({
                 )}
               </div>
 
-              {/* Atualizar Meta + Importar moved: Atualizar Meta → sidebar footer; Importar → Minha conta */}
+              <span className="hidden h-6 w-px self-center bg-slate-200 dark:bg-slate-600 sm:inline" aria-hidden />
+
+              {campaigns.length > 0 && (
+                <button
+                  type="button"
+                  title="Exportar campanhas filtradas como CSV"
+                  onClick={() => exportDashboardCsv({
+                    campaigns: campaignsWithOverrides,
+                    totals,
+                    dateFrom,
+                    dateTo,
+                    overrides: manualOverrides,
+                  })}
+                  className="flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-semibold transition border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                >
+                  <Download size={13} />
+                  <span className="hidden sm:inline">Exportar CSV</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -3026,7 +3042,7 @@ export function Dashboard({
                     isMetricVisible("investment") && (
                       <KpiCard key="investment" tier={1}
                         title="Total Investido" value={formatCurrency(totals.totalInvestment)}
-                        subtitle={`CTR médio: ${formatPercent(totals.averageCtr)}`}
+                        subtitle={`CTR médio: ${formatPercent(totals.ctr)}`}
                         icon={Wallet} accentColor="red" invertTrend
                         goalValue={goals.investment} goalLabel={goals.investment != null ? formatCurrency(goals.investment) : undefined}
                         goalPct={goals.investment != null ? (totals.totalInvestment / goals.investment) * 100 : null}
@@ -3062,34 +3078,34 @@ export function Dashboard({
                     ),
                     isMetricVisible("cpa") && (
                       <KpiCard key="cpa" tier={2}
-                        title="CPA Médio" value={formatCurrency(totals.averageCpa)}
+                        title="CPA Médio" value={formatCurrency(totals.cpa)}
                         icon={BadgeDollarSign} accentColor="amber" invertTrend
                         goalValue={goals.cpa} goalLabel={goals.cpa != null ? formatCurrency(goals.cpa) : undefined}
-                        goalPct={goals.cpa != null && totals.averageCpa > 0 ? (goals.cpa / totals.averageCpa) * 100 : null}
+                        goalPct={goals.cpa != null && totals.cpa > 0 ? (goals.cpa / totals.cpa) * 100 : null}
                         goalInvert
                       />
                     ),
                     isMetricVisible("ctr") && (
                       <KpiCard key="ctr" tier={2}
-                        title="CTR Médio" value={formatPercent(totals.averageCtr)}
+                        title="CTR Médio" value={formatPercent(totals.ctr)}
                         icon={MousePointerClick} accentColor="blue"
                         goalValue={goals.ctr} goalLabel={goals.ctr != null ? `${goals.ctr.toFixed(1)}%` : undefined}
-                        goalPct={goals.ctr != null ? (totals.averageCtr / goals.ctr) * 100 : null}
+                        goalPct={goals.ctr != null ? (totals.ctr / goals.ctr) * 100 : null}
                       />
                     ),
                     isMetricVisible("cpc") && (
                       <KpiCard key="cpc" tier={2}
-                        title="CPC Médio" value={formatCurrency(totals.averageCpc)}
+                        title="CPC Médio" value={formatCurrency(totals.cpc)}
                         icon={BadgeDollarSign} accentColor="amber" invertTrend
                         goalValue={goals.cpc} goalLabel={goals.cpc != null ? formatCurrency(goals.cpc) : undefined}
-                        goalPct={goals.cpc != null && totals.averageCpc > 0 ? (goals.cpc / totals.averageCpc) * 100 : null}
+                        goalPct={goals.cpc != null && totals.cpc > 0 ? (goals.cpc / totals.cpc) * 100 : null}
                         goalInvert
                       />
                     ),
                     isMetricVisible("conversions") && (
                       <KpiCard key="conversions" tier={2}
                         title="Conversões" value={formatNumber(totals.totalConversions)}
-                        subtitle={`Tx.: ${formatPercent(totals.averageConversionRate)}`}
+                        subtitle={`Tx.: ${formatPercent(totals.conversionRate)}`}
                         icon={Target} accentColor="green"
                         goalValue={goals.conversions} goalLabel={goals.conversions != null ? formatNumber(goals.conversions) : undefined}
                         goalPct={goals.conversions != null ? (totals.totalConversions / goals.conversions) * 100 : null}
@@ -3108,20 +3124,20 @@ export function Dashboard({
                     isMetricVisible("clicks") && (
                       <KpiCard key="clicks" tier={3}
                         title="Cliques" value={formatNumber(totals.totalClicks)}
-                        subtitle={`CTR: ${formatPercent(totals.averageCtr)}`}
+                        subtitle={`CTR: ${formatPercent(totals.ctr)}`}
                         icon={MousePointerClick} accentColor="primary"
                       />
                     ),
                     isMetricVisible("cpm") && (
                       <KpiCard key="cpm" tier={3}
-                        title="CPM Médio" value={formatCurrency(totals.averageCpm)}
+                        title="CPM Médio" value={formatCurrency(totals.cpm)}
                         icon={Zap} accentColor="amber" invertTrend
                       />
                     ),
                     isMetricVisible("leads") && (
                       <KpiCard key="leads" tier={3}
                         title="Leads" value={formatNumber(totals.totalLeads)}
-                        subtitle={totals.totalLeads > 0 ? `CPL: ${formatCurrency(totals.averageCpl)}` : undefined}
+                        subtitle={totals.totalLeads > 0 ? `CPL: ${formatCurrency(totals.cpl)}` : undefined}
                         icon={Users} accentColor="violet"
                         goalValue={goals.leads} goalLabel={goals.leads != null ? formatNumber(goals.leads) : undefined}
                         goalPct={goals.leads != null ? (totals.totalLeads / goals.leads) * 100 : null}
@@ -3129,7 +3145,7 @@ export function Dashboard({
                     ),
                     isMetricVisible("cpl") && totals.totalLeads > 0 && (
                       <KpiCard key="cpl" tier={3}
-                        title="CPL Médio" value={formatCurrency(totals.averageCpl)}
+                        title="CPL Médio" value={formatCurrency(totals.cpl)}
                         icon={UserRound} accentColor="violet"
                       />
                     ),
@@ -3279,6 +3295,7 @@ export function Dashboard({
             <ProfileAnalysis
               campaignGroupOptions={allGroups.map((g) => ({ id: g.id, label: g.label, section: g.section }))}
               campaignConfigs={campaignConfigs}
+              appliedDateRange={{ from: dateFrom, to: dateTo }}
             />
           )}
 

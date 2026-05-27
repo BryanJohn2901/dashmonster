@@ -13,6 +13,7 @@ import {
 import {
   fetchMetaCampaigns, fetchMetaInsights, fetchMetaAdAccounts,
   loadMetaCredentials, MetaInsight, MetaAdAccount,
+  extractLeads, extractRevenue,
 } from "@/utils/metaApi";
 import {
   fetchInstagramAccounts, fetchInstagramInsights,
@@ -30,6 +31,7 @@ import {
 } from "@/hooks/useAdvertiserStore";
 import { useCampaignStore } from "@/hooks/useCampaignStore";
 import type { CampaignConfig } from "@/hooks/useCampaignStore";
+import { readSharedDateRange } from "@/hooks/useDateRange";
 
 const formatCurrency = formatBRL;
 const formatNumber = formatInt;
@@ -105,6 +107,8 @@ interface GroupOption {
 interface ProfileAnalysisProps {
   campaignGroupOptions: GroupOption[];
   campaignConfigs: Record<string, CampaignConfig>;
+  /** When set, used as the default date range for profiles with no stored preference. */
+  appliedDateRange?: { from: string; to: string };
 }
 
 // ─── Analysis helpers ─────────────────────────────────────────────────────────
@@ -192,10 +196,8 @@ function toAdsetRows(data: MetaInsight[], resultType?: string): AdsetRow[] {
     cur.total_clicks  += parseMetaNum(d.clicks);
     cur.spend         += parseMetaNum(d.spend);
     cur.purchases     += getActionValue(d.actions, "purchase");
-    cur.leads         += getActionValue(d.actions, "lead")
-                       + getActionValue(d.actions, "onsite_conversion.lead_grouped");
-    cur.revenue       += pickActionValue(d.action_values, "purchase", "omni_purchase",
-                         "offsite_conversion.fb_pixel_purchase");
+    cur.leads         += extractLeads(d.actions);
+    cur.revenue       += extractRevenue(d.action_values);
     // landing_page_view: more reliable than link clicks for LP-funnel templates.
     cur.page_views    += getActionValue(d.actions, "landing_page_view");
     // new_followers: "follow" (ad engagement objective) OR "page_fan_adds" (traffic-to-profile)
@@ -2919,12 +2921,13 @@ export function InstagramInsightsPanel({
 // ─── Profile Detail View ──────────────────────────────────────────────────────
 
 function ProfileDetailView({
-  profile, groupLabel, onBack,
+  profile, groupLabel, onBack, appliedDateRange,
   onAddCampaign, onRemoveCampaign, onUpdateProfile,
 }: {
   profile: AdvertiserProfile;
   groupLabel: string;
   onBack: () => void;
+  appliedDateRange?: { from: string; to: string };
   onAddCampaign:    (profileId: string, campaign: ActiveCampaign) => void;
   onRemoveCampaign: (profileId: string, campaignId: string) => void;
   onUpdateProfile:  (id: string, data: Partial<Omit<AdvertiserProfile, "id" | "createdAt">>) => void;
@@ -2938,19 +2941,21 @@ function ProfileDetailView({
   const [activeCampId, setActiveCampId] = useState<string>(profile.campaigns[0]?.id ?? "");
   const [profileTab, setProfileTab] = useState<"overview" | "campanha" | "conjunto" | "instagram">("overview");
 
-  // Persist date range per profile so it survives navigation back-and-forth.
+  // Persist date range per profile. Priority: profile-specific → appliedDateRange prop → shared Dashboard range → 14-day default.
   const [dateFrom, setDateFrom] = useState<string>(() => {
     if (typeof window === "undefined") return daysAgoStr(14);
     try {
       const stored = JSON.parse(localStorage.getItem(DATES_LS_KEY) ?? "{}") as Record<string, { from: string; to: string }>;
-      return stored[profile.id]?.from ?? daysAgoStr(14);
+      if (stored[profile.id]?.from) return stored[profile.id].from;
+      return appliedDateRange?.from || readSharedDateRange().from || daysAgoStr(14);
     } catch { return daysAgoStr(14); }
   });
   const [dateTo, setDateTo] = useState<string>(() => {
     if (typeof window === "undefined") return todayStr();
     try {
       const stored = JSON.parse(localStorage.getItem(DATES_LS_KEY) ?? "{}") as Record<string, { from: string; to: string }>;
-      return stored[profile.id]?.to ?? todayStr();
+      if (stored[profile.id]?.to) return stored[profile.id].to;
+      return appliedDateRange?.to || readSharedDateRange().to || todayStr();
     } catch { return todayStr(); }
   });
 
@@ -3320,7 +3325,7 @@ function ProfileDetailView({
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function ProfileAnalysis({ campaignGroupOptions, campaignConfigs }: ProfileAnalysisProps) {
+export function ProfileAnalysis({ campaignGroupOptions, campaignConfigs, appliedDateRange }: ProfileAnalysisProps) {
   const { profiles, addProfile, updateProfile, deleteProfile, addCampaignToProfile, removeCampaignFromProfile } = useAdvertiserStore();
   const { customSections } = useCampaignStore();
   const [view, setView]               = useState<"list" | "detail">("list");
@@ -3384,6 +3389,7 @@ export function ProfileAnalysis({ campaignGroupOptions, campaignConfigs }: Profi
         profile={selectedProfile}
         groupLabel={groupLabel(selectedProfile.groupId)}
         onBack={() => { setView("list"); setSelectedId(null); }}
+        appliedDateRange={appliedDateRange}
         onAddCampaign={addCampaignToProfile}
         onRemoveCampaign={removeCampaignFromProfile}
         onUpdateProfile={updateProfile}
