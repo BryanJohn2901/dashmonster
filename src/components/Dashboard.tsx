@@ -2169,6 +2169,8 @@ export function Dashboard({
       salesTotal:    ov?.salesTotal    ?? 0,
     };
   }, [eduzzEditKey, manualOverrides]);
+  // CPV — computed from spend / salesTotal (derived, not editable)
+  // totals available after aggregation below, so computed inline at render time
   const needsLeadsMigration = !campaignMetricsHasLeadsColumn;
   const needsLeadsResync =
     campaignMetricsHasLeadsColumn &&
@@ -2989,7 +2991,7 @@ export function Dashboard({
                         <div className="space-y-3">
                           {([
                             { label: "Financeiro",  ids: ["investment", "revenue", "roas", "roi"] as const },
-                            { label: "Vendas",      ids: ["sales_total", "sales_ingresso", "sales_pos"] as const },
+                            { label: "Vendas",      ids: ["sales_total", "sales_ingresso", "sales_pos", "cpa_venda"] as const },
                             { label: "Eficiência",  ids: ["conversions", "leads", "cpa", "cpl", "ctr", "cpc", "cpm"] as const },
                             { label: "Volume",      ids: ["clicks", "impressions"] as const },
                           ] as const).map(({ label, ids }) => (
@@ -3092,6 +3094,9 @@ export function Dashboard({
                   ].filter(Boolean);
 
                   /* Tier 1.5 — Vendas Eduzz */
+                  const cpvEduzz = eduzzTotals.salesTotal > 0
+                    ? totals.totalInvestment / eduzzTotals.salesTotal
+                    : 0;
                   const tierVendas = [
                     isMetricVisible("sales_ingresso") && (
                       <KpiCard key="sales_ingresso" tier={2}
@@ -3111,6 +3116,14 @@ export function Dashboard({
                         editable={true}
                         isManual={(manualOverrides[eduzzEditKey]?.salesPos ?? 0) > 0}
                         onEdit={(v) => eduzzEditKey && setManualOverride(eduzzEditKey, { salesPos: v })}
+                      />
+                    ),
+                    isMetricVisible("cpa_venda") && (
+                      <KpiCard key="cpa_venda" tier={2}
+                        title="Custo por Venda" value={cpvEduzz > 0 ? formatCurrency(cpvEduzz) : "—"}
+                        subtitle="Investimento ÷ Vendas"
+                        icon={BadgeDollarSign} accentColor="amber"
+                        invertTrend
                       />
                     ),
                   ].filter(Boolean);

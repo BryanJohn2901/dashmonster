@@ -51,6 +51,7 @@ export const ALL_KPI_OPTIONS: KpiSpec[] = [
   { id: "sales_ingresso", label: "Vendas de Ingresso",      format: formatInt, color: "green", tooltip: "Vendas de ingresso (Eduzz) — valor inserido manualmente" },
   { id: "sales_pos",      label: "Vendas de Pós",           format: formatInt, color: "green", tooltip: "Vendas de pós-graduação (Eduzz) — valor inserido manualmente" },
   { id: "sales_total",    label: "Vendas Total",            format: formatInt, color: "green", tooltip: "Total de vendas Eduzz — valor inserido manualmente" },
+  { id: "cpa_venda",      label: "Custo por Venda",         format: formatBRL, color: "rose",  invert: true, tooltip: "Custo por Venda Eduzz = Investimento ÷ Vendas Total" },
 ];
 
 // ─── KPI groups for builder UI (3.5) ─────────────────────────────────────────
@@ -62,7 +63,7 @@ export const KPI_GROUPS: KpiGroup[] = [
   { label: "Investimento",      kpiIds: ["spend", "revenue", "roas"] },
   { label: "Perfil",            kpiIds: ["profile_visits", "new_followers", "cpf"] },
   { label: "Instagram",         kpiIds: ["ig_followers", "ig_growth", "ig_reach", "ig_impressions"], igOnly: true },
-  { label: "Outros",            kpiIds: ["tickets", "cpa_ticket", "sales_ingresso", "sales_pos", "sales_total"] },
+  { label: "Outros",            kpiIds: ["tickets", "cpa_ticket", "sales_ingresso", "sales_pos", "sales_total", "cpa_venda"] },
 ];
 
 // ─── Catalog of all available funnel stages ───────────────────────────────────
@@ -92,7 +93,14 @@ export const DEFAULT_PERSONALIZADO_CONFIG: PersonalizadoConfig = {
 // ─── Dynamic template builder ─────────────────────────────────────────────────
 
 export function buildPersonalizadoTemplate(config: PersonalizadoConfig): Template {
-  const kpis   = config.kpiIds.map((id) => KPI_MAP[id]).filter(Boolean);
+  // dedup: preserves first occurrence order
+  const seenIds = new Set<string>();
+  const uniqueIds = config.kpiIds.filter((id) => {
+    if (seenIds.has(id)) return false;
+    seenIds.add(id);
+    return true;
+  });
+  const kpis   = uniqueIds.map((id) => KPI_MAP[id]).filter(Boolean);
   const funnel = config.funnelIds.map((id) => FUNNEL_MAP[id]).filter(Boolean);
 
   // Table: campaign + adset fixed, then one column per selected KPI; spend always last if missing
@@ -126,6 +134,7 @@ export function buildPersonalizadoTemplate(config: PersonalizadoConfig): Templat
       roas:       safeDivide(raw.revenue, raw.spend),
       cpf:        safeDivide(raw.spend, raw.new_followers ?? 0),
       cpa_ticket: safeDivide(raw.spend, raw.tickets ?? 0),
+      cpa_venda:  safeDivide(raw.spend, raw.sales_total ?? 0),
     }),
   };
 }

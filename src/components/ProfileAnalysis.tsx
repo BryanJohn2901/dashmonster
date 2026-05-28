@@ -32,6 +32,7 @@ import {
 import { useCampaignStore } from "@/hooks/useCampaignStore";
 import type { CampaignConfig } from "@/hooks/useCampaignStore";
 import { readSharedDateRange } from "@/hooks/useDateRange";
+import { useManualMetrics } from "@/hooks/useManualMetrics";
 
 const formatCurrency = formatBRL;
 const formatNumber = formatInt;
@@ -1650,9 +1651,19 @@ function CampaignAnalysisPanel({
 
   // alias so the rest of the KPI-tab code stays unchanged
   const data = kpiData;
-  const [funnelStepIds, setFunnelStepIds] = useState<ProfileFunnelStepId[]>(() => loadProfileFunnelConfig(campaign.id));
-  const [showFunnelPanel, setShowFunnelPanel] = useState(false);
   const [funnelView, setFunnelView] = useState<"bars" | "funnel">("bars");
+
+  // Manual Eduzz metrics — per-campaign key
+  const { overrides: manualOverrides, setOverride: setManualOverride } = useManualMetrics();
+  const [editingKpiId, setEditingKpiId] = useState<string | null>(null);
+  const [editingValue, setEditingValue] = useState("");
+  const EDUZZ_KPI_IDS = ["sales_ingresso", "sales_pos", "sales_total"] as const;
+  type EduzzKpiId = typeof EDUZZ_KPI_IDS[number];
+  const EDUZZ_FIELD_MAP: Record<EduzzKpiId, "salesIngresso" | "salesPos" | "salesTotal"> = {
+    sales_ingresso: "salesIngresso",
+    sales_pos:      "salesPos",
+    sales_total:    "salesTotal",
+  };
 
   // Goals / Metas
   const [goals, setGoals] = useState<Record<string, number>>(() => loadGoals(campaign.id));
@@ -1666,29 +1677,6 @@ function CampaignAnalysisPanel({
       saveGoals(campaign.id, next);
       return next;
     });
-  };
-
-  const persistFunnelSteps = (next: ProfileFunnelStepId[]) => {
-    const safe = next.length > 0 ? next : DEFAULT_FUNNEL_STEP_IDS;
-    setFunnelStepIds(safe);
-    saveProfileFunnelConfig(campaign.id, safe);
-  };
-
-  const toggleFunnelStep = (id: ProfileFunnelStepId) => {
-    persistFunnelSteps(
-      funnelStepIds.includes(id)
-        ? funnelStepIds.filter((s) => s !== id)
-        : [...funnelStepIds, id],
-    );
-  };
-
-  const moveFunnelStep = (id: ProfileFunnelStepId, dir: -1 | 1) => {
-    const idx = funnelStepIds.indexOf(id);
-    const next = idx + dir;
-    if (idx < 0 || next < 0 || next >= funnelStepIds.length) return;
-    const arr = [...funnelStepIds];
-    [arr[idx], arr[next]] = [arr[next], arr[idx]];
-    persistFunnelSteps(arr);
   };
 
   const load = useCallback(async () => {
@@ -1775,6 +1763,7 @@ function CampaignAnalysisPanel({
   // "Resultados" (id=sales) e "Custo por resultado" (id=cpa = spend/sales)
   // reflitam o tipo de resultado correto em qualquer view — sem cards separados.
   const tpl = template;
+  const manualData = manualOverrides[campaign.id];
   const rawValues: Record<string, number> = {
     impressions:    totalImpressions,
     reach:          data.reduce((s, r) => s + r.reach, 0),
@@ -1789,6 +1778,10 @@ function CampaignAnalysisPanel({
     page_views:     totalPageViews,
     profile_visits: 0,
     new_followers:  totalNewFollowers,
+    // Manual Eduzz values — passed to derive so cpa_venda is computed correctly
+    sales_ingresso: manualData?.salesIngresso ?? 0,
+    sales_pos:      manualData?.salesPos      ?? 0,
+    sales_total:    manualData?.salesTotal    ?? 0,
   };
   const derived   = tpl.derive(rawValues);
   const kpiValues = { ...rawValues, ...derived };
@@ -1822,12 +1815,17 @@ function CampaignAnalysisPanel({
 
   // Funnel step colors — more saturated for professional look
   const FUNNEL_COLORS: Record<string, string> = {
-    reach:       "#6366C8",
-    impressions: "#8b5cf6",
-    clicks:      "#0ea5e9",
-    page_views:  "#f59e0b",
-    leads:       "#e11d48",
-    sales:       "#05CD99",
+    reach:          "#6366C8",
+    impressions:    "#8b5cf6",
+    clicks:         "#0ea5e9",
+    page_views:     "#f59e0b",
+    leads:          "#e11d48",
+    sales:          "#05CD99",
+    profile_visits: "#10b981",
+    new_followers:  "#34d399",
+    tickets:        "#6ee7b7",
+    sales_ingresso: "#059669",
+    sales_pos:      "#047857",
   };
 
   // ── Análise de Conjunto helpers (3.3) ────────────────────────────────────────
@@ -2098,6 +2096,9 @@ function CampaignAnalysisPanel({
             const solid     = KPI_SOLID[kpi.color] ?? "#6366C8";
             const bg        = KPI_BG[kpi.color]    ?? "rgba(99,102,200,0.10)";
 
+            const isEduzz   = (EDUZZ_KPI_IDS as readonly string[]).includes(kpi.id);
+            const isEditing = editingKpiId === kpi.id;
+
             return (
               <article
                 key={kpi.id}
@@ -2112,37 +2113,98 @@ function CampaignAnalysisPanel({
                   >
                     <Target size={18} style={{ color: solid }} />
                   </div>
-                  {editGoals && (
-                    <input
-                      type="number"
-                      step="any"
-                      value={goals[kpi.id] ?? ""}
-                      onChange={(e) => {
-                        const v = parseFloat(e.target.value);
-                        updateGoal(kpi.id, isNaN(v) ? 0 : v);
-                      }}
-                      placeholder="Meta"
-                      className="w-20 h-7 rounded-[10px] border px-2 text-[10px] text-right outline-none"
-                      style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
-                    />
-                  )}
+                  <div className="flex items-center gap-1.5">
+                    {/* Eduzz manual edit icon */}
+                    {isEduzz && !editGoals && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingKpiId(kpi.id);
+                          setEditingValue(String(val > 0 ? val : ""));
+                        }}
+                        className="flex h-6 w-6 items-center justify-center rounded-full transition hover:opacity-80"
+                        style={{ backgroundColor: solid + "1a", color: solid }}
+                        title="Inserir valor manualmente"
+                      >
+                        <Edit2 size={11} />
+                      </button>
+                    )}
+                    {editGoals && (
+                      <input
+                        type="number"
+                        step="any"
+                        value={goals[kpi.id] ?? ""}
+                        onChange={(e) => {
+                          const v = parseFloat(e.target.value);
+                          updateGoal(kpi.id, isNaN(v) ? 0 : v);
+                        }}
+                        placeholder="Meta"
+                        className="w-20 h-7 rounded-[10px] border px-2 text-[10px] text-right outline-none"
+                        style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
+                      />
+                    )}
+                  </div>
                 </div>
 
                 {/* Label */}
                 <p className="mb-1 text-[12px] font-semibold" style={{ color: "var(--dm-text-secondary)" }} title={kpi.tooltip}>
                   {kpi.label}
+                  {isEduzz && val > 0 && (
+                    <span className="ml-1.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase" style={{ backgroundColor: solid + "1a", color: solid }}>
+                      manual
+                    </span>
+                  )}
                 </p>
 
-                {/* Value */}
-                <p
-                  className="text-[22px] font-bold tabular-nums tracking-tight leading-tight"
-                  style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins), Poppins, sans-serif" }}
-                >
-                  {display}
-                </p>
+                {/* Value — inline edit when active */}
+                {isEditing ? (
+                  <div className="flex items-center gap-2 mt-1">
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={editingValue}
+                      onChange={(e) => setEditingValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          const v = parseInt(editingValue, 10);
+                          if (!isNaN(v) && v >= 0) {
+                            setManualOverride(campaign.id, { [EDUZZ_FIELD_MAP[kpi.id as EduzzKpiId]]: v });
+                          }
+                          setEditingKpiId(null);
+                        }
+                        if (e.key === "Escape") setEditingKpiId(null);
+                      }}
+                      autoFocus
+                      className="w-full rounded-[10px] border px-3 py-1.5 text-[16px] font-bold outline-none tabular-nums"
+                      style={{ borderColor: solid, backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const v = parseInt(editingValue, 10);
+                        if (!isNaN(v) && v >= 0) {
+                          setManualOverride(campaign.id, { [EDUZZ_FIELD_MAP[kpi.id as EduzzKpiId]]: v });
+                        }
+                        setEditingKpiId(null);
+                      }}
+                      className="shrink-0 rounded-full px-3 py-1.5 text-[11px] font-bold text-white"
+                      style={{ background: `linear-gradient(135deg,${solid} 0%,${solid}bb 100%)` }}
+                    >
+                      OK
+                    </button>
+                  </div>
+                ) : (
+                  <p
+                    className="text-[22px] font-bold tabular-nums tracking-tight leading-tight"
+                    style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins), Poppins, sans-serif" }}
+                  >
+                    {display}
+                  </p>
+                )}
 
                 {/* Goal progress bar */}
-                {!editGoals && goalVal > 0 && (
+                {!editGoals && !isEditing && goalVal > 0 && (
                   <div className="mt-3 space-y-1.5">
                     <div className="flex items-center justify-between">
                       <span className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
@@ -2166,7 +2228,8 @@ function CampaignAnalysisPanel({
         </div>
       </div>
 
-      {/* ── Funil de Conversão (vertical, afunilado) ─────────────────────── */}
+      {/* ── Funil de Conversão — driven by template funnelIds ──────────────── */}
+      {tpl.funnel.length > 0 && (
       <article
         className="overflow-hidden rounded-[20px] border shadow-horizon"
         style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}
@@ -2178,113 +2241,44 @@ function CampaignAnalysisPanel({
               Funil de Conversão
             </h3>
             <p className="mt-0.5 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
-              Jornada do anúncio até a venda
+              Etapas configuradas em &ldquo;Configurar métricas&rdquo;
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            {/* View toggle — Barras | Funil */}
-            <div className="flex rounded-[10px] p-0.5" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
-              {(["bars", "funnel"] as const).map((v) => (
-                <button key={v} type="button" onClick={() => setFunnelView(v)}
-                  className="flex items-center gap-1.5 rounded-[8px] px-3 py-1.5 text-[11px] font-semibold transition-all"
-                  style={funnelView === v
-                    ? { background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)", color: "#fff", boxShadow: "0 2px 8px rgba(49,52,145,0.28)" }
-                    : { color: "var(--dm-text-tertiary)" }}>
-                  {v === "bars" ? "Barras" : "Funil"}
-                </button>
-              ))}
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowFunnelPanel((v) => !v)}
-              className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-semibold transition"
-              style={showFunnelPanel
-                ? { background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)", color: "#fff", boxShadow: "0 4px 12px rgba(49,52,145,0.30)" }
-                : { backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-secondary)", border: "1px solid var(--dm-border-default)" }}
-            >
-              <SlidersHorizontal size={11} />
-              {showFunnelPanel ? "Fechar" : "Personalizar"}
-            </button>
+          {/* View toggle — Barras | Funil */}
+          <div className="flex rounded-[10px] p-0.5" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
+            {(["bars", "funnel"] as const).map((v) => (
+              <button key={v} type="button" onClick={() => setFunnelView(v)}
+                className="flex items-center gap-1.5 rounded-[8px] px-3 py-1.5 text-[11px] font-semibold transition-all"
+                style={funnelView === v
+                  ? { background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)", color: "#fff", boxShadow: "0 2px 8px rgba(49,52,145,0.28)" }
+                  : { color: "var(--dm-text-tertiary)" }}>
+                {v === "bars" ? "Barras" : "Funil"}
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* Customization panel */}
-        {showFunnelPanel && (
-          <div className="border-b px-5 py-4 space-y-3" style={{ borderColor: "var(--dm-border-subtle)", backgroundColor: "var(--dm-bg-elevated)" }}>
-            <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>
-              Etapas visíveis — clique para ativar/desativar, arraste para reordenar
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {PROFILE_FUNNEL_STEPS.map((step) => {
-                const selected = funnelStepIds.includes(step.id);
-                const index    = funnelStepIds.indexOf(step.id);
-                return (
-                  <div
-                    key={step.id}
-                    className="flex items-center gap-1.5 rounded-[12px] cursor-pointer select-none transition"
-                    style={{
-                      padding: "6px 12px",
-                      backgroundColor: selected ? step.color + "20" : "var(--dm-bg-surface)",
-                      border: `1.5px solid ${selected ? step.color + "66" : "var(--dm-border-default)"}`,
-                      color: selected ? step.color : "var(--dm-text-tertiary)",
-                    }}
-                    onClick={() => !(selected && funnelStepIds.length === 1) && toggleFunnelStep(step.id)}
-                  >
-                    <span className="text-[11px] font-semibold">{step.label}</span>
-                    {selected && (
-                      <div className="flex gap-0.5 ml-0.5">
-                        <button type="button"
-                          onClick={(e) => { e.stopPropagation(); moveFunnelStep(step.id, -1); }}
-                          disabled={index === 0}
-                          className="rounded p-0.5 transition disabled:opacity-20 hover:opacity-80">
-                          <ArrowUp size={9} />
-                        </button>
-                        <button type="button"
-                          onClick={(e) => { e.stopPropagation(); moveFunnelStep(step.id, 1); }}
-                          disabled={index === funnelStepIds.length - 1}
-                          className="rounded p-0.5 transition disabled:opacity-20 hover:opacity-80">
-                          <ArrowDown size={9} />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-            <button
-              type="button"
-              onClick={() => persistFunnelSteps(DEFAULT_FUNNEL_STEP_IDS)}
-              className="text-[10px] font-semibold transition hover:opacity-70"
-              style={{ color: "var(--dm-brand-500)" }}
-            >
-              Restaurar padrão
-            </button>
-          </div>
-        )}
-
         {/* ── VIEW: BARRAS ── */}
         {funnelView === "bars" && (() => {
-          const maxVal = Math.max(...funnelStepIds.map((id) => kpiValues[id] ?? 0), 1);
+          const maxVal = Math.max(...tpl.funnel.map((s) => kpiValues[s.id] ?? 0), 1);
           return (
             <div className="flex flex-col gap-0 px-5 py-5">
-              {funnelStepIds.map((stepId, i) => {
-                const step    = PROFILE_FUNNEL_STEPS.find((s) => s.id === stepId);
-                if (!step) return null;
-                const val     = kpiValues[stepId] ?? 0;
-                const prevId  = i > 0 ? funnelStepIds[i - 1] : null;
-                const prevVal = prevId ? (kpiValues[prevId] ?? 0) : null;
+              {tpl.funnel.map((stage, i) => {
+                const val     = kpiValues[stage.id] ?? 0;
+                const prevStage = i > 0 ? tpl.funnel[i - 1] : null;
+                const prevVal = prevStage ? (kpiValues[prevStage.id] ?? 0) : null;
                 const rate    = prevVal !== null && prevVal > 0 ? (val / prevVal) * 100 : null;
-                const color   = FUNNEL_COLORS[stepId] ?? step.color;
+                const color   = FUNNEL_COLORS[stage.id] ?? "#6366C8";
                 const pct     = maxVal > 0 ? (val / maxVal) * 100 : 0;
                 return (
-                  <div key={stepId} className="flex flex-col">
+                  <div key={stage.id} className="flex flex-col">
                     {i > 0 && (
                       <div className="flex items-center gap-3 py-2 pl-[52px]">
                         <div className="w-px self-stretch" style={{ backgroundColor: "var(--dm-border-default)", minHeight: "12px" }} />
                         {rate !== null && (
                           <span className="rounded-full px-3 py-0.5 text-[10px] font-bold"
                             style={{ backgroundColor: color + "18", color }}>
-                            {formatPercent(rate)}{step.rateLabel ? ` ${step.rateLabel}` : ""}
+                            {formatPercent(rate)}{stage.rateFromPrev ? ` ${stage.rateFromPrev}` : ""}
                           </span>
                         )}
                       </div>
@@ -2296,7 +2290,7 @@ function CampaignAnalysisPanel({
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-baseline justify-between mb-2">
-                          <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color }}>{step.label}</p>
+                          <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color }}>{stage.label}</p>
                           <p className="text-[20px] font-bold tabular-nums leading-none"
                             style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>
                             {val > 0 ? formatNumber(val) : <span style={{ color: "var(--dm-text-tertiary)", fontSize: "14px" }}>Sem dados</span>}
@@ -2317,21 +2311,19 @@ function CampaignAnalysisPanel({
 
         {/* ── VIEW: FUNIL AFUNILADO ── */}
         {funnelView === "funnel" && (() => {
-          const total = funnelStepIds.length;
+          const total = tpl.funnel.length;
           return (
             <div className="flex flex-col items-center px-6 py-6 gap-0">
-              {funnelStepIds.map((stepId, i) => {
-                const step    = PROFILE_FUNNEL_STEPS.find((s) => s.id === stepId);
-                if (!step) return null;
-                const val     = kpiValues[stepId] ?? 0;
-                const prevId  = i > 0 ? funnelStepIds[i - 1] : null;
-                const prevVal = prevId ? (kpiValues[prevId] ?? 0) : null;
+              {tpl.funnel.map((stage, i) => {
+                const val     = kpiValues[stage.id] ?? 0;
+                const prevStage = i > 0 ? tpl.funnel[i - 1] : null;
+                const prevVal = prevStage ? (kpiValues[prevStage.id] ?? 0) : null;
                 const rate    = prevVal !== null && prevVal > 0 ? (val / prevVal) * 100 : null;
-                const color   = FUNNEL_COLORS[stepId] ?? step.color;
+                const color   = FUNNEL_COLORS[stage.id] ?? "#6366C8";
                 // Taper from 100% → 50%
                 const widthPct = total > 1 ? 100 - (i / (total - 1)) * 50 : 88;
                 return (
-                  <div key={stepId} className="w-full flex flex-col items-center">
+                  <div key={stage.id} className="w-full flex flex-col items-center">
                     {/* Connector + rate */}
                     {i > 0 && (
                       <div className="flex flex-col items-center py-2 gap-1">
@@ -2339,7 +2331,7 @@ function CampaignAnalysisPanel({
                         {rate !== null && (
                           <span className="rounded-full px-3 py-0.5 text-[10px] font-bold"
                             style={{ backgroundColor: color + "1a", color }}>
-                            {formatPercent(rate)}{step.rateLabel ? ` ${step.rateLabel}` : ""}
+                            {formatPercent(rate)}{stage.rateFromPrev ? ` ${stage.rateFromPrev}` : ""}
                           </span>
                         )}
                         <div className="w-px h-4" style={{ backgroundColor: "var(--dm-border-default)" }} />
@@ -2357,9 +2349,9 @@ function CampaignAnalysisPanel({
                       }}
                     >
                       <div>
-                        <p className="text-[10px] font-bold uppercase tracking-wider mb-0.5" style={{ color }}>{step.label}</p>
-                        {rate !== null && step.rateLabel && (
-                          <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>{step.rateLabel}</p>
+                        <p className="text-[10px] font-bold uppercase tracking-wider mb-0.5" style={{ color }}>{stage.label}</p>
+                        {rate !== null && stage.rateFromPrev && (
+                          <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>{stage.rateFromPrev}</p>
                         )}
                       </div>
                       <p className="text-[22px] font-bold tabular-nums"
@@ -2374,6 +2366,7 @@ function CampaignAnalysisPanel({
           );
         })()}
       </article>
+      )}
 
       {/* ── Tabela do template ───────────────────────────────────────────────── */}
       {tpl.table && (
