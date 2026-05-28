@@ -178,12 +178,14 @@ type LiveDiag = {
 export function PerfilAtivoPanel({
   igUserId, dateFrom, dateTo,
 }: { igUserId: string; dateFrom: string; dateTo: string }) {
-  const [account, setAccount]   = useState<IGTrackedAccount | null>(null);
-  const [history, setHistory]   = useState<IGHistoryPoint[]>([]);
-  const [loading, setLoading]   = useState(true);
-  const [isMock, setIsMock]     = useState(false);
-  const [notFound, setNotFound] = useState(false);
-  const [liveDiag, setLiveDiag] = useState<LiveDiag | null>(null);
+  const [account, setAccount]       = useState<IGTrackedAccount | null>(null);
+  const [history, setHistory]       = useState<IGHistoryPoint[]>([]);
+  const [loading, setLoading]       = useState(true);
+  const [isMock, setIsMock]         = useState(false);
+  const [notFound, setNotFound]     = useState(false);
+  const [liveDiag, setLiveDiag]     = useState<LiveDiag | null>(null);
+  const [backfilling, setBackfilling] = useState(false);
+  const [backfillMsg, setBackfillMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (!igUserId) return;
@@ -257,6 +259,46 @@ export function PerfilAtivoPanel({
         setLoading(false);
       });
   }, [igUserId, dateFrom, dateTo]);
+
+  // ── Backfill: busca até 90 dias retroativos da Meta API ──────────────────
+  async function handleBackfill() {
+    if (!igUserId || backfilling) return;
+    setBackfilling(true);
+    setBackfillMsg(null);
+    try {
+      const res = await fetch("/api/instagram/accounts/backfill", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ibaId: igUserId }),
+      });
+      const data = await res.json() as {
+        ok?: boolean;
+        daysInserted?: number;
+        dateRange?: [string, string];
+        error?: string;
+      };
+      if (!res.ok || data.error) {
+        setBackfillMsg(`Erro: ${data.error ?? "falha desconhecida"}`);
+      } else {
+        setBackfillMsg(`✓ ${data.daysInserted ?? 0} dias importados (${data.dateRange?.[0]} → ${data.dateRange?.[1]})`);
+        // Reload history
+        setLoading(true);
+        const r = await fetch("/api/instagram/history", { method: "POST" });
+        const accounts = await r.json() as IGTrackedAccount[];
+        const match = accounts.find(a => a.instagramBusinessAccountId === igUserId);
+        if (match) setAccount(match);
+        const params = new URLSearchParams({ ibaId: igUserId, dateFrom, dateTo });
+        const hr = await fetch(`/api/instagram/history?${params}`);
+        const hd = await hr.json() as { history?: IGHistoryPoint[] };
+        if (hd.history) setHistory(hd.history);
+        setLoading(false);
+      }
+    } catch (e) {
+      setBackfillMsg(`Erro: ${String(e)}`);
+    } finally {
+      setBackfilling(false);
+    }
+  }
 
   // ── Derived stats ────────────────────────────────────────────────────────
   const sorted  = [...history].sort((a, b) => a.date.localeCompare(b.date));
@@ -407,6 +449,35 @@ export function PerfilAtivoPanel({
               <strong>Administrador</strong> (não apenas Analista).
             </p>
           </div>
+        </div>
+      )}
+
+      {/* ── Backfill histórico retroativo ── */}
+      {!isMock && (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border px-3 py-2.5"
+          style={{ background: "rgba(168,85,247,0.06)", borderColor: "rgba(168,85,247,0.2)" }}>
+          <div className="flex-1 min-w-0">
+            <p className="text-[12px] font-semibold" style={{ color: "#A855F7" }}>Importar histórico retroativo</p>
+            <p className="text-[11px]" style={{ color: "var(--dm-text-secondary)" }}>
+              Busca até 90 dias de reach, impressões e views na Meta API e salva no banco.
+            </p>
+            {backfillMsg && (
+              <p className="text-[11px] mt-0.5 font-medium"
+                style={{ color: backfillMsg.startsWith("✓") ? "#05CD99" : "#F97316" }}>
+                {backfillMsg}
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            disabled={backfilling}
+            onClick={() => void handleBackfill()}
+            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-semibold transition-opacity disabled:opacity-50"
+            style={{ background: "rgba(168,85,247,0.15)", color: "#A855F7" }}>
+            {backfilling
+              ? <><Loader2 size={12} className="animate-spin" /> Importando...</>
+              : "↩ Buscar 90 dias"}
+          </button>
         </div>
       )}
 
