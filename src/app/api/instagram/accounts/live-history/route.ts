@@ -83,10 +83,11 @@ export async function GET(request: NextRequest) {
   const since = toUnix(daysAgo(30));
   const until = toUnix(todayStr()) + 86400;
 
-  // ── 2. Two independent Meta API calls (Promise.allSettled) ──────────────────
-  // Call A: follows_and_unfollows (may fail for small accounts / limited permissions)
-  // Call B: reach,impressions,profile_visits (standard business metrics)
-  const [followsResult, metricsResult] = await Promise.allSettled([
+  // ── 2. Three independent Meta API calls (Promise.allSettled) ────────────────
+  // Call A: follows_and_unfollows — Advanced permission only, may fail
+  // Call B: reach,impressions — core metrics, always available with instagram_manage_insights
+  // Call C: profile_views — may not be available for all account types
+  const [followsResult, metricsResult, profileViewsResult] = await Promise.allSettled([
     fetch(
       `https://graph.facebook.com/${META_API_VERSION}/${ibaId}/insights?` +
       new URLSearchParams({
@@ -101,7 +102,17 @@ export async function GET(request: NextRequest) {
       `https://graph.facebook.com/${META_API_VERSION}/${ibaId}/insights?` +
       new URLSearchParams({
         access_token: acc.access_token,
-        metric:       "reach,impressions,profile_views",
+        metric:       "reach,impressions",
+        period:       "day",
+        since:        String(since),
+        until:        String(until),
+      }),
+    ).then(r => r.json() as Promise<{ data?: InsightsData; error?: { message?: string } }>),
+    fetch(
+      `https://graph.facebook.com/${META_API_VERSION}/${ibaId}/insights?` +
+      new URLSearchParams({
+        access_token: acc.access_token,
+        metric:       "profile_views",
         period:       "day",
         since:        String(since),
         until:        String(until),
@@ -114,6 +125,9 @@ export async function GET(request: NextRequest) {
     : [];
   const metricsData: InsightsData = metricsResult.status === "fulfilled" && !metricsResult.value.error
     ? (metricsResult.value.data ?? [])
+    : [];
+  const profileViewsData: InsightsData = profileViewsResult.status === "fulfilled" && !profileViewsResult.value.error
+    ? (profileViewsResult.value.data ?? [])
     : [];
 
   // Log diagnostics
@@ -130,7 +144,7 @@ export async function GET(request: NextRequest) {
       follows_and_unfollows: followsData.find(d => d.name === "follows_and_unfollows")?.values?.length ?? 0,
       reach:                 metricsData.find(d => d.name === "reach")?.values?.length ?? 0,
       impressions:           metricsData.find(d => d.name === "impressions")?.values?.length ?? 0,
-      profile_views:         metricsData.find(d => d.name === "profile_views")?.values?.length ?? 0,
+      profile_views:         profileViewsData.find(d => d.name === "profile_views")?.values?.length ?? 0,
     },
   };
   console.log("[live-history] diag:", JSON.stringify(diag));
@@ -160,7 +174,7 @@ export async function GET(request: NextRequest) {
 
   const reachArr        = byName(metricsData, "reach");
   const impressionsArr  = byName(metricsData, "impressions");
-  const profileViewsArr = byName(metricsData, "profile_views");
+  const profileViewsArr = byName(profileViewsData, "profile_views");
 
   const gainsMap       = toMap(gainsArr);
   const lossMap        = toMap(lossArr);

@@ -2157,18 +2157,18 @@ export function Dashboard({
   const totals             = aggregateTotals(campaignsWithOverrides);
   const allCampaignTotals  = useMemo(() => aggregateTotals(campaigns), [campaigns]);
 
-  // ── Eduzz manual sales totals (sum across filtered campaigns' overrides) ──────
-  const eduzzTotals = useMemo(() => filteredCampaigns.reduce((acc, c) => {
-    const ov = manualOverrides[c.id];
-    return {
-      salesIngresso: acc.salesIngresso + (ov?.salesIngresso ?? 0),
-      salesPos:      acc.salesPos      + (ov?.salesPos      ?? 0),
-      salesTotal:    acc.salesTotal    + (ov?.salesTotal    ?? 0),
-    };
-  }, { salesIngresso: 0, salesPos: 0, salesTotal: 0 }), [filteredCampaigns, manualOverrides]);
+  // Key for manual Eduzz edits: specific campaign when one is selected, else "global"
+  const eduzzEditKey = selectedCampaign !== "all" ? selectedCampaign : "eduzz_global";
 
-  // Single-campaign ID for per-campaign manual editing
-  const singleEditCampaignId = filteredCampaigns.length === 1 ? (filteredCampaigns[0]?.id ?? null) : null;
+  // ── Eduzz manual sales totals — from the edit key (single context value) ──────
+  const eduzzTotals = useMemo(() => {
+    const ov = manualOverrides[eduzzEditKey];
+    return {
+      salesIngresso: ov?.salesIngresso ?? 0,
+      salesPos:      ov?.salesPos      ?? 0,
+      salesTotal:    ov?.salesTotal    ?? 0,
+    };
+  }, [eduzzEditKey, manualOverrides]);
   const needsLeadsMigration = !campaignMetricsHasLeadsColumn;
   const needsLeadsResync =
     campaignMetricsHasLeadsColumn &&
@@ -3084,9 +3084,9 @@ export function Dashboard({
                         title="Vendas Total" value={formatNumber(eduzzTotals.salesTotal)}
                         subtitle="Eduzz — manual"
                         icon={GraduationCap} accentColor="green"
-                        editable={!!singleEditCampaignId}
-                        isManual={(manualOverrides[singleEditCampaignId ?? ""]?.salesTotal ?? 0) > 0}
-                        onEdit={(v) => singleEditCampaignId && setManualOverride(singleEditCampaignId, { salesTotal: v })}
+                        editable={true}
+                        isManual={(manualOverrides[eduzzEditKey]?.salesTotal ?? 0) > 0}
+                        onEdit={(v) => eduzzEditKey && setManualOverride(eduzzEditKey, { salesTotal: v })}
                       />
                     ),
                   ].filter(Boolean);
@@ -3098,9 +3098,9 @@ export function Dashboard({
                         title="Vendas de Ingresso" value={formatNumber(eduzzTotals.salesIngresso)}
                         subtitle="Eduzz — manual"
                         icon={Ticket} accentColor="green"
-                        editable={!!singleEditCampaignId}
-                        isManual={(manualOverrides[singleEditCampaignId ?? ""]?.salesIngresso ?? 0) > 0}
-                        onEdit={(v) => singleEditCampaignId && setManualOverride(singleEditCampaignId, { salesIngresso: v })}
+                        editable={true}
+                        isManual={(manualOverrides[eduzzEditKey]?.salesIngresso ?? 0) > 0}
+                        onEdit={(v) => eduzzEditKey && setManualOverride(eduzzEditKey, { salesIngresso: v })}
                       />
                     ),
                     isMetricVisible("sales_pos") && (
@@ -3108,9 +3108,9 @@ export function Dashboard({
                         title="Vendas de Pós" value={formatNumber(eduzzTotals.salesPos)}
                         subtitle="Eduzz — manual"
                         icon={GraduationCap} accentColor="green"
-                        editable={!!singleEditCampaignId}
-                        isManual={(manualOverrides[singleEditCampaignId ?? ""]?.salesPos ?? 0) > 0}
-                        onEdit={(v) => singleEditCampaignId && setManualOverride(singleEditCampaignId, { salesPos: v })}
+                        editable={true}
+                        isManual={(manualOverrides[eduzzEditKey]?.salesPos ?? 0) > 0}
+                        onEdit={(v) => eduzzEditKey && setManualOverride(eduzzEditKey, { salesPos: v })}
                       />
                     ),
                   ].filter(Boolean);

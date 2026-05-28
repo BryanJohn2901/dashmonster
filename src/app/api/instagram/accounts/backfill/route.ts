@@ -81,12 +81,12 @@ export async function POST(request: NextRequest) {
 
   const baseParams = { access_token: acc.access_token, period: "day" };
 
-  const [metricsRes, followersRes] = await Promise.allSettled([
+  const [metricsRes, followersRes, profileViewsRes] = await Promise.allSettled([
     fetch(
       `https://graph.facebook.com/${META_API_VERSION}/${ibaId}/insights?` +
       new URLSearchParams({
         ...baseParams,
-        metric: "reach,impressions,profile_views",
+        metric: "reach,impressions",
         since:  String(since90),
         until:  String(until),
       }),
@@ -101,6 +101,17 @@ export async function POST(request: NextRequest) {
         until:  String(until),
       }),
     ).then(r => r.json() as Promise<{ data?: InsightsData; error?: { message?: string } }>),
+
+    // profile_views — optional, not available on all account types
+    fetch(
+      `https://graph.facebook.com/${META_API_VERSION}/${ibaId}/insights?` +
+      new URLSearchParams({
+        ...baseParams,
+        metric: "profile_views",
+        since:  String(since90),
+        until:  String(until),
+      }),
+    ).then(r => r.json() as Promise<{ data?: InsightsData; error?: { message?: string } }>),
   ]);
 
   const metricsData: InsightsData =
@@ -111,6 +122,11 @@ export async function POST(request: NextRequest) {
   const followersData: InsightsData =
     followersRes.status === "fulfilled" && !followersRes.value.error
       ? (followersRes.value.data ?? [])
+      : [];
+
+  const profileViewsData: InsightsData =
+    profileViewsRes.status === "fulfilled" && !profileViewsRes.value.error
+      ? (profileViewsRes.value.data ?? [])
       : [];
 
   if (metricsRes.status === "fulfilled" && metricsRes.value.error) {
@@ -131,7 +147,7 @@ export async function POST(request: NextRequest) {
 
   const reachMap       = byName(metricsData, "reach");
   const impressionsMap = byName(metricsData, "impressions");
-  const viewsMap       = byName(metricsData, "profile_views");
+  const viewsMap       = byName(profileViewsData, "profile_views");
   const followerMap    = byName(followersData, "follower_count"); // daily delta
 
   // Union of all dates with any data
