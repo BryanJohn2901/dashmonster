@@ -13,7 +13,7 @@ export interface KpiGroup {
 
 export const ALL_KPI_OPTIONS: KpiSpec[] = [
   // Resultados
-  { id: "sales",         label: "Resultados",              format: formatInt,                    color: "green" },
+  { id: "sales",         label: "Conversões",              format: formatInt,                    color: "green", tooltip: "Conversões registradas pelo pixel Meta (compras, cadastros conforme objetivo)" },
   { id: "leads",         label: "Leads",                   format: formatInt,                    color: "green" },
   { id: "cpa",           label: "Custo por resultado",     format: formatBRL,                    color: "rose", invert: true },
   { id: "cpl",           label: "Custo por lead",          format: formatBRL,                    color: "rose", invert: true },
@@ -45,8 +45,12 @@ export const ALL_KPI_OPTIONS: KpiSpec[] = [
   { id: "ig_reach",      label: "Alcance orgânico",        format: formatInt,                    color: "sky" },
   { id: "ig_impressions", label: "Impressões do perfil",   format: formatInt,                    color: "sky" },
   // Outros
-  { id: "tickets",       label: "Ingressos",               format: formatInt,                    color: "green" },
-  { id: "cpa_ticket",    label: "CPA por ingresso",        format: formatBRL,                    color: "rose", invert: true },
+  { id: "tickets",        label: "Ingressos",               format: formatInt, color: "green" },
+  { id: "cpa_ticket",     label: "CPA por ingresso",        format: formatBRL, color: "rose", invert: true },
+  // Vendas Eduzz (entrada manual — Eduzz não conectado ainda)
+  { id: "sales_ingresso", label: "Vendas de Ingresso",      format: formatInt, color: "green", tooltip: "Vendas de ingresso (Eduzz) — valor inserido manualmente" },
+  { id: "sales_pos",      label: "Vendas de Pós",           format: formatInt, color: "green", tooltip: "Vendas de pós-graduação (Eduzz) — valor inserido manualmente" },
+  { id: "sales_total",    label: "Vendas Total",            format: formatInt, color: "green", tooltip: "Total de vendas Eduzz — valor inserido manualmente" },
 ];
 
 // ─── KPI groups for builder UI (3.5) ─────────────────────────────────────────
@@ -58,7 +62,7 @@ export const KPI_GROUPS: KpiGroup[] = [
   { label: "Investimento",      kpiIds: ["spend", "revenue", "roas"] },
   { label: "Perfil",            kpiIds: ["profile_visits", "new_followers", "cpf"] },
   { label: "Instagram",         kpiIds: ["ig_followers", "ig_growth", "ig_reach", "ig_impressions"], igOnly: true },
-  { label: "Outros",            kpiIds: ["tickets", "cpa_ticket"] },
+  { label: "Outros",            kpiIds: ["tickets", "cpa_ticket", "sales_ingresso", "sales_pos", "sales_total"] },
 ];
 
 // ─── Catalog of all available funnel stages ───────────────────────────────────
@@ -73,6 +77,8 @@ export const ALL_FUNNEL_OPTIONS: FunnelStage[] = [
   { id: "profile_visits", label: "Visitas ao perfil",        bg: "#A7F3D0", rateFromPrev: "Tx. Visita" },
   { id: "new_followers",  label: "Novos seguidores",         bg: "#6EE7B7", rateFromPrev: "Tx. Follow" },
   { id: "tickets",        label: "Ingressos vendidos",       bg: "#D1FAE5", rateFromPrev: "Tx. Conversão" },
+  { id: "sales_ingresso", label: "Vendas de Ingresso",      bg: "#BBF7D0", rateFromPrev: "Tx. Conversão" },
+  { id: "sales_pos",      label: "Vendas de Pós",           bg: "#A7F3D0", rateFromPrev: "Tx. Conversão" },
 ];
 
 const KPI_MAP    = Object.fromEntries(ALL_KPI_OPTIONS.map((k) => [k.id, k]));

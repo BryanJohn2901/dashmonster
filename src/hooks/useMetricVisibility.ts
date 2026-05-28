@@ -6,24 +6,28 @@ export const ALL_METRIC_IDS = [
   "investment", "revenue", "roas", "roi",
   "conversions", "leads", "cpa", "cpl", "ctr", "cpc", "cpm",
   "clicks", "impressions",
+  "sales_ingresso", "sales_pos", "sales_total",
 ] as const;
 
 export type MetricId = typeof ALL_METRIC_IDS[number];
 
 export const METRIC_LABELS: Record<MetricId, string> = {
-  investment:  "Investimento",
-  revenue:     "Receita",
-  roas:        "ROAS",
-  roi:         "ROI",
-  conversions: "Conversões",
-  leads:       "Leads",
-  cpa:         "CPA",
-  cpl:         "CPL",
-  ctr:         "CTR",
-  cpc:         "CPC",
-  cpm:         "CPM",
-  clicks:      "Cliques",
-  impressions: "Impressões",
+  investment:     "Investimento",
+  revenue:        "Receita",
+  roas:           "ROAS",
+  roi:            "ROI",
+  conversions:    "Conversões",
+  leads:          "Leads",
+  cpa:            "CPA",
+  cpl:            "CPL",
+  ctr:            "CTR",
+  cpc:            "CPC",
+  cpm:            "CPM",
+  clicks:         "Cliques",
+  impressions:    "Impressões",
+  sales_ingresso: "Vendas de Ingresso",
+  sales_pos:      "Vendas de Pós",
+  sales_total:    "Vendas Total",
 };
 
 const STORAGE_KEY = "pta_hidden_metrics_v1";

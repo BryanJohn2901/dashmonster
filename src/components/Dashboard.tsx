@@ -1858,7 +1858,7 @@ export function Dashboard({
 
   const { getGoals, setGoal, resetGoals } = useGoalsStore();
   const { profiles: advertiserProfiles } = useAdvertiserStore();
-  const { overrides: manualOverrides } = useManualMetrics();
+  const { overrides: manualOverrides, setOverride: setManualOverride } = useManualMetrics();
 
   const {
     selectedGroup, selectedTurma, activeCampaigns, campaignConfigs,
@@ -2156,6 +2156,19 @@ export function Dashboard({
   );
   const totals             = aggregateTotals(campaignsWithOverrides);
   const allCampaignTotals  = useMemo(() => aggregateTotals(campaigns), [campaigns]);
+
+  // ── Eduzz manual sales totals (sum across filtered campaigns' overrides) ──────
+  const eduzzTotals = useMemo(() => filteredCampaigns.reduce((acc, c) => {
+    const ov = manualOverrides[c.id];
+    return {
+      salesIngresso: acc.salesIngresso + (ov?.salesIngresso ?? 0),
+      salesPos:      acc.salesPos      + (ov?.salesPos      ?? 0),
+      salesTotal:    acc.salesTotal    + (ov?.salesTotal    ?? 0),
+    };
+  }, { salesIngresso: 0, salesPos: 0, salesTotal: 0 }), [filteredCampaigns, manualOverrides]);
+
+  // Single-campaign ID for per-campaign manual editing
+  const singleEditCampaignId = filteredCampaigns.length === 1 ? (filteredCampaigns[0]?.id ?? null) : null;
   const needsLeadsMigration = !campaignMetricsHasLeadsColumn;
   const needsLeadsResync =
     campaignMetricsHasLeadsColumn &&
@@ -2976,6 +2989,7 @@ export function Dashboard({
                         <div className="space-y-3">
                           {([
                             { label: "Financeiro",  ids: ["investment", "revenue", "roas", "roi"] as const },
+                            { label: "Vendas",      ids: ["sales_total", "sales_ingresso", "sales_pos"] as const },
                             { label: "Eficiência",  ids: ["conversions", "leads", "cpa", "cpl", "ctr", "cpc", "cpm"] as const },
                             { label: "Volume",      ids: ["clicks", "impressions"] as const },
                           ] as const).map(({ label, ids }) => (
@@ -3065,6 +3079,40 @@ export function Dashboard({
                         goalPct={goals.roas != null ? (totals.roas / goals.roas) * 100 : null}
                       />
                     ),
+                    isMetricVisible("sales_total") && (
+                      <KpiCard key="sales_total" tier={1}
+                        title="Vendas Total" value={formatNumber(eduzzTotals.salesTotal)}
+                        subtitle="Eduzz — manual"
+                        icon={GraduationCap} accentColor="green"
+                        editable={!!singleEditCampaignId}
+                        isManual={(manualOverrides[singleEditCampaignId ?? ""]?.salesTotal ?? 0) > 0}
+                        onEdit={(v) => singleEditCampaignId && setManualOverride(singleEditCampaignId, { salesTotal: v })}
+                      />
+                    ),
+                  ].filter(Boolean);
+
+                  /* Tier 1.5 — Vendas Eduzz */
+                  const tierVendas = [
+                    isMetricVisible("sales_ingresso") && (
+                      <KpiCard key="sales_ingresso" tier={2}
+                        title="Vendas de Ingresso" value={formatNumber(eduzzTotals.salesIngresso)}
+                        subtitle="Eduzz — manual"
+                        icon={Ticket} accentColor="green"
+                        editable={!!singleEditCampaignId}
+                        isManual={(manualOverrides[singleEditCampaignId ?? ""]?.salesIngresso ?? 0) > 0}
+                        onEdit={(v) => singleEditCampaignId && setManualOverride(singleEditCampaignId, { salesIngresso: v })}
+                      />
+                    ),
+                    isMetricVisible("sales_pos") && (
+                      <KpiCard key="sales_pos" tier={2}
+                        title="Vendas de Pós" value={formatNumber(eduzzTotals.salesPos)}
+                        subtitle="Eduzz — manual"
+                        icon={GraduationCap} accentColor="green"
+                        editable={!!singleEditCampaignId}
+                        isManual={(manualOverrides[singleEditCampaignId ?? ""]?.salesPos ?? 0) > 0}
+                        onEdit={(v) => singleEditCampaignId && setManualOverride(singleEditCampaignId, { salesPos: v })}
+                      />
+                    ),
                   ].filter(Boolean);
 
                   /* Tier 2 — Eficiência */
@@ -3152,7 +3200,7 @@ export function Dashboard({
                     ),
                   ].filter(Boolean);
 
-                  const hasAny = tier1.length + tier2.length + tier3.length > 0;
+                  const hasAny = tier1.length + tierVendas.length + tier2.length + tier3.length > 0;
 
                   /* Tier label separator */
                   const TierLabel = ({ label }: { label: string }) => (
@@ -3174,6 +3222,14 @@ export function Dashboard({
                           <TierLabel label="Financeiro" />
                           <div className="grid grid-cols-1 gap-[10px] sm:grid-cols-2 lg:grid-cols-3">
                             {tier1}
+                          </div>
+                        </>
+                      )}
+                      {tierVendas.length > 0 && (
+                        <>
+                          <TierLabel label="Vendas" />
+                          <div className="grid grid-cols-2 gap-[10px] sm:grid-cols-3 lg:grid-cols-4">
+                            {tierVendas}
                           </div>
                         </>
                       )}

@@ -2996,10 +2996,14 @@ function ProfileDetailView({
   });
 
   const handlePersonalizadoChange = (cfg: PersonalizadoConfig) => {
+    // Switch to personalizado template so resolvedTemplate rebuilds from new config
+    setTemplateId("personalizado");
     setPersonalizadoConfig(cfg);
     try {
       const stored = JSON.parse(localStorage.getItem(PERSONALIZADO_LS_KEY) ?? "{}") as Record<string, PersonalizadoConfig>;
       localStorage.setItem(PERSONALIZADO_LS_KEY, JSON.stringify({ ...stored, [profile.id]: cfg }));
+      const tStored = JSON.parse(localStorage.getItem(TEMPLATE_LS_KEY) ?? "{}") as Record<string, string>;
+      localStorage.setItem(TEMPLATE_LS_KEY, JSON.stringify({ ...tStored, [profile.id]: "personalizado" }));
     } catch {}
   };
 
@@ -3090,15 +3094,22 @@ function ProfileDetailView({
             </div>
           </div>
 
-          {/* Template selector (hidden on instagram tab) + Date range (always visible) */}
+          {/* Configurar métricas + Date range */}
           <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto">
             {profileTab !== "instagram" && (
-              <TemplateSelector
-                current={templateId}
-                onChange={handleTemplateChange}
-                variant="dropdown"
-                onOpenBuilder={() => setShowBuilder(true)}
-              />
+              <button
+                type="button"
+                onClick={() => setShowBuilder(true)}
+                className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12px] font-semibold transition"
+                style={{
+                  borderColor: "var(--dm-border-default)",
+                  color: "var(--dm-text-secondary)",
+                  background: "var(--dm-bg-elevated)",
+                }}
+              >
+                <SlidersHorizontal size={12} />
+                Configurar
+              </button>
             )}
             <ProfileDateRange
               dateFrom={dateFrom}

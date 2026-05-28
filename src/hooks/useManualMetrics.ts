@@ -4,12 +4,15 @@ import { useState, useEffect, useCallback } from "react";
 const STORE_KEY = "pta_manual_overrides_v1";
 
 export interface ManualOverride {
-  conversions?: number;
-  leads?:       number;
-  revenue?:     number;
-  note?:        string;
-  source:       "manual";
-  updatedAt:    string;
+  conversions?:   number;
+  leads?:         number;
+  revenue?:       number;
+  salesIngresso?: number;   // Vendas de Ingresso (Eduzz)
+  salesPos?:      number;   // Vendas de Pós-Graduação (Eduzz)
+  salesTotal?:    number;   // Vendas Total (Eduzz)
+  note?:          string;
+  source:         "manual";
+  updatedAt:      string;
 }
 
 export type ManualOverrideStore = Record<string, ManualOverride>;
