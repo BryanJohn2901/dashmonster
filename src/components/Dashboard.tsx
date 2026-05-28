@@ -2991,7 +2991,7 @@ export function Dashboard({
                         <div className="space-y-3">
                           {([
                             { label: "Financeiro",  ids: ["investment", "revenue", "roas", "roi"] as const },
-                            { label: "Vendas",      ids: ["sales_total", "sales_ingresso", "sales_pos", "cpa_venda"] as const },
+                            { label: "Vendas",      ids: ["sales_total", "sales_ingresso", "cpa_ingresso", "sales_pos", "cpa_pos", "cpa_venda"] as const },
                             { label: "Eficiência",  ids: ["conversions", "leads", "cpa", "cpl", "ctr", "cpc", "cpm"] as const },
                             { label: "Volume",      ids: ["clicks", "impressions"] as const },
                           ] as const).map(({ label, ids }) => (
@@ -3093,10 +3093,10 @@ export function Dashboard({
                     ),
                   ].filter(Boolean);
 
-                  /* Tier 1.5 — Vendas Eduzz */
-                  const cpvEduzz = eduzzTotals.salesTotal > 0
-                    ? totals.totalInvestment / eduzzTotals.salesTotal
-                    : 0;
+                  /* Tier 1.5 — Vendas Eduzz + CPAs derivados (auto-calculados) */
+                  const cpvEduzz     = eduzzTotals.salesTotal     > 0 ? totals.totalInvestment / eduzzTotals.salesTotal     : 0;
+                  const cpaIngresso  = eduzzTotals.salesIngresso  > 0 ? totals.totalInvestment / eduzzTotals.salesIngresso  : 0;
+                  const cpaPos       = eduzzTotals.salesPos       > 0 ? totals.totalInvestment / eduzzTotals.salesPos       : 0;
                   const tierVendas = [
                     isMetricVisible("sales_ingresso") && (
                       <KpiCard key="sales_ingresso" tier={2}
@@ -3106,6 +3106,14 @@ export function Dashboard({
                         editable={true}
                         isManual={(manualOverrides[eduzzEditKey]?.salesIngresso ?? 0) > 0}
                         onEdit={(v) => eduzzEditKey && setManualOverride(eduzzEditKey, { salesIngresso: v })}
+                      />
+                    ),
+                    isMetricVisible("cpa_ingresso") && (
+                      <KpiCard key="cpa_ingresso" tier={2}
+                        title="Custo p/ Venda de Ingresso" value={cpaIngresso > 0 ? formatCurrency(cpaIngresso) : "—"}
+                        subtitle="Investimento ÷ V. Ingresso"
+                        icon={BadgeDollarSign} accentColor="amber"
+                        invertTrend
                       />
                     ),
                     isMetricVisible("sales_pos") && (
@@ -3118,10 +3126,18 @@ export function Dashboard({
                         onEdit={(v) => eduzzEditKey && setManualOverride(eduzzEditKey, { salesPos: v })}
                       />
                     ),
+                    isMetricVisible("cpa_pos") && (
+                      <KpiCard key="cpa_pos" tier={2}
+                        title="Custo p/ Venda de Pós" value={cpaPos > 0 ? formatCurrency(cpaPos) : "—"}
+                        subtitle="Investimento ÷ V. de Pós"
+                        icon={BadgeDollarSign} accentColor="amber"
+                        invertTrend
+                      />
+                    ),
                     isMetricVisible("cpa_venda") && (
                       <KpiCard key="cpa_venda" tier={2}
                         title="Custo por Venda" value={cpvEduzz > 0 ? formatCurrency(cpvEduzz) : "—"}
-                        subtitle="Investimento ÷ Vendas"
+                        subtitle="Investimento ÷ Vendas Total"
                         icon={BadgeDollarSign} accentColor="amber"
                         invertTrend
                       />
