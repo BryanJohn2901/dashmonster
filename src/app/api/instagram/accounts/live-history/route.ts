@@ -1,27 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { decryptToken } from "@/lib/crypto";
+import { META_API_VERSION, daysAgoStr as daysAgo, todayStr, toUnix } from "@/lib/meta";
 import type { IGHistoryPoint } from "@/app/api/instagram/history/route";
 
-const META_API_VERSION = "v21.0";
-
-function supabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-  if (!url || !key) throw new Error("Supabase não configurado.");
-  return createClient(url, key);
-}
-
-function daysAgo(n: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return d.toISOString().split("T")[0]!;
-}
-function todayStr(): string {
-  return new Date().toISOString().split("T")[0]!;
-}
-function toUnix(dateStr: string): number {
-  return Math.floor(new Date(dateStr).getTime() / 1000);
-}
+export const runtime = "nodejs";
 
 type MetricValue = number | { follows?: number; unfollows?: number };
 type InsightsData = Array<{
@@ -45,7 +28,7 @@ export async function GET(request: NextRequest) {
   }
 
   // ── 1. Fetch stored account + token from Supabase ───────────────────────────
-  const sb = supabase();
+  const sb = supabaseAdmin();
   const { data: accountRow, error: accountErr } = await sb
     .from("instagram_accounts")
     .select("id, access_token, followers_count, follows_count, media_count")
@@ -63,11 +46,12 @@ export async function GET(request: NextRequest) {
     follows_count: number;
     media_count: number;
   };
+  const token = decryptToken(acc.access_token);
 
   // ── 1b. Quick token validation ───────────────────────────────────────────────
   const validateRes = await fetch(
     `https://graph.facebook.com/${META_API_VERSION}/${ibaId}?` +
-    new URLSearchParams({ access_token: acc.access_token, fields: "id,followers_count" }),
+    new URLSearchParams({ access_token: token, fields: "id,followers_count" }),
   );
   const validateJson = await validateRes.json() as { id?: string; error?: { message?: string; code?: number } };
   if (!validateRes.ok || validateJson.error) {
@@ -91,7 +75,7 @@ export async function GET(request: NextRequest) {
     fetch(
       `https://graph.facebook.com/${META_API_VERSION}/${ibaId}/insights?` +
       new URLSearchParams({
-        access_token: acc.access_token,
+        access_token: token,
         metric:       "follows_and_unfollows",
         period:       "day",
         since:        String(since),
@@ -101,7 +85,7 @@ export async function GET(request: NextRequest) {
     fetch(
       `https://graph.facebook.com/${META_API_VERSION}/${ibaId}/insights?` +
       new URLSearchParams({
-        access_token: acc.access_token,
+        access_token: token,
         metric:       "reach,impressions",
         period:       "day",
         since:        String(since),
@@ -111,7 +95,7 @@ export async function GET(request: NextRequest) {
     fetch(
       `https://graph.facebook.com/${META_API_VERSION}/${ibaId}/insights?` +
       new URLSearchParams({
-        access_token: acc.access_token,
+        access_token: token,
         metric:       "profile_views",
         period:       "day",
         since:        String(since),

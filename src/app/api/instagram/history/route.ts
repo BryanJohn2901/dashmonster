@@ -129,7 +129,7 @@ export async function POST(request: NextRequest) {
   const sb = supabase();
   const { data, error } = await sb
     .from("instagram_accounts")
-    .select("id, instagram_business_account_id, username, name, profile_picture_url, followers_count, follows_count, media_count, is_verified, engagement_rate, is_favorite, group_id, updated_at")
+    .select("id, instagram_business_account_id, username, name, profile_picture_url, followers_count, follows_count, media_count, is_verified, engagement_rate, is_favorite, group_id, connection_status, updated_at")
     .order("followers_count", { ascending: false });
 
   if (error) {
@@ -163,6 +163,7 @@ export async function POST(request: NextRequest) {
     engagementRate:             Number(raw.engagement_rate),
     isFavorite:                 Boolean(raw.is_favorite),
     groupId:                    raw.group_id as string | null,
+    connectionStatus:           (raw.connection_status as string | null) ?? "active",
     updatedAt:                  raw.updated_at as string,
     historyDays:                historyCounts.get(raw.id as string) ?? 0,
   }));

@@ -14,42 +14,6 @@ import type { IGHistoryPoint, IGTrackedAccount } from "@/app/api/instagram/histo
 // ─── Gradiente IG ────────────────────────────────────────────────────────────
 const IG_GRADIENT = "linear-gradient(135deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%)";
 
-// ─── Mock ────────────────────────────────────────────────────────────────────
-const now = Date.now();
-const MOCK_ACCOUNT: IGTrackedAccount = {
-  id: "mock",
-  instagramBusinessAccountId: "mock",
-  username: "perfil_demo",
-  name: "Perfil Demo",
-  biography: "Dados de demonstração — conecte o Supabase para ver dados reais.",
-  profilePictureUrl: null,
-  followersCount: 41614,
-  followsCount: 12,
-  mediaCount: 1313,
-  isVerified: false,
-  engagementRate: 0.13,
-  isFavorite: false,
-  groupId: null,
-  updatedAt: new Date().toISOString(),
-};
-const MOCK_HISTORY: IGHistoryPoint[] = Array.from({ length: 30 }, (_, i) => {
-  const base   = 40283 + i * 44;
-  const gained = Math.round(20 + Math.random() * 140);
-  const lost   = Math.round(5  + Math.random() * 40);
-  return {
-    date:                 new Date(now - (29 - i) * 86400000).toISOString().split("T")[0]!,
-    followersCount:       base + gained,
-    followingCount:       12,
-    mediaCount:           1299 + Math.floor(i / 3),
-    dailyFollowersGained: gained,
-    dailyUnfollows:       lost,
-    profileViews:         Math.round(200 + Math.random() * 600),
-    reach:                Math.round(1000 + Math.random() * 3000),
-    impressions:          Math.round(2000 + Math.random() * 8000),
-    engagementRate:       parseFloat((0.12 + Math.random() * 0.06).toFixed(4)),
-  };
-});
-
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function fmtNum(n: number) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -181,7 +145,8 @@ export function PerfilAtivoPanel({
   const [account, setAccount]       = useState<IGTrackedAccount | null>(null);
   const [history, setHistory]       = useState<IGHistoryPoint[]>([]);
   const [loading, setLoading]       = useState(true);
-  const [isMock, setIsMock]         = useState(false);
+  const [errorMsg, setErrorMsg]     = useState<string | null>(null);
+  const [connectionStatus, setConnectionStatus] = useState<string>("active");
   const [notFound, setNotFound]     = useState(false);
   const [liveDiag, setLiveDiag]     = useState<LiveDiag | null>(null);
   const [backfilling, setBackfilling] = useState(false);
@@ -189,17 +154,18 @@ export function PerfilAtivoPanel({
 
   useEffect(() => {
     if (!igUserId) return;
-    setLoading(true); setNotFound(false); setIsMock(false);
+    setLoading(true); setNotFound(false); setErrorMsg(null);
 
     fetch("/api/instagram/history", { method: "POST" })
       .then(r => r.json())
-      .then(async (accounts: IGTrackedAccount[]) => {
+      .then(async (accounts: Array<IGTrackedAccount & { connectionStatus?: string }>) => {
         const match = accounts.find(a => a.instagramBusinessAccountId === igUserId);
         if (!match) {
           setNotFound(true);
           setLoading(false);
           return;
         }
+        setConnectionStatus(match.connectionStatus ?? "active");
 
         // 1. Load stored Supabase history
         const params = new URLSearchParams({ accountId: match.id });
@@ -252,10 +218,8 @@ export function PerfilAtivoPanel({
         setHistory(storedHistory);
         setLoading(false);
       })
-      .catch(() => {
-        setAccount(MOCK_ACCOUNT);
-        setHistory(MOCK_HISTORY);
-        setIsMock(true);
+      .catch((e) => {
+        setErrorMsg(e instanceof Error ? e.message : "Falha ao carregar dados.");
         setLoading(false);
       });
   }, [igUserId, dateFrom, dateTo]);
@@ -343,11 +307,29 @@ export function PerfilAtivoPanel({
     Saldo:   p.dailyFollowersGained - (p.dailyUnfollows ?? 0),
   }));
 
+  const reconnect = () => { window.location.href = "/api/instagram/oauth/start"; };
+
   // ── Loading ───────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
         <Loader2 size={20} className="animate-spin" style={{ color: "var(--dm-text-tertiary)" }} />
+      </div>
+    );
+  }
+
+  // ── Error ─────────────────────────────────────────────────────────────────
+  if (errorMsg) {
+    return (
+      <div className="flex flex-col items-center gap-3 py-16 text-center">
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl"
+          style={{ background: "rgba(238,93,80,0.15)" }}>
+          <Zap size={22} style={{ color: "#EE5D50" }} />
+        </div>
+        <p className="text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>
+          Não foi possível carregar os dados
+        </p>
+        <p className="max-w-xs text-xs" style={{ color: "var(--dm-text-tertiary)" }}>{errorMsg}</p>
       </div>
     );
   }
@@ -377,19 +359,45 @@ export function PerfilAtivoPanel({
   return (
     <div className="space-y-5 pt-3">
 
-      {/* ── DEMO badge ── */}
-      {isMock && (
-        <div className="flex items-center gap-2 rounded-lg border px-3 py-2"
-          style={{ background: "rgba(245,158,11,0.08)", borderColor: "rgba(245,158,11,0.25)" }}>
-          <Zap size={12} style={{ color: "#F59E0B" }} />
-          <span className="text-xs" style={{ color: "#F59E0B" }}>
-            Dados de demonstração — Supabase não acessível.
-          </span>
+      {/* ── Reconnect banner (token expirado) ── */}
+      {connectionStatus !== "active" && (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border px-3 py-2.5"
+          style={{ background: "rgba(238,93,80,0.08)", borderColor: "rgba(238,93,80,0.25)" }}>
+          <div className="flex-1 min-w-0">
+            <p className="text-[12px] font-semibold" style={{ color: "#EE5D50" }}>
+              Conexão expirada
+            </p>
+            <p className="text-[11px]" style={{ color: "var(--dm-text-secondary)" }}>
+              O token desta conta deixou de funcionar. Reconecte para retomar a coleta diária.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={reconnect}
+            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-semibold transition-opacity hover:opacity-80"
+            style={{ background: "rgba(238,93,80,0.15)", color: "#EE5D50" }}>
+            Reconectar Instagram
+          </button>
+        </div>
+      )}
+
+      {/* ── Sincronizando (sem histórico ainda) ── */}
+      {history.length === 0 && (
+        <div className="flex items-start gap-2 rounded-lg border px-3 py-2.5"
+          style={{ background: "rgba(96,165,250,0.07)", borderColor: "rgba(96,165,250,0.2)" }}>
+          <Loader2 size={14} className="mt-0.5 animate-spin" style={{ color: "#60A5FA" }} />
+          <div className="space-y-0.5">
+            <p className="text-[12px] font-semibold" style={{ color: "#60A5FA" }}>Sincronizando…</p>
+            <p className="text-[11px]" style={{ color: "var(--dm-text-secondary)" }}>
+              Ainda não há histórico salvo para esta conta. Os dados aparecem após o primeiro
+              sync diário ou ao usar o botão de importar histórico abaixo.
+            </p>
+          </div>
         </div>
       )}
 
       {/* ── Live API diagnostic bar ── */}
-      {!isMock && liveDiag && (
+      {liveDiag && (
         <div className="flex flex-wrap items-center gap-3 rounded-lg border px-3 py-2 text-[11px]"
           style={
             !liveDiag.tokenValid
@@ -430,7 +438,7 @@ export function PerfilAtivoPanel({
       )}
 
       {/* ── Scarcity banner when data accumulating ── */}
-      {!isMock && history.length < 7 && liveDiag && liveDiag.tokenValid &&
+      {history.length < 7 && liveDiag && liveDiag.tokenValid &&
         liveDiag.metricPts && Object.values(liveDiag.metricPts).every(v => v <= 1) && (
         <div className="flex items-start gap-2 rounded-lg border px-3 py-2.5"
           style={{ background: "rgba(96,165,250,0.07)", borderColor: "rgba(96,165,250,0.2)" }}>
@@ -453,7 +461,7 @@ export function PerfilAtivoPanel({
       )}
 
       {/* ── Backfill histórico retroativo ── */}
-      {!isMock && (
+      {(
         <div className="flex flex-wrap items-center gap-3 rounded-lg border px-3 py-2.5"
           style={{ background: "rgba(168,85,247,0.06)", borderColor: "rgba(168,85,247,0.2)" }}>
           <div className="flex-1 min-w-0">

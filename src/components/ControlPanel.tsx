@@ -1188,83 +1188,81 @@ interface IgRegisterStatus {
   daysBackfilled?: number;
 }
 
+interface IgConnectedAccount {
+  id: string;
+  instagramBusinessAccountId: string;
+  username: string;
+  name: string;
+  followersCount: number;
+  connectionStatus: string;
+  historyDays: number;
+}
+
 function InstagramIntegrationSection() {
-  const [igToken,    setIgToken]   = useState(() => loadIgToken());
-  const [igVisible,  setIgVisible] = useState(false);
-  const [igSaved,    setIgSaved]   = useState(false);
-  const [customIba,  setCustomIba] = useState("");
-  const [statuses,   setStatuses]  = useState<Record<string, IgRegisterStatus>>({});
-  const [syncing,    setSyncing]   = useState(false);
+  const [accounts,   setAccounts]   = useState<IgConnectedAccount[]>([]);
+  const [loading,    setLoading]    = useState(true);
+  const [syncing,    setSyncing]    = useState(false);
   const [syncResult, setSyncResult] = useState<string | null>(null);
+  const [banner,     setBanner]     = useState<{ kind: "ok" | "err" | "empty"; text: string } | null>(null);
+  const [refreshingId, setRefreshingId] = useState<string | null>(null);
 
-  // Contas IG descobertas via Meta API
-  const [igAccounts,      setIgAccounts]      = useState<Array<{ id: string; username: string; name: string; followersCount: number }>>([]);
-  const [loadingAccounts, setLoadingAccounts] = useState(false);
+  // Advanced manual fallback
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [igToken,    setIgToken]    = useState(() => loadIgToken());
+  const [igVisible,  setIgVisible]  = useState(false);
+  const [igSaved,    setIgSaved]    = useState(false);
+  const [customIba,  setCustomIba]  = useState("");
+  const [manualStatuses, setManualStatuses] = useState<Record<string, IgRegisterStatus>>({});
 
-  const fetchIgAccounts = useCallback(async (token: string) => {
-    if (!token.trim()) { setIgAccounts([]); return; }
-    setLoadingAccounts(true);
+  const loadAccounts = useCallback(async () => {
+    setLoading(true);
     try {
-      const res  = await fetch(`/api/instagram/accounts?accessToken=${encodeURIComponent(token.trim())}`);
-      const json = await res.json() as Array<{ id: string; username: string; name: string; followersCount: number }> | { error?: string };
-      if (Array.isArray(json)) setIgAccounts(json);
-    } catch { /* silent */ } finally { setLoadingAccounts(false); }
+      const res  = await fetch("/api/instagram/history", { method: "POST" });
+      const json = await res.json() as IgConnectedAccount[] | { error?: string };
+      if (Array.isArray(json)) setAccounts(json);
+    } catch { /* silent */ } finally { setLoading(false); }
   }, []);
 
-  const handleSaveToken = () => {
-    saveIgToken(igToken.trim());
-    setIgSaved(true);
-    setTimeout(() => setIgSaved(false), 2000);
-    void fetchIgAccounts(igToken.trim());
+  // Lê o resultado do callback OAuth (?ig_oauth=...) e carrega contas
+  useEffect(() => {
+    void loadAccounts();
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const status = params.get("ig_oauth");
+      if (status) {
+        if (status === "connected") {
+          const count = params.get("count") ?? "0";
+          setBanner({ kind: "ok", text: `${count} conta(s) conectada(s) com sucesso!` });
+        } else if (status === "empty") {
+          setBanner({ kind: "empty", text: "Nenhuma conta Instagram Business encontrada nessa conta Facebook." });
+        } else {
+          setBanner({ kind: "err", text: params.get("reason") ?? "Falha ao conectar." });
+        }
+        // limpa a query da URL
+        params.delete("ig_oauth"); params.delete("count"); params.delete("reason");
+        const clean = window.location.pathname + (params.toString() ? `?${params}` : "");
+        window.history.replaceState({}, "", clean);
+      }
+    } catch { /* silent */ }
+  }, [loadAccounts]);
+
+  const connectOAuth = () => {
+    window.location.href = "/api/instagram/oauth/start";
   };
 
-  // Carrega contas ao montar se já há token salvo + status do Supabase
-  useEffect(() => {
-    void fetchIgAccounts(igToken);
-    // Pre-popula statuses com contas já registradas no Supabase
-    fetch("/api/instagram/history", { method: "POST" })
-      .then(r => r.json())
-      .then((accounts: Array<{ instagramBusinessAccountId: string; username: string; historyDays?: number }>) => {
-        if (!Array.isArray(accounts)) return;
-        setStatuses(prev => {
-          const next = { ...prev };
-          for (const acc of accounts) {
-            const id = acc.instagramBusinessAccountId;
-            if (!next[id] || next[id]!.state === "idle") {
-              next[id] = { ibaId: id, state: "success", daysBackfilled: acc.historyDays ?? 0, message: `@${acc.username} registrado` };
-            }
-          }
-          return next;
-        });
-      })
-      .catch(() => {/* silent */});
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const doRegister = async (ibaId: string) => {
-    const token = igToken.trim();
-    if (!token || !ibaId.trim()) return;
-    setStatuses(prev => ({ ...prev, [ibaId]: { ibaId, state: "loading" } }));
+  const doRefresh = async (accountId: string) => {
+    setRefreshingId(accountId);
     try {
-      const res = await fetch("/api/instagram/accounts/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ instagramBusinessAccountId: ibaId.trim(), accessToken: token }),
+      const res = await fetch("/api/instagram/accounts/refresh", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accountId }),
       });
-      const json = await res.json() as { account?: { username: string }; daysBackfilled?: number; error?: string; _diag?: { metricsFound: string[]; errorMsg: string | null } };
-      if (!res.ok || json.error) throw new Error(json.error ?? "Erro desconhecido");
-      const diagMsg = json._diag ? ` [diag: ${(json._diag.errorMsg ?? json._diag.metricsFound.join(", ")) || "sem métricas"}]` : "";
-      setStatuses(prev => ({
-        ...prev,
-        [ibaId]: { ibaId, state: "success", daysBackfilled: json.daysBackfilled, message: `@${json.account?.username ?? "?"} registrado${diagMsg}` },
-      }));
-      // Limpa campo manual após sucesso
-      if (ibaId === customIba.trim()) setCustomIba("");
+      const json = await res.json() as { error?: string };
+      if (!res.ok || json.error) throw new Error(json.error ?? "Falha");
+      await loadAccounts();
     } catch (e) {
-      setStatuses(prev => ({
-        ...prev,
-        [ibaId]: { ibaId, state: "error", message: e instanceof Error ? e.message : "Falha ao registrar" },
-      }));
-    }
+      setBanner({ kind: "err", text: e instanceof Error ? e.message : "Falha ao sincronizar conta." });
+    } finally { setRefreshingId(null); }
   };
 
   const doSyncAll = async () => {
@@ -1273,10 +1271,49 @@ function InstagramIntegrationSection() {
       const res  = await fetch("/api/instagram/accounts/sync-all", { method: "POST" });
       const json = await res.json() as { synced?: number; failed?: number; error?: string };
       if (!res.ok || json.error) throw new Error(json.error ?? "Erro desconhecido");
-      setSyncResult(`${json.synced ?? 0} conta${(json.synced ?? 0) !== 1 ? "s" : ""} sincronizada${(json.synced ?? 0) !== 1 ? "s" : ""}${(json.failed ?? 0) > 0 ? ` · ${json.failed} falha${(json.failed ?? 0) !== 1 ? "s" : ""}` : ""}`);
+      setSyncResult(`${json.synced ?? 0} sincronizada(s)${(json.failed ?? 0) > 0 ? ` · ${json.failed} falha(s)` : ""}`);
+      await loadAccounts();
     } catch (e) {
       setSyncResult(`Erro: ${e instanceof Error ? e.message : "falha"}`);
     } finally { setSyncing(false); }
+  };
+
+  // ── Manual fallback (avançado) ──────────────────────────────────────────────
+  const handleSaveToken = () => {
+    saveIgToken(igToken.trim());
+    setIgSaved(true);
+    setTimeout(() => setIgSaved(false), 2000);
+  };
+
+  const doManualRegister = async (ibaId: string) => {
+    const token = igToken.trim();
+    if (!token || !ibaId.trim()) return;
+    setManualStatuses(prev => ({ ...prev, [ibaId]: { ibaId, state: "loading" } }));
+    try {
+      const res = await fetch("/api/instagram/accounts/register", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ instagramBusinessAccountId: ibaId.trim(), accessToken: token }),
+      });
+      const json = await res.json() as { account?: { username: string }; daysBackfilled?: number; error?: string };
+      if (!res.ok || json.error) throw new Error(json.error ?? "Erro desconhecido");
+      setManualStatuses(prev => ({
+        ...prev,
+        [ibaId]: { ibaId, state: "success", daysBackfilled: json.daysBackfilled, message: `@${json.account?.username ?? "?"} registrado` },
+      }));
+      setCustomIba("");
+      await loadAccounts();
+    } catch (e) {
+      setManualStatuses(prev => ({
+        ...prev,
+        [ibaId]: { ibaId, state: "error", message: e instanceof Error ? e.message : "Falha ao registrar" },
+      }));
+    }
+  };
+
+  const statusChip = (s: string) => {
+    if (s === "expired") return { label: "Reconectar", bg: "rgba(238,87,87,0.12)", color: "#EE5757" };
+    if (s === "error")   return { label: "Erro",       bg: "rgba(255,181,71,0.14)", color: "#FFB547" };
+    return { label: "Ativo", bg: "rgba(5,205,153,0.12)", color: "#05CD99" };
   };
 
   return (
@@ -1287,143 +1324,164 @@ function InstagramIntegrationSection() {
           <AtSign size={15} style={{ color: "#E1306C" }} />
         </div>
         <div>
-          <p className="text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>Instagram App</p>
-          <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>Token do App IG Business Login</p>
+          <p className="text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>Instagram</p>
+          <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>Conecte via Facebook — sem colar token</p>
         </div>
       </div>
 
-      <div className="space-y-2">
-        {/* Token input */}
-        <div className="relative">
-          <input
-            type={igVisible ? "text" : "password"}
-            value={igToken}
-            onChange={e => setIgToken(e.target.value)}
-            placeholder="EAAxxxxxxxxx… (token IG Business Login)"
-            className="h-9 w-full rounded-lg border pr-9 pl-3 text-xs font-mono outline-none focus:ring-1"
-            style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
-          />
-          <button type="button" onClick={() => setIgVisible(v => !v)}
-            className="absolute right-2 top-1/2 -translate-y-1/2"
-            style={{ color: "var(--dm-text-tertiary)" }}>
-            {igVisible ? <EyeOff size={13} /> : <Eye size={13} />}
-          </button>
+      {/* Banner do resultado OAuth */}
+      {banner && (
+        <div className="mb-3 flex items-start gap-2 rounded-lg border p-2.5 text-[11px]"
+          style={{
+            borderColor: banner.kind === "ok" ? "rgba(5,205,153,0.4)" : banner.kind === "empty" ? "var(--dm-border-default)" : "rgba(238,87,87,0.4)",
+            backgroundColor: banner.kind === "ok" ? "rgba(5,205,153,0.08)" : "var(--dm-bg-elevated)",
+            color: banner.kind === "ok" ? "#05CD99" : banner.kind === "err" ? "#EE5757" : "var(--dm-text-secondary)",
+          }}>
+          {banner.kind === "ok" ? <CheckCircle2 size={13} className="mt-px shrink-0" /> : <XCircle size={13} className="mt-px shrink-0" />}
+          <span className="flex-1">{banner.text}</span>
+          <button type="button" onClick={() => setBanner(null)} style={{ color: "inherit" }}><X size={12} /></button>
         </div>
+      )}
 
-        <button type="button" onClick={handleSaveToken} disabled={!igToken.trim()}
-          className="flex h-8 w-full items-center justify-center gap-1 rounded-lg text-xs font-bold text-white transition disabled:opacity-50"
-          style={{ backgroundColor: igSaved ? "#05CD99" : "#E1306C" }}>
-          {igSaved ? <CheckCircle2 size={11} /> : <Save size={11} />}
-          {igSaved ? "Token salvo!" : "Salvar token do Instagram"}
-        </button>
+      {/* Botão Conectar (OAuth) */}
+      <button type="button" onClick={connectOAuth}
+        className="flex h-10 w-full items-center justify-center gap-2 rounded-lg text-xs font-bold text-white transition"
+        style={{ backgroundColor: "#E1306C" }}>
+        <Link2 size={14} />
+        Conectar Instagram
+      </button>
+      <p className="mt-1.5 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+        Faça login com o Facebook que administra as Páginas/contas. As contas conectam e atualizam sozinhas todo dia.
+      </p>
 
-        <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
-          💡 Token gerado pelo App <strong>AUTOTRAFFIC | PTA OFICIAL-IG</strong> — diferente do token Meta Ads.
-        </p>
-      </div>
-
-      {/* Register per IBA ID — busca + fallback manual */}
+      {/* Contas conectadas */}
       <div className="mt-4 space-y-2">
+        <div className="flex items-center justify-between">
           <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>
-            Registrar contas
+            Contas conectadas
           </p>
-
-          {/* Search / manual input */}
-          <div className="relative">
-            <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--dm-text-tertiary)" }} />
-            <input
-              type="text"
-              value={customIba}
-              onChange={e => setCustomIba(e.target.value)}
-              placeholder="Buscar por nome, @usuário ou ID…"
-              className="h-8 w-full rounded-lg border pl-7 pr-3 text-[11px] outline-none"
-              style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
-            />
-          </div>
-
-          {/* Contas descobertas via Meta API */}
-          {loadingAccounts && (
-            <div className="flex items-center gap-2 py-1" style={{ color: "var(--dm-text-tertiary)" }}>
-              <Loader2 size={11} className="animate-spin" />
-              <span className="text-[10px]">Buscando contas...</span>
-            </div>
-          )}
-          {igAccounts.filter(acc => {
-            if (!customIba.trim()) return true;
-            const q = customIba.trim().toLowerCase();
-            return acc.name.toLowerCase().includes(q)
-              || acc.username.toLowerCase().includes(q)
-              || acc.id.includes(q);
-          }).map(acc => {
-            const ibaId  = acc.id;
-            const status = statuses[ibaId];
-            return (
-              <div key={ibaId} className="flex items-center gap-2 rounded-xl border p-2.5"
-                style={{ borderColor: "var(--dm-border-subtle)", backgroundColor: "var(--dm-bg-elevated)" }}>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[11px] font-semibold truncate" style={{ color: "var(--dm-text-primary)" }}>
-                    {acc.name}
-                    {acc.username && (
-                      <span className="ml-1.5 font-normal" style={{ color: "var(--dm-text-tertiary)" }}>@{acc.username}</span>
-                    )}
-                  </p>
-                  <p className="text-[10px] font-mono" style={{ color: "var(--dm-text-tertiary)" }}>{ibaId}</p>
-                </div>
-                {status?.state === "success" && (
-                  <span className="rounded-full px-2 py-0.5 text-[10px] font-bold"
-                    style={{ background: "rgba(5,205,153,0.12)", color: "#05CD99" }}>
-                    ✓ {status.daysBackfilled}d
-                  </span>
-                )}
-                {status?.state === "error" && (
-                  <span className="text-[10px] text-red-500 truncate max-w-[100px]" title={status.message}>{status.message}</span>
-                )}
-                <button type="button"
-                  onClick={() => void doRegister(ibaId)}
-                  disabled={!igToken.trim() || status?.state === "loading"}
-                  className="flex h-7 items-center gap-1 rounded-lg px-2.5 text-[10px] font-bold text-white transition disabled:opacity-50 shrink-0"
-                  style={{ backgroundColor: status?.state === "success" ? "#05CD99" : "#E1306C" }}>
-                  {status?.state === "loading" ? <Loader2 size={10} className="animate-spin" /> : null}
-                  {status?.state === "success" ? "Re-registrar" : "Registrar"}
-                </button>
-              </div>
-            );
-          })}
-
-          {/* Botão aparece só quando input parece ID numérico (não encontrado na lista) */}
-          {customIba.trim() && /^\d{10,}$/.test(customIba.trim()) && !igAccounts.find(a => a.id === customIba.trim()) && (
-            <div className="flex gap-2 items-center">
-              <span className="flex-1 text-[10px] font-mono truncate" style={{ color: "var(--dm-text-tertiary)" }}>{customIba.trim()}</span>
-              <button type="button"
-                onClick={() => { void doRegister(customIba.trim()); }}
-                disabled={!igToken.trim() || statuses[customIba.trim()]?.state === "loading"}
-                className="flex h-7 items-center gap-1 rounded-lg px-2.5 text-[10px] font-bold text-white transition disabled:opacity-50 shrink-0"
-                style={{ backgroundColor: statuses[customIba.trim()]?.state === "success" ? "#05CD99" : "#E1306C" }}>
-                {statuses[customIba.trim()]?.state === "loading" ? <Loader2 size={10} className="animate-spin" /> : <Plus size={10} />}
-                Registrar ID
-              </button>
-            </div>
-          )}
-          {statuses[customIba.trim()]?.state === "success" && /^\d{10,}$/.test(customIba.trim()) && (
-            <p className="text-[10px]" style={{ color: "#05CD99" }}>
-              ✓ {statuses[customIba.trim()].message} · {statuses[customIba.trim()].daysBackfilled} dias importados
-            </p>
-          )}
-          {statuses[customIba.trim()]?.state === "error" && /^\d{10,}$/.test(customIba.trim()) && (
-            <p className="text-[10px] text-red-500">{statuses[customIba.trim()].message}</p>
-          )}
+          {loading && <Loader2 size={11} className="animate-spin" style={{ color: "var(--dm-text-tertiary)" }} />}
         </div>
+
+        {!loading && accounts.length === 0 && (
+          <p className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
+            Nenhuma conta conectada ainda.
+          </p>
+        )}
+
+        {accounts.map(acc => {
+          const chip = statusChip(acc.connectionStatus);
+          return (
+            <div key={acc.id} className="flex items-center gap-2 rounded-xl border p-2.5"
+              style={{ borderColor: "var(--dm-border-subtle)", backgroundColor: "var(--dm-bg-elevated)" }}>
+              <div className="flex-1 min-w-0">
+                <p className="text-[11px] font-semibold truncate" style={{ color: "var(--dm-text-primary)" }}>
+                  {acc.name}
+                  {acc.username && (
+                    <span className="ml-1.5 font-normal" style={{ color: "var(--dm-text-tertiary)" }}>@{acc.username}</span>
+                  )}
+                </p>
+                <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                  {acc.followersCount.toLocaleString("pt-BR")} seguidores · {acc.historyDays}d histórico
+                </p>
+              </div>
+              <span className="rounded-full px-2 py-0.5 text-[10px] font-bold"
+                style={{ background: chip.bg, color: chip.color }}>
+                {chip.label}
+              </span>
+              {acc.connectionStatus === "expired" ? (
+                <button type="button" onClick={connectOAuth}
+                  className="flex h-7 items-center gap-1 rounded-lg px-2.5 text-[10px] font-bold text-white transition shrink-0"
+                  style={{ backgroundColor: "#E1306C" }}>
+                  <Link2 size={10} /> Reconectar
+                </button>
+              ) : (
+                <button type="button" onClick={() => void doRefresh(acc.id)} disabled={refreshingId === acc.id}
+                  className="flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-semibold transition disabled:opacity-50 shrink-0"
+                  style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>
+                  {refreshingId === acc.id ? <Loader2 size={10} className="animate-spin" /> : <RefreshCw size={10} />}
+                  Atualizar
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
 
       {/* Sync All */}
-      <div className="mt-3">
-        <button type="button" onClick={() => void doSyncAll()} disabled={syncing}
-          className="flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border text-xs font-semibold transition disabled:opacity-50"
-          style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>
-          {syncing ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
-          Sincronizar todas as contas agora
+      {accounts.length > 0 && (
+        <div className="mt-3">
+          <button type="button" onClick={() => void doSyncAll()} disabled={syncing}
+            className="flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border text-xs font-semibold transition disabled:opacity-50"
+            style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>
+            {syncing ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+            Sincronizar todas agora
+          </button>
+          {syncResult && (
+            <p className="mt-1 text-[10px] text-center" style={{ color: "var(--dm-text-tertiary)" }}>{syncResult}</p>
+          )}
+        </div>
+      )}
+
+      {/* Avançado: token manual (fallback) */}
+      <div className="mt-4 border-t pt-3" style={{ borderColor: "var(--dm-border-subtle)" }}>
+        <button type="button" onClick={() => setShowAdvanced(v => !v)}
+          className="flex w-full items-center justify-between text-[10px] font-bold uppercase tracking-widest"
+          style={{ color: "var(--dm-text-tertiary)" }}>
+          Avançado · token manual
+          {showAdvanced ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
         </button>
-        {syncResult && (
-          <p className="mt-1 text-[10px] text-center" style={{ color: "var(--dm-text-tertiary)" }}>{syncResult}</p>
+
+        {showAdvanced && (
+          <div className="mt-2 space-y-2">
+            <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+              Use só se o OAuth não estiver disponível. Cole um token de longa duração e registre pelo ID da conta.
+            </p>
+            <div className="relative">
+              <input
+                type={igVisible ? "text" : "password"}
+                value={igToken}
+                onChange={e => setIgToken(e.target.value)}
+                placeholder="EAAxxxxxxxxx…"
+                className="h-9 w-full rounded-lg border pr-9 pl-3 text-xs font-mono outline-none focus:ring-1"
+                style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
+              />
+              <button type="button" onClick={() => setIgVisible(v => !v)}
+                className="absolute right-2 top-1/2 -translate-y-1/2" style={{ color: "var(--dm-text-tertiary)" }}>
+                {igVisible ? <EyeOff size={13} /> : <Eye size={13} />}
+              </button>
+            </div>
+            <button type="button" onClick={handleSaveToken} disabled={!igToken.trim()}
+              className="flex h-8 w-full items-center justify-center gap-1 rounded-lg text-xs font-bold text-white transition disabled:opacity-50"
+              style={{ backgroundColor: igSaved ? "#05CD99" : "#8392AB" }}>
+              {igSaved ? <CheckCircle2 size={11} /> : <Save size={11} />}
+              {igSaved ? "Token salvo!" : "Salvar token"}
+            </button>
+
+            <div className="relative">
+              <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--dm-text-tertiary)" }} />
+              <input
+                type="text"
+                value={customIba}
+                onChange={e => setCustomIba(e.target.value)}
+                placeholder="ID da conta Instagram Business…"
+                className="h-8 w-full rounded-lg border pl-7 pr-3 text-[11px] outline-none"
+                style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
+              />
+            </div>
+            {customIba.trim() && /^\d{6,}$/.test(customIba.trim()) && (
+              <button type="button" onClick={() => void doManualRegister(customIba.trim())}
+                disabled={!igToken.trim() || manualStatuses[customIba.trim()]?.state === "loading"}
+                className="flex h-8 w-full items-center justify-center gap-1 rounded-lg px-2.5 text-[11px] font-bold text-white transition disabled:opacity-50"
+                style={{ backgroundColor: manualStatuses[customIba.trim()]?.state === "success" ? "#05CD99" : "#8392AB" }}>
+                {manualStatuses[customIba.trim()]?.state === "loading" ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
+                Registrar conta
+              </button>
+            )}
+            {manualStatuses[customIba.trim()]?.state === "error" && (
+              <p className="text-[10px] text-red-500">{manualStatuses[customIba.trim()].message}</p>
+            )}
+          </div>
         )}
       </div>
     </section>

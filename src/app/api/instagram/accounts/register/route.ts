@@ -1,26 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { encryptToken } from "@/lib/crypto";
+import { META_API_VERSION, daysAgoStr as daysAgo, todayStr, toUnix } from "@/lib/meta";
 
-const META_API_VERSION = "v21.0";
-
-function daysAgo(n: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return d.toISOString().split("T")[0]!;
-}
-function todayStr(): string {
-  return new Date().toISOString().split("T")[0]!;
-}
-function toUnix(dateStr: string): number {
-  return Math.floor(new Date(dateStr).getTime() / 1000);
-}
-
-function supabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-  if (!url || !key) throw new Error("Supabase não configurado.");
-  return createClient(url, key);
-}
+export const runtime = "nodejs";
 
 /**
  * POST /api/instagram/accounts/register
@@ -90,7 +73,7 @@ export async function POST(request: NextRequest) {
   }
 
   // ── 2. Upsert into instagram_accounts ───────────────────────────────────────
-  const sb = supabase();
+  const sb = supabaseAdmin();
 
   const { data: accountData, error: accountError } = await sb
     .from("instagram_accounts")
@@ -106,7 +89,8 @@ export async function POST(request: NextRequest) {
         media_count:        profileJson.media_count     ?? 0,
         is_verified:        false,
         engagement_rate:    0,
-        access_token:       accessToken,
+        access_token:       encryptToken(accessToken),
+        connection_status:  "active",
         updated_at:         new Date().toISOString(),
       },
       { onConflict: "instagram_business_account_id" },
@@ -187,9 +171,9 @@ export async function POST(request: NextRequest) {
     followers_count:        followersNow,
     following_count:        followsNow,
     media_count:            mediaNow,
-    daily_followers_gained: gainsMap.get(date)        ?? 0,
-    daily_unfollows:        lossMap.get(date)          ?? 0,
-    profile_views:          profileViewsMap.get(date)  ?? 0,
+    daily_followers_gained: gainsMap.get(date)         ?? 0,
+    daily_unfollows:        lossMap.get(date)           ?? 0,
+    profile_views:          profileViewsMap.get(date)   ?? 0,
     reach:                  reachMap.get(date)          ?? 0,
     impressions:            impressionsMap.get(date)    ?? 0,
     engagement_rate:        0,

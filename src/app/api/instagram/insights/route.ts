@@ -1,18 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { decryptToken } from "@/lib/crypto";
+import { META_API_VERSION, daysAgoStr as daysAgo, todayStr, toUnix } from "@/lib/meta";
 
-const META_API_VERSION = "v21.0";
-
-function toUnix(dateStr: string): number {
-  return Math.floor(new Date(dateStr).getTime() / 1000);
-}
-function daysAgo(n: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return d.toISOString().split("T")[0]!;
-}
-function todayStr(): string {
-  return new Date().toISOString().split("T")[0]!;
-}
+export const runtime = "nodejs";
 
 type SeriesPoint = { x: number; y: number };
 
@@ -32,13 +23,30 @@ type SeriesPoint = { x: number; y: number };
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
-  const accessToken = searchParams.get("accessToken");
-  const igUserId    = searchParams.get("igUserId");
+  let accessToken = searchParams.get("accessToken");
+  const igUserId  = searchParams.get("igUserId");
 
-  if (!accessToken || !igUserId) {
+  if (!igUserId) {
+    return NextResponse.json({ error: "igUserId é obrigatório." }, { status: 400 });
+  }
+
+  // Pós-OAuth o cliente não tem token: resolve o token cifrado guardado no banco.
+  if (!accessToken) {
+    try {
+      const sb = supabaseAdmin();
+      const { data } = await sb
+        .from("instagram_accounts")
+        .select("access_token")
+        .eq("instagram_business_account_id", igUserId)
+        .maybeSingle();
+      if (data?.access_token) accessToken = decryptToken(data.access_token as string);
+    } catch { /* segue para o erro abaixo */ }
+  }
+
+  if (!accessToken) {
     return NextResponse.json(
-      { error: "accessToken e igUserId são obrigatórios." },
-      { status: 400 },
+      { error: "Conta não conectada (sem token). Reconecte o Instagram." },
+      { status: 401 },
     );
   }
 

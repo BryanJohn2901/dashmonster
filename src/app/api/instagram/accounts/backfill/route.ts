@@ -1,26 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { decryptToken } from "@/lib/crypto";
+import { META_API_VERSION, daysAgoStr as daysAgo, todayStr, toUnix } from "@/lib/meta";
 
-const META_API_VERSION = "v21.0";
-
-function supabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-  if (!url || !key) throw new Error("Supabase não configurado.");
-  return createClient(url, key);
-}
-
-function toUnix(dateStr: string): number {
-  return Math.floor(new Date(dateStr).getTime() / 1000);
-}
-function daysAgo(n: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return d.toISOString().split("T")[0]!;
-}
-function todayStr(): string {
-  return new Date().toISOString().split("T")[0]!;
-}
+export const runtime = "nodejs";
 
 type InsightValue = { value: number; end_time: string };
 type InsightsData = Array<{ name: string; values: InsightValue[] }>;
@@ -51,7 +34,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "ibaId é obrigatório." }, { status: 400 });
   }
 
-  const sb = supabase();
+  const sb = supabaseAdmin();
 
   // ── 1. Load account + token from Supabase ────────────────────────────────────
   const { data: accountRow, error: accountErr } = await sb
@@ -79,7 +62,7 @@ export async function POST(request: NextRequest) {
   const since30 = toUnix(daysAgo(30));
   const until   = toUnix(todayStr()) + 86400; // exclusive end = tomorrow
 
-  const baseParams = { access_token: acc.access_token, period: "day" };
+  const baseParams = { access_token: decryptToken(acc.access_token), period: "day" };
 
   const [metricsRes, followersRes, profileViewsRes] = await Promise.allSettled([
     fetch(

@@ -1,32 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { decryptToken } from "@/lib/crypto";
+import { todayStr, toUnix } from "@/lib/meta";
+import {
+  fetchProfile, fetchDailyInsights, fetchFollowsBreakdown, fetchEngagement, IGTokenError,
+} from "@/lib/instagramMetrics";
 
-const META_API_VERSION = "v21.0";
-
-function todayStr(): string {
-  return new Date().toISOString().split("T")[0]!;
-}
-function toUnix(dateStr: string): number {
-  return Math.floor(new Date(dateStr).getTime() / 1000);
-}
-
-function supabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-  if (!url || !key) throw new Error("Supabase não configurado.");
-  return createClient(url, key);
-}
+export const runtime = "nodejs";
 
 /**
  * POST /api/instagram/accounts/refresh
- *
- * Forces an immediate sync of a tracked Instagram account.
- * Reads the stored access_token from `instagram_accounts`, fetches today's
- * metrics from Meta, and upserts a row in `instagram_account_history`.
- *
- * Body: { accountId: string }  (Supabase UUID from instagram_accounts)
- *
- * Returns: { date, followersCount, dailyGained }
+ * Body: { accountId: string }
+ * Sincroniza imediatamente uma conta (snapshot de hoje). Usa token cifrado
+ * guardado no banco; nunca recebe token na requisição.
  */
 export async function POST(request: NextRequest) {
   let body: { accountId?: string };
@@ -41,149 +27,111 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "accountId é obrigatório." }, { status: 400 });
   }
 
-  const sb = supabase();
+  const sb = supabaseAdmin();
 
-  // ── 1. Load account + stored token ─────────────────────────────────────────
   const { data: account, error: loadErr } = await sb
     .from("instagram_accounts")
-    .select("id, instagram_business_account_id, access_token, followers_count, follows_count, media_count")
+    .select("id, instagram_business_account_id, access_token, followers_count")
     .eq("id", accountId)
     .single();
 
   if (loadErr || !account) {
-    return NextResponse.json(
-      { error: "Conta não encontrada." },
-      { status: 404 },
-    );
+    return NextResponse.json({ error: "Conta não encontrada." }, { status: 404 });
   }
 
-  const { instagram_business_account_id: ibaId, access_token: accessToken } = account as {
-    instagram_business_account_id: string;
-    access_token: string;
-    followers_count: number;
-    follows_count: number;
-    media_count: number;
-  };
+  const ibaId = (account as { instagram_business_account_id: string }).instagram_business_account_id;
+  let token: string;
+  try {
+    token = decryptToken((account as { access_token: string }).access_token);
+  } catch (e) {
+    return NextResponse.json({ error: `Token ilegível: ${String(e)}` }, { status: 500 });
+  }
 
   const today = todayStr();
   const since = toUnix(today);
   const until = since + 86400;
 
-  // ── 2. Fetch today's data from Meta ────────────────────────────────────────
-  const [profileRes, insightsRes, mediaRes] = await Promise.all([
-    fetch(
-      `https://graph.facebook.com/${META_API_VERSION}/${ibaId}?` +
-      new URLSearchParams({
-        access_token: accessToken,
-        fields: "followers_count,follows_count,media_count",
-      }),
-    ),
-    fetch(
-      `https://graph.facebook.com/${META_API_VERSION}/${ibaId}/insights?` +
-      new URLSearchParams({
-        access_token: accessToken,
-        metric: "follower_count,profile_views,reach,impressions",
-        period: "day",
-        since: String(since),
-        until: String(until),
-      }),
-    ),
-    fetch(
-      `https://graph.facebook.com/${META_API_VERSION}/${ibaId}/media?` +
-      new URLSearchParams({
-        access_token: accessToken,
-        fields: "like_count,comments_count,media_type",
-        limit: "20",
-      }),
-    ),
-  ]);
+  try {
+    const profile = await fetchProfile(ibaId, token);
+    const [insights, follows, engagement] = await Promise.all([
+      fetchDailyInsights(ibaId, token, since, until),
+      fetchFollowsBreakdown(ibaId, token, since, until),
+      fetchEngagement(ibaId, token, profile.followersCount),
+    ]);
 
-  const profileJson = await profileRes.json() as {
-    followers_count?: number;
-    follows_count?: number;
-    media_count?: number;
-    error?: { message?: string };
-  };
+    const todayPoint = insights.find((p) => p.date === today) ?? insights[insights.length - 1];
+    const fu = follows.byDate.get(today);
+    let dailyGained = fu ? fu.follows : (todayPoint?.followerCountDelta ?? 0);
+    let dailyUnfollows = fu ? fu.unfollows : 0;
 
-  if (!profileRes.ok || profileJson.error) {
-    return NextResponse.json(
-      { error: profileJson.error?.message ?? "Erro ao buscar perfil." },
-      { status: 502 },
-    );
+    if (!fu) {
+      const { data: lastRow } = await sb
+        .from("instagram_account_history")
+        .select("followers_count")
+        .eq("account_id", accountId)
+        .lt("date", today)
+        .order("date", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const prev = lastRow ? Number((lastRow as { followers_count: number }).followers_count) : null;
+      if (prev !== null) {
+        const net = profile.followersCount - prev;
+        dailyGained    = net > 0 ? net : 0;
+        dailyUnfollows = net < 0 ? -net : 0;
+      }
+    }
+
+    const { error: histErr } = await sb
+      .from("instagram_account_history")
+      .upsert(
+        {
+          account_id:             accountId,
+          date:                   today,
+          followers_count:        profile.followersCount,
+          following_count:        profile.followsCount,
+          media_count:            profile.mediaCount,
+          daily_followers_gained: dailyGained,
+          daily_unfollows:        dailyUnfollows,
+          profile_views:          todayPoint?.profileViews ?? 0,
+          reach:                  todayPoint?.reach         ?? 0,
+          impressions:            todayPoint?.impressions   ?? 0,
+          engagement_rate:        engagement.engagementRate,
+        },
+        { onConflict: "account_id,date" },
+      );
+    if (histErr) {
+      return NextResponse.json({ error: `Erro ao salvar histórico: ${histErr.message}` }, { status: 500 });
+    }
+
+    await sb
+      .from("instagram_accounts")
+      .update({
+        followers_count:   profile.followersCount,
+        follows_count:     profile.followsCount,
+        media_count:       profile.mediaCount,
+        engagement_rate:   engagement.engagementRate,
+        connection_status: "active",
+        updated_at:        new Date().toISOString(),
+      })
+      .eq("id", accountId);
+
+    return NextResponse.json({
+      date:           today,
+      followersCount: profile.followersCount,
+      dailyGained,
+      engagementRate: engagement.engagementRate,
+    });
+  } catch (e) {
+    if (e instanceof IGTokenError) {
+      await sb
+        .from("instagram_accounts")
+        .update({ connection_status: "expired", updated_at: new Date().toISOString() })
+        .eq("id", accountId);
+      return NextResponse.json(
+        { error: "Token expirado — reconecte a conta.", tokenError: true },
+        { status: 401 },
+      );
+    }
+    return NextResponse.json({ error: String(e) }, { status: 502 });
   }
-
-  const followersNow = profileJson.followers_count ?? (account as { followers_count: number }).followers_count;
-  const followsNow   = profileJson.follows_count   ?? (account as { follows_count: number }).follows_count;
-  const mediaNow     = profileJson.media_count      ?? (account as { media_count: number }).media_count;
-
-  // ── 3. Parse insights ───────────────────────────────────────────────────────
-  const insightsJson = await insightsRes.json() as {
-    data?: Array<{ name: string; values: Array<{ value: number }> }>;
-    error?: { message?: string };
-  };
-
-  const insightsData = insightsJson.error ? [] : (insightsJson.data ?? []);
-  const firstVal = (metric: string) =>
-    insightsData.find((d) => d.name === metric)?.values[0]?.value ?? 0;
-
-  const dailyFollowersGained = firstVal("follower_count");
-  const profileViews         = firstVal("profile_views");
-  const reach                = firstVal("reach");
-  const impressions          = firstVal("impressions");
-
-  // ── 4. Compute engagement rate ─────────────────────────────────────────────
-  const mediaJson = await mediaRes.json() as {
-    data?: Array<{ like_count?: number; comments_count?: number; media_type?: string }>;
-  };
-  const posts = (mediaJson.data ?? []).filter((p) => p.media_type !== "VIDEO" || (p.like_count ?? 0) > 0);
-  const avgLikes    = posts.length > 0 ? posts.reduce((s, p) => s + (p.like_count    ?? 0), 0) / posts.length : 0;
-  const avgComments = posts.length > 0 ? posts.reduce((s, p) => s + (p.comments_count ?? 0), 0) / posts.length : 0;
-  const engagementRate = followersNow > 0
-    ? parseFloat((((avgLikes + avgComments) / followersNow) * 100).toFixed(4))
-    : 0;
-
-  // ── 5. Upsert history row ───────────────────────────────────────────────────
-  const { error: histErr } = await sb
-    .from("instagram_account_history")
-    .upsert(
-      {
-        account_id:             accountId,
-        date:                   today,
-        followers_count:        followersNow,
-        following_count:        followsNow,
-        media_count:            mediaNow,
-        daily_followers_gained: dailyFollowersGained,
-        profile_views:          profileViews,
-        reach,
-        impressions,
-        engagement_rate:        engagementRate,
-      },
-      { onConflict: "account_id,date" },
-    );
-
-  if (histErr) {
-    return NextResponse.json(
-      { error: `Erro ao salvar histórico: ${histErr.message}` },
-      { status: 500 },
-    );
-  }
-
-  // ── 6. Update account snapshot ─────────────────────────────────────────────
-  await sb
-    .from("instagram_accounts")
-    .update({
-      followers_count: followersNow,
-      follows_count:   followsNow,
-      media_count:     mediaNow,
-      engagement_rate: engagementRate,
-      updated_at:      new Date().toISOString(),
-    })
-    .eq("id", accountId);
-
-  return NextResponse.json({
-    date:           today,
-    followersCount: followersNow,
-    dailyGained:    dailyFollowersGained,
-    engagementRate,
-  });
 }
