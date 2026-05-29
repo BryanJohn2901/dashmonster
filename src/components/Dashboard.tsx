@@ -11,8 +11,10 @@ import {
   MousePointerClick, Package, Pencil, Plus, Repeat, RotateCcw, Search, Settings2, SlidersHorizontal, Sun,
   Target, Trash2, TrendingUp, Trophy, Upload, UserRound, Users, Wallet, X, XCircle, Zap,
   LayoutDashboard, History, LineChart, Sparkles, Database, Dna, Weight, HeartPulse,
-  Medal, PersonStanding, Flame, BookText, MonitorSmartphone, Ticket, Library, VenetianMask
+  Medal, PersonStanding, Flame, BookText, MonitorSmartphone, Ticket, Library, VenetianMask,
+  UserCheck
 } from "lucide-react";
+import Link from "next/link";
 import { useTheme } from "next-themes";
 import { CampaignData, ProductCategory } from "@/types/campaign";
 import type { UserAccountEntry, UserCategory } from "@/types/userConfig";
@@ -40,6 +42,7 @@ import { CampaignTable } from "@/components/CampaignTable";
 import { useGoalsStore, type Goals } from "@/hooks/useGoalsStore";
 import { CampaignAnalysis } from "@/components/CampaignAnalysis";
 import { HistoricalView } from "@/components/HistoricalView";
+import { LeadsView } from "@/components/LeadsView";
 import { HISTORICAL_KIND_LABELS, type HistoricalKind } from "@/types/historical";
 import { BestCreatives } from "@/components/BestCreatives";
 import { ProfileAnalysis } from "@/components/ProfileAnalysis";
@@ -93,7 +96,7 @@ function formatDataSourcePill(ds: DataSource | null | undefined): { title: strin
   return { title: titles[ds.type], subtitle: ds.label };
 }
 
-type MainTab = "overview" | "history" | "profiles" | "products" | "myaccount";
+type MainTab = "overview" | "history" | "leads" | "profiles" | "products" | "myaccount";
 type DashSubTab = "overview" | "analysis" | "creatives";
 
 const DASH_SUB_TABS: Array<{ id: DashSubTab; label: string; icon: React.ElementType }> = [
@@ -140,6 +143,7 @@ const SIDEBAR_ACCOUNT_TABS: Array<{ id: MyAccountTabId; label: string; icon: Rea
 const MAIN_TABS: Array<{ id: MainTab; label: string; shortLabel: string; icon: React.ElementType }> = [
   { id: "overview",   label: "Dashboard",             shortLabel: "Dashboard", icon: LayoutDashboard },
   { id: "history",    label: "Histórico",             shortLabel: "Histórico", icon: History },
+  { id: "leads",      label: "Leads",                 shortLabel: "Leads",     icon: UserCheck },
   { id: "profiles",   label: "Perfil de Anunciantes", shortLabel: "Perfil",    icon: Target },
   { id: "products",   label: "Base de Produtos",      shortLabel: "Produtos",  icon: Database },
   { id: "myaccount",  label: "Minha conta",            shortLabel: "Conta",     icon: UserRound },
@@ -2223,7 +2227,7 @@ export function Dashboard({
     return undefined; // multiple entries, different selections — don't guess
   }, [isFilterExplicit, checkedCampaignIds, selectedGroup, campaignConfigs, accountEntries]);
 
-  const showRightPanel     = mainTab !== "history" && mainTab !== "profiles" && mainTab !== "products";
+  const showRightPanel     = mainTab !== "history" && mainTab !== "leads" && mainTab !== "profiles" && mainTab !== "products";
   const showCourseGroups   = selectedCategory !== null;
   const sidebarGroups      = selectedCategory
     ? allGroups.filter((g) => g.section === (selectedCategory as string))
@@ -2259,7 +2263,7 @@ export function Dashboard({
   }, [selectedCategory, selectedGroup, allGroups, dateFrom, dateTo]);
 
   // Whether the current tab needs a category to be meaningful
-  const needsCategory = mainTab !== "history" && mainTab !== "profiles" && mainTab !== "products";
+  const needsCategory = mainTab !== "history" && mainTab !== "leads" && mainTab !== "profiles" && mainTab !== "products";
 
   const handleClearFilters = () => {
     setDateFromPersist(""); setDateToPersist(""); setSearchCampaign(""); setSelectedGroup("all"); setSelectedCampaign("all"); setCheckedCampaignIds([]);
@@ -2419,6 +2423,35 @@ export function Dashboard({
           </div>
         );
       })}
+
+      {/* Perpétuo shortcut */}
+      <div className="mt-2 px-0">
+        <div className="mb-2 h-px mx-1" style={{ backgroundColor: "var(--dm-border-subtle)" }} />
+        <p className="mb-1 px-1 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>Dashboards</p>
+        <Link
+          href="/produto/perpetuo"
+          className="flex w-full items-center gap-2.5 text-[13px] transition-all duration-150"
+          style={{
+            height:       42,
+            borderRadius: "var(--dm-shape-md)",
+            paddingLeft:  12,
+            paddingRight: 12,
+            color:        "var(--dm-nav-default-text)",
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLElement).style.background = "var(--dm-bg-surface-hover)";
+            (e.currentTarget as HTMLElement).style.color      = "var(--dm-nav-hover-text)";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLElement).style.background = "transparent";
+            (e.currentTarget as HTMLElement).style.color      = "var(--dm-nav-default-text)";
+          }}
+        >
+          <RotateCcw size={16} className="flex-shrink-0 text-amber-500" />
+          <span className="ml-1 truncate">Perpétuo</span>
+          <span className="ml-auto text-[9px] font-semibold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)" }}>↗</span>
+        </Link>
+      </div>
     </nav>
   );
 
@@ -2513,6 +2546,19 @@ export function Dashboard({
                   <Icon size={18} />
                 </button>
               ))}
+            </div>
+
+            {/* Perpétuo — collapsed icon */}
+            <div className="mt-2 w-full px-2 flex flex-col items-center gap-1">
+              <div className="w-7 h-px" style={{ background: "var(--dm-divider)" }} />
+              <Link
+                href="/produto/perpetuo"
+                aria-label="Perpétuo"
+                data-tip="Perpétuo"
+                className="dm-sidebar-tooltip flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-150 text-amber-500 hover:bg-[var(--dm-bg-surface-hover)]"
+              >
+                <RotateCcw size={18} />
+              </Link>
             </div>
 
             <div className="flex-1" />
@@ -3375,6 +3421,8 @@ export function Dashboard({
           )}
 
           {mainTab === "history" && <HistoricalView selectedKind={histKind} onKindChange={setHistKind} />}
+
+          {mainTab === "leads" && <LeadsView />}
 
           {mainTab === "products"  && <ProductBase />}
           {mainTab === "profiles" && (
