@@ -134,11 +134,22 @@ export function KpiCard({
         <div className="h-[3px] w-full" style={{ background: a.topBar }} />
       )}
 
-      {/* Manual override badge */}
-      {isManual && (
-        <span className="absolute right-2 top-2 z-10 rounded-md bg-amber-500/90 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
-          Manual
-        </span>
+      {/* Manual badge + edit pencil — juntos no canto, badge não captura clique */}
+      {(isManual || editable) && (
+        <div className="absolute right-2 top-2 z-20 flex items-center gap-1">
+          {isManual && (
+            <span className="pointer-events-none rounded-md bg-amber-500/90 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
+              Manual
+            </span>
+          )}
+          {editable && (
+            <button type="button" onClick={() => { setEditVal(""); setEditing(true); }}
+              className={`flex h-5 w-5 items-center justify-center rounded text-amber-500 transition-opacity hover:bg-amber-500/10 ${isManual ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+              title={isManual ? "Editar valor manual" : "Inserir valor manualmente"}>
+              <Pencil size={10} />
+            </button>
+          )}
+        </div>
       )}
 
       {/* Inline edit form */}
@@ -195,8 +206,8 @@ export function KpiCard({
 
         {/* Text */}
         <div className="min-w-0 flex-1">
-          {/* Label — MD3 Label Small */}
-          <div className="mb-0.5 flex items-center gap-1">
+          {/* Label — MD3 Label Small (lápis foi p/ o canto absoluto, junto da badge) */}
+          <div className="mb-0.5 flex items-center gap-1 pr-14">
             <p
               className="dm-metric-label"
               {...(tooltip ? { "data-dm-tip": tooltip } : {})}
@@ -204,13 +215,6 @@ export function KpiCard({
             >
               {title}
             </p>
-            {editable && (
-              <button type="button" onClick={() => { setEditVal(""); setEditing(true); }}
-                className="ml-auto flex h-5 w-5 items-center justify-center rounded text-amber-500 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-amber-500/10"
-                title={isManual ? "Editar valor manual" : "Inserir valor manualmente"}>
-                <Pencil size={10} />
-              </button>
-            )}
           </div>
 
           {/* Value — MD3 type scale via CSS var */}
