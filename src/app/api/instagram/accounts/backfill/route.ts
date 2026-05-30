@@ -55,83 +55,41 @@ export async function POST(request: NextRequest) {
     media_count: number;
   };
 
-  // ── 2. Fetch 90 days of metrics in parallel ───────────────────────────────────
-  // Meta allows reach/impressions/profile_views up to ~90 days back.
-  // follower_count is limited to 30 days.
+  // ── 2. Fetch métricas em janelas de ≤30 dias (limite da Graph API) ────────────
+  // A API recusa janelas > 30 dias (2592000 s). Buscamos em blocos e mesclamos.
   const since90 = toUnix(daysAgo(90));
-  const since30 = toUnix(daysAgo(30));
+  const since30 = toUnix(daysAgo(29)); // 30 dias exatos até amanhã
   const until   = toUnix(todayStr()) + 86400; // exclusive end = tomorrow
+  const CHUNK   = 30 * 86400;
 
-  const baseParams = { access_token: decryptToken(acc.access_token), period: "day" };
+  const token = decryptToken(acc.access_token);
 
-  const [metricsRes, followersRes, profileViewsRes] = await Promise.allSettled([
-    fetch(
-      `https://graph.facebook.com/${META_API_VERSION}/${ibaId}/insights?` +
-      new URLSearchParams({
-        ...baseParams,
-        metric: "reach",
-        since:  String(since90),
-        until:  String(until),
-      }),
-    ).then(r => r.json() as Promise<{ data?: InsightsData; error?: { message?: string } }>),
+  async function fetchMetricMap(metric: string, sinceU: number, untilU: number): Promise<Map<string, number>> {
+    const map = new Map<string, number>();
+    for (let s = sinceU; s < untilU; s += CHUNK) {
+      const u = Math.min(s + CHUNK, untilU);
+      try {
+        const res = await fetch(
+          `https://graph.facebook.com/${META_API_VERSION}/${ibaId}/insights?` +
+          new URLSearchParams({ access_token: token, period: "day", metric, since: String(s), until: String(u) }),
+        );
+        const json = await res.json() as { data?: InsightsData; error?: { message?: string } };
+        if (json.error) { console.warn(`[backfill] ${metric} ${s}-${u}:`, json.error.message); continue; }
+        const vals = json.data?.find(d => d.name === metric)?.values ?? [];
+        for (const v of vals) map.set(v.end_time.split("T")[0]!, v.value);
+      } catch (e) {
+        console.warn(`[backfill] ${metric} chunk falhou:`, String(e));
+      }
+    }
+    return map;
+  }
 
-    fetch(
-      `https://graph.facebook.com/${META_API_VERSION}/${ibaId}/insights?` +
-      new URLSearchParams({
-        ...baseParams,
-        metric: "follower_count",
-        since:  String(since30),
-        until:  String(until),
-      }),
-    ).then(r => r.json() as Promise<{ data?: InsightsData; error?: { message?: string } }>),
-
-    // profile_views — optional, not available on all account types
-    fetch(
-      `https://graph.facebook.com/${META_API_VERSION}/${ibaId}/insights?` +
-      new URLSearchParams({
-        ...baseParams,
-        metric: "profile_views",
-        since:  String(since90),
-        until:  String(until),
-      }),
-    ).then(r => r.json() as Promise<{ data?: InsightsData; error?: { message?: string } }>),
+  const [reachMap, viewsMap, followerMap] = await Promise.all([
+    fetchMetricMap("reach",          since90, until),
+    fetchMetricMap("profile_views",  since90, until),
+    fetchMetricMap("follower_count", since30, until), // delta diário, máx 30 dias
   ]);
-
-  const metricsData: InsightsData =
-    metricsRes.status === "fulfilled" && !metricsRes.value.error
-      ? (metricsRes.value.data ?? [])
-      : [];
-
-  const followersData: InsightsData =
-    followersRes.status === "fulfilled" && !followersRes.value.error
-      ? (followersRes.value.data ?? [])
-      : [];
-
-  const profileViewsData: InsightsData =
-    profileViewsRes.status === "fulfilled" && !profileViewsRes.value.error
-      ? (profileViewsRes.value.data ?? [])
-      : [];
-
-  if (metricsRes.status === "fulfilled" && metricsRes.value.error) {
-    console.warn("[backfill] metrics error:", metricsRes.value.error.message);
-  }
-  if (followersRes.status === "fulfilled" && followersRes.value.error) {
-    console.warn("[backfill] follower_count error:", followersRes.value.error.message);
-  }
-
-  // ── 3. Build per-date maps ────────────────────────────────────────────────────
-  const byName = (src: InsightsData, name: string) =>
-    new Map(
-      (src.find(d => d.name === name)?.values ?? []).map(v => [
-        v.end_time.split("T")[0]!,
-        v.value,
-      ]),
-    );
-
-  const reachMap       = byName(metricsData, "reach");
-  const impressionsMap = byName(metricsData, "impressions");
-  const viewsMap       = byName(profileViewsData, "profile_views");
-  const followerMap    = byName(followersData, "follower_count"); // daily delta
+  const impressionsMap = new Map<string, number>(); // descontinuada
 
   // Union of all dates with any data
   const allDates = new Set([

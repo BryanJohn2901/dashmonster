@@ -64,7 +64,8 @@ export async function GET(request: NextRequest) {
     }, { status: 401 });
   }
 
-  const since = toUnix(daysAgo(30));
+  // A Graph API recusa janelas > 30 dias (2592000 s). daysAgo(29) → amanhã = 30 dias.
+  const since = toUnix(daysAgo(29));
   const until = toUnix(todayStr()) + 86400;
 
   // ── 2. Three independent Meta API calls (Promise.allSettled) ────────────────
