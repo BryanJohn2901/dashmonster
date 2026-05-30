@@ -151,6 +151,7 @@ export function PerfilAtivoPanel({
   const [liveDiag, setLiveDiag]     = useState<LiveDiag | null>(null);
   const [backfilling, setBackfilling] = useState(false);
   const [backfillMsg, setBackfillMsg] = useState<string | null>(null);
+  const [tableStep, setTableStep]     = useState<number>(1); // 1=diário, 10=de 10 em 10
 
   useEffect(() => {
     if (!igUserId) return;
@@ -288,8 +289,12 @@ export function PerfilAtivoPanel({
 
   const score = Math.min(100, parseFloat(growthRate30) * 4 + parseFloat(avgEngagement30) * 10);
 
-  // Table: last 30 descending
-  const tableRows = [...sorted].reverse().slice(0, 30);
+  // Tabela: do mais recente p/ o mais antigo, amostrando no passo escolhido.
+  const reversed  = [...sorted].reverse();
+  const tableRows = (tableStep <= 1
+    ? reversed
+    : reversed.filter((_, i) => i % tableStep === 0)
+  ).slice(0, 60);
 
   // Chart data
   const chartFollowers = sorted.map(p => ({
@@ -620,6 +625,27 @@ export function PerfilAtivoPanel({
       {tableRows.length > 0 && (
         <div className="rounded-xl border overflow-hidden"
           style={{ borderColor: "var(--dm-border-subtle)" }}>
+          {/* Filtro de intervalo */}
+          <div className="flex items-center justify-between gap-2 px-3 py-2.5"
+            style={{ backgroundColor: "var(--dm-bg-elevated)", borderBottom: "1px solid var(--dm-border-subtle)" }}>
+            <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
+              Histórico diário
+            </span>
+            <div className="flex items-center gap-1">
+              {([[1, "Diário"], [5, "5 em 5"], [10, "10 em 10"], [30, "Mensal"]] as [number, string][]).map(([step, label]) => (
+                <button
+                  key={step}
+                  type="button"
+                  onClick={() => setTableStep(step)}
+                  className="rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors"
+                  style={tableStep === step
+                    ? { background: "var(--dm-brand-500, #6366C8)", color: "#fff" }
+                    : { backgroundColor: "var(--dm-bg-surface)", color: "var(--dm-text-tertiary)", border: "1px solid var(--dm-border-subtle)" }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
