@@ -6,7 +6,7 @@ import {
   Legend, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import {
-  Activity, AtSign, BarChart2, Eye, Heart, Image, Loader2,
+  Activity, AtSign, BarChart2, ChevronLeft, ChevronRight, Eye, Heart, Image, Loader2,
   MessageCircle, TrendingDown, TrendingUp, Users, UserMinus, Zap,
 } from "lucide-react";
 import type { IGHistoryPoint, IGTrackedAccount } from "@/app/api/instagram/history/route";
@@ -152,6 +152,7 @@ export function PerfilAtivoPanel({
   const [backfilling, setBackfilling] = useState(false);
   const [backfillMsg, setBackfillMsg] = useState<string | null>(null);
   const [tableStep, setTableStep]     = useState<number>(1); // 1=diário, 10=de 10 em 10
+  const [tablePage, setTablePage]     = useState<number>(1);
 
   useEffect(() => {
     if (!igUserId) return;
@@ -290,11 +291,18 @@ export function PerfilAtivoPanel({
   const score = Math.min(100, parseFloat(growthRate30) * 4 + parseFloat(avgEngagement30) * 10);
 
   // Tabela: do mais recente p/ o mais antigo, amostrando no passo escolhido.
-  const reversed  = [...sorted].reverse();
-  const tableRows = (tableStep <= 1
+  const reversed     = [...sorted].reverse();
+  const sampledRows  = tableStep <= 1
     ? reversed
-    : reversed.filter((_, i) => i % tableStep === 0)
-  ).slice(0, 60);
+    : reversed.filter((_, i) => i % tableStep === 0);
+
+  // Paginação 10/página
+  const TABLE_PAGE_SIZE = 10;
+  const totalTablePages = Math.max(1, Math.ceil(sampledRows.length / TABLE_PAGE_SIZE));
+  const currentTablePage = Math.min(tablePage, totalTablePages);
+  const tableFirstIdx = sampledRows.length === 0 ? 0 : (currentTablePage - 1) * TABLE_PAGE_SIZE + 1;
+  const tableLastIdx  = Math.min(currentTablePage * TABLE_PAGE_SIZE, sampledRows.length);
+  const tableRows = sampledRows.slice((currentTablePage - 1) * TABLE_PAGE_SIZE, currentTablePage * TABLE_PAGE_SIZE);
 
   // Chart data
   const chartFollowers = sorted.map(p => ({
@@ -622,28 +630,52 @@ export function PerfilAtivoPanel({
       </div>
 
       {/* ── Historical table ── */}
-      {tableRows.length > 0 && (
+      {sampledRows.length > 0 && (
         <div className="rounded-xl border overflow-hidden"
           style={{ borderColor: "var(--dm-border-subtle)" }}>
-          {/* Filtro de intervalo */}
-          <div className="flex items-center justify-between gap-2 px-3 py-2.5"
+          {/* Header: título + contador + filtro de intervalo + paginação */}
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
             style={{ backgroundColor: "var(--dm-bg-elevated)", borderBottom: "1px solid var(--dm-border-subtle)" }}>
-            <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
-              Histórico diário
-            </span>
-            <div className="flex items-center gap-1">
-              {([[1, "Diário"], [5, "5 em 5"], [10, "10 em 10"], [30, "Mensal"]] as [number, string][]).map(([step, label]) => (
-                <button
-                  key={step}
-                  type="button"
-                  onClick={() => setTableStep(step)}
-                  className="rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors"
-                  style={tableStep === step
-                    ? { background: "var(--dm-brand-500, #6366C8)", color: "#fff" }
-                    : { backgroundColor: "var(--dm-bg-surface)", color: "var(--dm-text-tertiary)", border: "1px solid var(--dm-border-subtle)" }}>
-                  {label}
+            <div>
+              <h3 className="text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>
+                Acompanhamento Diário de Seguidores
+              </h3>
+              <p className="mt-0.5 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                {tableFirstIdx}–{tableLastIdx} de {sampledRows.length} registros
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              {/* Filtro de intervalo */}
+              <div className="flex items-center gap-1">
+                {([[1, "Diário"], [5, "5 em 5"], [10, "10 em 10"], [30, "Mensal"]] as [number, string][]).map(([step, label]) => (
+                  <button
+                    key={step}
+                    type="button"
+                    onClick={() => { setTableStep(step); setTablePage(1); }}
+                    className="rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors"
+                    style={tableStep === step
+                      ? { background: "var(--dm-brand-500, #6366C8)", color: "#fff" }
+                      : { backgroundColor: "var(--dm-bg-surface)", color: "var(--dm-text-tertiary)", border: "1px solid var(--dm-border-subtle)" }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {/* Paginação */}
+              <div className="flex items-center gap-1">
+                <button type="button" onClick={() => setTablePage((p) => Math.max(1, p - 1))} disabled={currentTablePage === 1}
+                  className="flex h-7 w-7 items-center justify-center rounded-lg border transition disabled:opacity-30"
+                  style={{ borderColor: "var(--dm-border-subtle)", color: "var(--dm-text-tertiary)" }}>
+                  <ChevronLeft size={14} />
                 </button>
-              ))}
+                <span className="min-w-[48px] text-center text-[11px] font-semibold" style={{ color: "var(--dm-text-secondary)" }}>
+                  {currentTablePage} / {totalTablePages}
+                </span>
+                <button type="button" onClick={() => setTablePage((p) => Math.min(totalTablePages, p + 1))} disabled={currentTablePage === totalTablePages}
+                  className="flex h-7 w-7 items-center justify-center rounded-lg border transition disabled:opacity-30"
+                  style={{ borderColor: "var(--dm-border-subtle)", color: "var(--dm-text-tertiary)" }}>
+                  <ChevronRight size={14} />
+                </button>
+              </div>
             </div>
           </div>
           <div className="overflow-x-auto">
@@ -713,6 +745,30 @@ export function PerfilAtivoPanel({
               })}
             </tbody>
           </table>
+          </div>
+          {/* Footer total — sobre o conjunto filtrado inteiro */}
+          <div className="flex flex-col items-start justify-between gap-2 px-4 py-3 sm:flex-row sm:items-center"
+            style={{ backgroundColor: "var(--dm-bg-elevated)", borderTop: "1px solid var(--dm-border-subtle)" }}>
+            <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
+              Total ({sampledRows.length} registros)
+            </p>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
+              <span style={{ color: "var(--dm-text-tertiary)" }}>
+                Ganhos: <span className="font-bold" style={{ color: "#34D399" }}>
+                  +{fmtNum(sampledRows.reduce((s, r) => s + r.dailyFollowersGained, 0))}
+                </span>
+              </span>
+              <span style={{ color: "var(--dm-text-tertiary)" }}>
+                Perdas: <span className="font-bold" style={{ color: "#EE5D50" }}>
+                  -{fmtNum(sampledRows.reduce((s, r) => s + (r.dailyUnfollows ?? 0), 0))}
+                </span>
+              </span>
+              <span style={{ color: "var(--dm-text-tertiary)" }}>
+                Alcance: <span className="font-bold" style={{ color: "var(--dm-text-primary)" }}>
+                  {fmtNum(sampledRows.reduce((s, r) => s + r.reach, 0))}
+                </span>
+              </span>
+            </div>
           </div>
         </div>
       )}
