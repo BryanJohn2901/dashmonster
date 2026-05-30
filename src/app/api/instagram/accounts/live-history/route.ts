@@ -77,6 +77,7 @@ export async function GET(request: NextRequest) {
       new URLSearchParams({
         access_token: token,
         metric:       "follows_and_unfollows",
+        metric_type:  "total_value",
         period:       "day",
         since:        String(since),
         until:        String(until),
@@ -86,7 +87,7 @@ export async function GET(request: NextRequest) {
       `https://graph.facebook.com/${META_API_VERSION}/${ibaId}/insights?` +
       new URLSearchParams({
         access_token: token,
-        metric:       "reach,impressions",
+        metric:       "reach",
         period:       "day",
         since:        String(since),
         until:        String(until),

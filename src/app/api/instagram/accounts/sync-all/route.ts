@@ -121,11 +121,12 @@ async function syncAccount(
  * Protegido por CRON_SECRET ("Authorization: Bearer <CRON_SECRET>").
  */
 export async function POST(request: NextRequest) {
-  if (CRON_SECRET) {
-    const auth = request.headers.get("authorization");
-    if (auth !== `Bearer ${CRON_SECRET}`) {
-      return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
-    }
+  // A Vercel Cron envia "Authorization: Bearer <CRON_SECRET>". Quando há header,
+  // ele precisa bater. Disparo manual pela UI (sem header) é permitido — assim
+  // como /refresh, que também sincroniza dados públicos do próprio painel.
+  const auth = request.headers.get("authorization");
+  if (auth && CRON_SECRET && auth !== `Bearer ${CRON_SECRET}`) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
   const sb = supabaseAdmin();

@@ -78,15 +78,16 @@ export async function GET(request: NextRequest) {
       `https://graph.facebook.com/${META_API_VERSION}/${igUserId}/insights?` +
       new URLSearchParams({
         ...Object.fromEntries(insightsParams),
-        metric: "impressions,reach,profile_views,follower_count",
+        metric: "reach,profile_views,follower_count",
       }),
     ),
-    // follows_and_unfollows — Advanced permission only; silently ignored on failure
+    // follows_and_unfollows — exige metric_type=total_value; ignorado em falha
     fetch(
       `https://graph.facebook.com/${META_API_VERSION}/${igUserId}/insights?` +
       new URLSearchParams({
         ...Object.fromEntries(insightsParams),
         metric: "follows_and_unfollows",
+        metric_type: "total_value",
       }),
     ).catch(() => null),
     // Recent media for engagement calculation (last 20 posts)

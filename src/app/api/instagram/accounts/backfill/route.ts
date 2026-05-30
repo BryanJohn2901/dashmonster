@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
       `https://graph.facebook.com/${META_API_VERSION}/${ibaId}/insights?` +
       new URLSearchParams({
         ...baseParams,
-        metric: "reach,impressions",
+        metric: "reach",
         since:  String(since90),
         until:  String(until),
       }),

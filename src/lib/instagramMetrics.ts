@@ -96,11 +96,11 @@ export async function fetchDailyInsights(
     until: String(untilUnix),
   };
 
-  // Tentativa 1: conjunto completo. Se falhar por impressions, refaz sem ela.
-  let data = await tryInsights(ibaId, { ...base, metric: "reach,impressions,profile_views,follower_count" });
-  if (!data) {
-    data = await tryInsights(ibaId, { ...base, metric: "reach,profile_views,follower_count" });
-  }
+  // `impressions` foi descontinuada para IG (#100). Degrada em cascata até achar
+  // o conjunto que a API aceita nesta versão.
+  let data = await tryInsights(ibaId, { ...base, metric: "reach,profile_views,follower_count" });
+  if (!data) data = await tryInsights(ibaId, { ...base, metric: "reach,follower_count" });
+  if (!data) data = await tryInsights(ibaId, { ...base, metric: "reach" });
   if (!data) return [];
 
   const series = (name: string) =>
@@ -167,18 +167,19 @@ export async function fetchFollowsBreakdown(
       new URLSearchParams({
         access_token: token,
         metric: "follows_and_unfollows",
+        metric_type: "total_value",   // exigido nesta versão da API (#100 sem ele)
         period: "day",
         since: String(sinceUnix),
         until: String(untilUnix),
       }),
     );
     const json = await res.json() as {
-      data?: Array<{ name: string; values: Array<{ value: unknown; end_time: string }> }>;
+      data?: Array<{ name: string; values?: Array<{ value: unknown; end_time: string }> }>;
       error?: GraphError;
     };
     if (!res.ok || json.error) {
       if (isTokenError(json.error)) throw new IGTokenError(json.error?.message ?? "Token inválido/expirado.");
-      return empty; // #100 / sem Advanced Access
+      return empty; // sem Advanced Access → cai no fallback por delta de seguidores
     }
     const vals = json.data?.find((d) => d.name === "follows_and_unfollows")?.values ?? [];
     const byDate = new Map<string, { follows: number; unfollows: number }>();
