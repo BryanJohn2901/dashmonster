@@ -1701,6 +1701,36 @@ function CampaignAnalysisPanel({
   const data = kpiData;
   const [funnelView, setFunnelView] = useState<"bars" | "funnel">("bars");
 
+  // ── Métricas do Instagram (ig_followers / ig_growth / ig_reach / ig_impressions) ──
+  // Puxa do histórico salvo da conta IG vinculada ao perfil, no mesmo período.
+  const [igMetrics, setIgMetrics] = useState<Record<string, number> | null>(null);
+  useEffect(() => {
+    if (!instagramUserId) { setIgMetrics(null); return; }
+    let alive = true;
+    void (async () => {
+      try {
+        const listRes = await fetch("/api/instagram/history", { method: "POST" });
+        const accounts = await listRes.json() as Array<{ id: string; instagramBusinessAccountId: string; followersCount: number }>;
+        const match = accounts.find((a) => a.instagramBusinessAccountId === instagramUserId);
+        if (!match) { if (alive) setIgMetrics(null); return; }
+        const params = new URLSearchParams({ accountId: match.id, dateFrom, dateTo });
+        const hRes = await fetch(`/api/instagram/history?${params}`);
+        const hData = await hRes.json() as {
+          account?: { followersCount: number };
+          history?: Array<{ followersCount: number; dailyFollowersGained: number; reach: number; profileViews: number }>;
+        };
+        const hist = hData.history ?? [];
+        if (alive) setIgMetrics({
+          ig_followers:   hData.account?.followersCount ?? match.followersCount ?? 0,
+          ig_growth:      hist.reduce((s, r) => s + (r.dailyFollowersGained || 0), 0),
+          ig_reach:       hist.reduce((s, r) => s + (r.reach || 0), 0),
+          ig_impressions: hist.reduce((s, r) => s + (r.profileViews || 0), 0),
+        });
+      } catch { if (alive) setIgMetrics(null); }
+    })();
+    return () => { alive = false; };
+  }, [instagramUserId, dateFrom, dateTo]);
+
   // Manual metrics — chave de contexto profile::campaign (persistida no usuário).
   const { overrides: manualOverrides, setOverride: setManualOverride } = useManualMetrics();
   const eduzzEditKey = `profile::${campaign.id}`;
@@ -1837,6 +1867,8 @@ function CampaignAnalysisPanel({
     sales_ingresso: manualData?.salesIngresso ?? 0,
     sales_pos:      manualData?.salesPos      ?? 0,
     sales_total:    manualData?.salesTotal    ?? 0,
+    // Métricas do Instagram (do histórico salvo da conta vinculada)
+    ...(igMetrics ?? {}),
   };
   const derived   = tpl.derive(rawValues);
   const kpiValues = { ...rawValues, ...derived };
