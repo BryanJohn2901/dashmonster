@@ -707,3 +707,31 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.products TO authenticated;
 
 ALTER TABLE public.campaign_metrics
   ADD COLUMN IF NOT EXISTS leads NUMERIC NOT NULL DEFAULT 0;
+
+
+-- ============================================================
+-- 019 — user_manual_overrides: valores manuais por grupo+campanha
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.user_manual_overrides (
+  id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id        UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  group_id       TEXT        NOT NULL,
+  campaign_id    TEXT        NOT NULL,
+  sales_total    NUMERIC     NOT NULL DEFAULT 0,
+  sales_ingresso NUMERIC     NOT NULL DEFAULT 0,
+  sales_pos      NUMERIC     NOT NULL DEFAULT 0,
+  tickets        NUMERIC     NOT NULL DEFAULT 0,
+  revenue        NUMERIC     NOT NULL DEFAULT 0,
+  note           TEXT,
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(user_id, group_id, campaign_id)
+);
+
+ALTER TABLE public.user_manual_overrides ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "user_manual_overrides_owner" ON public.user_manual_overrides
+  FOR ALL TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+CREATE INDEX IF NOT EXISTS idx_user_manual_overrides_user_id
+  ON public.user_manual_overrides(user_id);

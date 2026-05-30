@@ -2161,8 +2161,8 @@ export function Dashboard({
   const totals             = aggregateTotals(campaignsWithOverrides);
   const allCampaignTotals  = useMemo(() => aggregateTotals(campaigns), [campaigns]);
 
-  // Key for manual Eduzz edits: specific campaign when one is selected, else "global"
-  const eduzzEditKey = selectedCampaign !== "all" ? selectedCampaign : "eduzz_global";
+  // Key for manual Eduzz edits: contexto grupo+campanha (persistido no usuário).
+  const eduzzEditKey = `${selectedGroup}::${selectedCampaign}`;
 
   // ── Eduzz manual sales totals — from the edit key (single context value) ──────
   const eduzzTotals = useMemo(() => {

@@ -221,6 +221,53 @@ function toAdsetRows(data: MetaInsight[], resultType?: string): AdsetRow[] {
   })).sort((a, b) => b.spend - a.spend);
 }
 
+interface DailyRow extends AdsetRow { date: string; }
+
+/**
+ * Agrupa insights por DIA (date_start) preservando a granularidade diária.
+ * toAdsetRows colapsa por nome de conjunto/campanha — aqui a chave é a data,
+ * usada na tabela "Acompanhamento Diário" da aba Campanha.
+ */
+function toDailyRows(data: MetaInsight[], resultType?: string): DailyRow[] {
+  const map = new Map<string, DailyRow>();
+  data.forEach((d) => {
+    const date = d.date_start;
+    if (!date) return;
+    const cur = map.get(date) ?? {
+      date, name: date,
+      impressions: 0, reach: 0, clicks: 0, total_clicks: 0, spend: 0, revenue: 0,
+      cpm: 0, ctr: 0, ctr_all: 0, purchases: 0, leads: 0, cpa: 0,
+      page_views: 0, new_followers: 0, customResult: 0,
+    };
+    cur.impressions   += parseMetaNum(d.impressions);
+    cur.reach         += parseMetaNum(d.reach);
+    cur.clicks        += d.inline_link_clicks != null
+      ? parseMetaNum(d.inline_link_clicks)
+      : parseMetaNum(d.clicks);
+    cur.total_clicks  += parseMetaNum(d.clicks);
+    cur.spend         += parseMetaNum(d.spend);
+    cur.purchases     += getActionValue(d.actions, "purchase");
+    cur.leads         += extractLeads(d.actions);
+    cur.revenue       += extractRevenue(d.action_values);
+    cur.page_views    += getActionValue(d.actions, "landing_page_view");
+    cur.new_followers += getActionValue(d.actions, "follow")
+                       + getActionValue(d.actions, "page_fan_adds");
+    if (resultType) {
+      cur.customResult += resultType === "link_click"
+        ? (d.inline_link_clicks != null ? parseMetaNum(d.inline_link_clicks) : parseMetaNum(d.clicks))
+        : getActionValue(d.actions, resultType);
+    }
+    map.set(date, cur);
+  });
+  return Array.from(map.values()).map((r) => ({
+    ...r,
+    cpm:     r.impressions > 0 ? (r.spend / r.impressions) * 1000       : 0,
+    ctr:     r.impressions > 0 ? (r.clicks / r.impressions) * 100       : 0,
+    ctr_all: r.impressions > 0 ? (r.total_clicks / r.impressions) * 100 : 0,
+    cpa:     r.purchases   > 0 ? r.spend / r.purchases                  : 0,
+  })).sort((a, b) => a.date.localeCompare(b.date));
+}
+
 // ─── Section constants ────────────────────────────────────────────────────────
 
 const SECTION_META = {
@@ -1644,6 +1691,7 @@ function CampaignAnalysisPanel({
   // kpiData: campaign-level daily rows → used for totals + funnel + template table
   // adsetData: adset-level totals → used for Análise de Conjunto
   const [kpiData, setKpiData]     = useState<AdsetRow[]>([]);
+  const [dailyData, setDailyData] = useState<DailyRow[]>([]);
   const [adsetData, setAdsetData] = useState<AdsetRow[]>([]);
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState<string | null>(null);
@@ -1653,17 +1701,21 @@ function CampaignAnalysisPanel({
   const data = kpiData;
   const [funnelView, setFunnelView] = useState<"bars" | "funnel">("bars");
 
-  // Manual Eduzz metrics — per-campaign key
+  // Manual metrics — chave de contexto profile::campaign (persistida no usuário).
   const { overrides: manualOverrides, setOverride: setManualOverride } = useManualMetrics();
+  const eduzzEditKey = `profile::${campaign.id}`;
   const [editingKpiId, setEditingKpiId] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState("");
-  const EDUZZ_KPI_IDS = ["sales_ingresso", "sales_pos", "sales_total"] as const;
-  type EduzzKpiId = typeof EDUZZ_KPI_IDS[number];
-  const EDUZZ_FIELD_MAP: Record<EduzzKpiId, "salesIngresso" | "salesPos" | "salesTotal"> = {
+  // KPIs editáveis na mão → campo do override. Inclui Eduzz + Ingressos + Faturamento.
+  const EDITABLE_FIELD_MAP = {
     sales_ingresso: "salesIngresso",
     sales_pos:      "salesPos",
     sales_total:    "salesTotal",
-  };
+    tickets:        "tickets",
+    revenue:        "revenue",
+  } as const;
+  type EditableKpiId = keyof typeof EDITABLE_FIELD_MAP;
+  const EDITABLE_KPI_IDS = Object.keys(EDITABLE_FIELD_MAP) as EditableKpiId[];
 
   // Goals / Metas
   const [goals, setGoals] = useState<Record<string, number>>(() => loadGoals(campaign.id));
@@ -1696,6 +1748,7 @@ function CampaignAnalysisPanel({
         }),
       ]);
       setKpiData(toAdsetRows(rawKpi, resultType ?? campaign.resultType));
+      setDailyData(toDailyRows(rawKpi, resultType ?? campaign.resultType));
       setAdsetData(toAdsetRows(rawAdset, resultType ?? campaign.resultType));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao buscar dados.");
@@ -1763,18 +1816,20 @@ function CampaignAnalysisPanel({
   // "Resultados" (id=sales) e "Custo por resultado" (id=cpa = spend/sales)
   // reflitam o tipo de resultado correto em qualquer view — sem cards separados.
   const tpl = template;
-  const manualData = manualOverrides[campaign.id];
+  const manualData = manualOverrides[eduzzEditKey];
+  const manualTickets = (manualData?.tickets ?? 0) > 0 ? manualData!.tickets! : null;
+  const manualRevenue = (manualData?.revenue ?? 0) > 0 ? manualData!.revenue! : null;
   const rawValues: Record<string, number> = {
     impressions:    totalImpressions,
     reach:          data.reduce((s, r) => s + r.reach, 0),
     clicks:         totalClicks,
     total_clicks:   totalAllClicks,
     spend:          totalSpend,
-    revenue:        totalRevenue,
+    revenue:        manualRevenue ?? totalRevenue,
     leads:          totalLeads,
     // Resultado principal: usa customResult quando resultType configurado e > 0
     sales:          activeResultType && totalCustomResult > 0 ? totalCustomResult : totalPurchases,
-    tickets:        totalPurchases,
+    tickets:        manualTickets ?? totalPurchases,
     page_views:     totalPageViews,
     profile_visits: 0,
     new_followers:  totalNewFollowers,
@@ -2096,7 +2151,7 @@ function CampaignAnalysisPanel({
             const solid     = KPI_SOLID[kpi.color] ?? "#6366C8";
             const bg        = KPI_BG[kpi.color]    ?? "rgba(99,102,200,0.10)";
 
-            const isEduzz   = (EDUZZ_KPI_IDS as readonly string[]).includes(kpi.id);
+            const isEditable = (EDITABLE_KPI_IDS as readonly string[]).includes(kpi.id);
             const isEditing = editingKpiId === kpi.id;
 
             return (
@@ -2115,7 +2170,7 @@ function CampaignAnalysisPanel({
                   </div>
                   <div className="flex items-center gap-1.5">
                     {/* Eduzz manual edit icon */}
-                    {isEduzz && !editGoals && (
+                    {isEditable && !editGoals && (
                       <button
                         type="button"
                         onClick={() => {
@@ -2149,7 +2204,7 @@ function CampaignAnalysisPanel({
                 {/* Label */}
                 <p className="mb-1 text-[12px] font-semibold" style={{ color: "var(--dm-text-secondary)" }} title={kpi.tooltip}>
                   {kpi.label}
-                  {isEduzz && val > 0 && (
+                  {isEditable && val > 0 && (
                     <span className="ml-1.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase" style={{ backgroundColor: solid + "1a", color: solid }}>
                       manual
                     </span>
@@ -2162,14 +2217,14 @@ function CampaignAnalysisPanel({
                     <input
                       type="number"
                       min="0"
-                      step="1"
+                      step="any"
                       value={editingValue}
                       onChange={(e) => setEditingValue(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
-                          const v = parseInt(editingValue, 10);
+                          const v = parseFloat(editingValue);
                           if (!isNaN(v) && v >= 0) {
-                            setManualOverride(campaign.id, { [EDUZZ_FIELD_MAP[kpi.id as EduzzKpiId]]: v });
+                            setManualOverride(eduzzEditKey, { [EDITABLE_FIELD_MAP[kpi.id as EditableKpiId]]: v });
                           }
                           setEditingKpiId(null);
                         }
@@ -2182,9 +2237,9 @@ function CampaignAnalysisPanel({
                     <button
                       type="button"
                       onClick={() => {
-                        const v = parseInt(editingValue, 10);
+                        const v = parseFloat(editingValue);
                         if (!isNaN(v) && v >= 0) {
-                          setManualOverride(campaign.id, { [EDUZZ_FIELD_MAP[kpi.id as EduzzKpiId]]: v });
+                          setManualOverride(eduzzEditKey, { [EDITABLE_FIELD_MAP[kpi.id as EditableKpiId]]: v });
                         }
                         setEditingKpiId(null);
                       }}
@@ -2368,15 +2423,20 @@ function CampaignAnalysisPanel({
       </article>
       )}
 
-      {/* ── Tabela do template ───────────────────────────────────────────────── */}
-      {tpl.table && (
+      {/* ── Acompanhamento Diário (substitui a tabela de conjunto na aba Campanha) ── */}
+      {tpl.table && (() => {
+        // Colunas de métrica = todas menos a 1ª (nome de campanha/conjunto), que vira "Data".
+        const metricCols = tpl.table.columns.slice(1);
+        const fmtDate = (iso: string) =>
+          new Date(iso + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
+        return (
         <article
           className="overflow-hidden rounded-[20px] border shadow-horizon"
           style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}
         >
           <div className="flex items-center justify-between border-b px-5 py-4" style={{ borderColor: "var(--dm-border-subtle)" }}>
             <h3 className="text-sm font-bold" style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>
-              {tpl.table.title}
+              Acompanhamento Diário
             </h3>
             {loading && <Loader2 size={13} className="animate-spin" style={{ color: "var(--dm-text-tertiary)" }} />}
           </div>
@@ -2384,7 +2444,11 @@ function CampaignAnalysisPanel({
             <table className="w-full text-xs">
               <thead>
                 <tr style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
-                  {tpl.table.columns.map((col) => (
+                  <th className="border-b px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider"
+                    style={{ borderColor: "var(--dm-border-subtle)", color: "var(--dm-text-tertiary)" }}>
+                    Data
+                  </th>
+                  {metricCols.map((col) => (
                     <th key={col.id}
                       className={`border-b px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider ${col.align === "right" ? "text-right" : "text-left"}`}
                       style={{ borderColor: "var(--dm-border-subtle)", color: "var(--dm-text-tertiary)" }}>
@@ -2394,10 +2458,14 @@ function CampaignAnalysisPanel({
                 </tr>
               </thead>
               <tbody className="divide-y" style={{ borderColor: "var(--dm-border-subtle)" }}>
-                {data.map((r) => {
+                {dailyData.length === 0 ? (
+                  <tr>
+                    <td colSpan={metricCols.length + 1} className="px-4 py-6 text-center" style={{ color: "var(--dm-text-tertiary)" }}>
+                      Sem dados diários no período.
+                    </td>
+                  </tr>
+                ) : dailyData.map((r) => {
                   const rowAll: Record<string, number> = {
-                    ...rawValues,
-                    ...derived,
                     impressions: r.impressions, reach: r.reach, clicks: r.clicks,
                     total_clicks: r.total_clicks, spend: r.spend, revenue: r.revenue,
                     leads: r.leads, sales: r.purchases, tickets: r.purchases,
@@ -2408,14 +2476,11 @@ function CampaignAnalysisPanel({
                       new_followers: r.new_followers, profile_visits: 0 })),
                   };
                   return (
-                    <tr key={r.name} className="transition-colors hover:bg-[var(--dm-bg-elevated)]">
-                      {tpl.table.columns.map((col) => {
-                        if (col.id === "campaign") return (
-                          <td key={col.id} className="max-w-[180px] truncate px-4 py-2.5 text-xs font-semibold" style={{ color: "var(--dm-text-primary)" }} title={r.name}>{r.name}</td>
-                        );
-                        if (col.id === "adset" || col.id === "name") return (
-                          <td key={col.id} className="max-w-[160px] truncate px-4 py-2.5 text-xs" style={{ color: "var(--dm-text-tertiary)" }} title={r.name}>{r.name}</td>
-                        );
+                    <tr key={r.date} className="transition-colors hover:bg-[var(--dm-bg-elevated)]">
+                      <td className="whitespace-nowrap px-4 py-2.5 text-xs font-semibold capitalize" style={{ color: "var(--dm-text-primary)" }}>
+                        {fmtDate(r.date)}
+                      </td>
+                      {metricCols.map((col) => {
                         const v = rowAll[col.id] ?? 0;
                         const formatted = col.format ? (v > 0 ? col.format(v) : "—") : String(v);
                         return (
@@ -2430,25 +2495,28 @@ function CampaignAnalysisPanel({
                   );
                 })}
                 {/* Totals row */}
-                <tr style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
-                  <td className="px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Total</td>
-                  {tpl.table.columns.slice(1).map((col) => {
-                    const v = kpiValues[col.id] ?? 0;
-                    const formatted = col.format ? (v > 0 ? col.format(v) : "—") : "—";
-                    return (
-                      <td key={col.id}
-                        className={`whitespace-nowrap px-4 py-2.5 text-xs font-semibold tabular-nums ${col.align === "right" ? "text-right" : ""}`}
-                        style={{ color: "var(--dm-text-primary)" }}>
-                        {formatted}
-                      </td>
-                    );
-                  })}
-                </tr>
+                {dailyData.length > 0 && (
+                  <tr style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
+                    <td className="px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Total</td>
+                    {metricCols.map((col) => {
+                      const v = kpiValues[col.id] ?? 0;
+                      const formatted = col.format ? (v > 0 ? col.format(v) : "—") : "—";
+                      return (
+                        <td key={col.id}
+                          className={`whitespace-nowrap px-4 py-2.5 text-xs font-semibold tabular-nums ${col.align === "right" ? "text-right" : ""}`}
+                          style={{ color: "var(--dm-text-primary)" }}>
+                          {formatted}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
         </article>
-      )}
+        );
+      })()}
 
       {/* ── Gráfico investimento por conjunto ───────────────────────────────── */}
       {data.length > 1 && (
