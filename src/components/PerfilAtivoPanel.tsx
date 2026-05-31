@@ -578,9 +578,20 @@ export function PerfilAtivoPanel({
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--dm-border-subtle)" />
               <XAxis dataKey="date" tick={{ fontSize: 10, fill: "var(--dm-text-tertiary)" }} tickLine={false} interval="preserveStartEnd" />
-              <YAxis tick={{ fontSize: 10, fill: "var(--dm-text-tertiary)" }} tickLine={false} axisLine={false} tickFormatter={v => fmtNum(v as number)} width={46} />
+              <YAxis
+                tick={{ fontSize: 10, fill: "var(--dm-text-tertiary)" }}
+                tickLine={false}
+                axisLine={false}
+                tickFormatter={v => fmtNum(v as number)}
+                width={46}
+                domain={[
+                  (min: number) => Math.floor(min - Math.max(50, min * 0.003)),
+                  (max: number) => Math.ceil(max + Math.max(50, max * 0.003)),
+                ]}
+                allowDecimals={false}
+              />
               <Tooltip content={<ChartTooltip />} />
-              <Area type="monotone" dataKey="value" stroke="#05CD99" strokeWidth={2} fill="url(#gFollowers)" dot={false} />
+              <Area type="monotone" dataKey="value" stroke="#05CD99" strokeWidth={2} fill="url(#gFollowers)" dot={false} isAnimationActive={false} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
