@@ -3058,6 +3058,14 @@ function ProfileDetailView({
       localStorage.setItem(DATES_LS_KEY, JSON.stringify({ ...stored, [profile.id]: { from, to } }));
     } catch {}
   };
+
+  // No mount, estende o fim do range para hoje se estiver atrasado (range salvo
+  // ficava preso no passado e escondia os dias recentes).
+  useEffect(() => {
+    const t = todayStr();
+    if (t && dateTo < t) { setDateTo(t); persistDates(dateFrom, t); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [showAddPanel, setShowAddPanel] = useState(false);
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
   const hasToken = Boolean(loadMetaCredentials().accessToken);
