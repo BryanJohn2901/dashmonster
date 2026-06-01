@@ -1599,7 +1599,7 @@ export function TabIntegrations({ onSyncNow }: { onSyncNow?: () => void }) {
 
 // ─── Tab: Sincronização ───────────────────────────────────────────────────────
 
-const META_SYNC_LOOKBACK_DAYS = 30;
+const META_SYNC_LOOKBACK_DAYS = 730;
 const SYNC_LOOKBACK_LS_KEY = "pta_sync_lookback_days";
 const LOOKBACK_OPTIONS = [
   { label: "Últimos 7 dias",   value: 7   },
@@ -1612,9 +1612,9 @@ const LOOKBACK_OPTIONS = [
 
 function readSavedLookback(): number {
   try {
-    const v = parseInt(localStorage.getItem(SYNC_LOOKBACK_LS_KEY) ?? "30", 10);
-    return LOOKBACK_OPTIONS.some((o) => o.value === v) ? v : 30;
-  } catch { return 30; }
+    const v = parseInt(localStorage.getItem(SYNC_LOOKBACK_LS_KEY) ?? "730", 10);
+    return LOOKBACK_OPTIONS.some((o) => o.value === v) ? v : 730;
+  } catch { return 730; }
 }
 
 interface TabSyncProps {

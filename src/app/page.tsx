@@ -53,8 +53,8 @@ const VALID_LOOKBACK_VALUES = [7, 15, 30, 60, 90, 730] as const;
 function readLookbackDays(): number {
   if (typeof window === "undefined") return 30;
   try {
-    const v = parseInt(localStorage.getItem(SYNC_LOOKBACK_LS_KEY) ?? "30", 10);
-    return (VALID_LOOKBACK_VALUES as readonly number[]).includes(v) ? v : 30;
+    const v = parseInt(localStorage.getItem(SYNC_LOOKBACK_LS_KEY) ?? "730", 10);
+    return (VALID_LOOKBACK_VALUES as readonly number[]).includes(v) ? v : 730;
   } catch { return 30; }
 }
 
