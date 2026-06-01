@@ -601,7 +601,7 @@ function ImportPopover({
   const [openDropdownRow, setOpenDropdownRow] = useState<string | null>(null);
   const [dropdownRect, setDropdownRect]   = useState<{ top: number; left: number; width: number } | null>(null);
   const inputWrapperRefs                  = useRef<Map<string, HTMLDivElement>>(new Map());
-  const [datePreset, setDatePreset]       = useState<DatePreset>("30d");
+  const [datePreset, setDatePreset]       = useState<DatePreset>("max");
   const dateRange = dateRangeFromPreset(datePreset);
   // Show the full accounts section only after "Conectar" or if accounts were previously saved
   const showAccountsSection = metaAccounts.length > 0 || accountRows.some((r) => r.accountId.trim());
