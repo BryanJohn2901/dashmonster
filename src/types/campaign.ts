@@ -24,6 +24,7 @@ export interface CampaignData {
   impressions: number;
   conversions: number;
   leads: number;
+  pageViews?: number;   // landing_page_view (Meta) — visualizações de página
   revenue: number;
   ctr: number;
   cpc: number;
@@ -39,6 +40,7 @@ export interface DashboardTotals {
   totalImpressions: number;
   totalConversions: number;
   totalLeads: number;
+  totalPageViews: number;
   roi: number;
   roas: number;
   // Weighted-average (ratio-of-sums) metrics — NOT arithmetic averages of per-campaign rates.

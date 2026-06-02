@@ -12,6 +12,7 @@ interface SupabaseCampaignRow {
   impressions: number;
   conversions: number;
   leads: number;
+  page_views: number;
   revenue: number;
   source: "csv" | "google_sheets" | "meta";
 }
@@ -31,21 +32,28 @@ const mapSupabaseRow = (row: SupabaseCampaignRow, index: number): CampaignData =
       impressions: Number(row.impressions ?? 0),
       conversions: Number(row.conversions ?? 0),
       leads: Number(row.leads ?? 0),
+      pageViews: Number(row.page_views ?? 0),
       revenue: Number(row.revenue ?? 0),
     },
     index,
   );
 };
 
+const SELECT_FULL =
+  "id, date, campaign_name, investment, clicks, impressions, conversions, leads, page_views, revenue, source";
 const SELECT_WITH_LEADS =
   "id, date, campaign_name, investment, clicks, impressions, conversions, leads, revenue, source";
 const SELECT_LEGACY =
   "id, date, campaign_name, investment, clicks, impressions, conversions, revenue, source";
 
 export const LEADS_MIGRATION_FILE = "013_campaign_metrics_leads.sql";
+export const PAGE_VIEWS_MIGRATION_FILE = "020_campaign_metrics_page_views.sql";
 
 function isMissingLeadsColumnError(message: string): boolean {
   return /leads/i.test(message) && /(column|schema|does not exist|PGRST204)/i.test(message);
+}
+function isMissingPageViewsColumnError(message: string): boolean {
+  return /page_views/i.test(message) && /(column|schema|does not exist|PGRST204)/i.test(message);
 }
 
 export interface FetchCampaignsResult {
@@ -59,19 +67,38 @@ export const fetchSupabaseCampaigns = async (): Promise<FetchCampaignsResult> =>
     throw new Error("Supabase não configurado. Defina NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY.");
   }
 
-  const { data, error } = await supabaseClient
+  // 1) Tenta com todas as colunas (leads + page_views).
+  const full = await supabaseClient
     .from("campaign_metrics")
-    .select(SELECT_WITH_LEADS)
+    .select(SELECT_FULL)
     .order("date", { ascending: true });
 
-  if (!error) {
+  if (!full.error) {
     return {
-      campaigns: (data ?? []).map((row, index) => mapSupabaseRow(row as SupabaseCampaignRow, index)),
+      campaigns: (full.data ?? []).map((row, index) => mapSupabaseRow(row as SupabaseCampaignRow, index)),
       hasLeadsColumn: true,
     };
   }
 
-  if (isMissingLeadsColumnError(error.message)) {
+  // 2) page_views ausente (migration 020 pendente) → busca com leads, page_views=0.
+  if (isMissingPageViewsColumnError(full.error.message)) {
+    const withLeads = await supabaseClient
+      .from("campaign_metrics")
+      .select(SELECT_WITH_LEADS)
+      .order("date", { ascending: true });
+
+    if (!withLeads.error) {
+      return {
+        campaigns: (withLeads.data ?? []).map((row, index) =>
+          mapSupabaseRow({ ...(row as Omit<SupabaseCampaignRow, "page_views">), page_views: 0 }, index),
+        ),
+        hasLeadsColumn: true,
+      };
+    }
+  }
+
+  // 3) leads ausente (migration 013 pendente) → legacy, leads e page_views = 0.
+  if (isMissingLeadsColumnError(full.error.message)) {
     const legacy = await supabaseClient
       .from("campaign_metrics")
       .select(SELECT_LEGACY)
@@ -83,13 +110,13 @@ export const fetchSupabaseCampaigns = async (): Promise<FetchCampaignsResult> =>
 
     return {
       campaigns: (legacy.data ?? []).map((row, index) =>
-        mapSupabaseRow({ ...(row as Omit<SupabaseCampaignRow, "leads">), leads: 0 }, index),
+        mapSupabaseRow({ ...(row as Omit<SupabaseCampaignRow, "leads" | "page_views">), leads: 0, page_views: 0 }, index),
       ),
       hasLeadsColumn: false,
     };
   }
 
-  throw new Error(`Erro ao buscar dados no Supabase: ${error.message}`);
+  throw new Error(`Erro ao buscar dados no Supabase: ${full.error.message}`);
 };
 
 export const subscribeSupabaseCampaigns = (
@@ -144,13 +171,20 @@ export const replaceSupabaseCampaigns = async (
     impressions: item.impressions,
     conversions: item.conversions,
     leads: item.leads ?? 0,
+    page_views: item.pageViews ?? 0,
     revenue: item.revenue,
     source,
   }));
 
-  const { error: insertError } = await supabaseClient
+  let { error: insertError } = await supabaseClient
     .from("campaign_metrics")
     .insert(payload);
+
+  // migration 020 pendente → reenvia sem page_views (não bloqueia o salvamento).
+  if (insertError && isMissingPageViewsColumnError(insertError.message)) {
+    const legacyPayload = payload.map(({ page_views: _pv, ...rest }) => rest);
+    ({ error: insertError } = await supabaseClient.from("campaign_metrics").insert(legacyPayload));
+  }
 
   if (insertError) {
     throw new Error(`Erro ao salvar campanhas no Supabase: ${insertError.message}`);
@@ -227,14 +261,24 @@ export const upsertMetaCampaigns = async (campaigns: CampaignData[]): Promise<Me
     impressions: item.impressions,
     conversions: item.conversions,
     leads: item.leads ?? 0,
+    page_views: item.pageViews ?? 0,
     revenue: item.revenue,
     source: "meta" as const,
   }));
 
-  const { data, error } = await supabaseClient
+  let { data, error } = await supabaseClient
     .from("campaign_metrics")
     .upsert(payload, { onConflict: "date,campaign_name,source" })
     .select("id");
+
+  // migration 020 pendente → reenvia sem page_views (sync segue funcionando).
+  if (error && isMissingPageViewsColumnError(error.message)) {
+    const legacyPayload = payload.map(({ page_views: _pv, ...rest }) => rest);
+    ({ data, error } = await supabaseClient
+      .from("campaign_metrics")
+      .upsert(legacyPayload, { onConflict: "date,campaign_name,source" })
+      .select("id"));
+  }
 
   if (error) {
     if (isMissingLeadsColumnError(error.message)) {

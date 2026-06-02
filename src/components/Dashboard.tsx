@@ -3346,6 +3346,7 @@ export function Dashboard({
                   conversions={totals.totalConversions}
                   investment={totals.totalInvestment}
                   leads={totals.totalLeads}
+                  pageViews={totals.totalPageViews}
                   storageScope={currentUser.email}
                 />
 

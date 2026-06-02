@@ -412,6 +412,9 @@ export function metaInsightsToCampaignData(
       "offsite_conversion.fb_pixel_lead",
     );
 
+    // Visualizações de página de destino (landing_page_view) — "Vis. de Página" no funil.
+    const pageViews = pickAction(row.actions, "landing_page_view", "omni_landing_page_view");
+
     // CTR: Meta returns percentage strings ("2.34" = 2.34%).
     // Convert to decimal (0–1 range) for storage; recalculated as % when read from DB.
     const ctrPct = row.inline_link_click_ctr != null
@@ -428,6 +431,7 @@ export function metaInsightsToCampaignData(
       impressions,
       conversions,
       leads,
+      pageViews,
       revenue,
       ctr,
       cpc:            clicks      > 0 ? investment / clicks      : 0,

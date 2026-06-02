@@ -51,6 +51,7 @@ export const aggregateTotals = (campaigns: CampaignData[]): DashboardTotals => {
       acc.totalImpressions += campaign.impressions;
       acc.totalConversions += campaign.conversions;
       acc.totalLeads += campaign.leads ?? 0;
+      acc.totalPageViews += campaign.pageViews ?? 0;
       return acc;
     },
     {
@@ -60,6 +61,7 @@ export const aggregateTotals = (campaigns: CampaignData[]): DashboardTotals => {
       totalImpressions: 0,
       totalConversions: 0,
       totalLeads: 0,
+      totalPageViews: 0,
     },
   );
 

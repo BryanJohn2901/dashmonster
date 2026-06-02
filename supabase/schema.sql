@@ -735,3 +735,11 @@ CREATE POLICY "user_manual_overrides_owner" ON public.user_manual_overrides
 
 CREATE INDEX IF NOT EXISTS idx_user_manual_overrides_user_id
   ON public.user_manual_overrides(user_id);
+
+
+-- ============================================================
+-- 020 — campaign_metrics: coluna page_views (Vis. de Página)
+-- ============================================================
+
+ALTER TABLE public.campaign_metrics
+  ADD COLUMN IF NOT EXISTS page_views NUMERIC NOT NULL DEFAULT 0;
