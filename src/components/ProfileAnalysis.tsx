@@ -8,7 +8,7 @@ import {
 import {
   Activity, AlertCircle, ArrowDown, ArrowLeft, ArrowUp, AtSign, BookMarked, CalendarDays,
   CheckCircle2, Edit2, GraduationCap, Heart, Key, Loader2, MessageCircle, Plus, RefreshCw,
-  Repeat, SlidersHorizontal, Star, Target, Trash2, TrendingDown, TrendingUp, Users, X, Zap,
+  Repeat, Search, SlidersHorizontal, Star, Target, Trash2, TrendingDown, TrendingUp, Users, X, Zap,
 } from "lucide-react";
 import {
   fetchMetaCampaigns, fetchMetaInsights, fetchMetaAdAccounts,
@@ -322,6 +322,7 @@ function AddCampaignPanel({
   const [campaignsLoading, setCampaignsLoading] = useState(false);
   const [campaignsError, setCampaignsError] = useState<string | null>(null);
   const [addedThisSession, setAddedThisSession] = useState<Set<string>>(new Set());
+  const [campaignFilter, setCampaignFilter] = useState("");
 
   const fetchAccounts = async () => {
     setAccountsLoading(true); setAccountsError(null);
@@ -459,8 +460,30 @@ function AddCampaignPanel({
           <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
             Campanhas — clique para adicionar
           </p>
+          {campaigns.length > 6 && (
+            <div className="mb-1.5 flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 py-1.5 dark:border-slate-600 dark:bg-slate-800">
+              <Search size={11} className="text-slate-400 dark:text-slate-500" />
+              <input
+                type="text"
+                value={campaignFilter}
+                onChange={(e) => setCampaignFilter(e.target.value)}
+                placeholder={`Buscar entre ${campaigns.length} campanhas…`}
+                className="flex-1 bg-transparent text-[11px] text-slate-700 outline-none dark:text-slate-300"
+              />
+              {campaignFilter && (
+                <button type="button" onClick={() => setCampaignFilter("")}
+                  className="text-[9px] font-semibold text-slate-400">limpar</button>
+              )}
+            </div>
+          )}
           <div className="max-h-52 overflow-y-auto rounded-lg border border-slate-200 bg-white dark:border-slate-600 dark:bg-slate-800">
-            {campaigns.map((c) => {
+            {(() => {
+              const q = campaignFilter.trim().toLowerCase();
+              const list = q ? campaigns.filter((c) => (c.name ?? "").toLowerCase().includes(q)) : campaigns;
+              if (list.length === 0) return (
+                <p className="px-3 py-4 text-center text-[11px] text-slate-400 dark:text-slate-500">Nenhuma campanha encontrada</p>
+              );
+              return list.map((c) => {
               const alreadyAdded = alreadyAddedIds.has(c.id);
               const justAdded    = addedThisSession.has(c.id);
               return (
@@ -488,7 +511,8 @@ function AddCampaignPanel({
                   )}
                 </button>
               );
-            })}
+            });
+            })()}
           </div>
           {addedThisSession.size > 0 && (
             <p className="mt-1.5 text-[10px] text-emerald-600 dark:text-emerald-400">

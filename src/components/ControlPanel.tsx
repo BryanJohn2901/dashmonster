@@ -612,12 +612,17 @@ function EntryRow({ entry, categorySlug, onDeleted, onToggled, onUpdated }: Entr
   const [expanded,  setExpanded]  = useState(false);
   const [toggling,  setToggling]  = useState(false);
   const [saving,    setSaving]    = useState(false);
+  const [campFilter, setCampFilter] = useState("");
   const campCount = entry.campaigns.length;
   const selCount  = entry.selectedCampaignIds.length || campCount;
   const filterLabel = getInternalFilterLabel(categorySlug, entry.internalFilter);
 
   // ── Edição inline de selectedCampaignIds — draft state ─────────────────────
   const allCampIds = useMemo(() => entry.campaigns.map(c => c.id), [entry.campaigns]);
+  const filteredCampaigns = useMemo(() => {
+    const q = campFilter.trim().toLowerCase();
+    return q ? entry.campaigns.filter(c => (c.name ?? "").toLowerCase().includes(q)) : entry.campaigns;
+  }, [entry.campaigns, campFilter]);
 
   // null = todas selecionadas (espelha a convenção [] do banco); string[] = subset explícito
   const [draftIds, setDraftIds] = useState<string[] | null>(null);
@@ -763,9 +768,33 @@ function EntryRow({ entry, categorySlug, onDeleted, onToggled, onUpdated }: Entr
                 style={{ color: "var(--dm-text-tertiary)" }}>Limpar</button>
             </div>
           </div>
+          {/* Busca de campanha */}
+          {campCount > 6 && (
+            <div className="flex items-center gap-1.5 border-b px-2 py-1.5"
+              style={{ borderColor: "var(--dm-border-subtle)", backgroundColor: "var(--dm-bg-surface)" }}>
+              <Search size={11} style={{ color: "var(--dm-text-tertiary)" }} />
+              <input
+                type="text"
+                value={campFilter}
+                onChange={(e) => setCampFilter(e.target.value)}
+                placeholder={`Buscar entre ${campCount} campanhas…`}
+                className="flex-1 bg-transparent text-[10px] outline-none"
+                style={{ color: "var(--dm-text-primary)" }}
+              />
+              {campFilter && (
+                <button type="button" onClick={() => setCampFilter("")}
+                  className="text-[9px] font-semibold" style={{ color: "var(--dm-text-tertiary)" }}>limpar</button>
+              )}
+            </div>
+          )}
           {/* Campaign rows */}
           <div className="max-h-48 overflow-y-auto">
-            {entry.campaigns.map(c => {
+            {filteredCampaigns.length === 0 && (
+              <p className="px-2 py-3 text-center text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                Nenhuma campanha encontrada
+              </p>
+            )}
+            {filteredCampaigns.map(c => {
               const checked = isChecked(c.id);
               return (
                 <button key={c.id} type="button" disabled={saving}
