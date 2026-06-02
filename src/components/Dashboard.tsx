@@ -1122,11 +1122,22 @@ function ContextBar({
     ? "Todos os grupos"
     : (groups.find(g => g.id === selectedGroup)?.label ?? selectedGroup);
 
-  const allCampaigns = useMemo(() => Object.values(campaignsByGroup).flat(), [campaignsByGroup]);
+  // Dedup por id: a mesma campanha aparece em vários grupos que dividem a conta.
+  // Sem dedup, keys do React se repetem e a lista não re-renderiza ao filtrar.
+  const allCampaigns = useMemo(() => {
+    const seen = new Set<string>();
+    const out: { id: string; name: string; status?: string }[] = [];
+    for (const c of Object.values(campaignsByGroup).flat()) {
+      if (!c || seen.has(c.id)) continue;
+      seen.add(c.id);
+      out.push(c);
+    }
+    return out;
+  }, [campaignsByGroup]);
   const [campSearch, setCampSearch] = useState("");
   const visibleCampaigns = useMemo(() => {
-    const q = campSearch.toLowerCase();
-    return q ? allCampaigns.filter(c => c.name.toLowerCase().includes(q)) : allCampaigns;
+    const q = campSearch.trim().toLowerCase();
+    return q ? allCampaigns.filter(c => (c.name ?? "").toLowerCase().includes(q)) : allCampaigns;
   }, [allCampaigns, campSearch]);
 
   const campaignLabel = checkedCampaignIds.length === 0
