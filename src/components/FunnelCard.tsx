@@ -31,7 +31,7 @@ const ALL_STEPS: StepDef[] = [
   { id: "conversions", label: "Conversões",       rateLabel: "Tx. Conv.",   costLabel: "CPA" },
 ];
 
-const DEFAULT_STEPS: FunnelStepId[] = ["impressions", "clicks", "conversions"];
+const DEFAULT_STEPS: FunnelStepId[] = ["impressions", "clicks", "pageViews", "leads", "conversions"];
 
 // Token-aligned colors (match globals.css --dm-primary / --dm-primary-vivid / --dm-success-base)
 const STEP_COLORS: Record<FunnelStepId, string> = {
@@ -79,9 +79,10 @@ export function FunnelCard({
   }), [clicks, conversions, impressions, leads, pageViews]);
 
   const steps = useMemo(() => {
-    const raw = stepIds
-      .map(id => ALL_STEPS.find(s => s.id === id))
-      .filter(Boolean) as StepDef[];
+    // Renderiza sempre na ordem lógica de ALL_STEPS (impressões → cliques →
+    // vis. de página → leads → conversões), independente da ordem em que o
+    // usuário marcou as etapas — evita taxas invertidas (ex: Connect Rate 3000%).
+    const raw = ALL_STEPS.filter(s => stepIds.includes(s.id));
     const max = Math.max(...raw.map(s => values[s.id]), 1);
     return raw.map((s, i) => {
       const prev = i > 0 ? values[raw[i - 1].id] : null;
