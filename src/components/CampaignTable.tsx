@@ -50,8 +50,11 @@ function CtrBadge({ value }: { value: number }) {
 // ─── Short date helper ────────────────────────────────────────────────────────
 
 function shortDate(v: string): string {
-  const d = new Date(String(v));
-  if (isNaN(d.getTime())) return String(v);
+  // Datas "YYYY-MM-DD" devem ser lidas no fuso local. new Date("2026-06-03")
+  // é meia-noite UTC → em UTC-3 cai no dia anterior. Ancorar ao meio-dia local.
+  const s = String(v);
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(s + "T12:00:00") : new Date(s);
+  if (isNaN(d.getTime())) return s;
   return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
