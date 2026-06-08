@@ -16,7 +16,9 @@ export async function exportReport(
   el: HTMLElement,
   opts: { format: ReportFormat; fileName: string },
 ): Promise<void> {
-  const [{ default: html2canvas }] = await Promise.all([import("html2canvas")]);
+  // html2canvas-pro: fork que suporta cores modernas (oklch/color-mix/lab) que o
+  // Tailwind v4 gera; o html2canvas clássico lança erro nelas e não baixa nada.
+  const { default: html2canvas } = await import("html2canvas-pro");
 
   const bg =
     getComputedStyle(document.documentElement).getPropertyValue("--dm-bg-page").trim() ||
