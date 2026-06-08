@@ -509,6 +509,19 @@ export default function Home() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Retorno do OAuth do Instagram (?ig_oauth=...): abre o Painel direto em
+  // Integrações para o usuário ver o resultado e as contas conectadas.
+  useEffect(() => {
+    try {
+      if (new URLSearchParams(window.location.search).has("ig_oauth")) {
+        setShowOnboarding(false);
+        setControlPanelOpeningTab("integrations");
+        setShowControlPanel(true);
+      }
+    } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (!session?.user.id || !isSupabaseConfigured) {
       closeRealtimeChannels();
