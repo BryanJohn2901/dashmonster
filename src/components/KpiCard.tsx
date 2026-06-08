@@ -122,6 +122,8 @@ export function KpiCard({
 
   return (
     <article
+      data-report-block="kpi"
+      data-report-label={title}
       className="dm-state-layer card-hover group relative overflow-hidden border shadow-horizon transition-all duration-300 hover:-translate-y-0.5"
       style={{
         background:   "var(--dm-bg-surface)",

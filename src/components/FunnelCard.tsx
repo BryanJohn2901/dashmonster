@@ -104,6 +104,8 @@ export function FunnelCard({
 
   return (
     <article
+      data-report-block="funnel"
+      data-report-label="Funil de Conversão"
       className="dm-state-layer relative border p-5 shadow-horizon transition-all duration-300 hover:-translate-y-0.5"
       style={{
         background:   "var(--dm-bg-surface)",

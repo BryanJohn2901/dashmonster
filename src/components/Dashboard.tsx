@@ -2867,7 +2867,12 @@ export function Dashboard({
                 </button>
               )}
               {campaigns.length > 0 && (
-                <ExportReportButton targetRef={reportRef} fileName={`relatorio_${selectedGroup}_${dateFrom}_${dateTo}`} />
+                <ExportReportButton
+                  targetRef={reportRef}
+                  fileName={`relatorio_${selectedGroup}_${dateFrom}_${dateTo}`}
+                  title={selectedGroup !== "all" ? (allGroups.find(g => g.id === selectedGroup)?.label ?? selectedGroup) : "Todos os grupos"}
+                  period={dateFrom && dateTo ? `${dateFrom} → ${dateTo}` : "Todo o período"}
+                />
               )}
             </div>
           </div>

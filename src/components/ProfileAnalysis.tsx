@@ -1338,6 +1338,8 @@ function ProfileOverviewPanel({
             return (
               <article
                 key={kpi.id}
+                data-report-block="kpi"
+                data-report-label={kpi.label}
                 className="flex flex-col rounded-[20px] border shadow-horizon card-hover"
                 style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)", padding: "18px" }}
               >
@@ -1431,7 +1433,8 @@ function ProfileOverviewPanel({
       </div>
 
       {/* ── FUNIL DE CONVERSÃO ─────────────────────────────────────────────── */}
-      <article className="overflow-hidden rounded-[20px] border shadow-horizon"
+      <article data-report-block="funnel" data-report-label="Funil de Conversão"
+        className="overflow-hidden rounded-[20px] border shadow-horizon"
         style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4"
@@ -2277,6 +2280,8 @@ function CampaignAnalysisPanel({
             return (
               <article
                 key={kpi.id}
+                data-report-block="kpi"
+                data-report-label={kpi.label}
                 className="flex flex-col rounded-[20px] border shadow-horizon card-hover"
                 style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)", padding: "18px" }}
               >
@@ -2406,6 +2411,8 @@ function CampaignAnalysisPanel({
       {/* ── Funil de Conversão — driven by template funnelIds ──────────────── */}
       {tpl.funnel.length > 0 && (
       <article
+        data-report-block="funnel"
+        data-report-label="Funil de Conversão"
         className="overflow-hidden rounded-[20px] border shadow-horizon"
         style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}
       >
@@ -3305,6 +3312,8 @@ function ProfileDetailView({
               <ExportReportButton
                 targetRef={profileReportRef}
                 fileName={`relatorio_${profile.name}_${profileTab === "campanha" && activeCampaign ? activeCampaign.name : "visao-geral"}_${dateFrom}_${dateTo}`}
+                title={`${profile.name}${profileTab === "campanha" && activeCampaign ? " · " + activeCampaign.name : " · Visão Geral"}`}
+                period={`${dateFrom} → ${dateTo}`}
               />
             )}
             <ProfileDateRange
