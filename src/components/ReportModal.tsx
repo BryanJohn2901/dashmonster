@@ -23,9 +23,13 @@ export function ReportModal({ targetRef, fileName, title, period, onClose }: Rep
   const [blocks, setBlocks]   = useState<Block[]>([]);
   const [hidden, setHidden]   = useState<Set<number>>(new Set());
 
+  const REPORT_WIDTH = 1024; // largura fixa do relatório (px) — layout consistente
   const captureRef  = useRef<HTMLDivElement>(null);   // cabeçalho + clone (capturado)
   const cloneHostRef = useRef<HTMLDivElement>(null);  // host do clone
+  const previewBoxRef = useRef<HTMLDivElement>(null); // área de scroll
   const blockNodesRef = useRef<HTMLElement[]>([]);
+  const [scale, setScale]     = useState(1);
+  const [previewH, setPreviewH] = useState(0);
 
   const generatedAt = useMemo(
     () => new Date().toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }),
@@ -41,7 +45,7 @@ export function ReportModal({ targetRef, fileName, title, period, onClose }: Rep
 
     host.innerHTML = "";
     const clone = src.cloneNode(true) as HTMLElement;
-    clone.style.width = `${src.scrollWidth}px`;
+    clone.style.width = "100%";
     host.appendChild(clone);
 
     const nodes = Array.from(clone.querySelectorAll<HTMLElement>("[data-report-block]"));
@@ -49,6 +53,26 @@ export function ReportModal({ targetRef, fileName, title, period, onClose }: Rep
     setBlocks(nodes.map((n, idx) => ({ idx, label: n.getAttribute("data-report-label") || `Bloco ${idx + 1}` })));
     setHidden(new Set());
   }, [step, targetRef]);
+
+  // Escala o relatório (largura fixa) para caber na largura da área de prévia,
+  // mantendo só a rolagem vertical. Recalcula no resize e quando blocos mudam.
+  useEffect(() => {
+    if (step !== "preview") return;
+    const recompute = () => {
+      const box = previewBoxRef.current;
+      const cap = captureRef.current;
+      if (!box || !cap) return;
+      const avail = box.clientWidth - 24; // padding
+      const s = Math.min(1, avail / REPORT_WIDTH);
+      setScale(s);
+      setPreviewH(cap.scrollHeight * s);
+    };
+    recompute();
+    const ro = new ResizeObserver(recompute);
+    if (previewBoxRef.current) ro.observe(previewBoxRef.current);
+    if (captureRef.current) ro.observe(captureRef.current);
+    return () => ro.disconnect();
+  }, [step, custom, hidden, blocks]);
 
   // Aplica visibilidade no clone.
   useEffect(() => {
@@ -145,25 +169,30 @@ export function ReportModal({ targetRef, fileName, title, period, onClose }: Rep
               </div>
             )}
 
-            {/* Prévia (scroll) */}
-            <div className="min-w-0 flex-1 overflow-auto p-5" style={{ background: "var(--dm-bg-page, #0b1437)" }}>
-              <div ref={captureRef} className="mx-auto" style={{ background: "var(--dm-bg-page, #0b1437)", padding: 20, borderRadius: 16, width: "fit-content" }}>
-                {/* Cabeçalho do relatório */}
-                <div className="mb-4 flex items-center justify-between gap-4 rounded-2xl px-5 py-4"
-                  style={{ background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)", color: "#fff", minWidth: 640 }}>
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: "rgba(255,255,255,0.15)" }}>
-                      <Sparkles size={18} />
+            {/* Prévia — só scroll vertical; o relatório (largura fixa) é escalado p/ caber */}
+            <div ref={previewBoxRef} className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-3"
+              style={{ background: "var(--dm-bg-page, #0b1437)" }}>
+              <div style={{ height: previewH || undefined }}>
+                <div style={{ transform: `scale(${scale})`, transformOrigin: "top left", width: REPORT_WIDTH }}>
+                  <div ref={captureRef} style={{ background: "var(--dm-bg-page, #0b1437)", padding: 24, width: REPORT_WIDTH }}>
+                    {/* Cabeçalho do relatório */}
+                    <div className="mb-4 flex items-center justify-between gap-4 rounded-2xl px-5 py-4"
+                      style={{ background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)", color: "#fff" }}>
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: "rgba(255,255,255,0.15)" }}>
+                          <Sparkles size={18} />
+                        </div>
+                        <div>
+                          <p className="text-base font-black leading-tight">{title || "Relatório"}</p>
+                          <p className="text-[11px] opacity-80">DashMonster · {period}</p>
+                        </div>
+                      </div>
+                      <p className="text-[10px] opacity-70">Gerado em {generatedAt}</p>
                     </div>
-                    <div>
-                      <p className="text-base font-black leading-tight">{title || "Relatório"}</p>
-                      <p className="text-[11px] opacity-80">DashMonster · {period}</p>
-                    </div>
+                    {/* Host do clone */}
+                    <div ref={cloneHostRef} />
                   </div>
-                  <p className="text-[10px] opacity-70">Gerado em {generatedAt}</p>
                 </div>
-                {/* Host do clone */}
-                <div ref={cloneHostRef} />
               </div>
             </div>
           </div>
