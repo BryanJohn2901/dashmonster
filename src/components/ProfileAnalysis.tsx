@@ -23,6 +23,7 @@ import { formatBRL, formatCompact, formatInt, formatPercent } from "@/lib/format
 import { getTemplate, TEMPLATE_LIST, DEFAULT_PERSONALIZADO_CONFIG } from "@/lib/templates";
 import { PerfilEmpty } from "@/components/empty/PerfilEmpty";
 import { ExportReportButton } from "@/components/ExportReportButton";
+import type { ReportData } from "@/types/report";
 import { PerfilAtivoPanel } from "@/components/PerfilAtivoPanel";
 import type { TemplateId, Template, PersonalizadoConfig } from "@/lib/templates/types";
 import { TemplateSelector } from "@/components/profiles/TemplateSelector";
@@ -62,6 +63,43 @@ const PROFILE_FUNNEL_STEPS: ProfileFunnelStep[] = [
 ];
 
 const DEFAULT_FUNNEL_STEP_IDS: ProfileFunnelStepId[] = ["impressions", "clicks", "leads", "sales"];
+
+// ─── Builder genérico de ReportData (Visão Geral / Campanha) ──────────────────
+function buildReportFromKpisFunnel(args: {
+  title: string; period: string;
+  kpis: { id: string; label: string; format: (n: number) => string }[];
+  kpiValues: Record<string, number>;
+  funnelStages: { id: string; label: string; color: string; rateLabel?: string }[];
+  funnelValues: Record<string, number>;
+  investment: number; impressions: number; clicks: number; conversions: number;
+}): ReportData {
+  const items = args.kpis.map((k) => {
+    const v = args.kpiValues[k.id] ?? 0;
+    return { id: k.id, label: k.label, value: v > 0 ? k.format(v) : "—" };
+  });
+  const steps = args.funnelStages.map((s, i) => {
+    const prev = i > 0 ? (args.funnelValues[args.funnelStages[i - 1].id] ?? 0) : null;
+    const cur = args.funnelValues[s.id] ?? 0;
+    const rate = prev && prev > 0 ? (cur / prev) * 100 : undefined;
+    return {
+      id: `f_${s.id}`, label: s.label, value: formatInt(cur), color: s.color,
+      rateLabel: i > 0 ? s.rateLabel : undefined,
+      rateValue: rate != null ? formatPercent(rate) : undefined,
+    };
+  });
+  const inv = args.investment;
+  const footer = [
+    { label: "Investimento", value: formatBRL(inv) },
+    { label: "CPM", value: inv && args.impressions > 0 ? formatBRL((inv / args.impressions) * 1000) : "—" },
+    { label: "CPC", value: inv && args.clicks > 0 ? formatBRL(inv / args.clicks) : "—" },
+    { label: "CPA", value: inv && args.conversions > 0 ? formatBRL(inv / args.conversions) : "—" },
+  ];
+  return {
+    title: args.title, period: args.period,
+    groups: [{ id: "g_metrics", label: "Métricas Principais", items }],
+    funnel: { steps, footer },
+  };
+}
 
 function loadProfileFunnelConfig(campaignId: string): ProfileFunnelStepId[] {
   if (typeof window === "undefined") return DEFAULT_FUNNEL_STEP_IDS;
@@ -1081,7 +1119,7 @@ const FUNNEL_COLORS_OV: Record<string, string> = {
 };
 
 function ProfileOverviewPanel({
-  profileId, adAccountId, campaigns, dateFrom, dateTo, template,
+  profileId, adAccountId, campaigns, dateFrom, dateTo, template, reportTitle,
 }: {
   profileId: string;
   adAccountId: string;
@@ -1089,6 +1127,7 @@ function ProfileOverviewPanel({
   dateFrom: string;
   dateTo: string;
   template: Template;
+  reportTitle: string;
 }) {
   const [rows, setRows]       = useState<AdsetRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -1247,6 +1286,19 @@ function ProfileOverviewPanel({
     sales:       totals.conv,
   };
 
+  const buildReport = (): ReportData => buildReportFromKpisFunnel({
+    title: reportTitle,
+    period: `${dateFrom} → ${dateTo}`,
+    kpis: template.kpis,
+    kpiValues,
+    funnelStages: funnelStepIds
+      .map((id) => PROFILE_FUNNEL_STEPS.find((s) => s.id === id))
+      .filter((s): s is ProfileFunnelStep => Boolean(s))
+      .map((s) => ({ id: s.id, label: s.label, color: s.color, rateLabel: s.rateLabel })),
+    funnelValues: funnelVals,
+    investment: totals.inv, impressions: totals.imp, clicks: totals.clk, conversions: totals.conv,
+  });
+
   // ── Loading / error states ────────────────────────────────────────────────
   if (loading) {
     return (
@@ -1299,6 +1351,9 @@ function ProfileOverviewPanel({
         <span className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
           {dateFrom} → {dateTo}
         </span>
+        <div className="ml-auto">
+          <ExportReportButton buildData={buildReport} fileName={`relatorio_${reportTitle}_${dateFrom}_${dateTo}`} />
+        </div>
       </div>
 
       {/* ── MÉTRICAS PRINCIPAIS ────────────────────────────────────────────── */}
@@ -1338,8 +1393,6 @@ function ProfileOverviewPanel({
             return (
               <article
                 key={kpi.id}
-                data-report-block="kpi"
-                data-report-label={kpi.label}
                 className="flex flex-col rounded-[20px] border shadow-horizon card-hover"
                 style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)", padding: "18px" }}
               >
@@ -1433,8 +1486,7 @@ function ProfileOverviewPanel({
       </div>
 
       {/* ── FUNIL DE CONVERSÃO ─────────────────────────────────────────────── */}
-      <article data-report-block="funnel" data-report-label="Funil de Conversão"
-        className="overflow-hidden rounded-[20px] border shadow-horizon"
+      <article className="overflow-hidden rounded-[20px] border shadow-horizon"
         style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4"
@@ -1765,7 +1817,7 @@ const RESULT_HIDDEN_KPIS: Partial<Record<ResultType, string[]>> = {
 // ─── Single-campaign analysis panel ──────────────────────────────────────────
 
 function CampaignAnalysisPanel({
-  adAccountId, campaign, dateFrom, dateTo, template, instagramUserId, forceTab, resultType, hideTabSwitcher,
+  adAccountId, campaign, dateFrom, dateTo, template, instagramUserId, forceTab, resultType, hideTabSwitcher, reportTitle,
 }: {
   adAccountId: string;
   campaign: ActiveCampaign;
@@ -1778,6 +1830,7 @@ function CampaignAnalysisPanel({
   /** When true, hides the internal Visão Geral / Análise de Conjunto tab bar
    *  (used when ProfileDetailView already manages top-level navigation) */
   hideTabSwitcher?: boolean;
+  reportTitle?: string;
 }) {
   // kpiData: campaign-level daily rows → used for totals + funnel + template table
   // adsetData: adset-level totals → used for Análise de Conjunto
@@ -1963,6 +2016,16 @@ function CampaignAnalysisPanel({
   };
   const derived   = tpl.derive(rawValues);
   const kpiValues = { ...rawValues, ...derived };
+
+  const buildReport = (): ReportData => buildReportFromKpisFunnel({
+    title: reportTitle ?? campaign.name,
+    period: `${dateFrom} → ${dateTo}`,
+    kpis: tpl.kpis,
+    kpiValues,
+    funnelStages: tpl.funnel.map((s) => ({ id: s.id, label: s.label, color: s.bg, rateLabel: s.rateFromPrev })),
+    funnelValues: kpiValues,
+    investment: totalSpend, impressions: totalImpressions, clicks: totalClicks, conversions: totalPurchases,
+  });
 
   const KPI_ACCENT: Record<string, string> = {
     brand: "text-brand",
@@ -2241,17 +2304,20 @@ function CampaignAnalysisPanel({
           <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>
             Métricas Principais
           </p>
-          <button
-            type="button"
-            onClick={() => setEditGoals((v) => !v)}
-            className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-semibold transition"
-            style={editGoals
-              ? { background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)", color: "#fff", boxShadow: "0 4px 12px rgba(49,52,145,0.30)" }
-              : { backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)", border: "1px solid var(--dm-border-default)" }}
-          >
-            <Target size={11} />
-            {editGoals ? "Salvar Metas" : "Definir Metas"}
-          </button>
+          <div className="flex items-center gap-2">
+            <ExportReportButton buildData={buildReport} fileName={`relatorio_${reportTitle ?? campaign.name}_${dateFrom}_${dateTo}`} />
+            <button
+              type="button"
+              onClick={() => setEditGoals((v) => !v)}
+              className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-semibold transition"
+              style={editGoals
+                ? { background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)", color: "#fff", boxShadow: "0 4px 12px rgba(49,52,145,0.30)" }
+                : { backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)", border: "1px solid var(--dm-border-default)" }}
+            >
+              <Target size={11} />
+              {editGoals ? "Salvar Metas" : "Definir Metas"}
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
@@ -2280,8 +2346,6 @@ function CampaignAnalysisPanel({
             return (
               <article
                 key={kpi.id}
-                data-report-block="kpi"
-                data-report-label={kpi.label}
                 className="flex flex-col rounded-[20px] border shadow-horizon card-hover"
                 style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)", padding: "18px" }}
               >
@@ -2411,8 +2475,6 @@ function CampaignAnalysisPanel({
       {/* ── Funil de Conversão — driven by template funnelIds ──────────────── */}
       {tpl.funnel.length > 0 && (
       <article
-        data-report-block="funnel"
-        data-report-label="Funil de Conversão"
         className="overflow-hidden rounded-[20px] border shadow-horizon"
         style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}
       >
@@ -3128,7 +3190,6 @@ function ProfileDetailView({
   const updateProfile           = onUpdateProfile;
   const [activeCampId, setActiveCampId] = useState<string>(profile.campaigns[0]?.id ?? "");
   const [profileTab, setProfileTab] = useState<"overview" | "campanha" | "conjunto" | "instagram">("overview");
-  const profileReportRef = useRef<HTMLDivElement>(null);
 
   // Persist date range per profile. Priority: profile-specific → appliedDateRange prop → shared Dashboard range → 14-day default.
   const [dateFrom, setDateFrom] = useState<string>(() => {
@@ -3308,14 +3369,6 @@ function ProfileDetailView({
                 Configurar
               </button>
             )}
-            {profileTab !== "instagram" && (
-              <ExportReportButton
-                targetRef={profileReportRef}
-                fileName={`relatorio_${profile.name}_${profileTab === "campanha" && activeCampaign ? activeCampaign.name : "visao-geral"}_${dateFrom}_${dateTo}`}
-                title={`${profile.name}${profileTab === "campanha" && activeCampaign ? " · " + activeCampaign.name : " · Visão Geral"}`}
-                period={`${dateFrom} → ${dateTo}`}
-              />
-            )}
             <ProfileDateRange
               dateFrom={dateFrom}
               dateTo={dateTo}
@@ -3457,8 +3510,6 @@ function ProfileDetailView({
         ))}
       </div>
 
-      {/* Bloco de relatório (capturado no export): painel da aba ativa */}
-      <div ref={profileReportRef} className="space-y-4">
       {/* ── Visão Geral — agrega todas as campanhas do perfil ── */}
       {profileTab === "overview" && (
         hasToken && profile.campaigns.length > 0 ? (
@@ -3470,6 +3521,7 @@ function ProfileDetailView({
             dateFrom={dateFrom}
             dateTo={dateTo}
             template={resolvedTemplate}
+            reportTitle={`${profile.name} · Visão Geral`}
           />
         ) : !hasToken ? (
           <div className="flex flex-col items-center gap-3 rounded-xl border p-8 text-center"
@@ -3503,6 +3555,7 @@ function ProfileDetailView({
           template={resolvedTemplate}
           instagramUserId={profile.instagramUserId}
           hideTabSwitcher
+          reportTitle={`${profile.name} · ${activeCampaign.name}`}
         />
       )}
       {profileTab === "campanha" && !hasToken && (
@@ -3537,7 +3590,6 @@ function ProfileDetailView({
           dateTo={dateTo}
         />
       )}
-      </div>{/* fim do bloco de relatório */}
     </div>
   );
 }

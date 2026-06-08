@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { SlidersHorizontal } from "lucide-react";
 import { formatCurrency, formatNumber, formatPercent } from "@/utils/metrics";
+import type { ReportFunnel } from "@/types/report";
 
 interface FunnelCardProps {
   impressions:   number;
@@ -104,8 +105,6 @@ export function FunnelCard({
 
   return (
     <article
-      data-report-block="funnel"
-      data-report-label="Funil de Conversão"
       className="dm-state-layer relative border p-5 shadow-horizon transition-all duration-300 hover:-translate-y-0.5"
       style={{
         background:   "var(--dm-bg-surface)",
@@ -280,4 +279,40 @@ export function FunnelCard({
       )}
     </article>
   );
+}
+
+// ─── Builder do funil para o relatório (mesma lógica/ordem do card) ───────────
+export function reportFunnelFromValues(opts: {
+  impressions: number; clicks: number; conversions: number;
+  leads?: number; pageViews?: number; investment?: number; storageScope?: string;
+}): ReportFunnel {
+  const values: Record<FunnelStepId, number> = {
+    impressions: opts.impressions,
+    clicks:      opts.clicks,
+    pageViews:   opts.pageViews ?? 0,
+    leads:       opts.leads ?? 0,
+    conversions: opts.conversions,
+  };
+  const stepIds = load(`pta_funnel_steps_v1:${opts.storageScope ?? "default"}`);
+  const raw = ALL_STEPS.filter((s) => stepIds.includes(s.id));
+  const steps = raw.map((s, i) => {
+    const prev = i > 0 ? values[raw[i - 1].id] : null;
+    const rate = prev && prev > 0 ? (values[s.id] / prev) * 100 : undefined;
+    return {
+      id: s.id,
+      label: s.label,
+      value: formatNumber(values[s.id]),
+      color: STEP_COLORS[s.id],
+      rateLabel: i > 0 ? s.rateLabel : undefined,
+      rateValue: rate != null ? formatPercent(rate) : undefined,
+    };
+  });
+  const inv = opts.investment ?? 0;
+  const footer = [
+    { label: "Investimento", value: formatCurrency(inv) },
+    { label: "CPM", value: inv && opts.impressions > 0 ? formatCurrency((inv / opts.impressions) * 1000) : "—" },
+    { label: "CPC", value: inv && opts.clicks > 0 ? formatCurrency(inv / opts.clicks) : "—" },
+    { label: "CPA", value: inv && opts.conversions > 0 ? formatCurrency(inv / opts.conversions) : "—" },
+  ];
+  return { steps, footer };
 }

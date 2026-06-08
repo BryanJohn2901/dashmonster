@@ -36,8 +36,9 @@ import {
   buildCampaignComparison, buildDailyTrend, formatCurrency, formatDatePtBr, formatNumber, formatPercent,
 } from "@/utils/metrics";
 import { KpiCard } from "@/components/KpiCard";
-import { FunnelCard } from "@/components/FunnelCard";
+import { FunnelCard, reportFunnelFromValues } from "@/components/FunnelCard";
 import { ExportReportButton } from "@/components/ExportReportButton";
+import type { ReportData } from "@/types/report";
 import { ChartsSection } from "@/components/charts/ChartsSection";
 import { CampaignTable } from "@/components/CampaignTable";
 import { useGoalsStore, type Goals } from "@/hooks/useGoalsStore";
@@ -1847,7 +1848,6 @@ export function Dashboard({
     try { return localStorage.getItem("pta_pixel_funnel_open_v1") !== "0"; } catch { return true; }
   });
   const [pickCategoryOpen, setPickCategoryOpen] = useState(false);
-  const reportRef = useRef<HTMLDivElement>(null);
   const [searchCampaign, setSearchCampaign] = useState("");
   const [showImport, setShowImport]         = useState(false);
   const [importInitialTab, setImportInitialTab] = useState<ImportTab>("meta");
@@ -2189,6 +2189,54 @@ export function Dashboard({
       salesTotal:    ov?.salesTotal    ?? 0,
     };
   }, [eduzzEditKey, manualOverrides]);
+
+  // Fallback de conversões: quando o Meta não traz conversões (0) mas há vendas
+  // manuais lançadas (Eduzz), usa essas vendas como "Conversões" no card e no
+  // funil — pra não mostrar 0 quando o pixel não captura.
+  const manualSales = eduzzTotals.salesTotal > 0
+    ? eduzzTotals.salesTotal
+    : (eduzzTotals.salesIngresso + eduzzTotals.salesPos);
+  const usingManualConversions = totals.totalConversions === 0 && manualSales > 0;
+  const effectiveConversions = usingManualConversions ? manualSales : totals.totalConversions;
+  const effectiveConvRate = totals.totalClicks > 0 ? (effectiveConversions / totals.totalClicks) * 100 : 0;
+
+  // Builder do relatório — monta ReportData a partir dos totais visíveis + funil.
+  const buildReportData = useCallback((): ReportData => {
+    const t = totals;
+    const inv = t.totalInvestment;
+    const groups: ReportData["groups"] = [
+      { id: "g_fin", label: "Financeiro", items: [
+        { id: "investment", label: "Total Investido", value: formatCurrency(t.totalInvestment), sub: `CTR médio: ${formatPercent(t.ctr)}`, accent: "rose" },
+        { id: "revenue",    label: "Receita Total",   value: formatCurrency(t.totalRevenue), sub: `ROAS: ${t.roas.toFixed(2)}x`, accent: "green" },
+        { id: "roas",       label: "ROAS",            value: `${t.roas.toFixed(2)}x`, accent: "brand" },
+        { id: "sales_total", label: "Vendas Total",   value: formatNumber(eduzzTotals.salesTotal), sub: "Eduzz — manual", accent: "green" },
+      ]},
+      { id: "g_efic", label: "Eficiência", items: [
+        { id: "roi",  label: "ROI",         value: formatPercent(t.roi), accent: t.roi >= 0 ? "green" : "rose" },
+        { id: "cpa",  label: "CPA Médio",   value: formatCurrency(t.cpa), accent: "rose" },
+        { id: "ctr",  label: "CTR Médio",   value: formatPercent(t.ctr), accent: "sky" },
+        { id: "cpc",  label: "CPC Médio",   value: formatCurrency(t.cpc), accent: "rose" },
+        { id: "conv", label: "Conversões",  value: formatNumber(effectiveConversions), sub: `Tx.: ${formatPercent(effectiveConvRate)}${usingManualConversions ? " · manual" : ""}`, accent: "green" },
+      ]},
+      { id: "g_vol", label: "Volume", items: [
+        { id: "impr",  label: "Impressões", value: formatNumber(t.totalImpressions), accent: "slate" },
+        { id: "clk",   label: "Cliques",    value: formatNumber(t.totalClicks), sub: `CTR: ${formatPercent(t.ctr)}`, accent: "slate" },
+        { id: "cpm",   label: "CPM Médio",  value: formatCurrency(t.cpm), accent: "slate" },
+        { id: "leads", label: "Leads",      value: formatNumber(t.totalLeads), sub: `CPL: ${formatCurrency(t.cpl)}`, accent: "slate" },
+        { id: "cpl",   label: "CPL Médio",  value: formatCurrency(t.cpl), accent: "slate" },
+      ]},
+    ];
+    const funnel = reportFunnelFromValues({
+      impressions: t.totalImpressions, clicks: t.totalClicks, conversions: effectiveConversions,
+      leads: t.totalLeads, pageViews: t.totalPageViews, investment: inv, storageScope: currentUser.email,
+    });
+    const title = selectedGroup !== "all"
+      ? (allGroups.find((g) => g.id === selectedGroup)?.label ?? selectedGroup)
+      : "Todos os grupos";
+    const period = dateFrom && dateTo ? `${dateFrom} → ${dateTo}` : "Todo o período";
+    return { title, period, groups, funnel };
+  }, [totals, eduzzTotals, effectiveConversions, effectiveConvRate, usingManualConversions, currentUser.email, selectedGroup, allGroups, dateFrom, dateTo]);
+
   // CPV — computed from spend / salesTotal (derived, not editable)
   // totals available after aggregation below, so computed inline at render time
   const needsLeadsMigration = !campaignMetricsHasLeadsColumn;
@@ -2868,10 +2916,8 @@ export function Dashboard({
               )}
               {campaigns.length > 0 && (
                 <ExportReportButton
-                  targetRef={reportRef}
+                  buildData={buildReportData}
                   fileName={`relatorio_${selectedGroup}_${dateFrom}_${dateTo}`}
-                  title={selectedGroup !== "all" ? (allGroups.find(g => g.id === selectedGroup)?.label ?? selectedGroup) : "Todos os grupos"}
-                  period={dateFrom && dateTo ? `${dateFrom} → ${dateTo}` : "Todo o período"}
                 />
               )}
             </div>
@@ -3013,8 +3059,6 @@ export function Dashboard({
                     </div>
                   </div>
                 )}
-                {/* Bloco de relatório (capturado no export): métricas + funil */}
-                <div ref={reportRef} className="space-y-4 sm:space-y-6">
                 {/* KPI block */}
                 <section className="space-y-3" aria-labelledby="kpi-section-title">
                   <div className="relative flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -3254,11 +3298,11 @@ export function Dashboard({
                     ),
                     isMetricVisible("conversions") && (
                       <KpiCard key="conversions" tier={2}
-                        title="Conversões" value={formatNumber(totals.totalConversions)}
-                        subtitle={`Tx.: ${formatPercent(totals.conversionRate)}`}
-                        icon={Target} accentColor="green"
+                        title="Conversões" value={formatNumber(effectiveConversions)}
+                        subtitle={`Tx.: ${formatPercent(effectiveConvRate)}`}
+                        icon={Target} accentColor="green" isManual={usingManualConversions}
                         goalValue={goals.conversions} goalLabel={goals.conversions != null ? formatNumber(goals.conversions) : undefined}
-                        goalPct={goals.conversions != null ? (totals.totalConversions / goals.conversions) * 100 : null}
+                        goalPct={goals.conversions != null ? (effectiveConversions / goals.conversions) * 100 : null}
                       />
                     ),
                   ].filter(Boolean);
@@ -3369,13 +3413,12 @@ export function Dashboard({
                 <FunnelCard
                   impressions={totals.totalImpressions}
                   clicks={totals.totalClicks}
-                  conversions={totals.totalConversions}
+                  conversions={effectiveConversions}
                   investment={totals.totalInvestment}
                   leads={totals.totalLeads}
                   pageViews={totals.totalPageViews}
                   storageScope={currentUser.email}
                 />
-                </div>{/* fim do bloco de relatório */}
 
                 <ChartsSection dailyTrend={dailyTrend} campaignComparison={campaignComparison} budgetDistribution={budgetDistribution} />
                 {/* Funil do Pixel — collapsible */}

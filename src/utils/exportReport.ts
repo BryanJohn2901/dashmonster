@@ -1,5 +1,6 @@
-// Exporta um elemento do DOM como PNG ou PDF para compartilhamento.
-// Usa html2canvas (DOM → canvas) e jsPDF (canvas → PDF A4).
+// Exporta um elemento do DOM como PNG ou PDF, com alta fidelidade.
+// Usa modern-screenshot (foreignObject) → render ~1:1 com o navegador (sombras,
+// fontes, gradientes). PDF via jsPDF a partir do PNG.
 
 export type ReportFormat = "pdf" | "png";
 
@@ -7,44 +8,26 @@ function sanitize(name: string): string {
   return name.replace(/[^\w\-.]+/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "") || "relatorio";
 }
 
-/**
- * Captura `el` e baixa como PNG ou PDF.
- * Resolve a cor de fundo a partir do --dm-bg-page (ou #0b1437 fallback) para
- * não sair com fundo transparente/preto.
- */
 export async function exportReport(
   el: HTMLElement,
   opts: { format: ReportFormat; fileName: string },
 ): Promise<void> {
-  // html2canvas-pro: fork que suporta cores modernas (oklch/color-mix/lab) que o
-  // Tailwind v4 gera; o html2canvas clássico lança erro nelas e não baixa nada.
-  const { default: html2canvas } = await import("html2canvas-pro");
+  const { domToCanvas } = await import("modern-screenshot");
 
-  const bg =
-    getComputedStyle(document.documentElement).getPropertyValue("--dm-bg-page").trim() ||
-    getComputedStyle(el).backgroundColor ||
-    "#0b1437";
-
-  const canvas = await html2canvas(el, {
-    backgroundColor: bg,
-    scale: Math.max(2, window.devicePixelRatio || 1),  // nitidez mesmo em telas 1x
-    useCORS: true,
-    logging: false,
-    width: el.scrollWidth,
-    height: el.scrollHeight,
-    windowWidth: el.scrollWidth,
-    windowHeight: el.scrollHeight,
+  const canvas = await domToCanvas(el, {
+    scale: Math.max(2, window.devicePixelRatio || 1),
+    backgroundColor: "#0B1437",
+    width: el.offsetWidth,
+    height: el.offsetHeight,
   });
 
   const fileName = sanitize(opts.fileName);
 
   if (opts.format === "png") {
-    const url = canvas.toDataURL("image/png");
-    triggerDownload(url, `${fileName}.png`);
+    triggerDownload(canvas.toDataURL("image/png"), `${fileName}.png`);
     return;
   }
 
-  // PDF: encaixa o canvas na largura A4, paginando se a altura exceder.
   const { jsPDF } = await import("jspdf");
   const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
   const pageW = pdf.internal.pageSize.getWidth();

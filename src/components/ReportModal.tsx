@@ -4,100 +4,70 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { FileText, Image as ImageIcon, Loader2, Settings2, Sparkles, X } from "lucide-react";
 import { exportReport, type ReportFormat } from "@/utils/exportReport";
+import { ReportTemplate, REPORT_WIDTH } from "@/components/ReportTemplate";
+import type { ReportData } from "@/types/report";
 
 interface ReportModalProps {
-  targetRef: React.RefObject<HTMLElement | null>;
+  data: ReportData;
   fileName: string;
-  title: string;        // perfil / grupo
-  period: string;       // "dd/mm → dd/mm"
   onClose: () => void;
 }
 
-interface Block { idx: number; label: string; }
+interface ToggleItem { id: string; label: string; }
 
-export function ReportModal({ targetRef, fileName, title, period, onClose }: ReportModalProps) {
-  const [step, setStep]       = useState<"choice" | "preview">("choice");
-  const [custom, setCustom]   = useState(false);
-  const [format, setFormat]   = useState<ReportFormat>("png");
-  const [busy, setBusy]       = useState(false);
-  const [blocks, setBlocks]   = useState<Block[]>([]);
-  const [hidden, setHidden]   = useState<Set<number>>(new Set());
-
-  const REPORT_WIDTH = 1024; // largura fixa do relatório (px) — layout consistente
-  const captureRef  = useRef<HTMLDivElement>(null);   // cabeçalho + clone (capturado)
-  const cloneHostRef = useRef<HTMLDivElement>(null);  // host do clone
-  const previewBoxRef = useRef<HTMLDivElement>(null); // área de scroll
-  const blockNodesRef = useRef<HTMLElement[]>([]);
-  const [scale, setScale]     = useState(1);
-  const [previewH, setPreviewH] = useState(0);
+export function ReportModal({ data, fileName, onClose }: ReportModalProps) {
+  const [step, setStep]     = useState<"choice" | "preview">("choice");
+  const [custom, setCustom] = useState(false);
+  const [format, setFormat] = useState<ReportFormat>("png");
+  const [busy, setBusy]     = useState(false);
+  const [hidden, setHidden] = useState<Set<string>>(new Set());
+  const [scale, setScale]   = useState(1);
   const [capturing, setCapturing] = useState(false);
+
+  const templateRef  = useRef<HTMLDivElement>(null);
+  const previewBoxRef = useRef<HTMLDivElement>(null);
 
   const generatedAt = useMemo(
     () => new Date().toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }),
     [],
   );
 
-  // Clona o conteúdo vivo para a prévia quando entra no passo "preview".
-  useEffect(() => {
-    if (step !== "preview") return;
-    const src = targetRef.current;
-    const host = cloneHostRef.current;
-    if (!src || !host) return;
+  // Lista de itens/etapas para o painel Personalizar.
+  const toggles = useMemo<ToggleItem[]>(() => {
+    const out: ToggleItem[] = [];
+    for (const g of data.groups) for (const it of g.items) out.push({ id: it.id, label: it.label });
+    for (const s of data.funnel?.steps ?? []) out.push({ id: s.id, label: `Funil · ${s.label}` });
+    return out;
+  }, [data]);
 
-    host.innerHTML = "";
-    const clone = src.cloneNode(true) as HTMLElement;
-    clone.style.width = "100%";
-    host.appendChild(clone);
-
-    const nodes = Array.from(clone.querySelectorAll<HTMLElement>("[data-report-block]"));
-    blockNodesRef.current = nodes;
-    setBlocks(nodes.map((n, idx) => ({ idx, label: n.getAttribute("data-report-label") || `Bloco ${idx + 1}` })));
-    setHidden(new Set());
-  }, [step, targetRef]);
-
-  // Escala o relatório (largura fixa) para caber na largura da área de prévia,
-  // mantendo só a rolagem vertical. Recalcula no resize e quando blocos mudam.
+  // Escala o template (largura fixa) para caber na área de prévia (só scroll vertical).
   useEffect(() => {
     if (step !== "preview") return;
     const recompute = () => {
       const box = previewBoxRef.current;
-      const cap = captureRef.current;
-      if (!box || !cap) return;
-      const avail = box.clientWidth - 24; // padding
-      const s = Math.min(1, avail / REPORT_WIDTH);
-      setScale(s);
-      setPreviewH(cap.scrollHeight * s);
+      if (!box) return;
+      setScale(Math.min(1, (box.clientWidth - 24) / REPORT_WIDTH));
     };
     recompute();
     const ro = new ResizeObserver(recompute);
     if (previewBoxRef.current) ro.observe(previewBoxRef.current);
-    if (captureRef.current) ro.observe(captureRef.current);
     return () => ro.disconnect();
-  }, [step, custom, hidden, blocks]);
+  }, [step]);
 
-  // Aplica visibilidade no clone.
-  useEffect(() => {
-    blockNodesRef.current.forEach((n, idx) => {
-      n.style.display = hidden.has(idx) ? "none" : "";
-    });
-  }, [hidden, blocks]);
-
-  const toggle = (idx: number) =>
+  const toggle = (id: string) =>
     setHidden((prev) => {
       const next = new Set(prev);
-      if (next.has(idx)) next.delete(idx); else next.add(idx);
+      if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
 
   const save = async () => {
-    if (!captureRef.current || busy) return;
+    if (!templateRef.current || busy) return;
     setBusy(true);
-    // Renderiza em escala 1:1 (sem o transform de prévia) p/ a captura sair
-    // idêntica e em alta resolução; depois restaura.
     setCapturing(true);
     await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
     try {
-      await exportReport(captureRef.current, { format, fileName });
+      await exportReport(templateRef.current, { format, fileName });
       onClose();
     } catch (e) {
       console.error("[report] falhou:", e);
@@ -107,9 +77,9 @@ export function ReportModal({ targetRef, fileName, title, period, onClose }: Rep
     }
   };
 
-  const enter = (mode: "atual" | "custom") => { setCustom(mode === "custom"); setStep("preview"); };
+  const previewH = capturing ? undefined : (templateRef.current ? templateRef.current.offsetHeight * scale : undefined);
 
-  const body = (
+  const bodyEl = (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4"
       style={{ background: "rgba(2,6,23,0.6)", backdropFilter: "blur(10px)" }}
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -122,26 +92,25 @@ export function ReportModal({ targetRef, fileName, title, period, onClose }: Rep
             <button type="button" onClick={onClose} className="rounded-lg p-1 hover:bg-white/10" style={{ color: "var(--dm-text-tertiary)" }}><X size={16} /></button>
           </div>
           <div className="grid grid-cols-1 gap-3 p-5 sm:grid-cols-2">
-            <button type="button" onClick={() => enter("atual")}
+            <button type="button" onClick={() => { setCustom(false); setStep("preview"); }}
               className="flex flex-col items-start gap-2 rounded-2xl border p-4 text-left transition hover:-translate-y-0.5"
               style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)" }}>
               <Sparkles size={18} style={{ color: "var(--dm-brand-500, #6366C8)" }} />
               <span className="text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>Configuração atual</span>
-              <span className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>Gera com tudo que está na tela.</span>
+              <span className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>Gera com todas as métricas e o funil.</span>
             </button>
-            <button type="button" onClick={() => enter("custom")}
+            <button type="button" onClick={() => { setCustom(true); setStep("preview"); }}
               className="flex flex-col items-start gap-2 rounded-2xl border p-4 text-left transition hover:-translate-y-0.5"
               style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)" }}>
               <Settings2 size={18} style={{ color: "var(--dm-brand-500, #6366C8)" }} />
               <span className="text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>Personalizar</span>
-              <span className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>Escolha quais cards e o funil incluir.</span>
+              <span className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>Escolha quais cards e etapas incluir.</span>
             </button>
           </div>
         </div>
       ) : (
         <div className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl border shadow-2xl"
           style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
-          {/* Topbar */}
           <div className="flex items-center justify-between border-b px-5 py-3" style={{ borderColor: "var(--dm-border-subtle)" }}>
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>Pré-visualização do relatório</h3>
@@ -157,68 +126,41 @@ export function ReportModal({ targetRef, fileName, title, period, onClose }: Rep
           </div>
 
           <div className="flex min-h-0 flex-1">
-            {/* Painel de toggles */}
             {custom && (
               <div className="w-56 flex-shrink-0 overflow-y-auto border-r p-3" style={{ borderColor: "var(--dm-border-subtle)" }}>
                 <p className="mb-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Incluir no relatório</p>
                 <div className="space-y-1">
-                  {blocks.map((b) => (
-                    <label key={b.idx} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-[11px] transition hover:bg-white/5"
-                      style={{ color: "var(--dm-text-secondary)" }}>
-                      <input type="checkbox" checked={!hidden.has(b.idx)} onChange={() => toggle(b.idx)}
-                        className="h-3.5 w-3.5 accent-[var(--dm-brand-500,#6366C8)]" />
-                      <span className="truncate">{b.label}</span>
+                  {toggles.map((t) => (
+                    <label key={t.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-[11px] transition hover:bg-white/5" style={{ color: "var(--dm-text-secondary)" }}>
+                      <input type="checkbox" checked={!hidden.has(t.id)} onChange={() => toggle(t.id)} className="h-3.5 w-3.5 accent-[var(--dm-brand-500,#6366C8)]" />
+                      <span className="truncate">{t.label}</span>
                     </label>
                   ))}
-                  {blocks.length === 0 && <p className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>Nenhum bloco.</p>}
                 </div>
               </div>
             )}
 
-            {/* Prévia — só scroll vertical; o relatório (largura fixa) é escalado p/ caber */}
-            <div ref={previewBoxRef} className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-3"
-              style={{ background: "var(--dm-bg-page, #0b1437)" }}>
-              <div style={{ height: capturing ? undefined : (previewH || undefined) }}>
+            <div ref={previewBoxRef} className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-3" style={{ background: "var(--dm-bg-page, #0b1437)" }}>
+              <div style={{ height: previewH }}>
                 <div style={{ transform: capturing ? "none" : `scale(${scale})`, transformOrigin: "top left", width: REPORT_WIDTH }}>
-                  <div ref={captureRef} style={{ background: "var(--dm-bg-page, #0b1437)", padding: 24, width: REPORT_WIDTH }}>
-                    {/* Cabeçalho do relatório */}
-                    <div className="mb-4 flex items-center justify-between gap-4 rounded-2xl px-5 py-4"
-                      style={{ background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)", color: "#fff" }}>
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: "rgba(255,255,255,0.15)" }}>
-                          <Sparkles size={18} />
-                        </div>
-                        <div>
-                          <p className="text-base font-black leading-tight">{title || "Relatório"}</p>
-                          <p className="text-[11px] opacity-80">DashMonster · {period}</p>
-                        </div>
-                      </div>
-                      <p className="text-[10px] opacity-70">Gerado em {generatedAt}</p>
-                    </div>
-                    {/* Host do clone */}
-                    <div ref={cloneHostRef} />
-                  </div>
+                  <ReportTemplate innerRef={templateRef} data={data} hiddenIds={hidden} generatedAt={generatedAt} />
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Rodapé */}
           <div className="flex items-center justify-between gap-3 border-t px-5 py-3" style={{ borderColor: "var(--dm-border-subtle)" }}>
             <div className="flex rounded-xl p-0.5" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
               {(["png", "pdf"] as const).map((f) => (
                 <button key={f} type="button" onClick={() => setFormat(f)}
                   className="flex items-center gap-1.5 rounded-[10px] px-3 py-1.5 text-[12px] font-semibold transition"
-                  style={format === f
-                    ? { background: "var(--dm-brand-500, #6366C8)", color: "#fff" }
-                    : { color: "var(--dm-text-tertiary)" }}>
+                  style={format === f ? { background: "var(--dm-brand-500, #6366C8)", color: "#fff" } : { color: "var(--dm-text-tertiary)" }}>
                   {f === "png" ? <ImageIcon size={13} /> : <FileText size={13} />}{f.toUpperCase()}
                 </button>
               ))}
             </div>
             <div className="flex items-center gap-2">
-              <button type="button" onClick={onClose}
-                className="rounded-xl px-3 py-2 text-[12px] font-semibold" style={{ color: "var(--dm-text-tertiary)" }}>Cancelar</button>
+              <button type="button" onClick={onClose} className="rounded-xl px-3 py-2 text-[12px] font-semibold" style={{ color: "var(--dm-text-tertiary)" }}>Cancelar</button>
               <button type="button" onClick={() => void save()} disabled={busy}
                 className="flex items-center gap-1.5 rounded-xl px-4 py-2 text-[12px] font-bold text-white disabled:opacity-50"
                 style={{ background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)" }}>
@@ -233,5 +175,5 @@ export function ReportModal({ targetRef, fileName, title, period, onClose }: Rep
   );
 
   if (typeof document === "undefined") return null;
-  return createPortal(body, document.body);
+  return createPortal(bodyEl, document.body);
 }

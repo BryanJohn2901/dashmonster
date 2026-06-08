@@ -3,28 +3,23 @@
 import { useState } from "react";
 import { Download } from "lucide-react";
 import { ReportModal } from "@/components/ReportModal";
+import type { ReportData } from "@/types/report";
 
 interface ExportReportButtonProps {
-  /** Ref para o elemento a capturar (métricas + funil). */
-  targetRef: React.RefObject<HTMLElement | null>;
-  /** Nome base do arquivo (sem extensão). */
+  /** Builder dos dados do relatório (lazy: só monta ao abrir). */
+  buildData: () => ReportData;
   fileName: string;
-  /** Título do relatório (perfil/grupo). */
-  title?: string;
-  /** Período exibido no cabeçalho. */
-  period?: string;
-  /** Rótulo do botão. */
   label?: string;
 }
 
-export function ExportReportButton({ targetRef, fileName, title = "", period = "", label = "Relatório" }: ExportReportButtonProps) {
-  const [open, setOpen] = useState(false);
+export function ExportReportButton({ buildData, fileName, label = "Relatório" }: ExportReportButtonProps) {
+  const [data, setData] = useState<ReportData | null>(null);
 
   return (
     <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => setData(buildData())}
         className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-semibold transition"
         style={{ backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-secondary)", border: "1px solid var(--dm-border-default)" }}
       >
@@ -32,14 +27,8 @@ export function ExportReportButton({ targetRef, fileName, title = "", period = "
         <span className="hidden sm:inline">{label}</span>
       </button>
 
-      {open && (
-        <ReportModal
-          targetRef={targetRef}
-          fileName={fileName}
-          title={title}
-          period={period}
-          onClose={() => setOpen(false)}
-        />
+      {data && (
+        <ReportModal data={data} fileName={fileName} onClose={() => setData(null)} />
       )}
     </>
   );
