@@ -27,10 +27,13 @@ export async function exportReport(
 
   const canvas = await html2canvas(el, {
     backgroundColor: bg,
-    scale: Math.min(2, window.devicePixelRatio || 1.5),
+    scale: Math.max(2, window.devicePixelRatio || 1),  // nitidez mesmo em telas 1x
     useCORS: true,
     logging: false,
+    width: el.scrollWidth,
+    height: el.scrollHeight,
     windowWidth: el.scrollWidth,
+    windowHeight: el.scrollHeight,
   });
 
   const fileName = sanitize(opts.fileName);

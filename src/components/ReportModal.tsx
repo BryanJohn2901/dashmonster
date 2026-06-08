@@ -30,6 +30,7 @@ export function ReportModal({ targetRef, fileName, title, period, onClose }: Rep
   const blockNodesRef = useRef<HTMLElement[]>([]);
   const [scale, setScale]     = useState(1);
   const [previewH, setPreviewH] = useState(0);
+  const [capturing, setCapturing] = useState(false);
 
   const generatedAt = useMemo(
     () => new Date().toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }),
@@ -91,12 +92,17 @@ export function ReportModal({ targetRef, fileName, title, period, onClose }: Rep
   const save = async () => {
     if (!captureRef.current || busy) return;
     setBusy(true);
+    // Renderiza em escala 1:1 (sem o transform de prévia) p/ a captura sair
+    // idêntica e em alta resolução; depois restaura.
+    setCapturing(true);
+    await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
     try {
       await exportReport(captureRef.current, { format, fileName });
       onClose();
     } catch (e) {
       console.error("[report] falhou:", e);
     } finally {
+      setCapturing(false);
       setBusy(false);
     }
   };
@@ -172,8 +178,8 @@ export function ReportModal({ targetRef, fileName, title, period, onClose }: Rep
             {/* Prévia — só scroll vertical; o relatório (largura fixa) é escalado p/ caber */}
             <div ref={previewBoxRef} className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-3"
               style={{ background: "var(--dm-bg-page, #0b1437)" }}>
-              <div style={{ height: previewH || undefined }}>
-                <div style={{ transform: `scale(${scale})`, transformOrigin: "top left", width: REPORT_WIDTH }}>
+              <div style={{ height: capturing ? undefined : (previewH || undefined) }}>
+                <div style={{ transform: capturing ? "none" : `scale(${scale})`, transformOrigin: "top left", width: REPORT_WIDTH }}>
                   <div ref={captureRef} style={{ background: "var(--dm-bg-page, #0b1437)", padding: 24, width: REPORT_WIDTH }}>
                     {/* Cabeçalho do relatório */}
                     <div className="mb-4 flex items-center justify-between gap-4 rounded-2xl px-5 py-4"
