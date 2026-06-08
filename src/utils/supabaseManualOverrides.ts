@@ -15,6 +15,20 @@ export function overrideKey(groupId: string, campaignId: string): string {
   return `${groupId}::${campaignId}`;
 }
 
+/**
+ * Chave unificada por CAMPANHA: a mesma campanha usa a mesma chave em qualquer
+ * tela (Dashboard, Perfil → Campanha, Perfil → Visão Geral), então o valor
+ * manual editado num lugar reflete no outro.
+ */
+export function campaignKey(campaignId: string): string {
+  return `camp::${campaignId}`;
+}
+
+/** Chave por grupo/contexto consolidado (quando não há campanha única). */
+export function groupKey(groupId: string): string {
+  return `grp::${groupId}`;
+}
+
 export function parseOverrideKey(key: string): { groupId: string; campaignId: string } {
   const idx = key.indexOf("::");
   if (idx === -1) return { groupId: "all", campaignId: key };

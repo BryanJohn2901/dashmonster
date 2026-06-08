@@ -37,6 +37,7 @@ import {
 } from "@/utils/metrics";
 import { KpiCard } from "@/components/KpiCard";
 import { FunnelCard } from "@/components/FunnelCard";
+import { ExportReportButton } from "@/components/ExportReportButton";
 import { ChartsSection } from "@/components/charts/ChartsSection";
 import { CampaignTable } from "@/components/CampaignTable";
 import { useGoalsStore, type Goals } from "@/hooks/useGoalsStore";
@@ -1846,6 +1847,7 @@ export function Dashboard({
     try { return localStorage.getItem("pta_pixel_funnel_open_v1") !== "0"; } catch { return true; }
   });
   const [pickCategoryOpen, setPickCategoryOpen] = useState(false);
+  const reportRef = useRef<HTMLDivElement>(null);
   const [searchCampaign, setSearchCampaign] = useState("");
   const [showImport, setShowImport]         = useState(false);
   const [importInitialTab, setImportInitialTab] = useState<ImportTab>("meta");
@@ -2172,8 +2174,11 @@ export function Dashboard({
   const totals             = aggregateTotals(campaignsWithOverrides);
   const allCampaignTotals  = useMemo(() => aggregateTotals(campaigns), [campaigns]);
 
-  // Key for manual Eduzz edits: contexto grupo+campanha (persistido no usuário).
-  const eduzzEditKey = `${selectedGroup}::${selectedCampaign}`;
+  // Key for manual Eduzz edits: por campanha (compartilhado entre Dashboard e
+  // Perfil de Anunciantes) quando há campanha única; senão por grupo.
+  const eduzzEditKey = selectedCampaign !== "all"
+    ? `camp::${selectedCampaign}`
+    : `grp::${selectedGroup}`;
 
   // ── Eduzz manual sales totals — from the edit key (single context value) ──────
   const eduzzTotals = useMemo(() => {
@@ -2861,6 +2866,9 @@ export function Dashboard({
                   <span className="hidden sm:inline">Exportar CSV</span>
                 </button>
               )}
+              {campaigns.length > 0 && (
+                <ExportReportButton targetRef={reportRef} fileName={`relatorio_${selectedGroup}_${dateFrom}_${dateTo}`} />
+              )}
             </div>
           </div>
 
@@ -3000,6 +3008,8 @@ export function Dashboard({
                     </div>
                   </div>
                 )}
+                {/* Bloco de relatório (capturado no export): métricas + funil */}
+                <div ref={reportRef} className="space-y-4 sm:space-y-6">
                 {/* KPI block */}
                 <section className="space-y-3" aria-labelledby="kpi-section-title">
                   <div className="relative flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -3360,6 +3370,7 @@ export function Dashboard({
                   pageViews={totals.totalPageViews}
                   storageScope={currentUser.email}
                 />
+                </div>{/* fim do bloco de relatório */}
 
                 <ChartsSection dailyTrend={dailyTrend} campaignComparison={campaignComparison} budgetDistribution={budgetDistribution} />
                 {/* Funil do Pixel — collapsible */}

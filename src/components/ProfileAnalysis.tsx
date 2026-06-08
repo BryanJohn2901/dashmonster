@@ -22,6 +22,7 @@ import {
 import { formatBRL, formatCompact, formatInt, formatPercent } from "@/lib/format";
 import { getTemplate, TEMPLATE_LIST, DEFAULT_PERSONALIZADO_CONFIG } from "@/lib/templates";
 import { PerfilEmpty } from "@/components/empty/PerfilEmpty";
+import { ExportReportButton } from "@/components/ExportReportButton";
 import { PerfilAtivoPanel } from "@/components/PerfilAtivoPanel";
 import type { TemplateId, Template, PersonalizadoConfig } from "@/lib/templates/types";
 import { TemplateSelector } from "@/components/profiles/TemplateSelector";
@@ -1125,6 +1126,22 @@ function ProfileOverviewPanel({
     });
   };
 
+  // ── Métricas manuais (compartilhadas por campanha com Dashboard/Campanha) ──
+  const { overrides: ovManual, setOverride: setOvManual } = useManualMetrics();
+  const ovKey = campaigns.length === 1 ? `camp::${campaigns[0]!.id}` : `grp::profile:${profileId}`;
+  const ovData = ovManual[ovKey];
+  const [editingOvId, setEditingOvId] = useState<string | null>(null);
+  const [editingOvVal, setEditingOvVal] = useState("");
+  const OV_FIELD_MAP = {
+    sales_ingresso: "salesIngresso",
+    sales_pos:      "salesPos",
+    sales_total:    "salesTotal",
+    tickets:        "tickets",
+    revenue:        "revenue",
+  } as const;
+  type OvEditableId = keyof typeof OV_FIELD_MAP;
+  const OV_EDITABLE_IDS = Object.keys(OV_FIELD_MAP) as OvEditableId[];
+
   // ── Funnel config ─────────────────────────────────────────────────────────
   const [funnelStepIds, setFunnelStepIds] = useState<ProfileFunnelStepId[]>(() => {
     if (typeof window === "undefined") return DEFAULT_FUNNEL_STEP_IDS;
@@ -1207,13 +1224,16 @@ function ProfileOverviewPanel({
     clicks:         totals.clk,
     total_clicks:   totals.allC,
     spend:          totals.inv,
-    revenue:        totals.rev,
+    revenue:        (ovData?.revenue ?? 0) > 0 ? ovData!.revenue! : totals.rev,
     leads:          totals.lds,
     sales:          dominantResultType && totals.cust > 0 ? totals.cust : totals.conv,
-    tickets:        totals.conv,
+    tickets:        (ovData?.tickets ?? 0) > 0 ? ovData!.tickets! : totals.conv,
     page_views:     totals.pv,
     profile_visits: 0,
     new_followers:  totals.fol,
+    sales_ingresso: ovData?.salesIngresso ?? 0,
+    sales_pos:      ovData?.salesPos      ?? 0,
+    sales_total:    ovData?.salesTotal    ?? 0,
   };
   const kpiValues = useMemo(() => ({ ...rawValues, ...template.derive(rawValues) }), [rows, template]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1312,6 +1332,8 @@ function ProfileOverviewPanel({
             const goalColor = goalMet ? "#05CD99" : goalPct >= 75 ? "#F4A60D" : "#EE5D50";
             const solid = KPI_SOLID_OV[kpi.color] ?? "#6366C8";
             const bg    = KPI_BG_OV[kpi.color]    ?? "rgba(99,102,200,0.10)";
+            const isOvEditable = (OV_EDITABLE_IDS as readonly string[]).includes(kpi.id);
+            const isOvEditing  = editingOvId === kpi.id;
 
             return (
               <article
@@ -1324,25 +1346,67 @@ function ProfileOverviewPanel({
                     style={{ backgroundColor: bg }}>
                     <Target size={18} style={{ color: solid }} />
                   </div>
-                  {editGoals && (
-                    <input
-                      type="number" step="any"
-                      value={goals[kpi.id] ?? ""}
-                      onChange={(e) => { const v = parseFloat(e.target.value); updateGoal(kpi.id, isNaN(v) ? 0 : v); }}
-                      placeholder="Meta"
-                      className="w-20 h-7 rounded-[10px] border px-2 text-[10px] text-right outline-none"
-                      style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
-                    />
-                  )}
+                  <div className="flex items-center gap-1.5">
+                    {isOvEditable && !editGoals && (
+                      <button type="button"
+                        onClick={() => { setEditingOvId(kpi.id); setEditingOvVal(String(val > 0 ? val : "")); }}
+                        className="flex h-6 w-6 items-center justify-center rounded-full transition hover:opacity-80"
+                        style={{ backgroundColor: solid + "1a", color: solid }}
+                        title="Inserir valor manualmente">
+                        <Edit2 size={11} />
+                      </button>
+                    )}
+                    {editGoals && (
+                      <input
+                        type="number" step="any"
+                        value={goals[kpi.id] ?? ""}
+                        onChange={(e) => { const v = parseFloat(e.target.value); updateGoal(kpi.id, isNaN(v) ? 0 : v); }}
+                        placeholder="Meta"
+                        className="w-20 h-7 rounded-[10px] border px-2 text-[10px] text-right outline-none"
+                        style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
+                      />
+                    )}
+                  </div>
                 </div>
 
                 <p className="mb-1 text-[12px] font-semibold" style={{ color: "var(--dm-text-secondary)" }} title={kpi.tooltip}>
                   {kpi.label}
+                  {isOvEditable && val > 0 && (
+                    <span className="ml-1.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase" style={{ backgroundColor: solid + "1a", color: solid }}>manual</span>
+                  )}
                 </p>
-                <p className="text-[22px] font-bold tabular-nums tracking-tight leading-tight"
-                  style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins), Poppins, sans-serif" }}>
-                  {display}
-                </p>
+                {isOvEditing ? (
+                  <div className="flex items-center gap-2 mt-1">
+                    <input
+                      type="number" min="0" step="any" autoFocus
+                      value={editingOvVal}
+                      onChange={(e) => setEditingOvVal(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          const v = parseFloat(editingOvVal);
+                          if (!isNaN(v) && v >= 0) setOvManual(ovKey, { [OV_FIELD_MAP[kpi.id as OvEditableId]]: v });
+                          setEditingOvId(null);
+                        }
+                        if (e.key === "Escape") setEditingOvId(null);
+                      }}
+                      className="w-full rounded-[10px] border px-3 py-1.5 text-[16px] font-bold outline-none tabular-nums"
+                      style={{ borderColor: solid, backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
+                    />
+                    <button type="button"
+                      onClick={() => {
+                        const v = parseFloat(editingOvVal);
+                        if (!isNaN(v) && v >= 0) setOvManual(ovKey, { [OV_FIELD_MAP[kpi.id as OvEditableId]]: v });
+                        setEditingOvId(null);
+                      }}
+                      className="shrink-0 rounded-full px-3 py-1.5 text-[11px] font-bold text-white"
+                      style={{ background: `linear-gradient(135deg,${solid} 0%,${solid}bb 100%)` }}>OK</button>
+                  </div>
+                ) : (
+                  <p className="text-[22px] font-bold tabular-nums tracking-tight leading-tight"
+                    style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins), Poppins, sans-serif" }}>
+                    {display}
+                  </p>
+                )}
 
                 {!editGoals && goalVal > 0 && (
                   <div className="mt-3 space-y-1.5">
@@ -1757,7 +1821,7 @@ function CampaignAnalysisPanel({
 
   // Manual metrics — chave de contexto profile::campaign (persistida no usuário).
   const { overrides: manualOverrides, setOverride: setManualOverride } = useManualMetrics();
-  const eduzzEditKey = `profile::${campaign.id}`;
+  const eduzzEditKey = `camp::${campaign.id}`;
   const [editingKpiId, setEditingKpiId] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState("");
   // KPIs editáveis na mão → campo do override. Inclui Eduzz + Ingressos + Faturamento.
@@ -3057,6 +3121,7 @@ function ProfileDetailView({
   const updateProfile           = onUpdateProfile;
   const [activeCampId, setActiveCampId] = useState<string>(profile.campaigns[0]?.id ?? "");
   const [profileTab, setProfileTab] = useState<"overview" | "campanha" | "conjunto" | "instagram">("overview");
+  const profileReportRef = useRef<HTMLDivElement>(null);
 
   // Persist date range per profile. Priority: profile-specific → appliedDateRange prop → shared Dashboard range → 14-day default.
   const [dateFrom, setDateFrom] = useState<string>(() => {
@@ -3236,6 +3301,12 @@ function ProfileDetailView({
                 Configurar
               </button>
             )}
+            {profileTab !== "instagram" && (
+              <ExportReportButton
+                targetRef={profileReportRef}
+                fileName={`relatorio_${profile.name}_${profileTab === "campanha" && activeCampaign ? activeCampaign.name : "visao-geral"}_${dateFrom}_${dateTo}`}
+              />
+            )}
             <ProfileDateRange
               dateFrom={dateFrom}
               dateTo={dateTo}
@@ -3377,6 +3448,8 @@ function ProfileDetailView({
         ))}
       </div>
 
+      {/* Bloco de relatório (capturado no export): painel da aba ativa */}
+      <div ref={profileReportRef} className="space-y-4">
       {/* ── Visão Geral — agrega todas as campanhas do perfil ── */}
       {profileTab === "overview" && (
         hasToken && profile.campaigns.length > 0 ? (
@@ -3455,6 +3528,7 @@ function ProfileDetailView({
           dateTo={dateTo}
         />
       )}
+      </div>{/* fim do bloco de relatório */}
     </div>
   );
 }
