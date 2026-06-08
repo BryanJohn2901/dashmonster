@@ -1,18 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { encryptToken } from "@/lib/crypto";
-import { GRAPH_BASE, appBaseUrl, oauthRedirectUri } from "@/lib/meta";
+import { GRAPH_BASE, oauthRedirectUri } from "@/lib/meta";
 
 export const runtime = "nodejs";
 
 const STATE_COOKIE = "ig_oauth_state";
-
-function backToApp(status: string, extra: Record<string, string> = {}): NextResponse {
-  const url = new URL("/", appBaseUrl());
-  url.searchParams.set("ig_oauth", status);
-  for (const [k, v] of Object.entries(extra)) url.searchParams.set(k, v);
-  return NextResponse.redirect(url);
-}
 
 /**
  * GET /api/instagram/oauth/callback?code=...&state=...
@@ -24,6 +17,17 @@ function backToApp(status: string, extra: Record<string, string> = {}): NextResp
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
+
+  // Redireciona para a origem REAL da requisição (domínio Vercel/produção),
+  // não para NEXT_PUBLIC_APP_URL — que pode estar como localhost no ambiente.
+  const origin = request.nextUrl.origin;
+  const backToApp = (status: string, extra: Record<string, string> = {}): NextResponse => {
+    const url = new URL("/", origin);
+    url.searchParams.set("ig_oauth", status);
+    for (const [k, v] of Object.entries(extra)) url.searchParams.set(k, v);
+    return NextResponse.redirect(url);
+  };
+
   const code  = searchParams.get("code");
   const state = searchParams.get("state");
   const errorParam = searchParams.get("error");
