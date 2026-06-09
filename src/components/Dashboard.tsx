@@ -3598,55 +3598,11 @@ export function Dashboard({
                     ),
                   ].filter(Boolean);
 
-                  const hasAny = tier1.length + tierVendas.length + tier2.length + tier3.length > 0;
+                  const allCards = [...tier1, ...tierVendas, ...tier2, ...tier3].filter(Boolean);
 
-                  /* Tier label separator */
-                  const TierLabel = ({ label }: { label: string }) => (
-                    <div className="flex items-center gap-2 pt-1">
-                      <span
-                        className="flex-shrink-0 text-[10px] font-semibold uppercase"
-                        style={{ color: "var(--dm-text-tertiary)", letterSpacing: "0.09em" }}
-                      >
-                        {label}
-                      </span>
-                      <div className="flex-1 h-px" style={{ background: "var(--dm-border-default)" }} />
-                    </div>
-                  );
-
-                  return hasAny ? (
-                    <div className="space-y-3">
-                      {tier1.length > 0 && (
-                        <>
-                          <TierLabel label="Financeiro" />
-                          <div className="grid grid-cols-1 gap-[10px] sm:grid-cols-2 lg:grid-cols-3">
-                            {tier1}
-                          </div>
-                        </>
-                      )}
-                      {tierVendas.length > 0 && (
-                        <>
-                          <TierLabel label="Vendas" />
-                          <div className="grid grid-cols-2 gap-[10px] sm:grid-cols-3 lg:grid-cols-4">
-                            {tierVendas}
-                          </div>
-                        </>
-                      )}
-                      {tier2.length > 0 && (
-                        <>
-                          <TierLabel label="Eficiência" />
-                          <div className="grid grid-cols-2 gap-[10px] sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-                            {tier2}
-                          </div>
-                        </>
-                      )}
-                      {tier3.length > 0 && (
-                        <>
-                          <TierLabel label="Volume" />
-                          <div className="grid grid-cols-2 gap-[10px] sm:grid-cols-3 lg:grid-cols-5">
-                            {tier3}
-                          </div>
-                        </>
-                      )}
+                  return allCards.length > 0 ? (
+                    <div className="grid grid-cols-2 gap-[10px] sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                      {allCards}
                     </div>
                   ) : (
                     <div className="flex items-center justify-center rounded-xl border py-6"

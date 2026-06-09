@@ -67,15 +67,31 @@ const DEFAULT_FUNNEL_STEP_IDS: ProfileFunnelStepId[] = ["impressions", "clicks",
 // ─── Builder genérico de ReportData (Visão Geral / Campanha) ──────────────────
 function buildReportFromKpisFunnel(args: {
   title: string; period: string;
-  kpis: { id: string; label: string; format: (n: number) => string }[];
+  kpis: { id: string; label: string; format: (n: number) => string; invert?: boolean }[];
   kpiValues: Record<string, number>;
+  goals?: Record<string, number>;
   funnelStages: { id: string; label: string; color: string; rateLabel?: string }[];
   funnelValues: Record<string, number>;
   investment: number; impressions: number; clicks: number; conversions: number;
 }): ReportData {
   const items = args.kpis.map((k) => {
     const v = args.kpiValues[k.id] ?? 0;
-    return { id: k.id, label: k.label, value: v > 0 ? k.format(v) : "—" };
+    const goalVal = args.goals?.[k.id];
+    const hasGoal = goalVal != null && goalVal > 0;
+    const goalPct = hasGoal
+      ? k.invert
+        ? (goalVal / Math.max(v, 0.001)) * 100
+        : (v / goalVal) * 100
+      : null;
+    return {
+      id: k.id,
+      label: k.label,
+      value: v > 0 ? k.format(v) : "—",
+      goalValue: hasGoal ? goalVal : null,
+      goalLabel: hasGoal ? k.format(goalVal!) : undefined,
+      goalPct,
+      goalInvert: k.invert,
+    };
   });
   const steps = args.funnelStages.map((s, i) => {
     const prev = i > 0 ? (args.funnelValues[args.funnelStages[i - 1].id] ?? 0) : null;
@@ -1291,6 +1307,7 @@ function ProfileOverviewPanel({
     period: `${dateFrom} → ${dateTo}`,
     kpis: template.kpis,
     kpiValues,
+    goals,
     funnelStages: funnelStepIds
       .map((id) => PROFILE_FUNNEL_STEPS.find((s) => s.id === id))
       .filter((s): s is ProfileFunnelStep => Boolean(s))
