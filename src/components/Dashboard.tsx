@@ -290,18 +290,46 @@ interface GoalField {
   suffix?: string;
 }
 
-const GOAL_FIELDS: GoalField[] = [
-  { key: "investment",  label: "Orçamento",   placeholder: "Ex: 5000", prefix: "R$" },
-  { key: "revenue",     label: "Receita",     placeholder: "Ex: 20000", prefix: "R$" },
-  { key: "roas",        label: "ROAS",        placeholder: "Ex: 3.0",  suffix: "x" },
-  { key: "roi",         label: "ROI",         placeholder: "Ex: 200",  suffix: "%" },
-  { key: "cpa",         label: "CPA",         placeholder: "Ex: 50",   prefix: "R$" },
-  { key: "ctr",         label: "CTR",         placeholder: "Ex: 2.0",  suffix: "%" },
-  { key: "cpc",         label: "CPC",         placeholder: "Ex: 1.50", prefix: "R$" },
-  { key: "cpm",         label: "CPM",         placeholder: "Ex: 15",   prefix: "R$" },
-  { key: "leads",       label: "Leads",       placeholder: "Ex: 50"   },
-  { key: "cpl",         label: "CPL",         placeholder: "Ex: 20",   prefix: "R$" },
-  { key: "conversions", label: "Conversões",  placeholder: "Ex: 100"  },
+const GOAL_SECTIONS: { label: string; fields: GoalField[] }[] = [
+  {
+    label: "Financeiro",
+    fields: [
+      { key: "investment",  label: "Orçamento",  placeholder: "Ex: 5000",  prefix: "R$" },
+      { key: "revenue",     label: "Receita",    placeholder: "Ex: 20000", prefix: "R$" },
+      { key: "roas",        label: "ROAS",       placeholder: "Ex: 3.0",   suffix: "x" },
+      { key: "roi",         label: "ROI",        placeholder: "Ex: 200",   suffix: "%" },
+    ],
+  },
+  {
+    label: "Vendas",
+    fields: [
+      { key: "sales_total",    label: "Vendas Total",       placeholder: "Ex: 100" },
+      { key: "sales_ingresso", label: "Vendas Ingresso",    placeholder: "Ex: 50"  },
+      { key: "cpa_ingresso",   label: "Custo/Ingresso",     placeholder: "Ex: 80",  prefix: "R$" },
+      { key: "sales_pos",      label: "Vendas Pós",         placeholder: "Ex: 30"  },
+      { key: "cpa_pos",        label: "Custo/Pós",          placeholder: "Ex: 150", prefix: "R$" },
+      { key: "cpa_venda",      label: "Custo/Venda",        placeholder: "Ex: 60",  prefix: "R$" },
+    ],
+  },
+  {
+    label: "Eficiência",
+    fields: [
+      { key: "conversions", label: "Conversões", placeholder: "Ex: 100" },
+      { key: "leads",       label: "Leads",      placeholder: "Ex: 50"  },
+      { key: "cpa",         label: "CPA",        placeholder: "Ex: 50",   prefix: "R$" },
+      { key: "cpl",         label: "CPL",        placeholder: "Ex: 20",   prefix: "R$" },
+      { key: "ctr",         label: "CTR",        placeholder: "Ex: 2.0",  suffix: "%" },
+      { key: "cpc",         label: "CPC",        placeholder: "Ex: 1.50", prefix: "R$" },
+      { key: "cpm",         label: "CPM",        placeholder: "Ex: 15",   prefix: "R$" },
+    ],
+  },
+  {
+    label: "Volume",
+    fields: [
+      { key: "clicks",      label: "Cliques",    placeholder: "Ex: 5000" },
+      { key: "impressions", label: "Impressões", placeholder: "Ex: 50000" },
+    ],
+  },
 ];
 
 function GoalsPanel({
@@ -337,41 +365,47 @@ function GoalsPanel({
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 py-5">
-          <p className="mb-5 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
-            Defina metas para cada métrica. Os KPIs mostrarão progresso em tempo real.
-          </p>
-          <div className="space-y-3">
-            {GOAL_FIELDS.map(({ key, label, placeholder, prefix, suffix }) => (
-              <div key={key} className="flex items-center gap-3">
-                <span className="w-28 flex-shrink-0 text-xs font-medium" style={{ color: "var(--dm-text-secondary)" }}>{label}</span>
-                <div className="relative flex-1">
-                  {prefix && (
-                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>{prefix}</span>
-                  )}
-                  <input
-                    type="number"
-                    min={0}
-                    step="any"
-                    value={goals[key] ?? ""}
-                    onChange={(e) => {
-                      const v = e.target.value === "" ? null : Number(e.target.value);
-                      onSetGoal(key, v as Goals[typeof key]);
-                    }}
-                    placeholder={placeholder}
-                    className={`h-9 w-full rounded-lg border text-xs outline-none transition ${prefix ? "pl-7 pr-3" : suffix ? "pl-3 pr-7" : "px-3"}`}
-                    style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
-                  />
-                  {suffix && (
-                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>{suffix}</span>
-                  )}
+          <div className="space-y-5">
+            {GOAL_SECTIONS.map(({ label: sectionLabel, fields }) => (
+              <div key={sectionLabel}>
+                <p className="mb-2 text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>
+                  {sectionLabel}
+                </p>
+                <div className="space-y-2">
+                  {fields.map(({ key, label, placeholder, prefix, suffix }) => (
+                    <div key={key} className="flex items-center gap-3">
+                      <span className="w-32 flex-shrink-0 text-xs font-medium" style={{ color: "var(--dm-text-secondary)" }}>{label}</span>
+                      <div className="relative flex-1">
+                        {prefix && (
+                          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>{prefix}</span>
+                        )}
+                        <input
+                          type="number"
+                          min={0}
+                          step="any"
+                          value={goals[key] ?? ""}
+                          onChange={(e) => {
+                            const v = e.target.value === "" ? null : Number(e.target.value);
+                            onSetGoal(key, v as Goals[typeof key]);
+                          }}
+                          placeholder={placeholder}
+                          className={`h-9 w-full rounded-lg border text-xs outline-none transition ${prefix ? "pl-7 pr-3" : suffix ? "pl-3 pr-7" : "px-3"}`}
+                          style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
+                        />
+                        {suffix && (
+                          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>{suffix}</span>
+                        )}
+                      </div>
+                      {goals[key] != null && (
+                        <button type="button" onClick={() => onSetGoal(key, null as Goals[typeof key])}
+                          className="flex-shrink-0 transition hover:text-red-400"
+                          style={{ color: "var(--dm-text-tertiary)" }}>
+                          <X size={12} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
                 </div>
-                {goals[key] != null && (
-                  <button type="button" onClick={() => onSetGoal(key, null as Goals[typeof key])}
-                    className="flex-shrink-0 transition hover:text-red-400"
-                    style={{ color: "var(--dm-text-tertiary)" }}>
-                    <X size={12} />
-                  </button>
-                )}
               </div>
             ))}
           </div>
@@ -2255,9 +2289,51 @@ export function Dashboard({
           goalLabel: goals.roas != null ? `${goals.roas.toFixed(1)}x` : undefined,
           goalPct: goals.roas != null ? (t.roas / goals.roas) * 100 : null
         },
-        { id: "sales_total",  label: "Vendas Total",    value: formatNumber(eduzzTotals.salesTotal), sub: "Eduzz — manual", accent: "green" },
-        { id: "sales_ingresso", label: "Vendas de Ingresso", value: formatNumber(eduzzTotals.salesIngresso), sub: "Eduzz — manual", accent: "green" },
-        { id: "sales_pos",    label: "Vendas de Pós",   value: formatNumber(eduzzTotals.salesPos), sub: "Eduzz — manual", accent: "green" },
+        {
+          id: "sales_total",
+          label: "Vendas Total",
+          value: formatNumber(eduzzTotals.salesTotal),
+          sub: "Eduzz — manual",
+          accent: "green",
+          goalValue: goals.sales_total,
+          goalLabel: goals.sales_total != null ? formatNumber(goals.sales_total) : undefined,
+          goalPct: goals.sales_total != null ? (eduzzTotals.salesTotal / goals.sales_total) * 100 : null
+        },
+        {
+          id: "sales_ingresso",
+          label: "Vendas de Ingresso",
+          value: formatNumber(eduzzTotals.salesIngresso),
+          sub: "Eduzz — manual",
+          accent: "green",
+          goalValue: goals.sales_ingresso,
+          goalLabel: goals.sales_ingresso != null ? formatNumber(goals.sales_ingresso) : undefined,
+          goalPct: goals.sales_ingresso != null ? (eduzzTotals.salesIngresso / goals.sales_ingresso) * 100 : null
+        },
+        {
+          id: "sales_pos",
+          label: "Vendas de Pós",
+          value: formatNumber(eduzzTotals.salesPos),
+          sub: "Eduzz — manual",
+          accent: "green",
+          goalValue: goals.sales_pos,
+          goalLabel: goals.sales_pos != null ? formatNumber(goals.sales_pos) : undefined,
+          goalPct: goals.sales_pos != null ? (eduzzTotals.salesPos / goals.sales_pos) * 100 : null
+        },
+        (() => { const v = eduzzTotals.salesIngresso > 0 ? t.totalInvestment / eduzzTotals.salesIngresso : 0; return {
+          id: "cpa_ingresso", label: "Custo/Ingresso", value: v > 0 ? formatCurrency(v) : "—", accent: "amber" as const,
+          goalValue: goals.cpa_ingresso, goalLabel: goals.cpa_ingresso != null ? formatCurrency(goals.cpa_ingresso) : undefined,
+          goalPct: goals.cpa_ingresso != null && v > 0 ? (goals.cpa_ingresso / v) * 100 : null, goalInvert: true
+        }; })(),
+        (() => { const v = eduzzTotals.salesPos > 0 ? t.totalInvestment / eduzzTotals.salesPos : 0; return {
+          id: "cpa_pos", label: "Custo/Pós", value: v > 0 ? formatCurrency(v) : "—", accent: "amber" as const,
+          goalValue: goals.cpa_pos, goalLabel: goals.cpa_pos != null ? formatCurrency(goals.cpa_pos) : undefined,
+          goalPct: goals.cpa_pos != null && v > 0 ? (goals.cpa_pos / v) * 100 : null, goalInvert: true
+        }; })(),
+        (() => { const v = eduzzTotals.salesTotal > 0 ? t.totalInvestment / eduzzTotals.salesTotal : 0; return {
+          id: "cpa_venda", label: "Custo/Venda", value: v > 0 ? formatCurrency(v) : "—", accent: "amber" as const,
+          goalValue: goals.cpa_venda, goalLabel: goals.cpa_venda != null ? formatCurrency(goals.cpa_venda) : undefined,
+          goalPct: goals.cpa_venda != null && v > 0 ? (goals.cpa_venda / v) * 100 : null, goalInvert: true
+        }; })(),
       ]},
       { id: "g_efic", label: "Eficiência", items: [
         {
@@ -2310,8 +2386,25 @@ export function Dashboard({
         },
       ]},
       { id: "g_vol", label: "Volume", items: [
-        { id: "impressions", label: "Impressões", value: formatNumber(t.totalImpressions), accent: "slate" },
-        { id: "clicks",      label: "Cliques",    value: formatNumber(t.totalClicks), sub: `CTR: ${formatPercent(t.ctr)}`, accent: "slate" },
+        {
+          id: "impressions",
+          label: "Impressões",
+          value: formatNumber(t.totalImpressions),
+          accent: "slate",
+          goalValue: goals.impressions,
+          goalLabel: goals.impressions != null ? formatNumber(goals.impressions) : undefined,
+          goalPct: goals.impressions != null ? (t.totalImpressions / goals.impressions) * 100 : null
+        },
+        {
+          id: "clicks",
+          label: "Cliques",
+          value: formatNumber(t.totalClicks),
+          sub: `CTR: ${formatPercent(t.ctr)}`,
+          accent: "slate",
+          goalValue: goals.clicks,
+          goalLabel: goals.clicks != null ? formatNumber(goals.clicks) : undefined,
+          goalPct: goals.clicks != null ? (t.totalClicks / goals.clicks) * 100 : null
+        },
         {
           id: "cpm",
           label: "CPM Médio",
@@ -3340,6 +3433,8 @@ export function Dashboard({
                         editable={true}
                         isManual={(manualOverrides[eduzzEditKey]?.salesTotal ?? 0) > 0}
                         onEdit={(v) => eduzzEditKey && setManualOverride(eduzzEditKey, { salesTotal: v })}
+                        goalValue={goals.sales_total} goalLabel={goals.sales_total != null ? formatNumber(goals.sales_total) : undefined}
+                        goalPct={goals.sales_total != null ? (eduzzTotals.salesTotal / goals.sales_total) * 100 : null}
                       />
                     ),
                   ].filter(Boolean);
@@ -3357,6 +3452,8 @@ export function Dashboard({
                         editable={true}
                         isManual={(manualOverrides[eduzzEditKey]?.salesIngresso ?? 0) > 0}
                         onEdit={(v) => eduzzEditKey && setManualOverride(eduzzEditKey, { salesIngresso: v })}
+                        goalValue={goals.sales_ingresso} goalLabel={goals.sales_ingresso != null ? formatNumber(goals.sales_ingresso) : undefined}
+                        goalPct={goals.sales_ingresso != null ? (eduzzTotals.salesIngresso / goals.sales_ingresso) * 100 : null}
                       />
                     ),
                     isMetricVisible("cpa_ingresso") && (
@@ -3365,6 +3462,9 @@ export function Dashboard({
                         subtitle="Investimento ÷ V. Ingresso"
                         icon={BadgeDollarSign} accentColor="amber"
                         invertTrend
+                        goalValue={goals.cpa_ingresso} goalLabel={goals.cpa_ingresso != null ? formatCurrency(goals.cpa_ingresso) : undefined}
+                        goalPct={goals.cpa_ingresso != null && cpaIngresso > 0 ? (goals.cpa_ingresso / cpaIngresso) * 100 : null}
+                        goalInvert
                       />
                     ),
                     isMetricVisible("sales_pos") && (
@@ -3375,6 +3475,8 @@ export function Dashboard({
                         editable={true}
                         isManual={(manualOverrides[eduzzEditKey]?.salesPos ?? 0) > 0}
                         onEdit={(v) => eduzzEditKey && setManualOverride(eduzzEditKey, { salesPos: v })}
+                        goalValue={goals.sales_pos} goalLabel={goals.sales_pos != null ? formatNumber(goals.sales_pos) : undefined}
+                        goalPct={goals.sales_pos != null ? (eduzzTotals.salesPos / goals.sales_pos) * 100 : null}
                       />
                     ),
                     isMetricVisible("cpa_pos") && (
@@ -3383,6 +3485,9 @@ export function Dashboard({
                         subtitle="Investimento ÷ V. de Pós"
                         icon={BadgeDollarSign} accentColor="amber"
                         invertTrend
+                        goalValue={goals.cpa_pos} goalLabel={goals.cpa_pos != null ? formatCurrency(goals.cpa_pos) : undefined}
+                        goalPct={goals.cpa_pos != null && cpaPos > 0 ? (goals.cpa_pos / cpaPos) * 100 : null}
+                        goalInvert
                       />
                     ),
                     isMetricVisible("cpa_venda") && (
@@ -3391,6 +3496,9 @@ export function Dashboard({
                         subtitle="Investimento ÷ Vendas Total"
                         icon={BadgeDollarSign} accentColor="amber"
                         invertTrend
+                        goalValue={goals.cpa_venda} goalLabel={goals.cpa_venda != null ? formatCurrency(goals.cpa_venda) : undefined}
+                        goalPct={goals.cpa_venda != null && cpvEduzz > 0 ? (goals.cpa_venda / cpvEduzz) * 100 : null}
+                        goalInvert
                       />
                     ),
                   ].filter(Boolean);
@@ -3448,6 +3556,8 @@ export function Dashboard({
                       <KpiCard key="impressions" tier={3}
                         title="Impressões" value={formatNumber(totals.totalImpressions)}
                         icon={Activity} accentColor="blue"
+                        goalValue={goals.impressions} goalLabel={goals.impressions != null ? formatNumber(goals.impressions) : undefined}
+                        goalPct={goals.impressions != null ? (totals.totalImpressions / goals.impressions) * 100 : null}
                       />
                     ),
                     isMetricVisible("clicks") && (
@@ -3455,6 +3565,8 @@ export function Dashboard({
                         title="Cliques" value={formatNumber(totals.totalClicks)}
                         subtitle={`CTR: ${formatPercent(totals.ctr)}`}
                         icon={MousePointerClick} accentColor="primary"
+                        goalValue={goals.clicks} goalLabel={goals.clicks != null ? formatNumber(goals.clicks) : undefined}
+                        goalPct={goals.clicks != null ? (totals.totalClicks / goals.clicks) * 100 : null}
                       />
                     ),
                     isMetricVisible("cpm") && (

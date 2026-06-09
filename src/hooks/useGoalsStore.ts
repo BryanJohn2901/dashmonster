@@ -5,23 +5,33 @@ import { useCallback, useEffect, useState } from "react";
 const STORAGE_KEY = "pta_goals_v2"; // v2: per-group goals
 
 export interface Goals {
-  ctr: number | null;         // % — e.g. 2.0 means 2%
-  roas: number | null;        // multiple — e.g. 3.0 means 3x
-  cpa: number | null;         // R$ per conversion
-  roi: number | null;         // % — e.g. 200 means 200%
-  cpc: number | null;         // R$ per click
-  cpm: number | null;         // R$ per 1000 impressions
-  leads: number | null;       // lead count
-  conversions: number | null; // count
-  investment: number | null;  // R$ budget limit
-  revenue: number | null;     // R$ revenue target
-  cpl: number | null;         // R$ per lead
+  ctr: number | null;
+  roas: number | null;
+  cpa: number | null;
+  roi: number | null;
+  cpc: number | null;
+  cpm: number | null;
+  leads: number | null;
+  conversions: number | null;
+  investment: number | null;
+  revenue: number | null;
+  cpl: number | null;
+  clicks: number | null;
+  impressions: number | null;
+  sales_total: number | null;
+  sales_ingresso: number | null;
+  sales_pos: number | null;
+  cpa_venda: number | null;
+  cpa_ingresso: number | null;
+  cpa_pos: number | null;
 }
 
 export const DEFAULT_GOALS: Goals = {
   ctr: null, roas: null, cpa: null, roi: null,
   cpc: null, cpm: null, leads: null, conversions: null, investment: null,
-  revenue: null, cpl: null,
+  revenue: null, cpl: null, clicks: null, impressions: null,
+  sales_total: null, sales_ingresso: null, sales_pos: null,
+  cpa_venda: null, cpa_ingresso: null, cpa_pos: null,
 };
 
 interface GoalsState {
