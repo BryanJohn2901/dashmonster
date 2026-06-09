@@ -97,10 +97,15 @@ function buildReportFromKpisFunnel(args: {
     const prev = i > 0 ? (args.funnelValues[args.funnelStages[i - 1].id] ?? 0) : null;
     const cur = args.funnelValues[s.id] ?? 0;
     const rate = prev && prev > 0 ? (cur / prev) * 100 : undefined;
+    const prevId = i > 0 ? args.funnelStages[i - 1].id : null;
+    const isFrequency = prevId === "reach" && s.id === "impressions";
+    const rateValue = rate != null
+      ? isFrequency ? `${(rate / 100).toFixed(1)}x` : formatPercent(rate)
+      : undefined;
     return {
       id: `f_${s.id}`, label: s.label, value: formatInt(cur), color: s.color,
       rateLabel: i > 0 ? s.rateLabel : undefined,
-      rateValue: rate != null ? formatPercent(rate) : undefined,
+      rateValue,
     };
   });
   const inv = args.investment;
@@ -190,21 +195,35 @@ interface AdsetRow {
 
 // Human-readable labels for each result type
 export const RESULT_TYPE_LABELS: Record<ResultType, string> = {
-  "purchase":                       "Compras / Vendas",
-  "lead":                           "Leads",
-  "onsite_conversion.lead_grouped": "Leads no Site",
-  "leadgen_grouped":                "Leads de Formulário",
-  "omni_complete_registration":     "Cadastros",
-  "link_click":                     "Cliques no Link",
+  "purchase":                            "Compras / Vendas",
+  "offsite_conversion.fb_pixel_purchase":"Compra no Site (Pixel)",
+  "lead":                                "Leads",
+  "offsite_conversion.fb_pixel_lead":    "Lead no Site (Pixel)",
+  "onsite_conversion.lead_grouped":      "Leads no Site",
+  "leadgen_grouped":                     "Leads de Formulário",
+  "omni_complete_registration":          "Cadastros",
+  "submit_application":                  "Formulário Enviado",
+  "schedule":                            "Agendamentos",
+  "contact":                             "Contatos",
+  "view_content":                        "Vis. de Conteúdo",
+  "profile_visit":                       "Visitas ao Perfil",
+  "link_click":                          "Cliques no Link",
 };
 
 export const RESULT_TYPE_OPTIONS: { value: ResultType; label: string }[] = [
-  { value: "purchase",                       label: "Compras / Vendas" },
-  { value: "lead",                           label: "Leads" },
-  { value: "onsite_conversion.lead_grouped", label: "Leads no Site" },
-  { value: "leadgen_grouped",                label: "Leads de Formulário" },
-  { value: "omni_complete_registration",     label: "Cadastros" },
-  { value: "link_click",                     label: "Cliques no Link" },
+  { value: "purchase",                            label: "Compras / Vendas" },
+  { value: "offsite_conversion.fb_pixel_purchase",label: "Compra no Site (Pixel)" },
+  { value: "lead",                                label: "Leads" },
+  { value: "offsite_conversion.fb_pixel_lead",    label: "Lead no Site (Pixel)" },
+  { value: "onsite_conversion.lead_grouped",      label: "Leads no Site" },
+  { value: "leadgen_grouped",                     label: "Leads de Formulário" },
+  { value: "omni_complete_registration",          label: "Cadastros" },
+  { value: "submit_application",                  label: "Formulário Enviado" },
+  { value: "schedule",                            label: "Agendamentos" },
+  { value: "contact",                             label: "Contatos" },
+  { value: "view_content",                        label: "Vis. de Conteúdo" },
+  { value: "profile_visit",                       label: "Visitas ao Perfil" },
+  { value: "link_click",                          label: "Cliques no Link" },
 ];
 
 function todayStr() { return new Date().toISOString().split("T")[0]; }
@@ -221,6 +240,36 @@ function parseMetaNum(v: unknown): number {
 
 function getActionValue(actions: MetaInsight["actions"], type: string): number {
   return Number(actions?.find((a) => a.action_type === type)?.value ?? 0);
+}
+
+// Priority order for auto-detecting the dominant result type from Meta actions
+const AUTO_DETECT_PRIORITY: ResultType[] = [
+  "offsite_conversion.fb_pixel_purchase",
+  "purchase",
+  "offsite_conversion.fb_pixel_lead",
+  "onsite_conversion.lead_grouped",
+  "leadgen_grouped",
+  "lead",
+  "omni_complete_registration",
+  "submit_application",
+  "schedule",
+  "contact",
+  "view_content",
+  "profile_visit",
+];
+
+function autoDetectResultType(data: MetaInsight[]): ResultType | undefined {
+  const totals: Partial<Record<ResultType, number>> = {};
+  for (const insight of data) {
+    for (const type of AUTO_DETECT_PRIORITY) {
+      const val = getActionValue(insight.actions, type);
+      if (val > 0) totals[type] = (totals[type] ?? 0) + val;
+    }
+  }
+  for (const type of AUTO_DETECT_PRIORITY) {
+    if ((totals[type] ?? 0) > 0) return type;
+  }
+  return undefined;
 }
 
 function pickActionValue(avs: MetaInsight["action_values"], ...types: string[]): number {
@@ -1159,6 +1208,10 @@ function ProfileOverviewPanel({
     return types.every(t => t === first) ? first : undefined;
   }, [campaigns]);
 
+  // Auto-detected type when no manual resultType is configured
+  const [detectedResultType, setDetectedResultType] = useState<ResultType | null>(null);
+  const effectiveResultType = dominantResultType ?? detectedResultType ?? undefined;
+
   // ── Goals ─────────────────────────────────────────────────────────────────
   const [goals, setGoals] = useState<Record<string, number>>(() => {
     if (typeof window === "undefined") return {};
@@ -1248,7 +1301,11 @@ function ProfileOverviewPanel({
       timeIncrement: "all_days",
       campaignIds: campaigns.map((c) => c.id),
     })
-      .then((data) => setRows(toAdsetRows(data, dominantResultType)))
+      .then((data) => {
+        const effective = dominantResultType ?? autoDetectResultType(data);
+        setDetectedResultType(effective ?? null);
+        setRows(toAdsetRows(data, effective));
+      })
       .catch((e) => setError(e instanceof Error ? e.message : "Erro ao buscar dados."))
       .finally(() => setLoading(false));
   }, [adAccountId, campaigns, dateFrom, dateTo, dominantResultType]);
@@ -1281,7 +1338,7 @@ function ProfileOverviewPanel({
     spend:          totals.inv,
     revenue:        (ovData?.revenue ?? 0) > 0 ? ovData!.revenue! : totals.rev,
     leads:          totals.lds,
-    sales:          dominantResultType && totals.cust > 0 ? totals.cust : totals.conv,
+    sales:          effectiveResultType && totals.cust > 0 ? totals.cust : totals.conv,
     tickets:        (ovData?.tickets ?? 0) > 0 ? ovData!.tickets! : totals.conv,
     page_views:     totals.pv,
     profile_visits: 0,
@@ -1299,7 +1356,7 @@ function ProfileOverviewPanel({
     clicks:      totals.clk,
     page_views:  totals.pv,
     leads:       totals.lds,
-    sales:       totals.conv,
+    sales:       effectiveResultType && totals.cust > 0 ? totals.cust : totals.conv,
   };
 
   const buildReport = (): ReportData => buildReportFromKpisFunnel({
@@ -1339,7 +1396,11 @@ function ProfileOverviewPanel({
           fetchMetaInsights(adAccountId, dateFrom, dateTo, {
             level: "campaign", timeIncrement: "all_days",
             campaignIds: campaigns.map((c) => c.id),
-          }).then((data) => setRows(toAdsetRows(data)))
+          }).then((data) => {
+              const effective = dominantResultType ?? autoDetectResultType(data);
+              setDetectedResultType(effective ?? null);
+              setRows(toAdsetRows(data, effective));
+            })
             .catch((e) => setError(e instanceof Error ? e.message : "Erro ao buscar dados."))
             .finally(() => setLoading(false));
         }} className="ml-auto underline">Tentar novamente</button>
@@ -1604,6 +1665,12 @@ function ProfileOverviewPanel({
                 const prevId  = i > 0 ? funnelStepIds[i - 1] : null;
                 const prevVal = prevId ? (funnelVals[prevId] ?? 0) : null;
                 const rate    = prevVal !== null && prevVal > 0 ? (val / prevVal) * 100 : null;
+                const isFrequency = prevId === "reach" && stepId === "impressions";
+                const rateDisplay = rate !== null
+                  ? isFrequency
+                    ? `${(rate / 100).toFixed(1)}x${step.rateLabel ? ` ${step.rateLabel}` : ""}`
+                    : `${formatPercent(rate)}${step.rateLabel ? ` ${step.rateLabel}` : ""}`
+                  : null;
                 const color   = FUNNEL_COLORS_OV[stepId] ?? step.color;
                 const pct     = maxVal > 0 ? (val / maxVal) * 100 : 0;
                 return (
@@ -1611,10 +1678,10 @@ function ProfileOverviewPanel({
                     {i > 0 && (
                       <div className="flex items-center gap-3 py-2 pl-[52px]">
                         <div className="w-px self-stretch" style={{ backgroundColor: "var(--dm-border-default)", minHeight: "12px" }} />
-                        {rate !== null && (
+                        {rateDisplay !== null && (
                           <span className="rounded-full px-3 py-0.5 text-[10px] font-bold"
                             style={{ backgroundColor: color + "18", color }}>
-                            {formatPercent(rate)}{step.rateLabel ? ` ${step.rateLabel}` : ""}
+                            {rateDisplay}
                           </span>
                         )}
                       </div>
@@ -1657,6 +1724,12 @@ function ProfileOverviewPanel({
                 const prevId  = i > 0 ? funnelStepIds[i - 1] : null;
                 const prevVal = prevId ? (funnelVals[prevId] ?? 0) : null;
                 const rate    = prevVal !== null && prevVal > 0 ? (val / prevVal) * 100 : null;
+                const isFrequency = prevId === "reach" && stepId === "impressions";
+                const rateDisplay = rate !== null
+                  ? isFrequency
+                    ? `${(rate / 100).toFixed(1)}x${step.rateLabel ? ` ${step.rateLabel}` : ""}`
+                    : `${formatPercent(rate)}${step.rateLabel ? ` ${step.rateLabel}` : ""}`
+                  : null;
                 const color   = FUNNEL_COLORS_OV[stepId] ?? step.color;
                 const widthPct = total > 1 ? 100 - (i / (total - 1)) * 50 : 88;
                 return (
@@ -1664,10 +1737,10 @@ function ProfileOverviewPanel({
                     {i > 0 && (
                       <div className="flex flex-col items-center py-2 gap-1">
                         <div className="w-px h-4" style={{ backgroundColor: "var(--dm-border-default)" }} />
-                        {rate !== null && (
+                        {rateDisplay !== null && (
                           <span className="rounded-full px-3 py-0.5 text-[10px] font-bold"
                             style={{ backgroundColor: color + "1a", color }}>
-                            {formatPercent(rate)}{step.rateLabel ? ` ${step.rateLabel}` : ""}
+                            {rateDisplay}
                           </span>
                         )}
                         <div className="w-px h-4" style={{ backgroundColor: "var(--dm-border-default)" }} />
@@ -2529,6 +2602,12 @@ function CampaignAnalysisPanel({
                 const prevStage = i > 0 ? tpl.funnel[i - 1] : null;
                 const prevVal = prevStage ? (kpiValues[prevStage.id] ?? 0) : null;
                 const rate    = prevVal !== null && prevVal > 0 ? (val / prevVal) * 100 : null;
+                const isFrequency = prevStage?.id === "reach" && stage.id === "impressions";
+                const rateDisplay = rate !== null
+                  ? isFrequency
+                    ? `${(rate / 100).toFixed(1)}x${stage.rateFromPrev ? ` ${stage.rateFromPrev}` : ""}`
+                    : `${formatPercent(rate)}${stage.rateFromPrev ? ` ${stage.rateFromPrev}` : ""}`
+                  : null;
                 const color   = FUNNEL_COLORS[stage.id] ?? "#6366C8";
                 const pct     = maxVal > 0 ? (val / maxVal) * 100 : 0;
                 return (
@@ -2536,10 +2615,10 @@ function CampaignAnalysisPanel({
                     {i > 0 && (
                       <div className="flex items-center gap-3 py-2 pl-[52px]">
                         <div className="w-px self-stretch" style={{ backgroundColor: "var(--dm-border-default)", minHeight: "12px" }} />
-                        {rate !== null && (
+                        {rateDisplay !== null && (
                           <span className="rounded-full px-3 py-0.5 text-[10px] font-bold"
                             style={{ backgroundColor: color + "18", color }}>
-                            {formatPercent(rate)}{stage.rateFromPrev ? ` ${stage.rateFromPrev}` : ""}
+                            {rateDisplay}
                           </span>
                         )}
                       </div>
@@ -2580,6 +2659,12 @@ function CampaignAnalysisPanel({
                 const prevStage = i > 0 ? tpl.funnel[i - 1] : null;
                 const prevVal = prevStage ? (kpiValues[prevStage.id] ?? 0) : null;
                 const rate    = prevVal !== null && prevVal > 0 ? (val / prevVal) * 100 : null;
+                const isFrequency = prevStage?.id === "reach" && stage.id === "impressions";
+                const rateDisplay = rate !== null
+                  ? isFrequency
+                    ? `${(rate / 100).toFixed(1)}x${stage.rateFromPrev ? ` ${stage.rateFromPrev}` : ""}`
+                    : `${formatPercent(rate)}${stage.rateFromPrev ? ` ${stage.rateFromPrev}` : ""}`
+                  : null;
                 const color   = FUNNEL_COLORS[stage.id] ?? "#6366C8";
                 // Taper from 100% → 50%
                 const widthPct = total > 1 ? 100 - (i / (total - 1)) * 50 : 88;
@@ -2589,10 +2674,10 @@ function CampaignAnalysisPanel({
                     {i > 0 && (
                       <div className="flex flex-col items-center py-2 gap-1">
                         <div className="w-px h-4" style={{ backgroundColor: "var(--dm-border-default)" }} />
-                        {rate !== null && (
+                        {rateDisplay !== null && (
                           <span className="rounded-full px-3 py-0.5 text-[10px] font-bold"
                             style={{ backgroundColor: color + "1a", color }}>
-                            {formatPercent(rate)}{stage.rateFromPrev ? ` ${stage.rateFromPrev}` : ""}
+                            {rateDisplay}
                           </span>
                         )}
                         <div className="w-px h-4" style={{ backgroundColor: "var(--dm-border-default)" }} />

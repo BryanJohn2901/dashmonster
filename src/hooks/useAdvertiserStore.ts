@@ -8,10 +8,17 @@ const STORAGE_KEY = "pta_advertiser_profiles_v2";
 /** action_type to use as primary "Resultado" for this campaign */
 export type ResultType =
   | "purchase"
+  | "offsite_conversion.fb_pixel_purchase"
   | "lead"
+  | "offsite_conversion.fb_pixel_lead"
   | "onsite_conversion.lead_grouped"
   | "leadgen_grouped"
   | "omni_complete_registration"
+  | "submit_application"
+  | "schedule"
+  | "contact"
+  | "view_content"
+  | "profile_visit"
   | "link_click";
 
 export interface ActiveCampaign {
