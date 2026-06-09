@@ -44,7 +44,7 @@ const DATES_LS_KEY         = "pta_profile_dates_v1";
 const FUNNEL_CONFIG_LS_KEY = "pta_profile_funnel_v1";
 const GOALS_LS_KEY         = "pta_profile_goals_v1";
 
-type ProfileFunnelStepId = "reach" | "impressions" | "clicks" | "page_views" | "leads" | "sales";
+type ProfileFunnelStepId = "reach" | "impressions" | "clicks" | "page_views" | "leads" | "sales" | "profile_visits" | "new_followers";
 
 interface ProfileFunnelStep {
   id: ProfileFunnelStepId;
@@ -54,12 +54,14 @@ interface ProfileFunnelStep {
 }
 
 const PROFILE_FUNNEL_STEPS: ProfileFunnelStep[] = [
-  { id: "reach",       label: "Alcance",          color: "#3b82f6" },
-  { id: "impressions", label: "Impressões",        color: "#8b5cf6", rateLabel: "Freq." },
-  { id: "clicks",      label: "Cliques no link",   color: "#0891b2", rateLabel: "CTR" },
-  { id: "page_views",  label: "Vis. de Página",    color: "#f59e0b", rateLabel: "Taxa LP" },
-  { id: "leads",       label: "Leads",             color: "#e11d48", rateLabel: "Tx. Captura" },
-  { id: "sales",       label: "Resultados",        color: "#10b981", rateLabel: "Tx. Venda" },
+  { id: "reach",          label: "Alcance",           color: "#3b82f6" },
+  { id: "impressions",    label: "Impressões",         color: "#8b5cf6", rateLabel: "Freq." },
+  { id: "clicks",         label: "Cliques no link",    color: "#0891b2", rateLabel: "CTR" },
+  { id: "page_views",     label: "Vis. de Página",     color: "#f59e0b", rateLabel: "Taxa LP" },
+  { id: "leads",          label: "Leads",              color: "#e11d48", rateLabel: "Tx. Captura" },
+  { id: "sales",          label: "Resultados",         color: "#10b981", rateLabel: "Tx. Venda" },
+  { id: "profile_visits", label: "Visitas ao Perfil",  color: "#8b5cf6", rateLabel: "Tx. Visita" },
+  { id: "new_followers",  label: "Novos Seguidores",   color: "#10b981", rateLabel: "Tx. Follow" },
 ];
 
 const DEFAULT_FUNNEL_STEP_IDS: ProfileFunnelStepId[] = ["impressions", "clicks", "leads", "sales"];
@@ -189,6 +191,7 @@ interface AdsetRow {
   leads: number;
   cpa: number;
   page_views: number;
+  profile_visits: number;
   new_followers: number;
   customResult: number;  // configured resultType value (0 when no resultType)
 }
@@ -289,7 +292,7 @@ function toAdsetRows(data: MetaInsight[], resultType?: string): AdsetRow[] {
       name: key,
       impressions: 0, reach: 0, clicks: 0, total_clicks: 0, spend: 0, revenue: 0,
       cpm: 0, ctr: 0, ctr_all: 0, purchases: 0, leads: 0, cpa: 0,
-      page_views: 0, new_followers: 0, customResult: 0,
+      page_views: 0, profile_visits: 0, new_followers: 0, customResult: 0,
     };
     cur.impressions   += parseMetaNum(d.impressions);
     cur.reach         += parseMetaNum(d.reach);
@@ -305,6 +308,9 @@ function toAdsetRows(data: MetaInsight[], resultType?: string): AdsetRow[] {
     cur.revenue       += extractRevenue(d.action_values);
     // landing_page_view: more reliable than link clicks for LP-funnel templates.
     cur.page_views    += getActionValue(d.actions, "landing_page_view");
+    // profile_visit: campaigns optimized for Instagram profile visits
+    cur.profile_visits += getActionValue(d.actions, "profile_visit")
+                        + getActionValue(d.actions, "onsite_conversion.post_save");
     // new_followers: "follow" (ad engagement objective) OR "page_fan_adds" (traffic-to-profile)
     cur.new_followers += getActionValue(d.actions, "follow")
                        + getActionValue(d.actions, "page_fan_adds");
@@ -341,7 +347,7 @@ function toDailyRows(data: MetaInsight[], resultType?: string): DailyRow[] {
       date, name: date,
       impressions: 0, reach: 0, clicks: 0, total_clicks: 0, spend: 0, revenue: 0,
       cpm: 0, ctr: 0, ctr_all: 0, purchases: 0, leads: 0, cpa: 0,
-      page_views: 0, new_followers: 0, customResult: 0,
+      page_views: 0, profile_visits: 0, new_followers: 0, customResult: 0,
     };
     cur.impressions   += parseMetaNum(d.impressions);
     cur.reach         += parseMetaNum(d.reach);
@@ -354,6 +360,8 @@ function toDailyRows(data: MetaInsight[], resultType?: string): DailyRow[] {
     cur.leads         += extractLeads(d.actions);
     cur.revenue       += extractRevenue(d.action_values);
     cur.page_views    += getActionValue(d.actions, "landing_page_view");
+    cur.profile_visits += getActionValue(d.actions, "profile_visit")
+                        + getActionValue(d.actions, "onsite_conversion.post_save");
     cur.new_followers += getActionValue(d.actions, "follow")
                        + getActionValue(d.actions, "page_fan_adds");
     if (resultType) {
@@ -1320,10 +1328,11 @@ function ProfileOverviewPanel({
     const rev  = rows.reduce((s, r) => s + r.revenue, 0);
     const lds  = rows.reduce((s, r) => s + r.leads, 0);
     const pv   = rows.reduce((s, r) => s + r.page_views, 0);
+    const pvt  = rows.reduce((s, r) => s + r.profile_visits, 0);
     const fol  = rows.reduce((s, r) => s + r.new_followers, 0);
     const allC = rows.reduce((s, r) => s + r.total_clicks, 0);
     const cust = rows.reduce((s, r) => s + r.customResult, 0);
-    return { inv, imp, clk, rch, conv, rev, lds, pv, fol, allC, cust };
+    return { inv, imp, clk, rch, conv, rev, lds, pv, pvt, fol, allC, cust };
   }, [rows]);
 
   // ── Template-driven KPI values ────────────────────────────────────────────
@@ -1341,7 +1350,7 @@ function ProfileOverviewPanel({
     sales:          effectiveResultType && totals.cust > 0 ? totals.cust : totals.conv,
     tickets:        (ovData?.tickets ?? 0) > 0 ? ovData!.tickets! : totals.conv,
     page_views:     totals.pv,
-    profile_visits: 0,
+    profile_visits: totals.pvt,
     new_followers:  totals.fol,
     sales_ingresso: ovData?.salesIngresso ?? 0,
     sales_pos:      ovData?.salesPos      ?? 0,
@@ -1351,24 +1360,37 @@ function ProfileOverviewPanel({
 
   // ── Funnel step aggregate values ──────────────────────────────────────────
   const funnelVals: Record<ProfileFunnelStepId, number> = {
-    reach:       totals.rch,
-    impressions: totals.imp,
-    clicks:      totals.clk,
-    page_views:  totals.pv,
-    leads:       totals.lds,
-    sales:       effectiveResultType && totals.cust > 0 ? totals.cust : totals.conv,
+    reach:          totals.rch,
+    impressions:    totals.imp,
+    clicks:         totals.clk,
+    page_views:     totals.pv,
+    leads:          totals.lds,
+    sales:          effectiveResultType && totals.cust > 0 ? totals.cust : totals.conv,
+    profile_visits: totals.pvt,
+    new_followers:  totals.fol,
   };
 
   const buildReport = (): ReportData => buildReportFromKpisFunnel({
     title: reportTitle,
     period: `${dateFrom} → ${dateTo}`,
-    kpis: template.kpis,
+    kpis: template.kpis.map((k) =>
+      k.id === "sales" && effectiveResultType
+        ? { ...k, label: RESULT_TYPE_LABELS[effectiveResultType] }
+        : k.id === "cpa" && effectiveResultType
+          ? { ...k, label: `Custo por ${RESULT_TYPE_LABELS[effectiveResultType]}` }
+          : k
+    ),
     kpiValues,
     goals,
     funnelStages: funnelStepIds
       .map((id) => PROFILE_FUNNEL_STEPS.find((s) => s.id === id))
       .filter((s): s is ProfileFunnelStep => Boolean(s))
-      .map((s) => ({ id: s.id, label: s.label, color: s.color, rateLabel: s.rateLabel })),
+      .map((s) => ({
+        id: s.id,
+        label: s.id === "sales" && effectiveResultType ? RESULT_TYPE_LABELS[effectiveResultType] : s.label,
+        color: s.color,
+        rateLabel: s.rateLabel,
+      })),
     funnelValues: funnelVals,
     investment: totals.inv, impressions: totals.imp, clicks: totals.clk, conversions: totals.conv,
   });
@@ -1503,7 +1525,11 @@ function ProfileOverviewPanel({
                 </div>
 
                 <p className="mb-1 text-[12px] font-semibold" style={{ color: "var(--dm-text-secondary)" }} title={kpi.tooltip}>
-                  {kpi.label}
+                  {kpi.id === "sales" && effectiveResultType
+                    ? RESULT_TYPE_LABELS[effectiveResultType]
+                    : kpi.id === "cpa" && effectiveResultType
+                      ? `Custo por ${RESULT_TYPE_LABELS[effectiveResultType]}`
+                      : kpi.label}
                   {isOvEditable && val > 0 && (
                     <span className="ml-1.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase" style={{ backgroundColor: solid + "1a", color: solid }}>manual</span>
                   )}
@@ -1693,7 +1719,9 @@ function ProfileOverviewPanel({
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-baseline justify-between mb-2">
-                          <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color }}>{step.label}</p>
+                          <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color }}>
+                            {stepId === "sales" && effectiveResultType ? RESULT_TYPE_LABELS[effectiveResultType] : step.label}
+                          </p>
                           <p className="text-[20px] font-bold tabular-nums leading-none"
                             style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>
                             {val > 0 ? formatNumber(val) : <span style={{ color: "var(--dm-text-tertiary)", fontSize: "14px" }}>Sem dados</span>}
@@ -1753,8 +1781,10 @@ function ProfileOverviewPanel({
                         border: `1.5px solid ${color}55`,
                       }}>
                       <div>
-                        <p className="text-[10px] font-bold uppercase tracking-wider mb-0.5" style={{ color }}>{step.label}</p>
-                        {rate !== null && step.rateLabel && (
+                        <p className="text-[10px] font-bold uppercase tracking-wider mb-0.5" style={{ color }}>
+                          {stepId === "sales" && effectiveResultType ? RESULT_TYPE_LABELS[effectiveResultType] : step.label}
+                        </p>
+                        {rateDisplay !== null && step.rateLabel && (
                           <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>{step.rateLabel}</p>
                         )}
                       </div>
