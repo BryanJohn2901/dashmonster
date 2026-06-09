@@ -313,7 +313,8 @@ function GoalsPanel({
   onReset: () => void;
   onClose: () => void;
 }) {
-  return (
+  if (typeof document === "undefined") return null;
+  return createPortal(
     <>
       <div className="fixed inset-0 z-40 bg-black/30 backdrop-blur-[2px]" onClick={onClose} />
       <div
@@ -389,7 +390,8 @@ function GoalsPanel({
           </button>
         </div>
       </div>
-    </>
+    </>,
+    document.body
   );
 }
 
