@@ -315,33 +315,34 @@ function GoalsPanel({
 }) {
   return (
     <>
-      <div className="fixed inset-0 z-40" onClick={onClose} />
-      <div className="absolute right-0 top-full z-50 mt-2 w-[320px] rounded-xl border shadow-2xl" style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
-        <div className="flex items-center justify-between border-b px-5 py-4" style={{ borderColor: "var(--dm-border-default)" }}>
-          <div className="flex flex-col gap-0.5">
+      <div className="fixed inset-0 z-40 bg-black/30 backdrop-blur-[2px]" onClick={onClose} />
+      <div
+        className="fixed inset-y-0 right-0 z-50 flex w-full flex-col overflow-hidden border-l shadow-2xl sm:max-w-[420px]"
+        style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}
+      >
+        <div className="flex flex-shrink-0 items-center justify-between border-b px-6 py-4" style={{ borderColor: "var(--dm-border-default)" }}>
+          <div>
             <div className="flex items-center gap-2">
               <Flag size={14} className="text-brand" />
-              <p className="text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>Metas de Performance</p>
+              <h2 className="text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>Metas de Performance</h2>
             </div>
-            <p className="pl-[22px] text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
-              {groupLabel}
-            </p>
+            <p className="mt-0.5 pl-[22px] text-[11px]" style={{ color: "var(--dm-text-secondary)" }}>{groupLabel}</p>
           </div>
           <button onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded-full transition"
+            className="rounded-lg p-1.5 transition hover:bg-[var(--dm-bg-elevated)]"
             style={{ color: "var(--dm-text-tertiary)" }}>
-            <X size={14} />
+            <X size={16} />
           </button>
         </div>
 
-        <div className="p-5">
-          <p className="mb-4 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          <p className="mb-5 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
             Defina metas para cada métrica. Os KPIs mostrarão progresso em tempo real.
           </p>
           <div className="space-y-3">
             {GOAL_FIELDS.map(({ key, label, placeholder, prefix, suffix }) => (
               <div key={key} className="flex items-center gap-3">
-                <span className="w-24 flex-shrink-0 text-xs font-medium" style={{ color: "var(--dm-text-secondary)" }}>{label}</span>
+                <span className="w-28 flex-shrink-0 text-xs font-medium" style={{ color: "var(--dm-text-secondary)" }}>{label}</span>
                 <div className="relative flex-1">
                   {prefix && (
                     <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>{prefix}</span>
@@ -356,7 +357,7 @@ function GoalsPanel({
                       onSetGoal(key, v as Goals[typeof key]);
                     }}
                     placeholder={placeholder}
-                    className={`h-8 w-full rounded-lg border text-xs outline-none transition ${prefix ? "pl-7 pr-3" : suffix ? "pl-3 pr-7" : "px-3"}`}
+                    className={`h-9 w-full rounded-lg border text-xs outline-none transition ${prefix ? "pl-7 pr-3" : suffix ? "pl-3 pr-7" : "px-3"}`}
                     style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
                   />
                   {suffix && (
@@ -373,11 +374,18 @@ function GoalsPanel({
               </div>
             ))}
           </div>
+        </div>
 
+        <div className="sticky bottom-0 border-t px-6 py-4 flex gap-3" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
           <button type="button" onClick={onReset}
-            className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-lg border py-2 text-[11px] font-semibold transition hover:border-red-200 hover:bg-red-50 hover:text-red-500"
+            className="h-9 flex flex-1 items-center justify-center gap-1.5 rounded-lg border text-xs font-semibold transition hover:border-red-300 hover:bg-red-50 hover:text-red-500"
             style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>
-            <RotateCcw size={11} /> Limpar todas as metas
+            <RotateCcw size={11} /> Limpar metas
+          </button>
+          <button type="button" onClick={onClose}
+            className="h-9 flex flex-1 items-center justify-center rounded-lg text-xs font-semibold text-white transition hover:opacity-90"
+            style={{ backgroundColor: "var(--dm-brand-500, #6366C8)" }}>
+            Concluído
           </button>
         </div>
       </div>
@@ -3206,28 +3214,25 @@ export function Dashboard({
                       <SlidersHorizontal size={11} aria-hidden /> Personalizar cartões
                     </button>
                     {showKpiPanel && typeof document !== "undefined" && createPortal(
-                      <div
-                        className="fixed inset-0 z-[90] flex items-center justify-center p-4"
-                        style={{ background: "rgba(2,6,23,0.55)", backdropFilter: "blur(8px)" }}
-                        onMouseDown={(e) => { if (e.target === e.currentTarget) setShowKpiPanel(false); }}
-                      >
+                      <>
+                        <div className="fixed inset-0 z-40 bg-black/30 backdrop-blur-[2px]" onClick={() => setShowKpiPanel(false)} />
                         <div
-                          className="w-full max-w-sm overflow-hidden rounded-2xl border shadow-2xl"
-                          style={{ background: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}
+                          className="fixed inset-y-0 right-0 z-50 flex w-full flex-col overflow-hidden border-l shadow-2xl sm:max-w-[420px]"
+                          style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}
                         >
-                          <div className="flex items-center justify-between border-b px-5 py-4" style={{ borderColor: "var(--dm-border-subtle)" }}>
+                          <div className="flex flex-shrink-0 items-center justify-between border-b px-6 py-4" style={{ borderColor: "var(--dm-border-default)" }}>
                             <div>
-                              <p className="text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>Personalizar cartões</p>
-                              <p className="text-[10px] mt-0.5" style={{ color: "var(--dm-text-tertiary)" }}>Ative ou desative as métricas do dashboard</p>
+                              <h2 className="text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>Personalizar cartões</h2>
+                              <p className="mt-0.5 text-[11px]" style={{ color: "var(--dm-text-secondary)" }}>Ative ou desative as métricas do dashboard</p>
                             </div>
                             <button type="button" onClick={() => setShowKpiPanel(false)}
-                              className="flex h-7 w-7 items-center justify-center rounded-full transition hover:bg-white/10"
+                              className="rounded-lg p-1.5 transition hover:bg-[var(--dm-bg-elevated)]"
                               style={{ color: "var(--dm-text-tertiary)" }}>
-                              <X size={14} />
+                              <X size={16} />
                             </button>
                           </div>
-                          <div className="max-h-[60vh] overflow-y-auto p-4">
-                            <div className="space-y-3">
+                          <div className="flex-1 overflow-y-auto px-6 py-5">
+                            <div className="space-y-4">
                               {([
                                 { label: "Financeiro",  ids: ["investment", "revenue", "roas", "roi"] as const },
                                 { label: "Vendas",      ids: ["sales_total", "sales_ingresso", "cpa_ingresso", "sales_pos", "cpa_pos", "cpa_venda"] as const },
@@ -3235,7 +3240,7 @@ export function Dashboard({
                                 { label: "Volume",      ids: ["clicks", "impressions"] as const },
                               ] as const).map(({ label, ids }) => (
                                 <div key={label}>
-                                  <p className="mb-1.5 px-1 text-[9px] font-bold uppercase tracking-widest"
+                                  <p className="mb-2 text-[10px] font-bold uppercase tracking-widest"
                                     style={{ color: "var(--dm-text-tertiary)" }}>
                                     {label}
                                   </p>
@@ -3245,10 +3250,10 @@ export function Dashboard({
                                       return (
                                         <label
                                           key={id}
-                                          className="flex cursor-pointer items-center justify-between rounded-lg px-2.5 py-2 transition hover:bg-white/5"
+                                          className="flex cursor-pointer items-center justify-between rounded-lg px-3 py-2.5 transition hover:bg-[var(--dm-bg-elevated)]"
                                           style={{ border: `0.5px solid var(--dm-border-subtle)`, borderRadius: 8 }}
                                         >
-                                          <p className="text-[12px] font-medium" style={{ color: "var(--dm-text-secondary)" }}>
+                                          <p className="text-xs font-medium" style={{ color: "var(--dm-text-secondary)" }}>
                                             {METRIC_LABELS[id]}
                                           </p>
                                           <span
@@ -3269,26 +3274,26 @@ export function Dashboard({
                               ))}
                             </div>
                           </div>
-                          <div className="flex gap-2 border-t px-4 py-3" style={{ borderColor: "var(--dm-border-subtle)" }}>
-                            <button
-                              type="button"
-                              onClick={() => setShowKpiPanel(false)}
-                              className="flex-1 rounded-lg py-2 text-[11px] font-semibold transition hover:opacity-80"
-                              style={{ background: "var(--dm-bg-elevated)", color: "var(--dm-text-secondary)" }}
-                            >
-                              Fechar
-                            </button>
+                          <div className="sticky bottom-0 flex gap-3 border-t px-6 py-4" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
                             <button
                               type="button"
                               onClick={allMetricsVisible ? hideAllMetrics : showAllMetrics}
-                              className="flex-1 rounded-lg py-2 text-[11px] font-semibold text-white transition hover:opacity-90"
-                              style={{ background: allMetricsVisible ? "var(--dm-border-strong)" : "var(--dm-primary)" }}
+                              className="h-9 flex flex-1 items-center justify-center rounded-lg border text-xs font-semibold transition hover:opacity-80"
+                              style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)", backgroundColor: "var(--dm-bg-elevated)" }}
                             >
                               {allMetricsVisible ? "Ocultar todas" : "Mostrar todas"}
                             </button>
+                            <button
+                              type="button"
+                              onClick={() => setShowKpiPanel(false)}
+                              className="h-9 flex flex-1 items-center justify-center rounded-lg text-xs font-semibold text-white transition hover:opacity-90"
+                              style={{ backgroundColor: "var(--dm-brand-500, #6366C8)" }}
+                            >
+                              Concluído
+                            </button>
                           </div>
                         </div>
-                      </div>,
+                      </>,
                       document.body
                     )}
                   </div>
