@@ -14,11 +14,14 @@ export interface Goals {
   leads: number | null;       // lead count
   conversions: number | null; // count
   investment: number | null;  // R$ budget limit
+  revenue: number | null;     // R$ revenue target
+  cpl: number | null;         // R$ per lead
 }
 
 export const DEFAULT_GOALS: Goals = {
   ctr: null, roas: null, cpa: null, roi: null,
   cpc: null, cpm: null, leads: null, conversions: null, investment: null,
+  revenue: null, cpl: null,
 };
 
 interface GoalsState {

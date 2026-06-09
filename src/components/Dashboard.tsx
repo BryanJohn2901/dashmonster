@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ALL_METRIC_IDS, METRIC_LABELS, useMetricVisibility } from "@/hooks/useMetricVisibility";
 import { useAvatarUrl, resolveAvatarSrc } from "@/hooks/useAvatarUrl";
 import { useDateRange } from "@/hooks/useDateRange";
@@ -290,15 +291,17 @@ interface GoalField {
 }
 
 const GOAL_FIELDS: GoalField[] = [
-  { key: "ctr",         label: "CTR",         placeholder: "Ex: 2.0",  suffix: "%" },
+  { key: "investment",  label: "Orçamento",   placeholder: "Ex: 5000", prefix: "R$" },
+  { key: "revenue",     label: "Receita",     placeholder: "Ex: 20000", prefix: "R$" },
   { key: "roas",        label: "ROAS",        placeholder: "Ex: 3.0",  suffix: "x" },
   { key: "roi",         label: "ROI",         placeholder: "Ex: 200",  suffix: "%" },
   { key: "cpa",         label: "CPA",         placeholder: "Ex: 50",   prefix: "R$" },
+  { key: "ctr",         label: "CTR",         placeholder: "Ex: 2.0",  suffix: "%" },
   { key: "cpc",         label: "CPC",         placeholder: "Ex: 1.50", prefix: "R$" },
   { key: "cpm",         label: "CPM",         placeholder: "Ex: 15",   prefix: "R$" },
   { key: "leads",       label: "Leads",       placeholder: "Ex: 50"   },
+  { key: "cpl",         label: "CPL",         placeholder: "Ex: 20",   prefix: "R$" },
   { key: "conversions", label: "Conversões",  placeholder: "Ex: 100"  },
-  { key: "investment",  label: "Orçamento",   placeholder: "Ex: 5000", prefix: "R$" },
 ];
 
 function GoalsPanel({
@@ -2210,7 +2213,7 @@ export function Dashboard({
     const inv = t.totalInvestment;
     // Ids batem com ALL_METRIC_IDS → "Configuração atual" respeita o que está
     // visível em "Personalizar cartões".
-    const allGroups: ReportData["groups"] = [
+    const reportGroups: ReportData["groups"] = [
       { id: "g_fin", label: "Financeiro", items: [
         {
           id: "investment",
@@ -2223,7 +2226,16 @@ export function Dashboard({
           goalPct: goals.investment != null ? (t.totalInvestment / goals.investment) * 100 : null,
           goalInvert: true
         },
-        { id: "revenue",      label: "Receita Total",   value: formatCurrency(t.totalRevenue), sub: `ROAS: ${t.roas.toFixed(2)}x`, accent: "green" },
+        {
+          id: "revenue",
+          label: "Receita Total",
+          value: formatCurrency(t.totalRevenue),
+          sub: `ROAS: ${t.roas.toFixed(2)}x`,
+          accent: "green",
+          goalValue: goals.revenue,
+          goalLabel: goals.revenue != null ? formatCurrency(goals.revenue) : undefined,
+          goalPct: goals.revenue != null ? (t.totalRevenue / goals.revenue) * 100 : null
+        },
         {
           id: "roas",
           label: "ROAS",
@@ -2310,11 +2322,20 @@ export function Dashboard({
           goalLabel: goals.leads != null ? formatNumber(goals.leads) : undefined,
           goalPct: goals.leads != null ? (t.totalLeads / goals.leads) * 100 : null
         },
-        { id: "cpl",         label: "CPL Médio",  value: formatCurrency(t.cpl), accent: "slate" },
+        {
+          id: "cpl",
+          label: "CPL Médio",
+          value: formatCurrency(t.cpl),
+          accent: "slate",
+          goalValue: goals.cpl,
+          goalLabel: goals.cpl != null ? formatCurrency(goals.cpl) : undefined,
+          goalPct: goals.cpl != null && t.cpl > 0 ? (goals.cpl / t.cpl) * 100 : null,
+          goalInvert: true
+        },
       ]},
     ];
     // Mantém só métricas visíveis (Personalizar cartões); descarta grupo vazio.
-    const groups = allGroups
+    const groups = reportGroups
       .map((g) => ({ ...g, items: g.items.filter((it) => isMetricVisible(it.id)) }))
       .filter((g) => g.items.length > 0);
     const funnel = reportFunnelFromValues({
@@ -3175,7 +3196,7 @@ export function Dashboard({
                         </h2>
                       )}
                     </div>
-                    <div className="relative sm:mb-0.5">
+                    <div className="sm:mb-0.5">
                     <button
                       type="button"
                       onClick={() => setShowKpiPanel((v) => !v)}
@@ -3184,77 +3205,91 @@ export function Dashboard({
                     >
                       <SlidersHorizontal size={11} aria-hidden /> Personalizar cartões
                     </button>
-                    {showKpiPanel && (
+                    {showKpiPanel && typeof document !== "undefined" && createPortal(
                       <div
-                        className="absolute right-0 top-full z-30 mt-1 w-64 rounded-xl border p-3 shadow-lg"
-                        style={{ background: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}
+                        className="fixed inset-0 z-[90] flex items-center justify-center p-4"
+                        style={{ background: "rgba(2,6,23,0.55)", backdropFilter: "blur(8px)" }}
+                        onMouseDown={(e) => { if (e.target === e.currentTarget) setShowKpiPanel(false); }}
                       >
-                        <p className="text-[12px] font-semibold mb-0.5" style={{ color: "var(--dm-text-primary)" }}>
-                          Visibilidade dos cartões
-                        </p>
-                        <p className="mb-3 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
-                          Ative ou desative as métricas do dashboard
-                        </p>
-                        <div className="space-y-3">
-                          {([
-                            { label: "Financeiro",  ids: ["investment", "revenue", "roas", "roi"] as const },
-                            { label: "Vendas",      ids: ["sales_total", "sales_ingresso", "cpa_ingresso", "sales_pos", "cpa_pos", "cpa_venda"] as const },
-                            { label: "Eficiência",  ids: ["conversions", "leads", "cpa", "cpl", "ctr", "cpc", "cpm"] as const },
-                            { label: "Volume",      ids: ["clicks", "impressions"] as const },
-                          ] as const).map(({ label, ids }) => (
-                            <div key={label}>
-                              <p className="mb-1.5 px-1 text-[9px] font-bold uppercase tracking-widest"
-                                style={{ color: "var(--dm-text-tertiary)" }}>
-                                {label}
-                              </p>
-                              <div className="space-y-1">
-                                {ids.map((id) => {
-                                  const on = isMetricVisible(id);
-                                  return (
-                                    <label
-                                      key={id}
-                                      className="flex cursor-pointer items-center justify-between rounded-lg px-2.5 py-2 transition"
-                                      style={{ background: "var(--dm-bg-surface)", border: `0.5px solid var(--dm-border-subtle)`, borderRadius: 8 }}
-                                    >
-                                      <p className="text-[12px] font-medium" style={{ color: "var(--dm-text-secondary)" }}>
-                                        {METRIC_LABELS[id]}
-                                      </p>
-                                      <span
-                                        className="relative ml-2 inline-flex h-5 w-9 flex-shrink-0 rounded-full transition-colors duration-200"
-                                        style={{ background: on ? "var(--dm-primary)" : "var(--dm-border-strong)" }}
-                                      >
-                                        <span
-                                          className="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform duration-200"
-                                          style={{ transform: on ? "translateX(16px)" : "translateX(2px)" }}
-                                        />
-                                        <input type="checkbox" checked={on} onChange={() => toggleMetric(id)} className="sr-only" />
-                                      </span>
-                                    </label>
-                                  );
-                                })}
-                              </div>
+                        <div
+                          className="w-full max-w-sm overflow-hidden rounded-2xl border shadow-2xl"
+                          style={{ background: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}
+                        >
+                          <div className="flex items-center justify-between border-b px-5 py-4" style={{ borderColor: "var(--dm-border-subtle)" }}>
+                            <div>
+                              <p className="text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>Personalizar cartões</p>
+                              <p className="text-[10px] mt-0.5" style={{ color: "var(--dm-text-tertiary)" }}>Ative ou desative as métricas do dashboard</p>
                             </div>
-                          ))}
+                            <button type="button" onClick={() => setShowKpiPanel(false)}
+                              className="flex h-7 w-7 items-center justify-center rounded-full transition hover:bg-white/10"
+                              style={{ color: "var(--dm-text-tertiary)" }}>
+                              <X size={14} />
+                            </button>
+                          </div>
+                          <div className="max-h-[60vh] overflow-y-auto p-4">
+                            <div className="space-y-3">
+                              {([
+                                { label: "Financeiro",  ids: ["investment", "revenue", "roas", "roi"] as const },
+                                { label: "Vendas",      ids: ["sales_total", "sales_ingresso", "cpa_ingresso", "sales_pos", "cpa_pos", "cpa_venda"] as const },
+                                { label: "Eficiência",  ids: ["conversions", "leads", "cpa", "cpl", "ctr", "cpc", "cpm"] as const },
+                                { label: "Volume",      ids: ["clicks", "impressions"] as const },
+                              ] as const).map(({ label, ids }) => (
+                                <div key={label}>
+                                  <p className="mb-1.5 px-1 text-[9px] font-bold uppercase tracking-widest"
+                                    style={{ color: "var(--dm-text-tertiary)" }}>
+                                    {label}
+                                  </p>
+                                  <div className="space-y-1">
+                                    {ids.map((id) => {
+                                      const on = isMetricVisible(id);
+                                      return (
+                                        <label
+                                          key={id}
+                                          className="flex cursor-pointer items-center justify-between rounded-lg px-2.5 py-2 transition hover:bg-white/5"
+                                          style={{ border: `0.5px solid var(--dm-border-subtle)`, borderRadius: 8 }}
+                                        >
+                                          <p className="text-[12px] font-medium" style={{ color: "var(--dm-text-secondary)" }}>
+                                            {METRIC_LABELS[id]}
+                                          </p>
+                                          <span
+                                            className="relative ml-2 inline-flex h-5 w-9 flex-shrink-0 rounded-full transition-colors duration-200"
+                                            style={{ background: on ? "var(--dm-primary)" : "var(--dm-border-strong)" }}
+                                          >
+                                            <span
+                                              className="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform duration-200"
+                                              style={{ transform: on ? "translateX(16px)" : "translateX(2px)" }}
+                                            />
+                                            <input type="checkbox" checked={on} onChange={() => toggleMetric(id)} className="sr-only" />
+                                          </span>
+                                        </label>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="flex gap-2 border-t px-4 py-3" style={{ borderColor: "var(--dm-border-subtle)" }}>
+                            <button
+                              type="button"
+                              onClick={() => setShowKpiPanel(false)}
+                              className="flex-1 rounded-lg py-2 text-[11px] font-semibold transition hover:opacity-80"
+                              style={{ background: "var(--dm-bg-elevated)", color: "var(--dm-text-secondary)" }}
+                            >
+                              Fechar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={allMetricsVisible ? hideAllMetrics : showAllMetrics}
+                              className="flex-1 rounded-lg py-2 text-[11px] font-semibold text-white transition hover:opacity-90"
+                              style={{ background: allMetricsVisible ? "var(--dm-border-strong)" : "var(--dm-primary)" }}
+                            >
+                              {allMetricsVisible ? "Ocultar todas" : "Mostrar todas"}
+                            </button>
+                          </div>
                         </div>
-                        <div className="mt-3 flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setShowKpiPanel(false)}
-                            className="flex-1 rounded-lg py-2 text-[11px] font-semibold transition hover:opacity-80"
-                            style={{ background: "var(--dm-bg-elevated)", color: "var(--dm-text-secondary)" }}
-                          >
-                            Cancelar
-                          </button>
-                          <button
-                            type="button"
-                            onClick={allMetricsVisible ? hideAllMetrics : showAllMetrics}
-                            className="flex-1 rounded-lg py-2 text-[11px] font-semibold text-white transition hover:opacity-90"
-                            style={{ background: allMetricsVisible ? "var(--dm-border-strong)" : "var(--dm-primary)" }}
-                          >
-                            {allMetricsVisible ? "Ocultar todas" : "Mostrar todas"}
-                          </button>
-                        </div>
-                      </div>
+                      </div>,
+                      document.body
                     )}
                   </div>
                 </div>
@@ -3278,6 +3313,8 @@ export function Dashboard({
                         title="Receita Total" value={formatCurrency(totals.totalRevenue)}
                         subtitle={`ROAS: ${totals.roas.toFixed(2)}x`}
                         icon={CircleDollarSign} accentColor="green"
+                        goalValue={goals.revenue} goalLabel={goals.revenue != null ? formatCurrency(goals.revenue) : undefined}
+                        goalPct={goals.revenue != null ? (totals.totalRevenue / goals.revenue) * 100 : null}
                       />
                     ),
                     isMetricVisible("roas") && (
@@ -3417,6 +3454,9 @@ export function Dashboard({
                       <KpiCard key="cpm" tier={3}
                         title="CPM Médio" value={formatCurrency(totals.cpm)}
                         icon={Zap} accentColor="amber" invertTrend
+                        goalValue={goals.cpm} goalLabel={goals.cpm != null ? formatCurrency(goals.cpm) : undefined}
+                        goalPct={goals.cpm != null && totals.cpm > 0 ? (goals.cpm / totals.cpm) * 100 : null}
+                        goalInvert
                       />
                     ),
                     isMetricVisible("leads") && (
@@ -3431,7 +3471,10 @@ export function Dashboard({
                     isMetricVisible("cpl") && totals.totalLeads > 0 && (
                       <KpiCard key="cpl" tier={3}
                         title="CPL Médio" value={formatCurrency(totals.cpl)}
-                        icon={UserRound} accentColor="violet"
+                        icon={UserRound} accentColor="violet" invertTrend
+                        goalValue={goals.cpl} goalLabel={goals.cpl != null ? formatCurrency(goals.cpl) : undefined}
+                        goalPct={goals.cpl != null && totals.cpl > 0 ? (goals.cpl / totals.cpl) * 100 : null}
+                        goalInvert
                       />
                     ),
                   ].filter(Boolean);
