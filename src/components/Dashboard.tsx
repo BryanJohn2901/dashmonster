@@ -2198,7 +2198,11 @@ export function Dashboard({
     : (eduzzTotals.salesIngresso + eduzzTotals.salesPos);
   const usingManualConversions = totals.totalConversions === 0 && manualSales > 0;
   const effectiveConversions = usingManualConversions ? manualSales : totals.totalConversions;
-  const effectiveConvRate = totals.totalClicks > 0 ? (effectiveConversions / totals.totalClicks) * 100 : 0;
+  // Tx. de conversão = conversões ÷ leads (mesma base da última etapa do funil),
+  // pra não divergir do funil; cai para ÷ cliques quando não há leads.
+  const effectiveConvRate = totals.totalLeads > 0
+    ? (effectiveConversions / totals.totalLeads) * 100
+    : totals.totalClicks > 0 ? (effectiveConversions / totals.totalClicks) * 100 : 0;
 
   // Builder do relatório — monta ReportData a partir dos totais visíveis + funil.
   const buildReportData = useCallback((): ReportData => {
@@ -2914,7 +2918,7 @@ export function Dashboard({
                   <span className="hidden sm:inline">Exportar CSV</span>
                 </button>
               )}
-              {campaigns.length > 0 && (
+              {campaigns.length > 0 && mainTab === "overview" && (
                 <ExportReportButton
                   buildData={buildReportData}
                   fileName={`relatorio_${selectedGroup}_${dateFrom}_${dateTo}`}

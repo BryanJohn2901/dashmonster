@@ -14,9 +14,13 @@ export async function exportReport(
 ): Promise<void> {
   const { domToCanvas } = await import("modern-screenshot");
 
+  // Fundo = token de página do tema atual (light/dark), com fallback.
+  const pageBg = getComputedStyle(document.documentElement)
+    .getPropertyValue("--dm-bg-page").trim() || "#0B1437";
+
   const canvas = await domToCanvas(el, {
     scale: Math.max(2, window.devicePixelRatio || 1),
-    backgroundColor: "#0B1437",
+    backgroundColor: pageBg,
     width: el.offsetWidth,
     height: el.offsetHeight,
   });
