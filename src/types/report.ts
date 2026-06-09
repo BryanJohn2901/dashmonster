@@ -10,6 +10,10 @@ export interface ReportItem {
   value: string;
   sub?: string;
   accent?: ReportAccent;
+  goalValue?: number | null;
+  goalLabel?: string;
+  goalPct?: number | null;
+  goalInvert?: boolean;
 }
 
 export interface ReportGroup {

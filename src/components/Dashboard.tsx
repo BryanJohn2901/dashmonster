@@ -2208,28 +2208,115 @@ export function Dashboard({
   const buildReportData = useCallback((): ReportData => {
     const t = totals;
     const inv = t.totalInvestment;
-    const groups: ReportData["groups"] = [
+    // Ids batem com ALL_METRIC_IDS → "Configuração atual" respeita o que está
+    // visível em "Personalizar cartões".
+    const allGroups: ReportData["groups"] = [
       { id: "g_fin", label: "Financeiro", items: [
-        { id: "investment", label: "Total Investido", value: formatCurrency(t.totalInvestment), sub: `CTR médio: ${formatPercent(t.ctr)}`, accent: "rose" },
-        { id: "revenue",    label: "Receita Total",   value: formatCurrency(t.totalRevenue), sub: `ROAS: ${t.roas.toFixed(2)}x`, accent: "green" },
-        { id: "roas",       label: "ROAS",            value: `${t.roas.toFixed(2)}x`, accent: "brand" },
-        { id: "sales_total", label: "Vendas Total",   value: formatNumber(eduzzTotals.salesTotal), sub: "Eduzz — manual", accent: "green" },
+        {
+          id: "investment",
+          label: "Total Investido",
+          value: formatCurrency(t.totalInvestment),
+          sub: `CTR médio: ${formatPercent(t.ctr)}`,
+          accent: "rose",
+          goalValue: goals.investment,
+          goalLabel: goals.investment != null ? formatCurrency(goals.investment) : undefined,
+          goalPct: goals.investment != null ? (t.totalInvestment / goals.investment) * 100 : null,
+          goalInvert: true
+        },
+        { id: "revenue",      label: "Receita Total",   value: formatCurrency(t.totalRevenue), sub: `ROAS: ${t.roas.toFixed(2)}x`, accent: "green" },
+        {
+          id: "roas",
+          label: "ROAS",
+          value: `${t.roas.toFixed(2)}x`,
+          accent: "brand",
+          goalValue: goals.roas,
+          goalLabel: goals.roas != null ? `${goals.roas.toFixed(1)}x` : undefined,
+          goalPct: goals.roas != null ? (t.roas / goals.roas) * 100 : null
+        },
+        { id: "sales_total",  label: "Vendas Total",    value: formatNumber(eduzzTotals.salesTotal), sub: "Eduzz — manual", accent: "green" },
+        { id: "sales_ingresso", label: "Vendas de Ingresso", value: formatNumber(eduzzTotals.salesIngresso), sub: "Eduzz — manual", accent: "green" },
+        { id: "sales_pos",    label: "Vendas de Pós",   value: formatNumber(eduzzTotals.salesPos), sub: "Eduzz — manual", accent: "green" },
       ]},
       { id: "g_efic", label: "Eficiência", items: [
-        { id: "roi",  label: "ROI",         value: formatPercent(t.roi), accent: t.roi >= 0 ? "green" : "rose" },
-        { id: "cpa",  label: "CPA Médio",   value: formatCurrency(t.cpa), accent: "rose" },
-        { id: "ctr",  label: "CTR Médio",   value: formatPercent(t.ctr), accent: "sky" },
-        { id: "cpc",  label: "CPC Médio",   value: formatCurrency(t.cpc), accent: "rose" },
-        { id: "conv", label: "Conversões",  value: formatNumber(effectiveConversions), sub: `Tx.: ${formatPercent(effectiveConvRate)}${usingManualConversions ? " · manual" : ""}`, accent: "green" },
+        {
+          id: "roi",
+          label: "ROI",
+          value: formatPercent(t.roi),
+          accent: t.roi >= 0 ? "green" : "rose",
+          goalValue: goals.roi,
+          goalLabel: goals.roi != null ? `${goals.roi.toFixed(0)}%` : undefined,
+          goalPct: goals.roi != null ? (t.roi / goals.roi) * 100 : null
+        },
+        {
+          id: "cpa",
+          label: "CPA Médio",
+          value: formatCurrency(t.cpa),
+          accent: "rose",
+          goalValue: goals.cpa,
+          goalLabel: goals.cpa != null ? formatCurrency(goals.cpa) : undefined,
+          goalPct: goals.cpa != null && t.cpa > 0 ? (goals.cpa / t.cpa) * 100 : null,
+          goalInvert: true
+        },
+        {
+          id: "ctr",
+          label: "CTR Médio",
+          value: formatPercent(t.ctr),
+          accent: "sky",
+          goalValue: goals.ctr,
+          goalLabel: goals.ctr != null ? `${goals.ctr.toFixed(1)}%` : undefined,
+          goalPct: goals.ctr != null ? (t.ctr / goals.ctr) * 100 : null
+        },
+        {
+          id: "cpc",
+          label: "CPC Médio",
+          value: formatCurrency(t.cpc),
+          accent: "rose",
+          goalValue: goals.cpc,
+          goalLabel: goals.cpc != null ? formatCurrency(goals.cpc) : undefined,
+          goalPct: goals.cpc != null && t.cpc > 0 ? (goals.cpc / t.cpc) * 100 : null,
+          goalInvert: true
+        },
+        {
+          id: "conversions",
+          label: "Conversões",
+          value: formatNumber(effectiveConversions),
+          sub: `Tx.: ${formatPercent(effectiveConvRate)}${usingManualConversions ? " · manual" : ""}`,
+          accent: "green",
+          goalValue: goals.conversions,
+          goalLabel: goals.conversions != null ? formatNumber(goals.conversions) : undefined,
+          goalPct: goals.conversions != null ? (effectiveConversions / goals.conversions) * 100 : null
+        },
       ]},
       { id: "g_vol", label: "Volume", items: [
-        { id: "impr",  label: "Impressões", value: formatNumber(t.totalImpressions), accent: "slate" },
-        { id: "clk",   label: "Cliques",    value: formatNumber(t.totalClicks), sub: `CTR: ${formatPercent(t.ctr)}`, accent: "slate" },
-        { id: "cpm",   label: "CPM Médio",  value: formatCurrency(t.cpm), accent: "slate" },
-        { id: "leads", label: "Leads",      value: formatNumber(t.totalLeads), sub: `CPL: ${formatCurrency(t.cpl)}`, accent: "slate" },
-        { id: "cpl",   label: "CPL Médio",  value: formatCurrency(t.cpl), accent: "slate" },
+        { id: "impressions", label: "Impressões", value: formatNumber(t.totalImpressions), accent: "slate" },
+        { id: "clicks",      label: "Cliques",    value: formatNumber(t.totalClicks), sub: `CTR: ${formatPercent(t.ctr)}`, accent: "slate" },
+        {
+          id: "cpm",
+          label: "CPM Médio",
+          value: formatCurrency(t.cpm),
+          accent: "slate",
+          goalValue: goals.cpm,
+          goalLabel: goals.cpm != null ? formatCurrency(goals.cpm) : undefined,
+          goalPct: goals.cpm != null && t.cpm > 0 ? (goals.cpm / t.cpm) * 100 : null,
+          goalInvert: true
+        },
+        {
+          id: "leads",
+          label: "Leads",
+          value: formatNumber(t.totalLeads),
+          sub: `CPL: ${formatCurrency(t.cpl)}`,
+          accent: "slate",
+          goalValue: goals.leads,
+          goalLabel: goals.leads != null ? formatNumber(goals.leads) : undefined,
+          goalPct: goals.leads != null ? (t.totalLeads / goals.leads) * 100 : null
+        },
+        { id: "cpl",         label: "CPL Médio",  value: formatCurrency(t.cpl), accent: "slate" },
       ]},
     ];
+    // Mantém só métricas visíveis (Personalizar cartões); descarta grupo vazio.
+    const groups = allGroups
+      .map((g) => ({ ...g, items: g.items.filter((it) => isMetricVisible(it.id)) }))
+      .filter((g) => g.items.length > 0);
     const funnel = reportFunnelFromValues({
       impressions: t.totalImpressions, clicks: t.totalClicks, conversions: effectiveConversions,
       leads: t.totalLeads, pageViews: t.totalPageViews, investment: inv, storageScope: currentUser.email,
@@ -2239,7 +2326,7 @@ export function Dashboard({
       : "Todos os grupos";
     const period = dateFrom && dateTo ? `${dateFrom} → ${dateTo}` : "Todo o período";
     return { title, period, groups, funnel };
-  }, [totals, eduzzTotals, effectiveConversions, effectiveConvRate, usingManualConversions, currentUser.email, selectedGroup, allGroups, dateFrom, dateTo]);
+  }, [totals, eduzzTotals, effectiveConversions, effectiveConvRate, usingManualConversions, isMetricVisible, currentUser.email, selectedGroup, allGroups, dateFrom, dateTo, goals]);
 
   // CPV — computed from spend / salesTotal (derived, not editable)
   // totals available after aggregation below, so computed inline at render time

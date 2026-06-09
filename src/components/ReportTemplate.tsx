@@ -15,6 +15,30 @@ const ACCENT_HEX: Record<ReportAccent, string> = {
   slate: "var(--dm-text-primary)",
 };
 
+function getGoalColors(pct: number, invert: boolean) {
+  const good = invert ? pct <= 100 : pct >= 100;
+  const mid  = invert ? pct <= 130 : pct >= 70;
+  if (good) {
+    return {
+      bar: "var(--dm-success-base, #1FA971)",
+      text: "var(--dm-success-text, #065F46)",
+      bg: "var(--dm-success-bg, #DDFBEF)",
+    };
+  }
+  if (mid) {
+    return {
+      bar: "var(--dm-warning-base, #F4A93C)",
+      text: "var(--dm-warning-text, #92400E)",
+      bg: "var(--dm-warning-bg, #FEF3C7)",
+    };
+  }
+  return {
+    bar: "var(--dm-error-base, #E14D4D)",
+    text: "var(--dm-error-text, #9F1239)",
+    bg: "var(--dm-error-bg, #FFF1F2)",
+  };
+}
+
 interface ReportTemplateProps {
   data: ReportData;
   hiddenIds?: Set<string>;
@@ -40,10 +64,12 @@ export function ReportTemplate({ data, hiddenIds, generatedAt, innerRef }: Repor
   const funnelSteps = data.funnel?.steps.filter((s) => !hidden.has(s.id)) ?? [];
   const maxFunnel = Math.max(1, ...funnelSteps.map((s) => parseLoose(s.value)));
 
+  // Match app: corpo em --font-inter (DM Sans), números/títulos em --font-poppins.
+  const bodyFont = "var(--font-inter), 'DM Sans', system-ui, sans-serif";
   const labelCls: React.CSSProperties = { fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: tTer, margin: "0 0 12px" };
 
   return (
-    <div ref={innerRef} style={{ width: REPORT_WIDTH, background: page, padding: 32, fontFamily: "var(--font-poppins), Poppins, system-ui, sans-serif", color: tPri, boxSizing: "border-box" }}>
+    <div ref={innerRef} style={{ width: REPORT_WIDTH, background: page, padding: 32, fontFamily: bodyFont, color: tPri, boxSizing: "border-box" }}>
       {/* Cabeçalho */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, borderRadius: 18, padding: "20px 24px", marginBottom: 28, background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)", boxShadow: "0 8px 24px rgba(49,52,145,0.25)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
@@ -68,11 +94,41 @@ export function ReportTemplate({ data, hiddenIds, generatedAt, innerRef }: Repor
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
               {items.map((it) => {
                 const accent = it.accent ? ACCENT_HEX[it.accent] : tPri;
+                const hasGoal = it.goalValue != null && it.goalPct != null;
+                const gc = hasGoal ? getGoalColors(it.goalPct!, !!it.goalInvert) : null;
+                const barWidth = hasGoal ? Math.min(it.goalPct!, 100) : 0;
                 return (
-                  <div key={it.id} style={{ background: surface, border: `1px solid ${border}`, borderRadius: 16, padding: "16px 18px", display: "flex", flexDirection: "column", gap: 6, minHeight: 92 }}>
-                    <span style={{ fontSize: 10.5, color: tTer, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>{it.label}</span>
-                    <span style={{ fontSize: 24, fontWeight: 800, lineHeight: 1.1, color: accent, fontVariantNumeric: "tabular-nums" }}>{it.value}</span>
-                    {it.sub && <span style={{ fontSize: 11, color: tTer }}>{it.sub}</span>}
+                  <div key={it.id} style={{ background: surface, border: `1px solid ${border}`, borderRadius: 16, padding: "16px 18px", display: "flex", flexDirection: "column", gap: 6, minHeight: 92, justifyContent: "space-between", boxSizing: "border-box" }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      <span style={{ fontSize: 10.5, color: tTer, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>{it.label}</span>
+                      <span style={{ fontSize: 24, fontWeight: 800, lineHeight: 1.1, color: accent, fontVariantNumeric: "tabular-nums" }}>{it.value}</span>
+                      {it.sub && <span style={{ fontSize: 11, color: tTer }}>{it.sub}</span>}
+                    </div>
+                    {hasGoal && gc && (
+                      <div style={{ borderTop: `1px solid ${border}`, marginTop: 8, paddingTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                          <span style={{ fontSize: 10, fontWeight: 500, color: tTer }}>
+                            Meta: <span style={{ color: tSec }}>{it.goalLabel}</span>
+                          </span>
+                          <span style={{
+                            borderRadius: 4,
+                            padding: "2px 6px",
+                            fontSize: 10,
+                            fontWeight: 700,
+                            background: gc.bg,
+                            color: gc.text
+                          }}>
+                            {it.goalInvert
+                              ? it.goalPct! <= 100 ? `✓ ${it.goalPct!.toFixed(0)}%` : `+${(it.goalPct! - 100).toFixed(0)}%`
+                              : it.goalPct! >= 100 ? `✓ ${it.goalPct!.toFixed(0)}%` : `${it.goalPct!.toFixed(0)}%`
+                            }
+                          </span>
+                        </div>
+                        <div style={{ height: 4, width: "100%", overflow: "hidden", borderRadius: 99, background: "var(--dm-bg-elevated, rgba(255,255,255,0.06))" }}>
+                          <div style={{ height: "100%", borderRadius: 99, width: `${barWidth}%`, background: gc.bar }} />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
