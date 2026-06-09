@@ -1351,9 +1351,6 @@ function ProfileOverviewPanel({
         <span className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
           {dateFrom} → {dateTo}
         </span>
-        <div className="ml-auto">
-          <ExportReportButton buildData={buildReport} fileName={`relatorio_${reportTitle}_${dateFrom}_${dateTo}`} />
-        </div>
       </div>
 
       {/* ── MÉTRICAS PRINCIPAIS ────────────────────────────────────────────── */}
@@ -1362,17 +1359,20 @@ function ProfileOverviewPanel({
           <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>
             Métricas Principais
           </p>
-          <button
-            type="button"
-            onClick={() => setEditGoals((v) => !v)}
-            className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-semibold transition"
-            style={editGoals
-              ? { background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)", color: "#fff", boxShadow: "0 4px 12px rgba(49,52,145,0.30)" }
-              : { backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)", border: "1px solid var(--dm-border-default)" }}
-          >
-            <Target size={11} />
-            {editGoals ? "Salvar Metas" : "Definir Metas"}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setEditGoals((v) => !v)}
+              className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-semibold transition"
+              style={editGoals
+                ? { background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)", color: "#fff", boxShadow: "0 4px 12px rgba(49,52,145,0.30)" }
+                : { backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)", border: "1px solid var(--dm-border-default)" }}
+            >
+              <Target size={11} />
+              {editGoals ? "Salvar Metas" : "Definir Metas"}
+            </button>
+            <ExportReportButton buildData={buildReport} fileName={`relatorio_${reportTitle}_${dateFrom}_${dateTo}`} />
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
