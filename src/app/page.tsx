@@ -33,6 +33,7 @@ import type { UserCategory, UserAccountEntry } from "@/types/userConfig";
 import {
   fetchUserCategories,
   fetchUserAccountEntries,
+  subscribeUserConfig,
 } from "@/utils/supabaseCategories";
 import { PTA_PAINEL_SAVE_NAV_EVENT, type PainelSaveNavDetail } from "@/utils/painelDashboardNavigation";
 
@@ -68,6 +69,7 @@ export default function Home() {
   const [syncStatus, setSyncStatus]     = useState<{ syncing: boolean; result?: MetaSyncResult; error?: string }>({ syncing: false });
   const campaignChannelRef = useRef<RealtimeChannel | null>(null);
   const sourceChannelRef = useRef<RealtimeChannel | null>(null);
+  const unsubscribeUserConfigRef = useRef<(() => void) | null>(null);
   /** Sempre igual ao último `userAccountEntries` commitado — evita sync com lista vazia antes do setState. */
   const userAccountEntriesRef = useRef<UserAccountEntry[]>([]);
 
@@ -462,6 +464,7 @@ export default function Home() {
     return () => {
       if (campaignChannelRef.current && supabaseClient) void supabaseClient.removeChannel(campaignChannelRef.current);
       if (sourceChannelRef.current && supabaseClient) void supabaseClient.removeChannel(sourceChannelRef.current);
+      unsubscribeUserConfigRef.current?.();
     };
   }, []);
 
@@ -570,6 +573,19 @@ export default function Home() {
         campaignChannelRef.current = subscribeSupabaseCampaigns(loadSupabaseData);
         sourceChannelRef.current = subscribeSharedDataSource(loadSharedDataSource);
         setRealtimeActive(true);
+
+        // ── Realtime de configuração (Painel de Controle) ───────────────────────
+        // Categorias/contas alteradas por qualquer membro da empresa atualizam
+        // o dashboard ao vivo, sem refresh manual.
+        unsubscribeUserConfigRef.current?.();
+        unsubscribeUserConfigRef.current = subscribeUserConfig(() => {
+          void Promise.all([fetchUserCategories(), fetchUserAccountEntries()])
+            .then(([liveCats, liveEntries]) => {
+              setUserCategories(liveCats);
+              replaceUserAccountEntries(liveEntries);
+            })
+            .catch(() => {});
+        });
 
         // ── Sincroniza token Meta da empresa ────────────────────────────────────
         // O dono configura o token uma vez e ele propaga para todos os membros.

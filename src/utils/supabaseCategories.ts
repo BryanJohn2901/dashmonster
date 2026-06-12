@@ -174,3 +174,23 @@ export async function deleteUserAccountEntry(id: string): Promise<void> {
     .eq("id", id);
   if (error) throw pgErr(error);
 }
+
+// ─── Realtime ─────────────────────────────────────────────────────────────────
+
+/**
+ * Assina mudanças em user_categories e user_account_entries.
+ * Qualquer alteração (deste ou de outro usuário da empresa) dispara onChange —
+ * o dashboard refaz o fetch e atualiza sem refresh manual.
+ * Retorna função de unsubscribe.
+ */
+export function subscribeUserConfig(onChange: () => void): () => void {
+  if (!supabaseClient) return () => {};
+  const channel = supabaseClient
+    .channel("user-config-realtime")
+    .on("postgres_changes",
+      { event: "*", schema: "public", table: "user_categories" }, onChange)
+    .on("postgres_changes",
+      { event: "*", schema: "public", table: "user_account_entries" }, onChange)
+    .subscribe();
+  return () => { void supabaseClient?.removeChannel(channel); };
+}

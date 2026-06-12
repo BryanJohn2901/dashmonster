@@ -275,65 +275,90 @@ async function syncDelete(campaignIds: string[]): Promise<void> {
     .in("campaign_id", campaignIds);
 }
 
+// ─── Store compartilhado em módulo ────────────────────────────────────────────
+// Um único estado para o app inteiro: qualquer mutação (em qualquer tela)
+// notifica todos os componentes que usam o hook — sem precisar de refresh.
+// Realtime do Supabase mantém o estado em sincronia entre usuários/devices.
+
+let centerState: CenterState = DEFAULT_STATE;
+let centerHydrated = false;
+let realtimeStarted = false;
+const centerListeners = new Set<(s: CenterState) => void>();
+
+function setCenterState(next: CenterState): void {
+  centerState = next;
+  persistCache(next);
+  centerListeners.forEach((l) => l(next));
+}
+
+function hydrateCenter(): void {
+  if (!centerHydrated) {
+    centerHydrated = true;
+    centerState = loadCache();
+    centerListeners.forEach((l) => l(centerState));
+  }
+  void fetchRemote().then((remote) => {
+    if (remote) setCenterState({ entries: remote });
+  });
+}
+
+function startRealtime(): void {
+  if (realtimeStarted || !supabaseClient) return;
+  realtimeStarted = true;
+  supabaseClient
+    .channel("campaign-center-realtime")
+    .on("postgres_changes",
+      { event: "*", schema: "public", table: "campaign_center_entries" },
+      () => {
+        void fetchRemote().then((remote) => {
+          if (remote) setCenterState({ entries: remote });
+        });
+      })
+    .subscribe();
+}
+
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useCampaignCenter() {
-  const [state, setState] = useState<CenterState>(DEFAULT_STATE);
+  const [state, setState] = useState<CenterState>(centerState);
 
   useEffect(() => {
-    // cache local primeiro (render instantâneo), Supabase em seguida
-    setState(loadCache());
-    void fetchRemote().then((remote) => {
-      if (remote) {
-        const next = { entries: remote };
-        persistCache(next);
-        setState(next);
-      }
-    });
+    centerListeners.add(setState);
+    hydrateCenter();
+    startRealtime();
+    return () => { centerListeners.delete(setState); };
   }, []);
 
   const upsertEntries = useCallback((incoming: CampaignCenterEntry[]) => {
-    setState((prev) => {
-      const byId = new Map(prev.entries.map((e) => [e.campaignId, e]));
-      incoming.forEach((e) => byId.set(e.campaignId, e));
-      const next = { entries: Array.from(byId.values()) };
-      persistCache(next);
-      return next;
-    });
+    const byId = new Map(centerState.entries.map((e) => [e.campaignId, e]));
+    incoming.forEach((e) => byId.set(e.campaignId, e));
+    setCenterState({ entries: Array.from(byId.values()) });
     void syncUpsert(incoming);
   }, []);
 
   const updateEntry = useCallback((campaignId: string, patch: Partial<CampaignCenterEntry>) => {
-    setState((prev) => {
-      const next = {
-        entries: prev.entries.map((e) =>
-          e.campaignId === campaignId
-            ? { ...e, ...patch, autoConfigured: false, updatedAt: new Date().toISOString() }
-            : e,
-        ),
-      };
-      persistCache(next);
-      const updated = next.entries.find((e) => e.campaignId === campaignId);
-      if (updated) void syncUpsert([updated]);
-      return next;
-    });
+    const next = {
+      entries: centerState.entries.map((e) =>
+        e.campaignId === campaignId
+          ? { ...e, ...patch, autoConfigured: false, updatedAt: new Date().toISOString() }
+          : e,
+      ),
+    };
+    setCenterState(next);
+    const updated = next.entries.find((e) => e.campaignId === campaignId);
+    if (updated) void syncUpsert([updated]);
   }, []);
 
   const removeEntry = useCallback((campaignId: string) => {
-    setState((prev) => {
-      const next = { entries: prev.entries.filter((e) => e.campaignId !== campaignId) };
-      persistCache(next);
-      return next;
-    });
-    void syncDelete([campaignId]);
+    const removed = centerState.entries.map((e) => e.campaignId).filter((id) => id === campaignId);
+    setCenterState({ entries: centerState.entries.filter((e) => e.campaignId !== campaignId) });
+    void syncDelete(removed);
   }, []);
 
   const clearAll = useCallback(() => {
-    setState((prev) => {
-      void syncDelete(prev.entries.map((e) => e.campaignId));
-      persistCache(DEFAULT_STATE);
-      return DEFAULT_STATE;
-    });
+    const ids = centerState.entries.map((e) => e.campaignId);
+    setCenterState(DEFAULT_STATE);
+    void syncDelete(ids);
   }, []);
 
   /** Busca a config de uma campanha — consumida pelo Dashboard e Perfil de Anunciantes */
