@@ -104,6 +104,8 @@ function AddEntryForm({
   const [campaigns, setCampaigns] = useState<Array<{ id: string; name: string; status: string; objective?: string }>>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [intents, setIntents] = useState<Record<string, CampaignIntent>>({});
+  const [budgets, setBudgets] = useState<Record<string, number | null>>({});
+  const [goalsMap, setGoalsMap] = useState<Record<string, Record<string, number>>>({});
   const { upsertEntries: upsertCenterEntries } = useCampaignCenter();
   const [saving, setSaving] = useState(false);
   const [metaAccounts, setMetaAccounts] = useState<MetaAdAccount[]>([]);
@@ -300,13 +302,15 @@ function AddEntryForm({
     try {
       const camps = await fetchMetaCampaigns(id, accessToken);
       setCampaigns(camps);
-      setSelected(camps.map((c) => c.id));
+      // Nada pré-marcado: o usuário escolhe as campanhas que quer — evita a
+      // lista esticar de uma vez e confundir quem está configurando.
+      setSelected([]);
       // Auto-detecta a intenção de cada campanha (objective da Meta + nome)
       setIntents(Object.fromEntries(
         camps.map((c) => [c.id, detectIntent({ objective: c.objective, name: c.name })]),
       ));
       setVerifyState("ok");
-      setCampaignListOpen(false);
+      setCampaignListOpen(true);
     } catch (e) {
       setErrMsg(e instanceof Error ? e.message : "Falha ao verificar conta.");
       setVerifyState("error");
@@ -353,10 +357,12 @@ function AddEntryForm({
             adAccountId: id,
             adAccountLabel: resolvedLabel,
             intent,
+            // resultType da intenção (objective configurado na Meta) — alimenta
+            // os resultados do dashboard principal e do Perfil de Anunciantes
             resultType: INTENT_META[intent].defaultResultTypes[0],
             groupId: resolvedFilter || categorySlug,
-            monthlyBudget: null,
-            goals: {},
+            monthlyBudget: budgets[c.id] ?? null,
+            goals: goalsMap[c.id] ?? {},
             enabled: c.status === "ACTIVE",
             autoConfigured: true,
             updatedAt: now,
@@ -388,13 +394,13 @@ function AddEntryForm({
       {/* Backdrop desfocado */}
       <div className="fixed inset-0 z-[120] bg-black/40 backdrop-blur-sm" onClick={onCancel} />
 
-      {/* Modal centralizado */}
+      {/* Modal centralizado — largo, com respiro, itens sempre à vista */}
       <div className="fixed inset-0 z-[121] flex items-center justify-center p-4 pointer-events-none">
-        <div className="pointer-events-auto flex w-full max-w-[600px] max-h-[88vh] flex-col overflow-hidden rounded-[20px] border shadow-2xl"
+        <div className="pointer-events-auto flex w-full max-w-[880px] max-h-[90vh] flex-col overflow-hidden rounded-[24px] border shadow-2xl"
           style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
 
           {/* Header do modal */}
-          <div className="flex items-center justify-between border-b px-5 py-4"
+          <div className="flex items-center justify-between border-b px-7 py-5"
             style={{ borderColor: "var(--dm-border-subtle)", backgroundColor: "var(--dm-bg-elevated)" }}>
             <div className="flex items-center gap-2.5">
               <div className="flex h-9 w-9 items-center justify-center rounded-full"
@@ -405,8 +411,8 @@ function AddEntryForm({
                 <h3 className="text-sm font-bold" style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>
                   Adicionar conta{categoryLabel ? ` — ${categoryLabel}` : ""}
                 </h3>
-                <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
-                  Conta → filtro → campanhas → intenção de cada campanha
+                <p className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                  Conta → filtro → escolha as campanhas → intenção e metas de cada uma
                 </p>
               </div>
             </div>
@@ -429,12 +435,12 @@ function AddEntryForm({
           </div>
 
           {/* Corpo rolável */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          <div className="flex-1 overflow-y-auto p-7 space-y-6">
       {/* Campo 1 — ID da Conta (obrigatório) */}
-      <div className="rounded-lg border p-2.5 space-y-2"
+      <div className="rounded-2xl border p-5 space-y-3"
         style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
         <div>
-          <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide" style={{ color: "var(--dm-text-tertiary)" }}>
+          <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--dm-text-tertiary)" }}>
             ID da Conta <span className="text-red-500">*</span>
           </label>
           {loadingAccounts ? (
@@ -450,7 +456,7 @@ function AddEntryForm({
                 onFocus={() => setAccountSuggestionsOpen(true)}
                 onBlur={() => setTimeout(() => setAccountSuggestionsOpen(false), 120)}
                 placeholder="act_1234567890"
-                className="h-9 w-full rounded-lg border px-2.5 pr-8 text-[11px] font-mono font-medium outline-none transition focus:ring-1"
+                className="h-11 w-full rounded-xl border px-3.5 pr-9 text-[13px] font-mono font-medium outline-none transition focus:ring-1"
                 style={{ borderColor: errBorderAccount, backgroundColor: "var(--dm-bg-elevated)",
                   color: "var(--dm-text-primary)" }}
               />
@@ -503,15 +509,15 @@ function AddEntryForm({
       </div>
 
       {/* Campo 2, campanhas, Campo 3 — mesmo cartão; campanhas entre 2 e 3 */}
-      <div className="rounded-lg border p-2.5 space-y-2"
+      <div className="rounded-2xl border p-5 space-y-4"
         style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
         {isCustomCategory ? (
-          <p className="text-[10px] leading-snug" style={{ color: "var(--dm-text-tertiary)" }}>
+          <p className="text-[11px] leading-snug" style={{ color: "var(--dm-text-tertiary)" }}>
             Categorias personalizadas não usam subfiltros catalogados — o vínculo é direto à categoria.
           </p>
         ) : (
           <div>
-            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide" style={{ color: "var(--dm-text-tertiary)" }}>
+            <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--dm-text-tertiary)" }}>
               Filtro da Categoria <span className="text-red-500">*</span>
             </label>
             <div className="relative">
@@ -522,7 +528,7 @@ function AddEntryForm({
                 onBlur={() => setTimeout(() => setFilterSuggestionsOpen(false), 120)}
                 disabled={filterSelectDisabled}
                 placeholder="Digite ou selecione um filtro"
-                className="h-9 w-full rounded-lg border px-2.5 pr-8 text-[12px] font-medium outline-none transition focus:ring-1 disabled:cursor-not-allowed disabled:opacity-50"
+                className="h-11 w-full rounded-xl border px-3.5 pr-9 text-[13px] font-medium outline-none transition focus:ring-1 disabled:cursor-not-allowed disabled:opacity-50"
                 style={{ borderColor: errBorderFilter, backgroundColor: "var(--dm-bg-elevated)",
                   color: "var(--dm-text-primary)" }}
               />
@@ -610,26 +616,26 @@ function AddEntryForm({
 
         {verifyState === "ok" && campaigns.length > 0 && campaignListOpen && (
           <div className="pt-1">
-            <div className="mb-1.5 flex items-center justify-between">
-              <span className="text-[11px] font-semibold" style={{ color: "var(--dm-text-secondary)" }}>
-                Campanhas nesta categoria
+            <div className="mb-2.5 flex items-center justify-between">
+              <span className="text-xs font-semibold" style={{ color: "var(--dm-text-secondary)" }}>
+                Escolha as campanhas ({selected.length} de {campaigns.length})
               </span>
               <button type="button" onClick={toggleAll}
-                className="text-[10px] font-semibold" style={{ color: "var(--dm-brand-500)" }}>
+                className="text-[11px] font-semibold transition hover:opacity-70" style={{ color: "var(--dm-brand-500)" }}>
                 {selected.length === campaigns.length ? "Desmarcar todas" : "Marcar todas"}
               </button>
             </div>
-            <div className="max-h-40 overflow-y-auto rounded-lg border p-1.5 space-y-0.5"
+            <div className="max-h-72 overflow-y-auto rounded-xl border p-2 space-y-1"
               style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
               {campaigns.map((c) => (
-                <label key={c.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 transition hover:bg-slate-100/50 dark:hover:bg-slate-700/50">
+                <label key={c.id} className="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 transition hover:bg-slate-100/50 dark:hover:bg-slate-700/50">
                   <input type="checkbox" checked={selected.includes(c.id)}
                     onChange={() => toggleOne(c.id)}
-                    className="h-3 w-3 flex-shrink-0 rounded accent-blue-600" />
-                  <span className="flex-1 truncate text-[11px]" style={{ color: "var(--dm-text-primary)" }}
+                    className="h-4 w-4 flex-shrink-0 rounded accent-blue-600" />
+                  <span className="flex-1 truncate text-xs" style={{ color: "var(--dm-text-primary)" }}
                     title={c.name}>{c.name}</span>
-                  <span className={`flex-shrink-0 text-[9px] font-bold ${c.status === "ACTIVE" ? "text-emerald-500" : "text-amber-400"}`}>
-                    {c.status === "ACTIVE" ? "●" : "◐"}
+                  <span className={`flex-shrink-0 text-[10px] font-bold ${c.status === "ACTIVE" ? "text-emerald-500" : "text-amber-400"}`}>
+                    {c.status === "ACTIVE" ? "● ativa" : "◐ pausada"}
                   </span>
                 </label>
               ))}
@@ -637,8 +643,8 @@ function AddEntryForm({
           </div>
         )}
 
-        <div className="border-t pt-2" style={{ borderColor: "var(--dm-border-default)" }}>
-          <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide" style={{ color: "var(--dm-text-tertiary)" }}>
+        <div className="border-t pt-4" style={{ borderColor: "var(--dm-border-default)" }}>
+          <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--dm-text-tertiary)" }}>
             Nome no Painel <span className="font-normal normal-case opacity-80">(opcional)</span>
           </label>
           <input
@@ -646,52 +652,95 @@ function AddEntryForm({
             onChange={(e) => setLabel(e.target.value)}
             placeholder="Igual ao nome da Meta se deixado em branco"
             disabled={!canContinueAfterFilters}
-            className="h-9 w-full rounded-lg border px-2.5 text-[12px] outline-none transition focus:ring-1 disabled:cursor-not-allowed disabled:opacity-50"
+            className="h-11 w-full rounded-xl border px-3.5 text-[13px] outline-none transition focus:ring-1 disabled:cursor-not-allowed disabled:opacity-50"
             style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)",
               color: "var(--dm-text-primary)" }}
           />
         </div>
       </div>
 
-      {/* Intenção das campanhas selecionadas */}
+      {/* Intenção + metas das campanhas selecionadas — etapa final, com respiro */}
       {verifyState === "ok" && selectedCampaigns.length > 0 && (
-        <div className="rounded-lg border p-2.5 space-y-2"
+        <div className="rounded-2xl border p-5 space-y-4"
           style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
           <div className="flex items-center justify-between">
-            <label className="block text-[10px] font-semibold uppercase tracking-wide" style={{ color: "var(--dm-text-tertiary)" }}>
-              Intenção das Campanhas ({selectedCampaigns.length})
-            </label>
+            <div>
+              <label className="block text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--dm-text-tertiary)" }}>
+                Intenção e Metas ({selectedCampaigns.length})
+              </label>
+              <p className="mt-1 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                Intenção lida do objetivo configurado na Meta — os resultados alimentam o dashboard e o Perfil de Anunciantes.
+              </p>
+            </div>
             <button type="button" onClick={() => setCampaignListOpen(true)}
-              className="flex items-center gap-1 text-[10px] font-semibold transition hover:opacity-70"
+              className="flex flex-shrink-0 items-center gap-1 text-[11px] font-semibold transition hover:opacity-70"
               style={{ color: "var(--dm-brand-500)" }}>
-              <Plus size={11} /> Mais campanhas
+              <Plus size={12} /> Mais campanhas
             </button>
           </div>
-          <div className="space-y-1.5">
+          <div className="space-y-3">
             {selectedCampaigns.map((c) => {
               const intent = intents[c.id] ?? detectIntent({ objective: c.objective, name: c.name });
               const meta = INTENT_META[intent];
+              const goals = goalsMap[c.id] ?? {};
               return (
-                <div key={c.id} className="flex items-center gap-2 rounded-lg border px-2.5 py-2"
+                <div key={c.id} className="rounded-xl border p-4 space-y-3.5"
                   style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)" }}>
-                  <span className="h-2 w-2 flex-shrink-0 rounded-full" style={{ backgroundColor: meta.color }} />
-                  <span className="min-w-0 flex-1 truncate text-[11px] font-medium"
-                    style={{ color: "var(--dm-text-primary)" }} title={c.name}>
-                    {c.name}
-                  </span>
-                  <select value={intent}
-                    onChange={(e) => setIntents((prev) => ({ ...prev, [c.id]: e.target.value as CampaignIntent }))}
-                    className="h-7 flex-shrink-0 rounded-md border px-1.5 text-[10px] font-semibold outline-none"
-                    style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)", color: meta.color }}>
-                    {INTENT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
+                  {/* nome + intenção */}
+                  <div className="flex items-center gap-3">
+                    <span className="h-2.5 w-2.5 flex-shrink-0 rounded-full" style={{ backgroundColor: meta.color }} />
+                    <span className="min-w-0 flex-1 truncate text-[13px] font-semibold"
+                      style={{ color: "var(--dm-text-primary)" }} title={c.name}>
+                      {c.name}
+                    </span>
+                    <select value={intent}
+                      onChange={(e) => setIntents((prev) => ({ ...prev, [c.id]: e.target.value as CampaignIntent }))}
+                      className="h-9 flex-shrink-0 rounded-lg border px-2.5 text-xs font-semibold outline-none"
+                      style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)", color: meta.color }}>
+                      {INTENT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  </div>
+                  {/* orçamento + metas da intenção */}
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    <label className="flex flex-col gap-1.5">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: "var(--dm-text-tertiary)" }}>
+                        Orçamento /mês
+                      </span>
+                      <input type="number" min="0" step="any"
+                        value={budgets[c.id] ?? ""}
+                        onChange={(e) => {
+                          const v = parseFloat(e.target.value);
+                          setBudgets((prev) => ({ ...prev, [c.id]: isNaN(v) || v <= 0 ? null : v }));
+                        }}
+                        placeholder="R$"
+                        className="h-9 rounded-lg border px-2.5 text-xs outline-none text-right tabular-nums"
+                        style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)", color: "var(--dm-text-primary)" }} />
+                    </label>
+                    {meta.goalFields.map((gf) => (
+                      <label key={gf.id} className="flex flex-col gap-1.5">
+                        <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: "var(--dm-text-tertiary)" }}>
+                          Meta · {gf.label}
+                        </span>
+                        <input type="number" min="0" step="any"
+                          value={goals[gf.id] ?? ""}
+                          onChange={(e) => {
+                            const v = parseFloat(e.target.value);
+                            setGoalsMap((prev) => {
+                              const next = { ...(prev[c.id] ?? {}) };
+                              if (isNaN(v) || v <= 0) delete next[gf.id]; else next[gf.id] = v;
+                              return { ...prev, [c.id]: next };
+                            });
+                          }}
+                          placeholder={gf.unit === "brl" ? "R$" : gf.unit === "pct" ? "%" : gf.unit === "x" ? "x" : "qtd"}
+                          className="h-9 rounded-lg border px-2.5 text-xs outline-none text-right tabular-nums"
+                          style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)", color: "var(--dm-text-primary)" }} />
+                      </label>
+                    ))}
+                  </div>
                 </div>
               );
             })}
           </div>
-          <p className="text-[9px] leading-snug" style={{ color: "var(--dm-text-tertiary)" }}>
-            Intenção detectada pelo objetivo da Meta — ajuste se precisar. Ela melhora os KPIs e os resultados no dashboard principal e no Perfil de Anunciantes.
-          </p>
         </div>
       )}
 
@@ -701,19 +750,24 @@ function AddEntryForm({
           </div>
 
           {/* Footer fixo */}
-          <div className="flex gap-2 border-t px-4 py-3"
+          <div className="flex items-center gap-3 border-t px-7 py-4"
             style={{ borderColor: "var(--dm-border-subtle)", backgroundColor: "var(--dm-bg-elevated)" }}>
+            {verifyState === "ok" && campaigns.length > 0 && selected.length === 0 && (
+              <p className="flex-1 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                Selecione ao menos uma campanha para salvar.
+              </p>
+            )}
             <button type="button" onClick={onCancel}
-              className="flex h-9 flex-1 items-center justify-center rounded-lg border text-xs font-semibold transition"
+              className="flex h-11 min-w-[120px] items-center justify-center rounded-xl border text-xs font-semibold transition hover:opacity-80"
               style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>
               Cancelar
             </button>
             <button type="button" onClick={() => void handleSave()}
-              disabled={saving}
-              className="flex h-9 flex-1 items-center justify-center gap-1 rounded-lg text-xs font-bold text-white transition disabled:opacity-50"
+              disabled={saving || (verifyState === "ok" && campaigns.length > 0 && selected.length === 0)}
+              className="flex h-11 min-w-[180px] items-center justify-center gap-1.5 rounded-xl text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-50"
               style={{ backgroundColor: "var(--dm-brand-500)" }}>
-              {saving ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
-              Salvar
+              {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+              {selected.length > 0 ? `Salvar ${selected.length} campanha${selected.length !== 1 ? "s" : ""}` : "Salvar"}
             </button>
           </div>
         </div>
