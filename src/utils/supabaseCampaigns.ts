@@ -292,17 +292,28 @@ export const upsertMetaCampaigns = async (campaigns: CampaignData[]): Promise<Me
     ...(company ? { company_id: company.id } : {}),
   }));
 
+  // migration 024: unique inclui company_id (campanhas homônimas entre
+  // empresas não colidem). Fallback para o unique antigo se a 024 não rodou.
+  const conflictKey = company ? "company_id,date,campaign_name,source" : "date,campaign_name,source";
+
   let { data, error } = await supabaseClient
     .from("campaign_metrics")
-    .upsert(payload, { onConflict: "date,campaign_name,source" })
+    .upsert(payload, { onConflict: conflictKey })
     .select("id");
+
+  if (error && company && /no unique|exclusion constraint/i.test(error.message)) {
+    ({ data, error } = await supabaseClient
+      .from("campaign_metrics")
+      .upsert(payload, { onConflict: "date,campaign_name,source" })
+      .select("id"));
+  }
 
   // migration 020 pendente → reenvia sem page_views (sync segue funcionando).
   if (error && isMissingPageViewsColumnError(error.message)) {
     const legacyPayload = payload.map(({ page_views: _pv, ...rest }) => rest);
     ({ data, error } = await supabaseClient
       .from("campaign_metrics")
-      .upsert(legacyPayload, { onConflict: "date,campaign_name,source" })
+      .upsert(legacyPayload, { onConflict: conflictKey })
       .select("id"));
   }
 

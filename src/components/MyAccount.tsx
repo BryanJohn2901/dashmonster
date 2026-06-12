@@ -9,6 +9,7 @@ import {
   type TabAccountsProps,
 } from "@/components/ControlPanel";
 import { AccountsHub } from "@/components/CampaignCenter";
+import { CompanySettings } from "@/components/CompanySettings";
 import type { UserCategory, UserAccountEntry } from "@/types/userConfig";
 import type { MetaSyncResult } from "@/utils/supabaseCampaigns";
 
@@ -17,6 +18,7 @@ import type { MetaSyncResult } from "@/utils/supabaseCampaigns";
 type AccountTab =
   | "profile"
   | "accounts"
+  | "company"
   | "integrations"
   | "sync"
   | "privacy"
@@ -47,6 +49,7 @@ interface MyAccountProps {
 const TABS: { id: AccountTab; label: string }[] = [
   { id: "profile",         label: "Meu perfil"     },
   { id: "accounts",        label: "Contas"          },
+  { id: "company",         label: "Empresa"         },
   { id: "integrations",    label: "Integrações"     },
   { id: "sync",            label: "Sincronização"   },
   { id: "privacy",         label: "Privacidade"     },
@@ -352,6 +355,7 @@ export function MyAccount({
         {activeTab === "accounts" && (
           <AccountsHub {...tabAccountsProps} />
         )}
+        {activeTab === "company" && <CompanySettings />}
         {activeTab === "integrations" && (
           <TabIntegrations onSyncNow={() => { void onRefresh?.(); }} />
         )}

@@ -9,7 +9,7 @@ import {
   Activity, BadgeDollarSign, BarChart2, BookOpen, CalendarDays,
   CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CircleDollarSign, Download, Dumbbell, FileText,
   FileUp, Filter, Flag, GraduationCap, Home, ImageIcon, Link2, Loader2, LogOut, Menu, Moon,
-  MousePointerClick, Package, Pencil, Plus, Repeat, RotateCcw, Search, Settings2, SlidersHorizontal, Sun,
+  Building2, MousePointerClick, Package, Pencil, Plus, Repeat, RotateCcw, Search, Settings2, SlidersHorizontal, Sun,
   Target, Trash2, TrendingUp, Trophy, Upload, UserRound, Users, Wallet, X, XCircle, Zap,
   LayoutDashboard, History, LineChart, Sparkles, Database, Dna, Weight, HeartPulse,
   Medal, PersonStanding, Flame, BookText, MonitorSmartphone, Ticket, Library, VenetianMask,
@@ -131,10 +131,11 @@ const SIDEBAR_HISTORY_TABS: Array<{ id: HistoricalKind; icon: React.ElementType 
 
 // ─── MyAccount sub-tabs (sidebar) ─────────────────────────────────────────────
 
-type MyAccountTabId = "profile"|"accounts"|"integrations"|"sync"|"privacy"|"notifications"|"personalization";
+type MyAccountTabId = "profile"|"accounts"|"company"|"integrations"|"sync"|"privacy"|"notifications"|"personalization";
 const SIDEBAR_ACCOUNT_TABS: Array<{ id: MyAccountTabId; label: string; icon: React.ElementType }> = [
   { id: "profile",         label: "Meu perfil",     icon: UserRound    },
   { id: "accounts",        label: "Contas",          icon: Settings2    },
+  { id: "company",         label: "Empresa",         icon: Building2    },
   { id: "integrations",    label: "Integrações",     icon: Link2        },
   { id: "sync",            label: "Sincronização",   icon: RotateCcw    },
   { id: "privacy",         label: "Privacidade",     icon: Zap          },

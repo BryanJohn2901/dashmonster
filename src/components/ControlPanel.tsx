@@ -789,6 +789,7 @@ interface EntryRowProps {
 }
 
 function EntryRow({ entry, categorySlug, onDeleted, onToggled, onUpdated }: EntryRowProps) {
+  const { removeEntry: removeCenterEntry } = useCampaignCenter();
   const [deleting,  setDeleting]  = useState(false);
   const [expanded,  setExpanded]  = useState(false);
   const [toggling,  setToggling]  = useState(false);
@@ -864,6 +865,8 @@ function EntryRow({ entry, categorySlug, onDeleted, onToggled, onUpdated }: Entr
     setDeleting(true);
     try {
       await deleteUserAccountEntry(entry.id);
+      // remove também da Central — sem isso a intenção/metas ficam órfãs
+      entry.campaigns.forEach((c) => removeCenterEntry(c.id));
       onDeleted(entry.id);
     } catch { setDeleting(false); }
   };

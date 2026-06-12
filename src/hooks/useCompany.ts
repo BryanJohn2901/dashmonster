@@ -74,6 +74,20 @@ async function fetchCompanyState(): Promise<CompanyState> {
   };
 }
 
+// Login/logout invalida o cache — sem isso, quem loga depois do primeiro
+// fetch ficaria com company=null e gravaria sem company_id (RLS bloquearia).
+let authListenerStarted = false;
+function watchAuth(): void {
+  if (authListenerStarted || !supabaseClient) return;
+  authListenerStarted = true;
+  supabaseClient.auth.onAuthStateChange((event) => {
+    if (event === "SIGNED_IN" || event === "SIGNED_OUT" || event === "TOKEN_REFRESHED") {
+      inflight = null;
+      void loadOnce();
+    }
+  });
+}
+
 function loadOnce(): Promise<CompanyState> {
   if (!inflight) {
     inflight = fetchCompanyState()
@@ -92,6 +106,7 @@ function loadOnce(): Promise<CompanyState> {
 
 /** Para usar fora de React (utils Supabase): estado atual da empresa. */
 export async function getCompanyContext(): Promise<CompanyState> {
+  watchAuth();
   return cached ?? loadOnce();
 }
 
@@ -115,6 +130,65 @@ export async function updateCompanySettings(
   await refreshCompany();
 }
 
+// ─── Membros (tela Empresa) ───────────────────────────────────────────────────
+
+export interface CompanyMember {
+  id: string;
+  userId: string;
+  email: string;
+  role: CompanyRole;
+  createdAt: string;
+}
+
+/** Lista os membros da empresa (RLS: qualquer membro enxerga). */
+export async function fetchCompanyMembers(companyId: string): Promise<CompanyMember[]> {
+  if (!supabaseClient) return [];
+  const { data, error } = await supabaseClient
+    .from("company_members")
+    .select("id, user_id, email, role, created_at")
+    .eq("company_id", companyId)
+    .order("created_at");
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((r) => ({
+    id:        r.id as string,
+    userId:    r.user_id as string,
+    email:     (r.email as string) ?? "",
+    role:      r.role as CompanyRole,
+    createdAt: r.created_at as string,
+  }));
+}
+
+/** Troca o papel de um membro (RLS: só owner). */
+export async function updateMemberRole(memberId: string, role: CompanyRole): Promise<void> {
+  if (!supabaseClient) throw new Error("Supabase não configurado.");
+  const { error } = await supabaseClient
+    .from("company_members")
+    .update({ role })
+    .eq("id", memberId);
+  if (error) throw new Error(error.message);
+}
+
+/** Remove um membro da empresa (RLS: só owner). */
+export async function removeMember(memberId: string): Promise<void> {
+  if (!supabaseClient) throw new Error("Supabase não configurado.");
+  const { error } = await supabaseClient
+    .from("company_members")
+    .delete()
+    .eq("id", memberId);
+  if (error) throw new Error(error.message);
+}
+
+/** Renomeia a empresa (RLS: só owner). */
+export async function renameCompany(companyId: string, name: string): Promise<void> {
+  if (!supabaseClient) throw new Error("Supabase não configurado.");
+  const { error } = await supabaseClient
+    .from("companies")
+    .update({ name })
+    .eq("id", companyId);
+  if (error) throw new Error(error.message);
+  await refreshCompany();
+}
+
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useCompany() {
@@ -124,6 +198,7 @@ export function useCompany() {
 
   useEffect(() => {
     listeners.add(setState);
+    watchAuth();
     if (!cached) void loadOnce();
     return () => {
       listeners.delete(setState);
