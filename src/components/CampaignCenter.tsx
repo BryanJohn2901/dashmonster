@@ -18,6 +18,8 @@ import {
   type MetaCampaign, type MetaAdAccount,
 } from "@/utils/metaApi";
 import { TabAccounts, type TabAccountsProps } from "@/components/ControlPanel";
+import { fetchUserAccountEntries, fetchUserCategories } from "@/utils/supabaseCategories";
+import type { UserAccountEntry } from "@/types/userConfig";
 import { Wallet, Layers, Goal } from "lucide-react";
 import { formatBRL } from "@/lib/format";
 
@@ -62,11 +64,25 @@ const UNIT_PLACEHOLDER: Record<string, string> = {
 };
 
 // ─── Drawer: Conectar conta e importar campanhas ─────────────────────────────
+// Duas vias, sem refazer o setup do Painel de Controle:
+//  1. "Já configuradas" — linka as contas/campanhas que o Painel já tem
+//  2. "Novo ACT" — token vem da empresa; só pede se ainda não existir
+
+type ConnectTab = "linked" | "new";
 
 function ConnectDrawer({ onClose, onImport }: {
   onClose: () => void;
   onImport: (entries: CampaignCenterEntry[]) => void;
 }) {
+  const [tab, setTab] = useState<ConnectTab>("linked");
+
+  // ── Aba 1: entries já configuradas no Painel de Controle ──
+  const [configured, setConfigured]       = useState<UserAccountEntry[]>([]);
+  const [catSlugs, setCatSlugs]           = useState<Record<string, string>>({});
+  const [selectedLinks, setSelectedLinks] = useState<Set<string>>(new Set());
+  const [loadingLinked, setLoadingLinked] = useState(true);
+
+  // ── Aba 2: ACT novo ──
   const [token, setToken]         = useState("");
   const [accounts, setAccounts]   = useState<MetaAdAccount[]>([]);
   const [actId, setActId]         = useState("");
@@ -76,7 +92,25 @@ function ConnectDrawer({ onClose, onImport }: {
   const [loading, setLoading]     = useState<"accounts" | "campaigns" | null>(null);
   const [error, setError]         = useState<string | null>(null);
 
-  // Token salvo → pré-carrega e busca contas automaticamente
+  // Carrega o que o Painel de Controle já tem configurado (setup é o mesmo)
+  useEffect(() => {
+    void (async () => {
+      try {
+        const [entries, cats] = await Promise.all([
+          fetchUserAccountEntries(),
+          fetchUserCategories(),
+        ]);
+        const enabled = entries.filter((e) => e.isEnabled);
+        setConfigured(enabled);
+        setCatSlugs(Object.fromEntries(cats.map((c) => [c.id, c.slug])));
+        setSelectedLinks(new Set(enabled.map((e) => e.id)));
+        if (enabled.length === 0) setTab("new");
+      } catch { setTab("new"); }
+      finally { setLoadingLinked(false); }
+    })();
+  }, []);
+
+  // Token da empresa → pré-carrega e busca contas automaticamente
   useEffect(() => {
     const { accessToken } = loadMetaCredentials();
     if (accessToken) {
@@ -85,6 +119,52 @@ function ConnectDrawer({ onClose, onImport }: {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const toggleLink = (id: string) => {
+    setSelectedLinks((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  // Importa as entries do Painel: campanhas selecionadas, grupo = filtro/categoria
+  const handleLinkImport = () => {
+    const now = new Date().toISOString();
+    const result: CampaignCenterEntry[] = [];
+    configured
+      .filter((e) => selectedLinks.has(e.id))
+      .forEach((e) => {
+        const camps = e.selectedCampaignIds.length > 0
+          ? e.campaigns.filter((c) => e.selectedCampaignIds.includes(c.id))
+          : e.campaigns;
+        camps.forEach((c) => {
+          const intent = detectIntent({ name: c.name });
+          result.push({
+            campaignId: c.id,
+            campaignName: c.name,
+            adAccountId: e.adAccountId,
+            adAccountLabel: e.label,
+            intent,
+            resultType: INTENT_META[intent].defaultResultTypes[0],
+            groupId: e.internalFilter ?? catSlugs[e.categoryId] ?? "",
+            monthlyBudget: null,
+            goals: {},
+            enabled: c.status === "ACTIVE",
+            autoConfigured: true,
+            updatedAt: now,
+          });
+        });
+      });
+    onImport(result);
+    onClose();
+  };
+
+  const linkedCampaignCount = configured
+    .filter((e) => selectedLinks.has(e.id))
+    .reduce((sum, e) => sum + (e.selectedCampaignIds.length > 0
+      ? e.selectedCampaignIds.length
+      : e.campaigns.length), 0);
 
   const loadAccounts = async (tk: string) => {
     if (!tk.trim()) { setError("Cole o Access Token."); return; }
@@ -168,7 +248,7 @@ function ConnectDrawer({ onClose, onImport }: {
                 Conectar conta
               </h3>
               <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
-                Token → conta → campanhas → intenção automática
+                Linke o que já existe ou adicione um ACT novo
               </p>
             </div>
           </div>
@@ -179,33 +259,104 @@ function ConnectDrawer({ onClose, onImport }: {
           </button>
         </div>
 
+        {/* Tabs */}
+        <div className="flex gap-1 border-b px-5 pt-3" style={{ borderColor: "var(--dm-border-subtle)" }}>
+          {([
+            { id: "linked" as ConnectTab, label: "Já configuradas" },
+            { id: "new"    as ConnectTab, label: "Novo ACT" },
+          ]).map((t) => (
+            <button key={t.id} type="button" onClick={() => setTab(t.id)}
+              className="rounded-t-lg px-3 py-2 text-[11px] font-bold transition"
+              style={{
+                color: tab === t.id ? "#6366C8" : "var(--dm-text-tertiary)",
+                borderBottom: tab === t.id ? "2px solid #6366C8" : "2px solid transparent",
+              }}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-4">
-          {/* Passo 1 — Token */}
-          <div className="flex flex-col gap-1.5">
-            <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
-              1 · Access Token
-            </span>
-            <div className="flex gap-2">
-              <input type="password" value={token} onChange={(e) => setToken(e.target.value)}
-                placeholder="EAAxxxx…"
-                className="h-9 flex-1 rounded-[10px] border px-2.5 text-xs outline-none"
-                style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }} />
-              <button type="button" onClick={() => void loadAccounts(token)}
-                disabled={loading === "accounts"}
-                className="flex items-center gap-1.5 rounded-[10px] px-3 text-[11px] font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
-                style={{ background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)" }}>
-                {loading === "accounts" ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
-                Buscar contas
-              </button>
-            </div>
-          </div>
+          {/* ── Aba: Já configuradas ── */}
+          {tab === "linked" && (
+            loadingLinked ? (
+              <div className="flex items-center gap-2 py-6 justify-center">
+                <Loader2 size={16} className="animate-spin" style={{ color: "var(--dm-text-tertiary)" }} />
+                <span className="text-xs" style={{ color: "var(--dm-text-tertiary)" }}>Buscando contas do Painel…</span>
+              </div>
+            ) : configured.length === 0 ? (
+              <p className="py-6 text-center text-xs" style={{ color: "var(--dm-text-tertiary)" }}>
+                Nenhuma conta configurada no Painel de Controle ainda. Use a aba "Novo ACT".
+              </p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                <p className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                  Setup é o mesmo do Painel de Controle — só escolha o que linkar.
+                  Filtro vira o grupo e a intenção é detectada automaticamente.
+                </p>
+                {configured.map((e) => {
+                  const isSel = selectedLinks.has(e.id);
+                  const count = e.selectedCampaignIds.length > 0 ? e.selectedCampaignIds.length : e.campaigns.length;
+                  return (
+                    <button key={e.id} type="button" onClick={() => toggleLink(e.id)}
+                      className="flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition"
+                      style={{
+                        borderColor: isSel ? "#6366C8" : "var(--dm-border-default)",
+                        backgroundColor: isSel ? "rgba(99,102,200,0.08)" : "var(--dm-bg-elevated)",
+                      }}>
+                      <CheckCircle2 size={15} className="flex-shrink-0"
+                        style={{ color: isSel ? "#6366C8" : "var(--dm-border-default)" }} />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[11px] font-semibold" style={{ color: "var(--dm-text-primary)" }}>
+                          {e.label}
+                        </p>
+                        <p className="text-[9px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                          {e.adAccountId} · {count} campanha{count !== 1 ? "s" : ""}
+                          {e.internalFilter ? ` · filtro: ${e.internalFilter}` : ""}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )
+          )}
 
-          {/* Passo 2 — Conta */}
-          {accounts.length > 0 && (
+          {/* ── Aba: Novo ACT ── */}
+          {tab === "new" && !token && (
             <div className="flex flex-col gap-1.5">
               <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
-                2 · Conta de Anúncio
+                Access Token (a empresa ainda não tem um salvo)
+              </span>
+              <div className="flex gap-2">
+                <input type="password" value={token} onChange={(e) => setToken(e.target.value)}
+                  placeholder="EAAxxxx…"
+                  className="h-9 flex-1 rounded-[10px] border px-2.5 text-xs outline-none"
+                  style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }} />
+                <button type="button" onClick={() => void loadAccounts(token)}
+                  disabled={loading === "accounts"}
+                  className="flex items-center gap-1.5 rounded-[10px] px-3 text-[11px] font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+                  style={{ background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)" }}>
+                  {loading === "accounts" ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
+                  Buscar contas
+                </button>
+              </div>
+            </div>
+          )}
+
+          {tab === "new" && token && accounts.length === 0 && loading !== "accounts" && (
+            <button type="button" onClick={() => void loadAccounts(token)}
+              className="flex items-center justify-center gap-1.5 rounded-[10px] py-2 text-[11px] font-semibold text-white transition hover:opacity-90"
+              style={{ background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)" }}>
+              <Search size={12} /> Buscar contas com o token da empresa
+            </button>
+          )}
+
+          {tab === "new" && accounts.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
+                Conta de Anúncio (ACT)
               </span>
               <select value={actId}
                 onChange={(e) => { setActId(e.target.value); void loadCampaigns(e.target.value); }}
@@ -219,19 +370,19 @@ function ConnectDrawer({ onClose, onImport }: {
             </div>
           )}
 
-          {/* Passo 3 — Campanhas */}
-          {loading === "campaigns" && (
+          {/* Campanhas do ACT novo */}
+          {tab === "new" && loading === "campaigns" && (
             <div className="flex items-center gap-2 py-6 justify-center">
               <Loader2 size={16} className="animate-spin" style={{ color: "var(--dm-text-tertiary)" }} />
               <span className="text-xs" style={{ color: "var(--dm-text-tertiary)" }}>Buscando campanhas…</span>
             </div>
           )}
 
-          {campaigns.length > 0 && (
+          {tab === "new" && campaigns.length > 0 && (
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
-                  3 · Campanhas ({selected.size}/{campaigns.length})
+                  Campanhas ({selected.size}/{campaigns.length})
                 </span>
                 <button type="button"
                   onClick={() => setSelected(selected.size === filtered.length ? new Set() : new Set(filtered.map((c) => c.id)))}
@@ -290,11 +441,19 @@ function ConnectDrawer({ onClose, onImport }: {
 
         {/* Footer */}
         <div className="border-t px-5 py-4" style={{ borderColor: "var(--dm-border-subtle)" }}>
-          <button type="button" onClick={handleImport} disabled={selected.size === 0}
-            className="w-full rounded-xl py-2.5 text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-40"
-            style={{ background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)" }}>
-            Adicionar {selected.size > 0 ? `${selected.size} campanha${selected.size !== 1 ? "s" : ""}` : "campanhas"} à Central
-          </button>
+          {tab === "linked" ? (
+            <button type="button" onClick={handleLinkImport} disabled={selectedLinks.size === 0}
+              className="w-full rounded-xl py-2.5 text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-40"
+              style={{ background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)" }}>
+              Linkar {linkedCampaignCount > 0 ? `${linkedCampaignCount} campanha${linkedCampaignCount !== 1 ? "s" : ""}` : "campanhas"} à Central
+            </button>
+          ) : (
+            <button type="button" onClick={handleImport} disabled={selected.size === 0}
+              className="w-full rounded-xl py-2.5 text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-40"
+              style={{ background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)" }}>
+              Adicionar {selected.size > 0 ? `${selected.size} campanha${selected.size !== 1 ? "s" : ""}` : "campanhas"} à Central
+            </button>
+          )}
         </div>
       </div>
     </>,
