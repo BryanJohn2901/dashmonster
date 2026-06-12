@@ -494,6 +494,19 @@ export function CampaignCenter() {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [showConnect, setShowConnect] = useState(false);
 
+  // Grupos = filtros/categorias do Painel (mesmo setup, sem retrabalho)
+  const [categoryGroups, setCategoryGroups] = useState<string[]>([]);
+  useEffect(() => {
+    void fetchUserCategories()
+      .then((cats) => setCategoryGroups(cats.filter((c) => c.isEnabled).map((c) => c.slug)))
+      .catch(() => {});
+  }, []);
+  const groupOptions = useMemo(() => {
+    const set = new Set<string>(categoryGroups);
+    entries.forEach((e) => { if (e.groupId) set.add(e.groupId); });
+    return Array.from(set).sort();
+  }, [categoryGroups, entries]);
+
   const byAccount = useMemo(() => {
     const map = new Map<string, { label: string; items: CampaignCenterEntry[] }>();
     entries.forEach((e) => {
@@ -530,7 +543,7 @@ export function CampaignCenter() {
             Central de Campanhas
           </h2>
           <p className="text-xs" style={{ color: "var(--dm-text-tertiary)" }}>
-            Configure intenção, resultado, orçamento e metas — propaga para todo o sistema.
+            Contas salvas em Categorias e Contas entram aqui sozinhas — só ajuste intenção, orçamento e metas.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -575,7 +588,7 @@ export function CampaignCenter() {
           <p className="text-xs mb-4" style={{ color: "var(--dm-text-tertiary)" }}>
             {readOnly
               ? "Peça ao dono ou gestor da empresa para configurar as campanhas."
-              : "Conecte sua conta Meta ou carregue dados de teste para experimentar."}
+              : "Adicione uma conta em Categorias e Contas acima — as campanhas entram aqui já configuradas. Ou conecte direto:"}
           </p>
           {!readOnly && (
           <div className="flex items-center justify-center gap-2">
@@ -593,6 +606,11 @@ export function CampaignCenter() {
           )}
         </div>
       )}
+
+      {/* Opções de grupo compartilhadas pelos inputs dos cards */}
+      <datalist id="dm-group-options">
+        {groupOptions.map((g) => <option key={g} value={g} />)}
+      </datalist>
 
       {/* Por conta */}
       {byAccount.map(([accountId, { label, items }]) => (
@@ -695,14 +713,14 @@ export function CampaignCenter() {
                         </select>
                       </label>
 
-                      {/* Grupo */}
+                      {/* Grupo = filtro/categoria do Painel (datalist permite criar novo) */}
                       <label className="flex flex-col gap-1">
                         <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
-                          Grupo
+                          Grupo / Filtro
                         </span>
-                        <input type="text" value={entry.groupId}
+                        <input type="text" value={entry.groupId} list="dm-group-options"
                           onChange={(e) => updateEntry(entry.campaignId, { groupId: e.target.value })}
-                          placeholder="ex: biomecanica"
+                          placeholder="escolha ou crie…"
                           className="h-9 rounded-[10px] border px-2.5 text-xs outline-none"
                           style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }} />
                       </label>
