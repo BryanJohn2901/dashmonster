@@ -240,7 +240,12 @@ export function MyAccount({
 
   return (
     <div className="mx-auto w-full px-4 pb-16 pt-8"
-      style={{ maxWidth: activeTab === "accounts" ? 1480 : 1000 }}>
+      style={{
+        // Contas usa o bento largo; demais tabs mantêm a largura de leitura.
+        // Transição suave evita o "pulo" de layout ao trocar de tab.
+        maxWidth: activeTab === "accounts" ? 1480 : 1000,
+        transition: "max-width 0.35s cubic-bezier(0.4, 0, 0.2, 1)",
+      }}>
 
       {/* ── Banner ────────────────────────────────────────────────────── */}
       <div className="profile-banner">
