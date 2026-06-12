@@ -43,10 +43,15 @@ export async function saveProfilesToDB(profiles: AdvertiserProfile[]): Promise<v
   if (!supabaseClient) return;
   const { data: { user } } = await supabaseClient.auth.getUser();
   if (!user) return;
+  const { company } = await getCompanyContext();
   await supabaseClient
     .from("advertiser_profiles")
     .upsert(
-      { user_id: user.id, profiles, updated_at: new Date().toISOString() },
+      {
+        user_id: user.id, profiles,
+        updated_at: new Date().toISOString(),
+        ...(company ? { company_id: company.id } : {}),
+      },
       { onConflict: "user_id" },
     );
 }

@@ -1,4 +1,5 @@
 import { supabaseClient } from "@/lib/supabase";
+import { getCompanyContext } from "@/hooks/useCompany";
 import { HistoricalKind, HistoricalMeta, HistoricalRow } from "@/types/historical";
 
 // ─── Mapping helpers ──────────────────────────────────────────────────────────
@@ -129,6 +130,12 @@ function client() {
   return supabaseClient;
 }
 
+// RLS multi-tenant (migration 021): inserts exigem company_id da empresa
+async function withCompany<T extends Record<string, unknown>>(row: T): Promise<T> {
+  const { company } = await getCompanyContext();
+  return company ? { ...row, company_id: company.id } : row;
+}
+
 // ─── Read ─────────────────────────────────────────────────────────────────────
 
 export async function fetchHistoricalRows(): Promise<HistoricalRow[]> {
@@ -154,7 +161,7 @@ export async function fetchHistoricalMetas(): Promise<HistoricalMeta[]> {
 export async function insertHistoricalRow(row: HistoricalRow): Promise<HistoricalRow> {
   const { data, error } = await client()
     .from("historical_rows")
-    .insert(toDbRow(row))
+    .insert(await withCompany(toDbRow(row)))
     .select()
     .single();
   if (error) throw new Error(`Erro ao inserir registro: ${error.message}`);
@@ -196,7 +203,7 @@ export async function replaceHistoricalData(
   if (rows.length > 0) {
     const { data, error } = await sb
       .from("historical_rows")
-      .insert(rows.map(toDbRow))
+      .insert(await Promise.all(rows.map((r) => withCompany(toDbRow(r)))))
       .select();
     if (error) throw new Error(`Erro ao importar linhas: ${error.message}`);
     newRows = (data ?? []).map((row) => reconstructFromSupabase(row as Record<string, unknown>));
@@ -206,7 +213,7 @@ export async function replaceHistoricalData(
   if (metas.length > 0) {
     const { data, error } = await sb
       .from("historical_metas")
-      .insert(metas.map(toDbMeta))
+      .insert(await Promise.all(metas.map((m) => withCompany(toDbMeta(m)))))
       .select();
     if (error) throw new Error(`Erro ao importar metas: ${error.message}`);
     newMetas = (data ?? []).map(toMeta);

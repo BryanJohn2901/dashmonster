@@ -1,4 +1,5 @@
 import { supabaseClient } from "@/lib/supabase";
+import { getCompanyContext } from "@/hooks/useCompany";
 import { ProductData } from "@/types/product";
 
 // ─── Products ─────────────────────────────────────────────────────────────────
@@ -17,8 +18,13 @@ export async function upsertProduct(p: ProductData): Promise<void> {
   if (!supabaseClient) return;
   const userId = (await supabaseClient.auth.getUser()).data.user?.id;
   if (!userId) return;
+  const { company } = await getCompanyContext();
   const { error } = await supabaseClient.from("products").upsert(
-    { id: p.id, user_id: userId, type: p.type, data: p, updated_at: new Date().toISOString() },
+    {
+      id: p.id, user_id: userId, type: p.type, data: p,
+      updated_at: new Date().toISOString(),
+      ...(company ? { company_id: company.id } : {}),
+    },
     { onConflict: "id" },
   );
   if (error) throw error;
@@ -56,9 +62,10 @@ export async function addUserTag(kind: HistoricalKind, name: string): Promise<vo
   if (!supabaseClient) return;
   const userId = (await supabaseClient.auth.getUser()).data.user?.id;
   if (!userId) return;
+  const { company } = await getCompanyContext();
   const { error } = await supabaseClient
     .from("user_tags")
-    .insert({ user_id: userId, kind, name });
+    .insert({ user_id: userId, kind, name, ...(company ? { company_id: company.id } : {}) });
   if (error) throw error;
 }
 

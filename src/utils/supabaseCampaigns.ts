@@ -1,6 +1,7 @@
 import { RealtimeChannel } from "@supabase/supabase-js";
 import { CampaignData } from "@/types/campaign";
 import { supabaseClient } from "@/lib/supabase";
+import { getCompanyContext } from "@/hooks/useCompany";
 import { calculateDerivedMetrics } from "@/utils/metrics";
 
 interface SupabaseCampaignRow {
@@ -163,6 +164,9 @@ export const replaceSupabaseCampaigns = async (
     return;
   }
 
+  // RLS multi-tenant (migration 021): insert exige company_id da empresa do usuário
+  const { company } = await getCompanyContext();
+
   const payload = campaigns.map((item) => ({
     date: item.date,
     campaign_name: item.campaignName,
@@ -174,6 +178,7 @@ export const replaceSupabaseCampaigns = async (
     page_views: item.pageViews ?? 0,
     revenue: item.revenue,
     source,
+    ...(company ? { company_id: company.id } : {}),
   }));
 
   let { error: insertError } = await supabaseClient
@@ -253,6 +258,9 @@ export const upsertMetaCampaigns = async (campaigns: CampaignData[]): Promise<Me
 
   const dates = campaigns.map((c) => c.date).sort();
 
+  // RLS multi-tenant (migration 021): upsert exige company_id da empresa do usuário
+  const { company } = await getCompanyContext();
+
   const payload = campaigns.map((item) => ({
     date: item.date,
     campaign_name: item.campaignName,
@@ -264,6 +272,7 @@ export const upsertMetaCampaigns = async (campaigns: CampaignData[]): Promise<Me
     page_views: item.pageViews ?? 0,
     revenue: item.revenue,
     source: "meta" as const,
+    ...(company ? { company_id: company.id } : {}),
   }));
 
   let { data, error } = await supabaseClient

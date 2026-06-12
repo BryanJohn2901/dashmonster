@@ -1,4 +1,5 @@
 import { supabaseClient } from "@/lib/supabase";
+import { getCompanyContext } from "@/hooks/useCompany";
 import type { IGTrackedAccount, IGHistoryPoint } from "@/app/api/instagram/history/route";
 
 export type { IGTrackedAccount, IGHistoryPoint };
@@ -101,7 +102,7 @@ export async function fetchAccountHistory(
   const today      = new Date().toISOString().split("T")[0]!;
   const defaultFrom = new Date(Date.now() - 30 * 86400000).toISOString().split("T")[0]!;
 
-  let query = client()
+  const query = client()
     .from("instagram_account_history")
     .select("date, followers_count, following_count, media_count, daily_followers_gained, daily_unfollows, profile_views, reach, impressions, engagement_rate")
     .eq("account_id", accountId)
@@ -151,9 +152,10 @@ export async function fetchGroups(): Promise<IGGroup[]> {
 }
 
 export async function createGroup(name: string, description = ""): Promise<IGGroup> {
+  const { company } = await getCompanyContext();
   const { data, error } = await client()
     .from("instagram_groups")
-    .insert({ name, description })
+    .insert({ name, description, ...(company ? { company_id: company.id } : {}) })
     .select()
     .single();
 

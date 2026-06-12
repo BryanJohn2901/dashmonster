@@ -1,4 +1,5 @@
 import { supabaseClient } from "@/lib/supabase";
+import { getCompanyContext } from "@/hooks/useCompany";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 export interface ManualOverrideFields {
@@ -85,11 +86,13 @@ export async function upsertManualOverride(
   const userId = await getCurrentUserId();
   if (!userId) throw new Error("Usuário não autenticado.");
 
+  const { company } = await getCompanyContext();
   const payload: Record<string, unknown> = {
     user_id:     userId,
     group_id:    groupId,
     campaign_id: campaignId,
     updated_at:  new Date().toISOString(),
+    ...(company ? { company_id: company.id } : {}),
   };
   if (patch.salesTotal    !== undefined) payload.sales_total    = patch.salesTotal;
   if (patch.salesIngresso !== undefined) payload.sales_ingresso = patch.salesIngresso;

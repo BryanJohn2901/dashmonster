@@ -17,9 +17,12 @@ import {
   fetchMetaCampaigns, fetchMetaAdAccounts, loadMetaCredentials, saveMetaCredentials,
   type MetaCampaign, type MetaAdAccount,
 } from "@/utils/metaApi";
-import { TabAccounts, type TabAccountsProps } from "@/components/ControlPanel";
-import { fetchUserAccountEntries, fetchUserCategories } from "@/utils/supabaseCategories";
-import type { UserAccountEntry } from "@/types/userConfig";
+import type { TabAccountsProps } from "@/components/ControlPanel";
+import {
+  fetchUserAccountEntries, fetchUserCategories,
+  upsertUserCategory, upsertUserAccountEntry,
+} from "@/utils/supabaseCategories";
+import type { UserAccountEntry, UserCategory } from "@/types/userConfig";
 import { Wallet, Layers, Goal } from "lucide-react";
 import { formatBRL } from "@/lib/format";
 
@@ -78,46 +81,44 @@ function ConnectDrawer({ onClose, onImport }: {
 
   // ── Aba 1: entries já configuradas no Painel de Controle ──
   const [configured, setConfigured]       = useState<UserAccountEntry[]>([]);
-  const [catSlugs, setCatSlugs]           = useState<Record<string, string>>({});
+  const [cats, setCats]                   = useState<UserCategory[]>([]);
   const [selectedLinks, setSelectedLinks] = useState<Set<string>>(new Set());
   const [loadingLinked, setLoadingLinked] = useState(true);
 
-  // ── Aba 2: ACT novo ──
-  const [token, setToken]         = useState("");
-  const [accounts, setAccounts]   = useState<MetaAdAccount[]>([]);
-  const [actId, setActId]         = useState("");
-  const [campaigns, setCampaigns] = useState<MetaCampaign[]>([]);
-  const [selected, setSelected]   = useState<Set<string>>(new Set());
-  const [search, setSearch]       = useState("");
-  const [loading, setLoading]     = useState<"accounts" | "campaigns" | null>(null);
-  const [error, setError]         = useState<string | null>(null);
+  // ── Aba 2: ACT novo (setup completo: nome + filtro + ACT + campanhas) ──
+  // token da empresa já entra como valor inicial (sem setState em effect)
+  const [token, setToken]           = useState(() => loadMetaCredentials().accessToken);
+  const [accounts, setAccounts]     = useState<MetaAdAccount[]>([]);
+  const [actId, setActId]           = useState("");
+  const [entryName, setEntryName]   = useState("");
+  const [filterSlug, setFilterSlug] = useState("");
+  const [campaigns, setCampaigns]   = useState<MetaCampaign[]>([]);
+  const [selected, setSelected]     = useState<Set<string>>(new Set());
+  const [search, setSearch]         = useState("");
+  const [loading, setLoading]       = useState<"accounts" | "campaigns" | "saving" | null>(null);
+  const [error, setError]           = useState<string | null>(null);
+
+  const catSlugs = useMemo(
+    () => Object.fromEntries(cats.map((c) => [c.id, c.slug])) as Record<string, string>,
+    [cats],
+  );
 
   // Carrega o que o Painel de Controle já tem configurado (setup é o mesmo)
   useEffect(() => {
     void (async () => {
       try {
-        const [entries, cats] = await Promise.all([
+        const [entries, allCats] = await Promise.all([
           fetchUserAccountEntries(),
           fetchUserCategories(),
         ]);
         const enabled = entries.filter((e) => e.isEnabled);
         setConfigured(enabled);
-        setCatSlugs(Object.fromEntries(cats.map((c) => [c.id, c.slug])));
+        setCats(allCats.filter((c) => c.isEnabled));
         setSelectedLinks(new Set(enabled.map((e) => e.id)));
         if (enabled.length === 0) setTab("new");
       } catch { setTab("new"); }
       finally { setLoadingLinked(false); }
     })();
-  }, []);
-
-  // Token da empresa → pré-carrega e busca contas automaticamente
-  useEffect(() => {
-    const { accessToken } = loadMetaCredentials();
-    if (accessToken) {
-      setToken(accessToken);
-      void loadAccounts(accessToken);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const toggleLink = (id: string) => {
@@ -166,6 +167,18 @@ function ConnectDrawer({ onClose, onImport }: {
       ? e.selectedCampaignIds.length
       : e.campaigns.length), 0);
 
+  const loadCampaigns = async (act: string, tk?: string) => {
+    const useToken = (tk ?? token).trim();
+    if (!act) return;
+    setLoading("campaigns"); setError(null); setCampaigns([]); setSelected(new Set());
+    try {
+      const camps = await fetchMetaCampaigns(act, useToken);
+      setCampaigns(camps);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro ao buscar campanhas.");
+    } finally { setLoading(null); }
+  };
+
   const loadAccounts = async (tk: string) => {
     if (!tk.trim()) { setError("Cole o Access Token."); return; }
     setLoading("accounts"); setError(null);
@@ -182,17 +195,14 @@ function ConnectDrawer({ onClose, onImport }: {
     } finally { setLoading(null); }
   };
 
-  const loadCampaigns = async (act: string, tk?: string) => {
-    const useToken = (tk ?? token).trim();
-    if (!act) return;
-    setLoading("campaigns"); setError(null); setCampaigns([]); setSelected(new Set());
-    try {
-      const camps = await fetchMetaCampaigns(act, useToken);
-      setCampaigns(camps);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Erro ao buscar campanhas.");
-    } finally { setLoading(null); }
-  };
+  // Token da empresa presente → busca contas automaticamente ao abrir.
+  // setTimeout tira o setState do corpo síncrono do effect (regra do lint).
+  useEffect(() => {
+    if (!token) return;
+    const id = setTimeout(() => { void loadAccounts(token); }, 0);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const toggleSelect = (id: string) => {
     setSelected((prev) => {
@@ -208,27 +218,61 @@ function ConnectDrawer({ onClose, onImport }: {
 
   const accountLabel = accounts.find((a) => a.id === actId)?.name ?? actId;
 
-  const handleImport = () => {
+  const slugify = (s: string) =>
+    s.normalize("NFD").replace(/[̀-ͯ]/g, "")
+      .toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+  // Setup completo de uma vez: garante o filtro (categoria), salva a conta
+  // no Painel de Controle e manda as campanhas para a Central já configuradas.
+  const handleImport = async () => {
     const chosen = campaigns.filter((c) => selected.has(c.id));
-    const now = new Date().toISOString();
-    onImport(chosen.map((c) => {
-      const intent = detectIntent({ objective: c.objective, name: c.name });
-      return {
-        campaignId: c.id,
-        campaignName: c.name,
+    if (chosen.length === 0) return;
+    setLoading("saving"); setError(null);
+
+    const label = entryName.trim() || accountLabel;
+    const slug  = slugify(filterSlug.trim() || label);
+
+    try {
+      // 1. filtro: usa categoria existente ou cria na hora
+      let category = cats.find((c) => c.slug === slug);
+      if (!category) {
+        category = await upsertUserCategory({
+          slug, name: filterSlug.trim() || label, type: "custom", position: cats.length,
+        });
+      }
+
+      // 2. conta no Painel de Controle (mesmo registro do setup antigo)
+      await upsertUserAccountEntry({
+        categoryId: category.id,
+        label,
         adAccountId: actId,
-        adAccountLabel: accountLabel,
-        intent,
-        resultType: INTENT_META[intent].defaultResultTypes[0],
-        groupId: "",
-        monthlyBudget: null,
-        goals: {},
-        enabled: c.status === "ACTIVE",
-        autoConfigured: true,
-        updatedAt: now,
-      };
-    }));
-    onClose();
+        campaigns: chosen.map((c) => ({ id: c.id, name: c.name, status: c.status })),
+        selectedCampaignIds: [],
+      });
+
+      // 3. campanhas na Central, já com intenção e grupo
+      const now = new Date().toISOString();
+      onImport(chosen.map((c) => {
+        const intent = detectIntent({ objective: c.objective, name: c.name });
+        return {
+          campaignId: c.id,
+          campaignName: c.name,
+          adAccountId: actId,
+          adAccountLabel: label,
+          intent,
+          resultType: INTENT_META[intent].defaultResultTypes[0],
+          groupId: slug,
+          monthlyBudget: null,
+          goals: {},
+          enabled: c.status === "ACTIVE",
+          autoConfigured: true,
+          updatedAt: now,
+        };
+      }));
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro ao salvar a configuração.");
+    } finally { setLoading(null); }
   };
 
   return createPortal(
@@ -287,7 +331,7 @@ function ConnectDrawer({ onClose, onImport }: {
               </div>
             ) : configured.length === 0 ? (
               <p className="py-6 text-center text-xs" style={{ color: "var(--dm-text-tertiary)" }}>
-                Nenhuma conta configurada no Painel de Controle ainda. Use a aba "Novo ACT".
+                Nenhuma conta configurada no Painel de Controle ainda. Use a aba &quot;Novo ACT&quot;.
               </p>
             ) : (
               <div className="flex flex-col gap-2">
@@ -359,7 +403,13 @@ function ConnectDrawer({ onClose, onImport }: {
                 Conta de Anúncio (ACT)
               </span>
               <select value={actId}
-                onChange={(e) => { setActId(e.target.value); void loadCampaigns(e.target.value); }}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  setActId(id);
+                  const acc = accounts.find((a) => a.id === id);
+                  if (acc) setEntryName((prev) => prev || acc.name);
+                  void loadCampaigns(id);
+                }}
                 className="h-9 rounded-[10px] border px-2.5 text-xs outline-none"
                 style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}>
                 <option value="">Selecione…</option>
@@ -367,6 +417,33 @@ function ConnectDrawer({ onClose, onImport }: {
                   <option key={a.id} value={a.id}>{a.name} ({a.id})</option>
                 ))}
               </select>
+            </div>
+          )}
+
+          {/* Nome + Filtro — tudo configurado de uma vez */}
+          {tab === "new" && actId && (
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
+                  Nome da conta
+                </span>
+                <input type="text" value={entryName} onChange={(e) => setEntryName(e.target.value)}
+                  placeholder="ex: Pós-graduação"
+                  className="h-9 rounded-[10px] border px-2.5 text-xs outline-none"
+                  style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }} />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
+                  Filtro (existente ou novo)
+                </span>
+                <input type="text" value={filterSlug} onChange={(e) => setFilterSlug(e.target.value)}
+                  list="dm-drawer-filter-options" placeholder="escolha ou crie…"
+                  className="h-9 rounded-[10px] border px-2.5 text-xs outline-none"
+                  style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }} />
+                <datalist id="dm-drawer-filter-options">
+                  {cats.map((c) => <option key={c.id} value={c.slug}>{c.name}</option>)}
+                </datalist>
+              </label>
             </div>
           )}
 
@@ -448,10 +525,13 @@ function ConnectDrawer({ onClose, onImport }: {
               Linkar {linkedCampaignCount > 0 ? `${linkedCampaignCount} campanha${linkedCampaignCount !== 1 ? "s" : ""}` : "campanhas"} à Central
             </button>
           ) : (
-            <button type="button" onClick={handleImport} disabled={selected.size === 0}
+            <button type="button" onClick={() => void handleImport()}
+              disabled={selected.size === 0 || loading === "saving"}
               className="w-full rounded-xl py-2.5 text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-40"
               style={{ background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)" }}>
-              Adicionar {selected.size > 0 ? `${selected.size} campanha${selected.size !== 1 ? "s" : ""}` : "campanhas"} à Central
+              {loading === "saving"
+                ? "Salvando configuração…"
+                : `Configurar ${selected.size > 0 ? `${selected.size} campanha${selected.size !== 1 ? "s" : ""}` : "campanhas"} de uma vez`}
             </button>
           )}
         </div>
@@ -491,7 +571,8 @@ export function CampaignCenter() {
   const { canWrite, company } = useCompany();
   // sem empresa configurada (migration pendente) ninguém é bloqueado
   const readOnly = Boolean(company) && !canWrite;
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  // Colapsado por padrão: só o card aberto monta os controles (DOM enxuto)
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [showConnect, setShowConnect] = useState(false);
 
   // Grupos = filtros/categorias do Painel (mesmo setup, sem retrabalho)
@@ -527,7 +608,7 @@ export function CampaignCenter() {
   };
 
   const toggleCollapse = (id: string) => {
-    setCollapsed((prev) => {
+    setExpanded((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
@@ -543,7 +624,7 @@ export function CampaignCenter() {
             Central de Campanhas
           </h2>
           <p className="text-xs" style={{ color: "var(--dm-text-tertiary)" }}>
-            Contas salvas em Categorias e Contas entram aqui sozinhas — só ajuste intenção, orçamento e metas.
+            Conta, filtro, ACT e campanhas — tudo configurado de uma vez em Conectar conta.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -588,7 +669,7 @@ export function CampaignCenter() {
           <p className="text-xs mb-4" style={{ color: "var(--dm-text-tertiary)" }}>
             {readOnly
               ? "Peça ao dono ou gestor da empresa para configurar as campanhas."
-              : "Adicione uma conta em Categorias e Contas acima — as campanhas entram aqui já configuradas. Ou conecte direto:"}
+              : "Conecte uma conta — nome, filtro, ACT e campanhas configurados de uma vez."}
           </p>
           {!readOnly && (
           <div className="flex items-center justify-center gap-2">
@@ -627,7 +708,7 @@ export function CampaignCenter() {
 
           {items.map((entry) => {
             const meta = INTENT_META[entry.intent];
-            const isCollapsed = collapsed.has(entry.campaignId);
+            const isCollapsed = !expanded.has(entry.campaignId);
             return (
               <article key={entry.campaignId}
                 className="rounded-[20px] border shadow-horizon overflow-hidden"
@@ -653,6 +734,17 @@ export function CampaignCenter() {
                         <span className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
                           {RESULT_TYPE_LABELS[entry.resultType]}
                         </span>
+                        {entry.groupId && (
+                          <span className="rounded-full px-1.5 py-0.5 text-[9px] font-bold"
+                            style={{ backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-secondary)" }}>
+                            {entry.groupId}
+                          </span>
+                        )}
+                        {entry.monthlyBudget != null && entry.monthlyBudget > 0 && (
+                          <span className="text-[9px] tabular-nums" style={{ color: "var(--dm-text-tertiary)" }}>
+                            {formatBRL(entry.monthlyBudget)}/mês
+                          </span>
+                        )}
                         {entry.autoConfigured && (
                           <span className="rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase"
                             style={{ backgroundColor: "rgba(99,102,200,0.12)", color: "#6366C8" }}>
@@ -820,7 +912,8 @@ function StatCard({ icon: Icon, label, value, accent }: {
   );
 }
 
-export function AccountsHub(props: TabAccountsProps) {
+// props mantidas por compatibilidade com MyAccount (config agora é toda na Central)
+export function AccountsHub(_props: TabAccountsProps) {
   const { entries } = useCampaignCenter();
 
   const stats = useMemo(() => {
@@ -843,17 +936,14 @@ export function AccountsHub(props: TabAccountsProps) {
         <StatCard icon={Goal}      label="Com metas definidas"    value={String(stats.withGoals)}                accent="#e11d48" />
       </div>
 
-      {/* ── Linha 2: categorias (2/3) + intenções (1/3) ── */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2 rounded-[20px] border p-4 shadow-horizon"
+      {/* ── Linha 2: Central (3/4) + intenções (1/4) — config única, sem painel duplicado ── */}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-4">
+        <div className="xl:col-span-3 rounded-[20px] border p-4 shadow-horizon"
           style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
-          <p className="mb-3 text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
-            Categorias e Contas
-          </p>
-          <TabAccounts {...props} />
+          <CampaignCenter />
         </div>
 
-        <div className="rounded-[20px] border p-4 shadow-horizon flex flex-col gap-3"
+        <div className="rounded-[20px] border p-4 shadow-horizon flex flex-col gap-3 self-start"
           style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
           <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
             Intenções das Campanhas
@@ -892,11 +982,6 @@ export function AccountsHub(props: TabAccountsProps) {
         </div>
       </div>
 
-      {/* ── Linha 3: campanhas configuradas (full width) ── */}
-      <div className="rounded-[20px] border p-4 shadow-horizon"
-        style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
-        <CampaignCenter />
-      </div>
     </div>
   );
 }

@@ -3,9 +3,13 @@ import { createClient } from "@supabase/supabase-js";
 
 function supabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  // service_role: rota server-side precisa atravessar o RLS multi-tenant
+  // (anon não tem auth.uid e seria bloqueada pelas policies por empresa)
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+    ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    ?? process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
   if (!url || !key) throw new Error("Supabase não configurado.");
-  return createClient(url, key);
+  return createClient(url, key, { auth: { persistSession: false } });
 }
 
 export interface IGHistoryPoint {

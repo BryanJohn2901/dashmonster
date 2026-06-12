@@ -239,7 +239,8 @@ export function MyAccount({
   };
 
   return (
-    <div className="mx-auto w-full px-4 pb-16 pt-8" style={{ maxWidth: 1000 }}>
+    <div className="mx-auto w-full px-4 pb-16 pt-8"
+      style={{ maxWidth: activeTab === "accounts" ? 1480 : 1000 }}>
 
       {/* ── Banner ────────────────────────────────────────────────────── */}
       <div className="profile-banner">
