@@ -11,6 +11,7 @@
  */
 
 import { supabaseClient } from "@/lib/supabase";
+import { getCompanyContext } from "@/hooks/useCompany";
 import type { AdvertiserProfile } from "@/hooks/useAdvertiserStore";
 
 // ─── Advertiser Profiles ──────────────────────────────────────────────────────
@@ -51,13 +52,27 @@ export async function saveProfilesToDB(profiles: AdvertiserProfile[]): Promise<v
 }
 
 // ─── Meta Access Token ────────────────────────────────────────────────────────
+// Regra de ouro: o token é da EMPRESA. O dono configura uma vez e propaga
+// para todos os membros — ninguém reconfigura ao acessar.
+// Fallback user_settings cobre o período pré-migration 022.
 
 /**
- * Busca o token Meta salvo no Supabase.
- * Retorna "" se não existir ou usuário não logado.
+ * Busca o token Meta: primeiro o da empresa (compartilhado),
+ * depois o legado por usuário. Retorna "" se não existir.
  */
 export async function fetchMetaTokenFromDB(): Promise<string> {
   if (!supabaseClient) return "";
+
+  const { company } = await getCompanyContext();
+  if (company) {
+    const { data, error } = await supabaseClient
+      .from("companies")
+      .select("meta_access_token")
+      .eq("id", company.id)
+      .maybeSingle();
+    if (!error && data?.meta_access_token) return data.meta_access_token as string;
+  }
+
   const { data, error } = await supabaseClient
     .from("user_settings")
     .select("meta_access_token")
@@ -67,13 +82,24 @@ export async function fetchMetaTokenFromDB(): Promise<string> {
 }
 
 /**
- * Salva (upsert) o token Meta no Supabase.
+ * Salva o token Meta na empresa (RLS: só o owner consegue).
+ * Se não houver empresa ou a escrita for bloqueada, cai no legado por usuário.
  * Fire-and-forget.
  */
 export async function saveMetaTokenToDB(token: string): Promise<void> {
   if (!supabaseClient) return;
   const { data: { user } } = await supabaseClient.auth.getUser();
   if (!user) return;
+
+  const { company } = await getCompanyContext();
+  if (company) {
+    const { error } = await supabaseClient
+      .from("companies")
+      .update({ meta_access_token: token })
+      .eq("id", company.id);
+    if (!error) return;
+  }
+
   await supabaseClient
     .from("user_settings")
     .upsert(

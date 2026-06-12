@@ -24,7 +24,7 @@ import {
 import {
   fetchMetaInsights,
   loadMetaCredentials,
-  saveMetaCredentials,
+  cacheMetaCredentials,
   metaInsightsToCampaignData,
 } from "@/utils/metaApi";
 import { fetchMetaTokenFromDB } from "@/utils/supabaseProfiles";
@@ -571,14 +571,15 @@ export default function Home() {
         sourceChannelRef.current = subscribeSharedDataSource(loadSharedDataSource);
         setRealtimeActive(true);
 
-        // ── Restaura token Meta do Supabase se não estiver em localStorage ──────
-        // (ocorre quando o usuário loga em um novo dispositivo/browser)
+        // ── Sincroniza token Meta da empresa ────────────────────────────────────
+        // O dono configura o token uma vez e ele propaga para todos os membros.
+        // Sempre busca do DB: cobre device novo E rotação de token pelo dono.
         const localToken = loadMetaCredentials().accessToken;
-        if (!localToken) {
-          fetchMetaTokenFromDB()
-            .then((dbToken) => { if (dbToken) saveMetaCredentials({ accessToken: dbToken }); })
-            .catch(() => {});
-        }
+        fetchMetaTokenFromDB()
+          .then((dbToken) => {
+            if (dbToken && dbToken !== localToken) cacheMetaCredentials({ accessToken: dbToken });
+          })
+          .catch(() => {});
 
         // Auto-sync Meta: usa localToken lido acima — a restauração do DB é async e
         // não estará pronta neste tick. No primeiro login em device novo o auto-sync

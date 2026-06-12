@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import { toast } from "@/hooks/useToast";
 import { useTheme } from "next-themes";
 import {
@@ -34,6 +35,10 @@ import {
 } from "@/utils/instagramApi";
 import type { MetaSyncResult } from "@/utils/supabaseCampaigns";
 import { useAdvertiserStore } from "@/hooks/useAdvertiserStore";
+import {
+  useCampaignCenter, detectIntent, INTENT_META, INTENT_OPTIONS,
+  type CampaignIntent,
+} from "@/hooks/useCampaignCenter";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -73,6 +78,7 @@ interface ControlPanelProps {
 interface AddEntryFormProps {
   categoryId: string;
   categorySlug: string;
+  categoryLabel?: string;
   isCustomCategory: boolean;
   customFilterOptions?: CategoryInternalFilterOption[];
   onSaved: (entry: UserAccountEntry) => void;
@@ -82,6 +88,7 @@ interface AddEntryFormProps {
 function AddEntryForm({
   categoryId,
   categorySlug,
+  categoryLabel,
   isCustomCategory,
   customFilterOptions = [],
   onSaved,
@@ -94,8 +101,10 @@ function AddEntryForm({
   const [verifyState, setVerifyState] = useState<"idle" | "loading" | "ok" | "error">("idle");
   const [errMsg, setErrMsg] = useState("");
   const [saveErrMsg, setSaveErrMsg] = useState("");
-  const [campaigns, setCampaigns] = useState<Array<{ id: string; name: string; status: string }>>([]);
+  const [campaigns, setCampaigns] = useState<Array<{ id: string; name: string; status: string; objective?: string }>>([]);
   const [selected, setSelected] = useState<string[]>([]);
+  const [intents, setIntents] = useState<Record<string, CampaignIntent>>({});
+  const { upsertEntries: upsertCenterEntries } = useCampaignCenter();
   const [saving, setSaving] = useState(false);
   const [metaAccounts, setMetaAccounts] = useState<MetaAdAccount[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
@@ -292,6 +301,10 @@ function AddEntryForm({
       const camps = await fetchMetaCampaigns(id, accessToken);
       setCampaigns(camps);
       setSelected(camps.map((c) => c.id));
+      // Auto-detecta a intenção de cada campanha (objective da Meta + nome)
+      setIntents(Object.fromEntries(
+        camps.map((c) => [c.id, detectIntent({ objective: c.objective, name: c.name })]),
+      ));
       setVerifyState("ok");
       setCampaignListOpen(false);
     } catch (e) {
@@ -329,6 +342,27 @@ function AddEntryForm({
         campaigns,
         selectedCampaignIds: selected.length < campaigns.length ? selected : [],
       });
+      // Propaga intenções para a Central de Campanhas
+      const now = new Date().toISOString();
+      upsertCenterEntries(
+        campaigns.filter((c) => selected.includes(c.id)).map((c) => {
+          const intent = intents[c.id] ?? detectIntent({ objective: c.objective, name: c.name });
+          return {
+            campaignId: c.id,
+            campaignName: c.name,
+            adAccountId: id,
+            adAccountLabel: resolvedLabel,
+            intent,
+            resultType: INTENT_META[intent].defaultResultTypes[0],
+            groupId: resolvedFilter || categorySlug,
+            monthlyBudget: null,
+            goals: {},
+            enabled: c.status === "ACTIVE",
+            autoConfigured: true,
+            updatedAt: now,
+          };
+        }),
+      );
       toast.success("Conta salva! Sincronizando dados…");
       onSaved(entry);
     } catch (e) {
@@ -347,11 +381,55 @@ function AddEntryForm({
   const filterSelectDisabled = isCustomCategory;
   const errBorderAccount = fieldErrors.account ? "#f87171" : "var(--dm-border-default)";
   const errBorderFilter = fieldErrors.filter ? "#f87171" : "var(--dm-border-default)";
+  const selectedCampaigns = campaigns.filter((c) => selected.includes(c.id));
 
-  return (
-    <div className="mt-2 rounded-xl border p-3 space-y-3"
-      style={{ borderColor: "var(--dm-brand-300)", backgroundColor: "var(--dm-bg-elevated)" }}
-    >
+  return createPortal(
+    <>
+      {/* Backdrop desfocado */}
+      <div className="fixed inset-0 z-[120] bg-black/40 backdrop-blur-sm" onClick={onCancel} />
+
+      {/* Modal centralizado */}
+      <div className="fixed inset-0 z-[121] flex items-center justify-center p-4 pointer-events-none">
+        <div className="pointer-events-auto flex w-full max-w-[600px] max-h-[88vh] flex-col overflow-hidden rounded-[20px] border shadow-2xl"
+          style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
+
+          {/* Header do modal */}
+          <div className="flex items-center justify-between border-b px-5 py-4"
+            style={{ borderColor: "var(--dm-border-subtle)", backgroundColor: "var(--dm-bg-elevated)" }}>
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full"
+                style={{ backgroundColor: "rgba(99,102,200,0.12)" }}>
+                <Plus size={16} style={{ color: "#6366C8" }} />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold" style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>
+                  Adicionar conta{categoryLabel ? ` — ${categoryLabel}` : ""}
+                </h3>
+                <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                  Conta → filtro → campanhas → intenção de cada campanha
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5">
+              {/* + adicionar mais campanhas à configuração */}
+              {verifyState === "ok" && campaigns.length > 0 && (
+                <button type="button" onClick={() => setCampaignListOpen(true)}
+                  title="Adicionar mais campanhas desta categoria"
+                  className="flex h-7 w-7 items-center justify-center rounded-full transition hover:opacity-80"
+                  style={{ backgroundColor: "rgba(99,102,200,0.12)", color: "#6366C8" }}>
+                  <Plus size={14} />
+                </button>
+              )}
+              <button type="button" onClick={onCancel}
+                className="flex h-7 w-7 items-center justify-center rounded-full transition hover:opacity-70"
+                style={{ color: "var(--dm-text-tertiary)" }}>
+                <X size={15} />
+              </button>
+            </div>
+          </div>
+
+          {/* Corpo rolável */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-3">
       {/* Campo 1 — ID da Conta (obrigatório) */}
       <div className="rounded-lg border p-2.5 space-y-2"
         style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
@@ -575,24 +653,73 @@ function AddEntryForm({
         </div>
       </div>
 
-      {saveErrMsg && (
-        <p className="text-[10px] text-red-500">{saveErrMsg}</p>
+      {/* Intenção das campanhas selecionadas */}
+      {verifyState === "ok" && selectedCampaigns.length > 0 && (
+        <div className="rounded-lg border p-2.5 space-y-2"
+          style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
+          <div className="flex items-center justify-between">
+            <label className="block text-[10px] font-semibold uppercase tracking-wide" style={{ color: "var(--dm-text-tertiary)" }}>
+              Intenção das Campanhas ({selectedCampaigns.length})
+            </label>
+            <button type="button" onClick={() => setCampaignListOpen(true)}
+              className="flex items-center gap-1 text-[10px] font-semibold transition hover:opacity-70"
+              style={{ color: "var(--dm-brand-500)" }}>
+              <Plus size={11} /> Mais campanhas
+            </button>
+          </div>
+          <div className="space-y-1.5">
+            {selectedCampaigns.map((c) => {
+              const intent = intents[c.id] ?? detectIntent({ objective: c.objective, name: c.name });
+              const meta = INTENT_META[intent];
+              return (
+                <div key={c.id} className="flex items-center gap-2 rounded-lg border px-2.5 py-2"
+                  style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)" }}>
+                  <span className="h-2 w-2 flex-shrink-0 rounded-full" style={{ backgroundColor: meta.color }} />
+                  <span className="min-w-0 flex-1 truncate text-[11px] font-medium"
+                    style={{ color: "var(--dm-text-primary)" }} title={c.name}>
+                    {c.name}
+                  </span>
+                  <select value={intent}
+                    onChange={(e) => setIntents((prev) => ({ ...prev, [c.id]: e.target.value as CampaignIntent }))}
+                    className="h-7 flex-shrink-0 rounded-md border px-1.5 text-[10px] font-semibold outline-none"
+                    style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)", color: meta.color }}>
+                    {INTENT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-[9px] leading-snug" style={{ color: "var(--dm-text-tertiary)" }}>
+            Intenção detectada pelo objetivo da Meta. Define resultado, metas e KPIs em todo o sistema — ajuste depois na Central de Campanhas.
+          </p>
+        </div>
       )}
-      <div className="flex gap-2 pt-1">
-        <button type="button" onClick={onCancel}
-          className="flex h-8 flex-1 items-center justify-center rounded-lg border text-xs font-semibold transition"
-          style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>
-          Cancelar
-        </button>
-        <button type="button" onClick={() => void handleSave()}
-          disabled={saving}
-          className="flex h-8 flex-1 items-center justify-center gap-1 rounded-lg text-xs font-bold text-white transition disabled:opacity-50"
-          style={{ backgroundColor: "var(--dm-brand-500)" }}>
-          {saving ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
-          Salvar
-        </button>
+
+          {saveErrMsg && (
+            <p className="text-[10px] text-red-500">{saveErrMsg}</p>
+          )}
+          </div>
+
+          {/* Footer fixo */}
+          <div className="flex gap-2 border-t px-4 py-3"
+            style={{ borderColor: "var(--dm-border-subtle)", backgroundColor: "var(--dm-bg-elevated)" }}>
+            <button type="button" onClick={onCancel}
+              className="flex h-9 flex-1 items-center justify-center rounded-lg border text-xs font-semibold transition"
+              style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>
+              Cancelar
+            </button>
+            <button type="button" onClick={() => void handleSave()}
+              disabled={saving}
+              className="flex h-9 flex-1 items-center justify-center gap-1 rounded-lg text-xs font-bold text-white transition disabled:opacity-50"
+              style={{ backgroundColor: "var(--dm-brand-500)" }}>
+              {saving ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
+              Salvar
+            </button>
+          </div>
+        </div>
       </div>
-    </div>
+    </>,
+    document.body,
   );
 }
 
@@ -962,6 +1089,7 @@ function CategorySection({
             <AddEntryForm
               categoryId={localRecord.id}
               categorySlug={slug}
+              categoryLabel={name}
               isCustomCategory={!!isCustom}
               customFilterOptions={customFilterOptions}
               onSaved={entry => {

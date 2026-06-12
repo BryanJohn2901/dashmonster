@@ -1,4 +1,5 @@
 import { supabaseClient } from "@/lib/supabase";
+import { getCompanyContext } from "@/hooks/useCompany";
 import type { UserCategory, UserAccountEntry } from "@/types/userConfig";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -7,6 +8,12 @@ async function getCurrentUserId(): Promise<string | null> {
   if (!supabaseClient) return null;
   const { data } = await supabaseClient.auth.getUser();
   return data.user?.id ?? null;
+}
+
+/** company_id do usuário logado — null antes da migration 021 (fallback user-scoped). */
+async function getCompanyId(): Promise<string | null> {
+  const { company } = await getCompanyContext();
+  return company?.id ?? null;
 }
 
 /** Converts a Supabase PostgrestError (plain object) to a real JS Error. */
@@ -78,6 +85,7 @@ export async function upsertUserCategory(cat: {
   if (!supabaseClient) throw new Error("Supabase não configurado.");
   const userId = await getCurrentUserId();
   if (!userId) throw new Error("Usuário não autenticado.");
+  const companyId = await getCompanyId();
 
   const payload: Record<string, unknown> = {
     user_id:    userId,
@@ -88,11 +96,12 @@ export async function upsertUserCategory(cat: {
     position:   cat.position ?? 0,
     is_enabled: cat.isEnabled ?? true,
   };
+  if (companyId) payload.company_id = companyId;
   if (cat.id) payload.id = cat.id;
 
   const { data, error } = await supabaseClient
     .from("user_categories")
-    .upsert(payload, { onConflict: "user_id,slug" })
+    .upsert(payload, { onConflict: companyId ? "company_id,slug" : "user_id,slug" })
     .select()
     .single();
   if (error) throw pgErr(error);
@@ -133,9 +142,11 @@ export async function upsertUserAccountEntry(entry: {
   if (!supabaseClient) throw new Error("Supabase não configurado.");
   const userId = await getCurrentUserId();
   if (!userId) throw new Error("Usuário não autenticado.");
+  const companyId = await getCompanyId();
 
   const payload: Record<string, unknown> = {
     user_id:               userId,
+    ...(companyId ? { company_id: companyId } : {}),
     category_id:           entry.categoryId,
     label:                 entry.label,
     ad_account_id:         entry.adAccountId,

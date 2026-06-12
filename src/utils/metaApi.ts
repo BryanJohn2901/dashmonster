@@ -85,6 +85,15 @@ export function saveMetaCredentials(creds: MetaCredentials): void {
   }
 }
 
+/**
+ * Grava só no localStorage, sem sincronizar com o Supabase.
+ * Usado ao restaurar o token da empresa — membros não-owner não podem
+ * (e não devem) gravar o token de volta no banco.
+ */
+export function cacheMetaCredentials(creds: MetaCredentials): void {
+  try { localStorage.setItem(CREDS_KEY, JSON.stringify(creds)); } catch {}
+}
+
 // ─── Insights ─────────────────────────────────────────────────────────────────
 
 interface MetaAction {

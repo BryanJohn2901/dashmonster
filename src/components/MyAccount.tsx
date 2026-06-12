@@ -5,9 +5,10 @@ import { Camera, Trash2, UserRound, Bell, Lock, Sliders } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useAvatarUrl, resolveAvatarSrc, AVATAR_ICON_COUNT } from "@/hooks/useAvatarUrl";
 import {
-  TabProfile, TabAccounts, TabIntegrations, TabSync,
+  TabProfile, TabIntegrations, TabSync,
   type TabAccountsProps,
 } from "@/components/ControlPanel";
+import { AccountsHub } from "@/components/CampaignCenter";
 import type { UserCategory, UserAccountEntry } from "@/types/userConfig";
 import type { MetaSyncResult } from "@/utils/supabaseCampaigns";
 
@@ -349,7 +350,7 @@ export function MyAccount({
           />
         )}
         {activeTab === "accounts" && (
-          <TabAccounts {...tabAccountsProps} />
+          <AccountsHub {...tabAccountsProps} />
         )}
         {activeTab === "integrations" && (
           <TabIntegrations onSyncNow={() => { void onRefresh?.(); }} />
