@@ -261,7 +261,24 @@ export const upsertMetaCampaigns = async (campaigns: CampaignData[]): Promise<Me
   // RLS multi-tenant (migration 021): upsert exige company_id da empresa do usuário
   const { company } = await getCompanyContext();
 
-  const payload = campaigns.map((item) => ({
+  // Dedup por (date, campaign_name): campanhas homônimas em ACTs diferentes
+  // somam métricas — upsert com chave repetida no mesmo lote quebra com
+  // "ON CONFLICT DO UPDATE command cannot affect row a second time".
+  const byKey = new Map<string, CampaignData>();
+  for (const item of campaigns) {
+    const key = `${item.date}::${item.campaignName}`;
+    const prev = byKey.get(key);
+    if (!prev) { byKey.set(key, { ...item }); continue; }
+    prev.investment  += item.investment;
+    prev.clicks      += item.clicks;
+    prev.impressions += item.impressions;
+    prev.conversions += item.conversions;
+    prev.leads        = (prev.leads ?? 0) + (item.leads ?? 0);
+    prev.pageViews    = (prev.pageViews ?? 0) + (item.pageViews ?? 0);
+    prev.revenue     += item.revenue;
+  }
+
+  const payload = Array.from(byKey.values()).map((item) => ({
     date: item.date,
     campaign_name: item.campaignName,
     investment: item.investment,

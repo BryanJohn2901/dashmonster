@@ -690,7 +690,7 @@ function AddEntryForm({
             })}
           </div>
           <p className="text-[9px] leading-snug" style={{ color: "var(--dm-text-tertiary)" }}>
-            Intenção detectada pelo objetivo da Meta. Define resultado, metas e KPIs em todo o sistema — ajuste depois na Central de Campanhas.
+            Intenção detectada pelo objetivo da Meta — ajuste se precisar. Ela melhora os KPIs e os resultados no dashboard principal e no Perfil de Anunciantes.
           </p>
         </div>
       )}

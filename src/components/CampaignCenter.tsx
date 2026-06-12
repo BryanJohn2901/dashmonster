@@ -17,13 +17,12 @@ import {
   fetchMetaCampaigns, fetchMetaAdAccounts, loadMetaCredentials, saveMetaCredentials,
   type MetaCampaign, type MetaAdAccount,
 } from "@/utils/metaApi";
-import type { TabAccountsProps } from "@/components/ControlPanel";
+import { TabAccounts, type TabAccountsProps } from "@/components/ControlPanel";
 import {
   fetchUserAccountEntries, fetchUserCategories,
   upsertUserCategory, upsertUserAccountEntry,
 } from "@/utils/supabaseCategories";
 import type { UserAccountEntry, UserCategory } from "@/types/userConfig";
-import { Wallet, Layers, Goal } from "lucide-react";
 import { formatBRL } from "@/lib/format";
 
 // ─── Dados fakes para teste local ─────────────────────────────────────────────
@@ -888,100 +887,10 @@ export function CampaignCenter() {
   );
 }
 
-// ─── AccountsHub — tudo em um lugar só (layout bento) ────────────────────────
-
-function StatCard({ icon: Icon, label, value, accent }: {
-  icon: typeof Wallet; label: string; value: string; accent: string;
-}) {
-  return (
-    <div className="flex items-center gap-3 rounded-[18px] border p-4 shadow-horizon"
-      style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
-      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full"
-        style={{ backgroundColor: accent + "1a" }}>
-        <Icon size={17} style={{ color: accent }} />
-      </div>
-      <div className="min-w-0">
-        <p className="text-[10px] font-semibold uppercase tracking-wider truncate" style={{ color: "var(--dm-text-tertiary)" }}>
-          {label}
-        </p>
-        <p className="text-lg font-bold leading-tight tabular-nums" style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>
-          {value}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-// props mantidas por compatibilidade com MyAccount (config agora é toda na Central)
-export function AccountsHub(_props: TabAccountsProps) {
-  const { entries } = useCampaignCenter();
-
-  const stats = useMemo(() => {
-    const accounts = new Set(entries.map((e) => e.adAccountId)).size;
-    const active = entries.filter((e) => e.enabled).length;
-    const budget = entries.reduce((s, e) => s + (e.monthlyBudget ?? 0), 0);
-    const withGoals = entries.filter((e) => Object.keys(e.goals).length > 0).length;
-    const byIntent = new Map<CampaignIntent, number>();
-    entries.forEach((e) => byIntent.set(e.intent, (byIntent.get(e.intent) ?? 0) + 1));
-    return { accounts, active, budget, withGoals, byIntent };
-  }, [entries]);
-
-  return (
-    <div className="flex flex-col gap-4">
-      {/* ── Linha 1: stats bento ── */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard icon={Layers}    label="Contas conectadas"      value={String(stats.accounts)}                 accent="#6366C8" />
-        <StatCard icon={Megaphone} label="Campanhas ativas"       value={`${stats.active}/${entries.length}`}    accent="#05CD99" />
-        <StatCard icon={Wallet}    label="Orçamento /mês"         value={stats.budget > 0 ? formatBRL(stats.budget) : "—"} accent="#F4A60D" />
-        <StatCard icon={Goal}      label="Com metas definidas"    value={String(stats.withGoals)}                accent="#e11d48" />
-      </div>
-
-      {/* ── Linha 2: Central (3/4) + intenções (1/4) — config única, sem painel duplicado ── */}
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-4">
-        <div className="xl:col-span-3 rounded-[20px] border p-4 shadow-horizon"
-          style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
-          <CampaignCenter />
-        </div>
-
-        <div className="rounded-[20px] border p-4 shadow-horizon flex flex-col gap-3 self-start"
-          style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
-          <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
-            Intenções das Campanhas
-          </p>
-          {stats.byIntent.size === 0 ? (
-            <p className="text-xs" style={{ color: "var(--dm-text-tertiary)" }}>
-              Nenhuma campanha configurada ainda. Adicione uma conta em uma categoria ao lado — a intenção é detectada automaticamente.
-            </p>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {(Object.keys(INTENT_META) as CampaignIntent[])
-                .filter((i) => (stats.byIntent.get(i) ?? 0) > 0)
-                .map((i) => {
-                  const meta = INTENT_META[i];
-                  const count = stats.byIntent.get(i)!;
-                  const pct = entries.length > 0 ? (count / entries.length) * 100 : 0;
-                  return (
-                    <div key={i} className="flex flex-col gap-1">
-                      <div className="flex items-center justify-between">
-                        <span className="flex items-center gap-1.5 text-[11px] font-semibold" style={{ color: "var(--dm-text-secondary)" }}>
-                          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: meta.color }} />
-                          {meta.label}
-                        </span>
-                        <span className="text-[11px] font-bold tabular-nums" style={{ color: "var(--dm-text-primary)" }}>
-                          {count}
-                        </span>
-                      </div>
-                      <div className="h-1.5 overflow-hidden rounded-full" style={{ backgroundColor: meta.color + "18" }}>
-                        <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: meta.color }} />
-                      </div>
-                    </div>
-                  );
-                })}
-            </div>
-          )}
-        </div>
-      </div>
-
-    </div>
-  );
+// ─── AccountsHub — fluxo clássico, simples e direto ──────────────────────────
+// O setup é o mesmo de sempre (categoria → ACT → campanhas → nome) com um
+// único upgrade: a intenção por campanha, escolhida inline na própria lista.
+// A intenção alimenta os dashboards (principal e Perfil de Anunciantes).
+export function AccountsHub(props: TabAccountsProps) {
+  return <TabAccounts {...props} />;
 }
