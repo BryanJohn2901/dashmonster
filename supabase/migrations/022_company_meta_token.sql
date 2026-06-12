@@ -13,13 +13,20 @@
 ALTER TABLE public.companies
   ADD COLUMN IF NOT EXISTS meta_access_token TEXT;
 
--- Backfill: aproveita o token que o owner já tinha salvo em user_settings
-UPDATE public.companies c
-SET    meta_access_token = us.meta_access_token
-FROM   public.company_members m
-JOIN   public.user_settings us ON us.user_id = m.user_id
-WHERE  m.company_id = c.id
-  AND  m.role = 'owner'
-  AND  c.meta_access_token IS NULL
-  AND  us.meta_access_token IS NOT NULL
-  AND  us.meta_access_token <> '';
+-- Backfill: aproveita o token que o owner já tinha salvo em user_settings.
+-- Condicional — a tabela user_settings pode não existir (migration 016 opcional).
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables
+             WHERE table_schema = 'public' AND table_name = 'user_settings') THEN
+    UPDATE public.companies c
+    SET    meta_access_token = us.meta_access_token
+    FROM   public.company_members m
+    JOIN   public.user_settings us ON us.user_id = m.user_id
+    WHERE  m.company_id = c.id
+      AND  m.role = 'owner'
+      AND  c.meta_access_token IS NULL
+      AND  us.meta_access_token IS NOT NULL
+      AND  us.meta_access_token <> '';
+  END IF;
+END $$;
