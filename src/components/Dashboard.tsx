@@ -25,6 +25,7 @@ import {
   type PainelSaveNavDetail,
 } from "@/utils/painelDashboardNavigation";
 import { CampaignConfig, CampaignSummary, CustomGroup, CustomSection, ColorKey, GroupSection, useCampaignStore } from "@/hooks/useCampaignStore";
+import { useCampaignCenter, type CampaignIntent } from "@/hooks/useCampaignCenter";
 import { classifyCampaign, classifyCourse } from "@/utils/campaignClassifier";
 import {
   fetchMetaAdAccounts, fetchMetaCampaigns, loadMetaCredentials, saveMetaCredentials,
@@ -2251,6 +2252,44 @@ export function Dashboard({
     ? (effectiveConversions / totals.totalLeads) * 100
     : totals.totalClicks > 0 ? (effectiveConversions / totals.totalClicks) * 100 : 0;
 
+  // ── Resultado pela intenção da campanha (objective configurado na Meta) ─────
+  // Quando todas as campanhas do filtro atual compartilham a mesma intenção,
+  // o card "Conversões" vira o resultado certo daquela intenção (Leads, Vendas,
+  // Cliques…) — espelhando o que o gestor configurou dentro da Meta.
+  const { entries: centerEntries } = useCampaignCenter();
+  const dominantIntent = useMemo<CampaignIntent | null>(() => {
+    if (centerEntries.length === 0 || filteredCampaigns.length === 0) return null;
+    const intentByName = new Map(centerEntries.map((e) => [e.campaignName, e.intent]));
+    const found = new Set<CampaignIntent>();
+    for (const c of filteredCampaigns) {
+      const i = intentByName.get(c.campaignName);
+      if (i) found.add(i);
+    }
+    return found.size === 1 ? [...found][0]! : null;
+  }, [centerEntries, filteredCampaigns]);
+
+  const intentResult = (() => {
+    const t = totals;
+    switch (dominantIntent) {
+      case "lead_gen":
+        return { label: "Resultados · Leads", value: t.totalLeads, sub: `CPL: ${formatCurrency(t.cpl)}` };
+      case "direct_sale":
+        return { label: "Resultados · Vendas", value: effectiveConversions, sub: `Tx.: ${formatPercent(effectiveConvRate)}` };
+      case "profile_growth":
+        return { label: "Resultados · Visitas ao perfil",
+          value: t.totalPageViews > 0 ? t.totalPageViews : t.totalClicks,
+          sub: `Cliques: ${formatNumber(t.totalClicks)}` };
+      case "traffic":
+        return { label: "Resultados · Cliques", value: t.totalClicks, sub: `CTR: ${formatPercent(t.ctr)}` };
+      case "awareness":
+        return { label: "Resultados · Impressões", value: t.totalImpressions, sub: `CPM: ${formatCurrency(t.cpm)}` };
+      case "remarketing":
+        return { label: "Resultados · Conversões", value: effectiveConversions, sub: `Tx.: ${formatPercent(effectiveConvRate)}` };
+      default:
+        return null;
+    }
+  })();
+
   // Builder do relatório — monta ReportData a partir dos totais visíveis + funil.
   const buildReportData = useCallback((): ReportData => {
     const t = totals;
@@ -2376,13 +2415,13 @@ export function Dashboard({
         },
         {
           id: "conversions",
-          label: "Conversões",
-          value: formatNumber(effectiveConversions),
-          sub: `Tx.: ${formatPercent(effectiveConvRate)}${usingManualConversions ? " · manual" : ""}`,
+          label: intentResult?.label ?? "Conversões",
+          value: formatNumber(intentResult?.value ?? effectiveConversions),
+          sub: intentResult?.sub ?? `Tx.: ${formatPercent(effectiveConvRate)}${usingManualConversions ? " · manual" : ""}`,
           accent: "green",
-          goalValue: goals.conversions,
-          goalLabel: goals.conversions != null ? formatNumber(goals.conversions) : undefined,
-          goalPct: goals.conversions != null ? (effectiveConversions / goals.conversions) * 100 : null
+          goalValue: intentResult ? undefined : goals.conversions,
+          goalLabel: !intentResult && goals.conversions != null ? formatNumber(goals.conversions) : undefined,
+          goalPct: !intentResult && goals.conversions != null ? (effectiveConversions / goals.conversions) * 100 : null
         },
       ]},
       { id: "g_vol", label: "Volume", items: [
@@ -2450,7 +2489,8 @@ export function Dashboard({
       : "Todos os grupos";
     const period = dateFrom && dateTo ? `${dateFrom} → ${dateTo}` : "Todo o período";
     return { title, period, groups, funnel };
-  }, [totals, eduzzTotals, effectiveConversions, effectiveConvRate, usingManualConversions, isMetricVisible, currentUser.email, selectedGroup, allGroups, dateFrom, dateTo, goals]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [totals, eduzzTotals, effectiveConversions, effectiveConvRate, usingManualConversions, isMetricVisible, currentUser.email, selectedGroup, allGroups, dateFrom, dateTo, goals, dominantIntent]);
 
   // CPV — computed from spend / salesTotal (derived, not editable)
   // totals available after aggregation below, so computed inline at render time
@@ -3541,11 +3581,13 @@ export function Dashboard({
                     ),
                     isMetricVisible("conversions") && (
                       <KpiCard key="conversions" tier={2}
-                        title="Conversões" value={formatNumber(effectiveConversions)}
-                        subtitle={`Tx.: ${formatPercent(effectiveConvRate)}`}
-                        icon={Target} accentColor="green" isManual={usingManualConversions}
-                        goalValue={goals.conversions} goalLabel={goals.conversions != null ? formatNumber(goals.conversions) : undefined}
-                        goalPct={goals.conversions != null ? (effectiveConversions / goals.conversions) * 100 : null}
+                        title={intentResult?.label ?? "Conversões"}
+                        value={formatNumber(intentResult?.value ?? effectiveConversions)}
+                        subtitle={intentResult?.sub ?? `Tx.: ${formatPercent(effectiveConvRate)}`}
+                        icon={Target} accentColor="green" isManual={!intentResult && usingManualConversions}
+                        goalValue={intentResult ? undefined : goals.conversions}
+                        goalLabel={!intentResult && goals.conversions != null ? formatNumber(goals.conversions) : undefined}
+                        goalPct={!intentResult && goals.conversions != null ? (effectiveConversions / goals.conversions) * 100 : null}
                       />
                     ),
                   ].filter(Boolean);

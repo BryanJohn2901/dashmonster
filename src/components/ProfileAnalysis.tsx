@@ -32,6 +32,7 @@ import {
   useAdvertiserStore, AdvertiserProfile, ActiveCampaign, ResultType,
 } from "@/hooks/useAdvertiserStore";
 import { useCampaignStore } from "@/hooks/useCampaignStore";
+import { useCampaignCenter } from "@/hooks/useCampaignCenter";
 import type { CampaignConfig } from "@/hooks/useCampaignStore";
 import { readSharedDateRange } from "@/hooks/useDateRange";
 import { useManualMetrics } from "@/hooks/useManualMetrics";
@@ -3303,7 +3304,7 @@ export function InstagramInsightsPanel({
 // ─── Profile Detail View ──────────────────────────────────────────────────────
 
 function ProfileDetailView({
-  profile, groupLabel, onBack, appliedDateRange,
+  profile: profileProp, groupLabel, onBack, appliedDateRange,
   onAddCampaign, onRemoveCampaign, onUpdateProfile,
 }: {
   profile: AdvertiserProfile;
@@ -3314,6 +3315,19 @@ function ProfileDetailView({
   onRemoveCampaign: (profileId: string, campaignId: string) => void;
   onUpdateProfile:  (id: string, data: Partial<Omit<AdvertiserProfile, "id" | "createdAt">>) => void;
 }) {
+  // ── Intenção configurada na Meta → resultType default das campanhas ────────
+  // A intenção escolhida ao adicionar a conta (lida do objective da Meta)
+  // define o tipo de resultado de cada campanha aqui no Perfil de Anunciantes,
+  // sem o usuário precisar configurar de novo. Config manual continua ganhando.
+  const { getEntry: getCenterEntry } = useCampaignCenter();
+  const profile = useMemo<AdvertiserProfile>(() => ({
+    ...profileProp,
+    campaigns: profileProp.campaigns.map((c) => {
+      if (c.resultType) return c;
+      const rt = getCenterEntry(c.id)?.resultType;
+      return rt ? { ...c, resultType: rt } : c;
+    }),
+  }), [profileProp, getCenterEntry]);
   // Ações vêm da instância de store do ProfileAnalysis — assim qualquer mutação
   // atualiza o profiles[] de ProfileAnalysis e o profile prop flui de volta
   // corretamente, evitando o stale-prop que impedia o auto-refresh das campanhas.
