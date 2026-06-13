@@ -23,6 +23,7 @@ import {
   upsertUserCategory, upsertUserAccountEntry,
 } from "@/utils/supabaseCategories";
 import type { UserAccountEntry, UserCategory } from "@/types/userConfig";
+import { Wallet, Layers, Goal } from "lucide-react";
 import { formatBRL } from "@/lib/format";
 
 // ─── Dados fakes para teste local ─────────────────────────────────────────────
@@ -887,10 +888,55 @@ export function CampaignCenter() {
   );
 }
 
-// ─── AccountsHub — fluxo clássico, simples e direto ──────────────────────────
-// O setup é o mesmo de sempre (categoria → ACT → campanhas → nome) com um
-// único upgrade: a intenção por campanha, escolhida inline na própria lista.
-// A intenção alimenta os dashboards (principal e Perfil de Anunciantes).
+// ─── AccountsHub — bento leve + fluxo clássico ────────────────────────────────
+// Stats no topo dão o panorama; abaixo, o setup de sempre (categoria → ACT →
+// campanhas → nome) com intenção inline. Editar intenção/metas depois: botão
+// de lápis em cada conta.
+
+function StatCard({ icon: Icon, label, value, accent }: {
+  icon: typeof Wallet; label: string; value: string; accent: string;
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-[18px] border p-4 shadow-horizon"
+      style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
+      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full"
+        style={{ backgroundColor: accent + "1a" }}>
+        <Icon size={17} style={{ color: accent }} />
+      </div>
+      <div className="min-w-0">
+        <p className="text-[10px] font-semibold uppercase tracking-wider truncate" style={{ color: "var(--dm-text-tertiary)" }}>
+          {label}
+        </p>
+        <p className="text-lg font-bold leading-tight tabular-nums" style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>
+          {value}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export function AccountsHub(props: TabAccountsProps) {
-  return <TabAccounts {...props} />;
+  const { entries } = useCampaignCenter();
+
+  const stats = useMemo(() => {
+    const accounts = new Set(entries.map((e) => e.adAccountId)).size;
+    const active = entries.filter((e) => e.enabled).length;
+    const budget = entries.reduce((s, e) => s + (e.monthlyBudget ?? 0), 0);
+    const withGoals = entries.filter((e) => Object.keys(e.goals).length > 0).length;
+    return { accounts, active, budget, withGoals };
+  }, [entries]);
+
+  return (
+    <div className="flex flex-col gap-4">
+      {entries.length > 0 && (
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <StatCard icon={Layers}    label="Contas conectadas"   value={String(stats.accounts)}                            accent="#6366C8" />
+          <StatCard icon={Megaphone} label="Campanhas ativas"    value={`${stats.active}/${entries.length}`}               accent="#05CD99" />
+          <StatCard icon={Wallet}    label="Orçamento /mês"      value={stats.budget > 0 ? formatBRL(stats.budget) : "—"}  accent="#F4A60D" />
+          <StatCard icon={Goal}      label="Com metas definidas" value={String(stats.withGoals)}                           accent="#e11d48" />
+        </div>
+      )}
+      <TabAccounts {...props} />
+    </div>
+  );
 }

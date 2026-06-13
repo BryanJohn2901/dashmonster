@@ -7,7 +7,7 @@ import { useTheme } from "next-themes";
 import {
   X, Settings2, ChevronDown, ChevronUp, Plus, Trash2, Loader2,
   Zap, User, Activity, CheckCircle2, XCircle, Link2, Eye, EyeOff,
-  RefreshCw, Save, RotateCcw, Sun, Moon, Database, AtSign, Search,
+  RefreshCw, Save, RotateCcw, Sun, Moon, Database, AtSign, Search, Pencil, Target,
 } from "lucide-react";
 import type { UserCategory, UserAccountEntry } from "@/types/userConfig";
 import { FIXED_CATEGORIES, MAX_CUSTOM_CATEGORIES } from "@/types/userConfig";
@@ -106,6 +106,7 @@ function AddEntryForm({
   const [intents, setIntents] = useState<Record<string, CampaignIntent>>({});
   const [budgets, setBudgets] = useState<Record<string, number | null>>({});
   const [goalsMap, setGoalsMap] = useState<Record<string, Record<string, number>>>({});
+  const [campSearch, setCampSearch] = useState("");
   const { upsertEntries: upsertCenterEntries } = useCampaignCenter();
   const [saving, setSaving] = useState(false);
   const [metaAccounts, setMetaAccounts] = useState<MetaAdAccount[]>([]);
@@ -625,9 +626,19 @@ function AddEntryForm({
                 {selected.length === campaigns.length ? "Desmarcar todas" : "Marcar todas"}
               </button>
             </div>
+            <div className="relative mb-2">
+              <Search size={13} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2"
+                style={{ color: "var(--dm-text-tertiary)" }} />
+              <input type="text" value={campSearch} onChange={(e) => setCampSearch(e.target.value)}
+                placeholder="Pesquisar campanha pelo nome…"
+                className="h-10 w-full rounded-xl border pl-9 pr-3 text-xs outline-none transition focus:ring-1"
+                style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }} />
+            </div>
             <div className="max-h-72 overflow-y-auto rounded-xl border p-2 space-y-1"
               style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
-              {campaigns.map((c) => (
+              {campaigns
+                .filter((c) => !campSearch.trim() || c.name.toLowerCase().includes(campSearch.toLowerCase()))
+                .map((c) => (
                 <label key={c.id} className="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 transition hover:bg-slate-100/50 dark:hover:bg-slate-700/50">
                   <input type="checkbox" checked={selected.includes(c.id)}
                     onChange={() => toggleOne(c.id)}
@@ -777,6 +788,202 @@ function AddEntryForm({
   );
 }
 
+// ─── EditIntentGoalsModal ─────────────────────────────────────────────────────
+// Edita intenção, orçamento e metas das campanhas de uma conta já salva,
+// sem precisar reimportar nada. Grava direto na Central (camada de dados
+// que alimenta o dashboard principal e o Perfil de Anunciantes).
+
+interface CampaignDraft {
+  intent: CampaignIntent;
+  budget: number | null;
+  goals: Record<string, number>;
+}
+
+function EditIntentGoalsModal({ entry, onClose }: { entry: UserAccountEntry; onClose: () => void }) {
+  const { getEntry, upsertEntries } = useCampaignCenter();
+  const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const editable = useMemo(() => (
+    entry.selectedCampaignIds.length > 0
+      ? entry.campaigns.filter((c) => entry.selectedCampaignIds.includes(c.id))
+      : entry.campaigns
+  ), [entry]);
+
+  const [drafts, setDrafts] = useState<Record<string, CampaignDraft>>(() =>
+    Object.fromEntries(editable.map((c) => {
+      const ce = getEntry(c.id);
+      return [c.id, {
+        intent: ce?.intent ?? detectIntent({ name: c.name }),
+        budget: ce?.monthlyBudget ?? null,
+        goals:  ce?.goals ?? {},
+      }];
+    })),
+  );
+
+  const visible = editable.filter((c) =>
+    !search.trim() || c.name.toLowerCase().includes(search.toLowerCase()));
+
+  const handleSave = () => {
+    setSaving(true);
+    const now = new Date().toISOString();
+    upsertEntries(editable.map((c) => {
+      const d = drafts[c.id];
+      const existing = getEntry(c.id);
+      return {
+        campaignId: c.id,
+        campaignName: c.name,
+        adAccountId: entry.adAccountId,
+        adAccountLabel: entry.label,
+        intent: d.intent,
+        // intenção mudou → resultType acompanha o novo objective
+        resultType: existing && existing.intent === d.intent
+          ? existing.resultType
+          : INTENT_META[d.intent].defaultResultTypes[0],
+        groupId: existing?.groupId ?? entry.internalFilter ?? "",
+        monthlyBudget: d.budget,
+        goals: d.goals,
+        enabled: existing?.enabled ?? (c.status === "ACTIVE"),
+        autoConfigured: false,
+        updatedAt: now,
+      };
+    }));
+    toast.success("Intenção e metas atualizadas!");
+    setSaving(false);
+    onClose();
+  };
+
+  return createPortal(
+    <>
+      <div className="fixed inset-0 z-[120] bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="fixed inset-0 z-[121] flex items-center justify-center p-4 pointer-events-none">
+        <div className="pointer-events-auto flex w-full max-w-[760px] max-h-[88vh] flex-col overflow-hidden rounded-[24px] border shadow-2xl"
+          style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
+
+          {/* Header */}
+          <div className="flex items-center justify-between border-b px-7 py-5"
+            style={{ borderColor: "var(--dm-border-subtle)", backgroundColor: "var(--dm-bg-elevated)" }}>
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full"
+                style={{ backgroundColor: "rgba(99,102,200,0.12)" }}>
+                <Target size={16} style={{ color: "#6366C8" }} />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold" style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>
+                  Intenção e metas — {entry.label}
+                </h3>
+                <p className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                  Ajuste a intenção, o orçamento e as metas de cada campanha desta conta.
+                </p>
+              </div>
+            </div>
+            <button type="button" onClick={onClose}
+              className="flex h-7 w-7 items-center justify-center rounded-full transition hover:opacity-70"
+              style={{ color: "var(--dm-text-tertiary)" }}>
+              <X size={15} />
+            </button>
+          </div>
+
+          {/* Body */}
+          <div className="flex-1 overflow-y-auto p-7 space-y-4">
+            {editable.length > 6 && (
+              <div className="relative">
+                <Search size={13} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2"
+                  style={{ color: "var(--dm-text-tertiary)" }} />
+                <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Pesquisar campanha pelo nome…"
+                  className="h-10 w-full rounded-xl border pl-9 pr-3 text-xs outline-none transition focus:ring-1"
+                  style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }} />
+              </div>
+            )}
+            {visible.map((c) => {
+              const d = drafts[c.id];
+              if (!d) return null;
+              const meta = INTENT_META[d.intent];
+              return (
+                <div key={c.id} className="rounded-xl border p-4 space-y-3.5"
+                  style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)" }}>
+                  <div className="flex items-center gap-3">
+                    <span className="h-2.5 w-2.5 flex-shrink-0 rounded-full" style={{ backgroundColor: meta.color }} />
+                    <span className="min-w-0 flex-1 truncate text-[13px] font-semibold"
+                      style={{ color: "var(--dm-text-primary)" }} title={c.name}>
+                      {c.name}
+                    </span>
+                    <select value={d.intent}
+                      onChange={(e) => setDrafts((prev) => ({
+                        ...prev,
+                        [c.id]: { ...prev[c.id], intent: e.target.value as CampaignIntent, goals: {} },
+                      }))}
+                      className="h-9 flex-shrink-0 rounded-lg border px-2.5 text-xs font-semibold outline-none"
+                      style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)", color: meta.color }}>
+                      {INTENT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    <label className="flex flex-col gap-1.5">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: "var(--dm-text-tertiary)" }}>
+                        Orçamento /mês
+                      </span>
+                      <input type="number" min="0" step="any" value={d.budget ?? ""}
+                        onChange={(e) => {
+                          const v = parseFloat(e.target.value);
+                          setDrafts((prev) => ({
+                            ...prev,
+                            [c.id]: { ...prev[c.id], budget: isNaN(v) || v <= 0 ? null : v },
+                          }));
+                        }}
+                        placeholder="R$"
+                        className="h-9 rounded-lg border px-2.5 text-xs outline-none text-right tabular-nums"
+                        style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)", color: "var(--dm-text-primary)" }} />
+                    </label>
+                    {meta.goalFields.map((gf) => (
+                      <label key={gf.id} className="flex flex-col gap-1.5">
+                        <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: "var(--dm-text-tertiary)" }}>
+                          Meta · {gf.label}
+                        </span>
+                        <input type="number" min="0" step="any" value={d.goals[gf.id] ?? ""}
+                          onChange={(e) => {
+                            const v = parseFloat(e.target.value);
+                            setDrafts((prev) => {
+                              const goals = { ...prev[c.id].goals };
+                              if (isNaN(v) || v <= 0) delete goals[gf.id]; else goals[gf.id] = v;
+                              return { ...prev, [c.id]: { ...prev[c.id], goals } };
+                            });
+                          }}
+                          placeholder={gf.unit === "brl" ? "R$" : gf.unit === "pct" ? "%" : gf.unit === "x" ? "x" : "qtd"}
+                          className="h-9 rounded-lg border px-2.5 text-xs outline-none text-right tabular-nums"
+                          style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)", color: "var(--dm-text-primary)" }} />
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Footer */}
+          <div className="flex items-center gap-3 border-t px-7 py-4"
+            style={{ borderColor: "var(--dm-border-subtle)", backgroundColor: "var(--dm-bg-elevated)" }}>
+            <div className="flex-1" />
+            <button type="button" onClick={onClose}
+              className="flex h-11 min-w-[120px] items-center justify-center rounded-xl border text-xs font-semibold transition hover:opacity-80"
+              style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>
+              Cancelar
+            </button>
+            <button type="button" onClick={handleSave} disabled={saving}
+              className="flex h-11 min-w-[180px] items-center justify-center gap-1.5 rounded-xl text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-50"
+              style={{ backgroundColor: "var(--dm-brand-500)" }}>
+              {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+              Salvar alterações
+            </button>
+          </div>
+        </div>
+      </div>
+    </>,
+    document.body,
+  );
+}
+
 // ─── EntryRow ─────────────────────────────────────────────────────────────────
 
 interface EntryRowProps {
@@ -790,6 +997,7 @@ interface EntryRowProps {
 
 function EntryRow({ entry, categorySlug, onDeleted, onToggled, onUpdated }: EntryRowProps) {
   const { removeEntry: removeCenterEntry } = useCampaignCenter();
+  const [editGoalsOpen, setEditGoalsOpen] = useState(false);
   const [deleting,  setDeleting]  = useState(false);
   const [expanded,  setExpanded]  = useState(false);
   const [toggling,  setToggling]  = useState(false);
@@ -924,6 +1132,16 @@ function EntryRow({ entry, categorySlug, onDeleted, onToggled, onUpdated }: Entr
           </button>
         )}
 
+        {/* Editar intenção e metas */}
+        {campCount > 0 && (
+          <button type="button" onClick={() => setEditGoalsOpen(true)}
+            title="Editar intenção, orçamento e metas das campanhas"
+            className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded transition hover:bg-indigo-100 dark:hover:bg-indigo-900/30"
+            style={{ color: "var(--dm-brand-500)" }}>
+            <Pencil size={11} />
+          </button>
+        )}
+
         {/* Delete */}
         <button type="button" onClick={() => void handleDelete()} disabled={deleting}
           className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded transition hover:bg-red-100 hover:text-red-500 dark:hover:bg-red-900/30 dark:hover:text-red-400 disabled:opacity-40"
@@ -931,6 +1149,10 @@ function EntryRow({ entry, categorySlug, onDeleted, onToggled, onUpdated }: Entr
           {deleting ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />}
         </button>
       </div>
+
+      {editGoalsOpen && (
+        <EditIntentGoalsModal entry={entry} onClose={() => setEditGoalsOpen(false)} />
+      )}
 
       {/* Campaign list (expanded) — checkboxes interativos com draft local */}
       {expanded && campCount > 0 && (

@@ -8,7 +8,7 @@ import {
 import {
   Activity, AlertCircle, ArrowDown, ArrowLeft, ArrowUp, AtSign, BookMarked, CalendarDays,
   CheckCircle2, Edit2, GraduationCap, Heart, Key, Loader2, MessageCircle, Plus, RefreshCw,
-  Repeat, Search, SlidersHorizontal, Star, Target, Trash2, TrendingDown, TrendingUp, Users, X, Zap,
+  Repeat, Search, SlidersHorizontal, Star, StickyNote, Target, Trash2, TrendingDown, TrendingUp, Users, X, Zap,
 } from "lucide-react";
 import {
   fetchMetaCampaigns, fetchMetaInsights, fetchMetaAdAccounts,
@@ -1175,6 +1175,10 @@ function ProfileCard({
 
 // ─── localStorage keys for overview-level persistence ────────────────────────
 const OVERVIEW_GOALS_KEY  = "pta_overview_goals_v1";
+
+// Card personalizado do Perfil — informação livre digitada pelo usuário
+interface ProfileCustomCard { id: string; title: string; value: string; note?: string }
+const CUSTOM_CARDS_KEY = "pta_profile_custom_cards_v1";
 const OVERVIEW_FUNNEL_KEY = "pta_overview_funnel_v1";
 
 // Shared color maps (mirrors CampaignAnalysisPanel)
@@ -1230,6 +1234,23 @@ function ProfileOverviewPanel({
     } catch { return {}; }
   });
   const [editGoals, setEditGoals] = useState(false);
+
+  // ── Cards personalizados — informação livre por perfil ────────────────────
+  const [customCards, setCustomCards] = useState<ProfileCustomCard[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const stored = JSON.parse(localStorage.getItem(CUSTOM_CARDS_KEY) ?? "{}") as Record<string, ProfileCustomCard[]>;
+      return stored[profileId] ?? [];
+    } catch { return []; }
+  });
+  const [cardForm, setCardForm] = useState<{ id: string | null; title: string; value: string; note: string } | null>(null);
+  const persistCustomCards = (cards: ProfileCustomCard[]) => {
+    setCustomCards(cards);
+    try {
+      const stored = JSON.parse(localStorage.getItem(CUSTOM_CARDS_KEY) ?? "{}") as Record<string, ProfileCustomCard[]>;
+      localStorage.setItem(CUSTOM_CARDS_KEY, JSON.stringify({ ...stored, [profileId]: cards }));
+    } catch {}
+  };
 
   const updateGoal = (kpiId: string, value: number) => {
     setGoals((prev) => {
@@ -1587,6 +1608,99 @@ function ProfileOverviewPanel({
               </article>
             );
           })}
+
+          {/* ── Cards personalizados — informação livre do usuário ── */}
+          {customCards.map((cc) => (
+            <article key={cc.id}
+              className="flex flex-col rounded-[20px] border shadow-horizon card-hover"
+              style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)", padding: "18px" }}>
+              <div className="mb-4 flex items-center justify-between gap-2">
+                <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full"
+                  style={{ backgroundColor: "rgba(99,102,200,0.10)" }}>
+                  <StickyNote size={18} style={{ color: "#6366C8" }} />
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button type="button"
+                    onClick={() => setCardForm({ id: cc.id, title: cc.title, value: cc.value, note: cc.note ?? "" })}
+                    className="flex h-6 w-6 items-center justify-center rounded-full transition hover:opacity-80"
+                    style={{ backgroundColor: "rgba(99,102,200,0.10)", color: "#6366C8" }} title="Editar card">
+                    <Edit2 size={11} />
+                  </button>
+                  <button type="button"
+                    onClick={() => persistCustomCards(customCards.filter((x) => x.id !== cc.id))}
+                    className="flex h-6 w-6 items-center justify-center rounded-full transition hover:opacity-80"
+                    style={{ backgroundColor: "rgba(238,93,80,0.10)", color: "#EE5D50" }} title="Remover card">
+                    <Trash2 size={11} />
+                  </button>
+                </div>
+              </div>
+              <p className="mb-1 text-[12px] font-semibold" style={{ color: "var(--dm-text-secondary)" }}>
+                {cc.title}
+              </p>
+              <p className="text-[22px] font-bold tabular-nums tracking-tight leading-tight"
+                style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins), Poppins, sans-serif" }}>
+                {cc.value || "—"}
+              </p>
+              {cc.note && (
+                <p className="mt-1 text-[10px] leading-snug" style={{ color: "var(--dm-text-tertiary)" }}>
+                  {cc.note}
+                </p>
+              )}
+            </article>
+          ))}
+
+          {/* Tile de criar/editar card personalizado */}
+          {cardForm ? (
+            <article className="flex flex-col gap-2 rounded-[20px] border-2 shadow-horizon"
+              style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "#6366C8", padding: "18px" }}>
+              <input autoFocus type="text" value={cardForm.title}
+                onChange={(e) => setCardForm({ ...cardForm, title: e.target.value })}
+                placeholder="Título (ex: Vendas WhatsApp)"
+                className="h-8 rounded-lg border px-2 text-[11px] font-semibold outline-none"
+                style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }} />
+              <input type="text" value={cardForm.value}
+                onChange={(e) => setCardForm({ ...cardForm, value: e.target.value })}
+                placeholder="Valor (ex: 32 ou R$ 1.200)"
+                className="h-8 rounded-lg border px-2 text-[11px] font-bold outline-none"
+                style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }} />
+              <input type="text" value={cardForm.note}
+                onChange={(e) => setCardForm({ ...cardForm, note: e.target.value })}
+                placeholder="Observação (opcional)"
+                className="h-8 rounded-lg border px-2 text-[10px] outline-none"
+                style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }} />
+              <div className="mt-1 flex gap-2">
+                <button type="button" onClick={() => setCardForm(null)}
+                  className="flex-1 rounded-lg border py-1.5 text-[10px] font-semibold transition hover:opacity-80"
+                  style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>
+                  Cancelar
+                </button>
+                <button type="button" disabled={!cardForm.title.trim()}
+                  onClick={() => {
+                    const card = {
+                      id: cardForm.id ?? `cc_${Date.now()}`,
+                      title: cardForm.title.trim(),
+                      value: cardForm.value.trim(),
+                      note: cardForm.note.trim() || undefined,
+                    };
+                    persistCustomCards(cardForm.id
+                      ? customCards.map((x) => (x.id === cardForm.id ? card : x))
+                      : [...customCards, card]);
+                    setCardForm(null);
+                  }}
+                  className="flex-1 rounded-lg py-1.5 text-[10px] font-bold text-white transition hover:opacity-90 disabled:opacity-40"
+                  style={{ background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)" }}>
+                  Salvar card
+                </button>
+              </div>
+            </article>
+          ) : (
+            <button type="button" onClick={() => setCardForm({ id: null, title: "", value: "", note: "" })}
+              className="flex min-h-[120px] flex-col items-center justify-center gap-2 rounded-[20px] border-2 border-dashed transition hover:opacity-80"
+              style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-tertiary)" }}>
+              <Plus size={18} />
+              <span className="text-[11px] font-semibold">Card personalizado</span>
+            </button>
+          )}
         </div>
       </div>
 
