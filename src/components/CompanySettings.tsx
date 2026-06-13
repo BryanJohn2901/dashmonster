@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from "react";
 import {
-  Building2, Loader2, Save, Trash2, KeyRound, Users, CheckCircle2, AlertCircle,
+  Building2, Loader2, Save, Trash2, KeyRound, Users, CheckCircle2, AlertCircle, UserPlus, ArrowLeftRight,
 } from "lucide-react";
 import { toast } from "@/hooks/useToast";
 import {
-  useCompany, fetchCompanyMembers, updateMemberRole, removeMember, renameCompany,
+  useCompany, fetchCompanyMembers, updateMemberRole, removeMember, renameCompany, inviteMemberByEmail,
   type CompanyMember, type CompanyRole,
 } from "@/hooks/useCompany";
 import { loadMetaCredentials, saveMetaCredentials } from "@/utils/metaApi";
@@ -45,7 +45,7 @@ function SectionCard({ icon: Icon, title, subtitle, children }: {
 }
 
 export function CompanySettings() {
-  const { company, role, isOwner, loading, migrationMissing } = useCompany();
+  const { company, role, isOwner, loading, migrationMissing, memberships, switchCompany } = useCompany();
 
   // ── Nome da empresa (derivado: digitação sobrepõe o valor vindo do server) ──
   const [nameOverride, setNameOverride] = useState<string | null>(null);
@@ -61,6 +61,11 @@ export function CompanySettings() {
   // ── Membros (null = ainda carregando) ──
   const [membersState, setMembers] = useState<CompanyMember[] | null>(null);
   const [busyMemberId, setBusyMemberId] = useState<string | null>(null);
+
+  // ── Convite por e-mail ──
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<CompanyRole>("manager");
+  const [inviting, setInviting] = useState(false);
 
   useEffect(() => {
     if (!company) return;
@@ -146,10 +151,52 @@ export function CompanySettings() {
     } finally { setBusyMemberId(null); }
   };
 
+  const handleInvite = async () => {
+    const email = inviteEmail.trim().toLowerCase();
+    if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      toast.error("Informe um e-mail válido.");
+      return;
+    }
+    setInviting(true);
+    try {
+      const result = await inviteMemberByEmail(company.id, email, inviteRole);
+      setInviteEmail("");
+      if (result === "added") {
+        toast.success(`${email} adicionado como ${ROLE_LABELS[inviteRole]}.`);
+        const fresh = await fetchCompanyMembers(company.id);
+        setMembers(fresh);
+      } else {
+        toast.success(`Convite registrado para ${email}. Vira membro assim que criar a conta.`);
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao convidar.");
+    } finally { setInviting(false); }
+  };
+
   const ownersCount = members.filter((m) => m.role === "owner").length;
 
   return (
     <div className="flex flex-col gap-5">
+      {/* ── Seletor de empresa (só quando participa de mais de uma) ── */}
+      {memberships.length > 1 && (
+        <div className="flex items-center gap-3 rounded-2xl border p-4"
+          style={{ backgroundColor: "var(--dm-bg-elevated)", borderColor: "var(--dm-border-default)" }}>
+          <ArrowLeftRight size={16} style={{ color: "#6366C8" }} className="flex-shrink-0" />
+          <span className="text-xs font-semibold" style={{ color: "var(--dm-text-secondary)" }}>
+            Empresa ativa
+          </span>
+          <select value={company.id} onChange={(e) => switchCompany(e.target.value)}
+            className="h-9 flex-1 rounded-lg border px-2.5 text-xs font-semibold outline-none"
+            style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)", color: "var(--dm-text-primary)" }}>
+            {memberships.map((m) => (
+              <option key={m.company.id} value={m.company.id}>
+                {m.company.name} · {ROLE_LABELS[m.role]}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {/* ── Identidade ── */}
       <SectionCard icon={Building2} title="Empresa"
         subtitle={isOwner ? "Você é o dono — configura aqui e propaga para todos os membros." : `Seu papel: ${role ? ROLE_LABELS[role] : "—"}`}>
@@ -197,8 +244,42 @@ export function CompanySettings() {
       {/* ── Membros ── */}
       <SectionCard icon={Users} title={`Membros (${members.length})`}
         subtitle={isOwner
-          ? "Troque papéis ou remova membros. Para adicionar alguém, a pessoa precisa criar a conta primeiro."
+          ? "Convide por e-mail, troque papéis ou remova membros."
           : "Quem participa desta empresa e o papel de cada um."}>
+        {/* Convidar por e-mail */}
+        {isOwner && (
+          <div className="flex flex-col gap-2 rounded-xl border p-3 sm:flex-row sm:items-center"
+            style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)" }}>
+            <div className="relative flex-1">
+              <UserPlus size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2"
+                style={{ color: "var(--dm-text-tertiary)" }} />
+              <input type="email" value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") void handleInvite(); }}
+                placeholder="email@pessoa.com"
+                className="h-10 w-full rounded-lg border pl-9 pr-3 text-xs outline-none transition focus:ring-1"
+                style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)", color: "var(--dm-text-primary)" }} />
+            </div>
+            <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value as CompanyRole)}
+              className="h-10 flex-shrink-0 rounded-lg border px-2.5 text-xs font-semibold outline-none"
+              style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)", color: ROLE_COLORS[inviteRole] }}>
+              {(["manager", "viewer", "owner"] as CompanyRole[]).map((r) => (
+                <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+              ))}
+            </select>
+            <button type="button" onClick={() => void handleInvite()} disabled={inviting || !inviteEmail.trim()}
+              className="flex h-10 flex-shrink-0 items-center justify-center gap-1.5 rounded-lg px-4 text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-40"
+              style={{ background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)" }}>
+              {inviting ? <Loader2 size={13} className="animate-spin" /> : <UserPlus size={13} />}
+              Convidar
+            </button>
+          </div>
+        )}
+        {isOwner && (
+          <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+            Se a pessoa já tiver conta, entra na hora. Se não, o convite fica guardado e ela é vinculada ao criar a conta com esse e-mail.
+          </p>
+        )}
         {loadingMembers ? (
           <div className="flex items-center gap-2 py-4 justify-center">
             <Loader2 size={14} className="animate-spin" style={{ color: "var(--dm-text-tertiary)" }} />

@@ -17,15 +17,25 @@ export interface Company {
   settings: Record<string, unknown>;
 }
 
+/** Uma empresa da qual o usuário é membro, com o papel dele nela. */
+export interface CompanyMembership {
+  company: Company;
+  role: CompanyRole;
+}
+
 export interface CompanyState {
   company: Company | null;
   role: CompanyRole | null;
+  /** Todas as empresas do usuário (para o seletor de empresa). */
+  memberships: CompanyMembership[];
   loading: boolean;
   /** true quando a migration 021 ainda não foi aplicada no Supabase */
   migrationMissing: boolean;
 }
 
 // ─── Cache em módulo: 1 fetch por sessão, compartilhado entre hooks ──────────
+
+const ACTIVE_COMPANY_KEY = "dm_active_company_v1";
 
 let cached: CompanyState | null = null;
 let inflight: Promise<CompanyState> | null = null;
@@ -36,8 +46,19 @@ function notify(state: CompanyState) {
   listeners.forEach((l) => l(state));
 }
 
+function readActiveCompanyId(): string | null {
+  try { return localStorage.getItem(ACTIVE_COMPANY_KEY); } catch { return null; }
+}
+
+function writeActiveCompanyId(id: string | null): void {
+  try {
+    if (id) localStorage.setItem(ACTIVE_COMPANY_KEY, id);
+    else localStorage.removeItem(ACTIVE_COMPANY_KEY);
+  } catch {}
+}
+
 async function fetchCompanyState(): Promise<CompanyState> {
-  const base: CompanyState = { company: null, role: null, loading: false, migrationMissing: false };
+  const base: CompanyState = { company: null, role: null, memberships: [], loading: false, migrationMissing: false };
   if (!supabaseClient) return base;
 
   const { data: auth } = await supabaseClient.auth.getUser();
@@ -47,32 +68,54 @@ async function fetchCompanyState(): Promise<CompanyState> {
     .from("company_members")
     .select("role, companies ( id, name, slug, logo_url, settings )")
     .eq("user_id", auth.user.id)
-    .limit(1)
-    .maybeSingle();
+    .order("created_at");
 
   if (error) {
     // 42P01 = tabela não existe → migration 021 não aplicada ainda
     const missing = error.code === "42P01" || /company_members/.test(error.message ?? "");
     return { ...base, migrationMissing: missing };
   }
-  if (!data?.companies) return base;
 
-  // companies vem como objeto (FK única), mas o typegen pode inferir array
-  const raw = Array.isArray(data.companies) ? data.companies[0] : data.companies;
-  if (!raw) return base;
+  const memberships: CompanyMembership[] = (data ?? [])
+    .map((row) => {
+      const raw = Array.isArray(row.companies) ? row.companies[0] : row.companies;
+      if (!raw) return null;
+      return {
+        role: row.role as CompanyRole,
+        company: {
+          id: raw.id,
+          name: raw.name,
+          slug: raw.slug,
+          logoUrl: raw.logo_url ?? null,
+          settings: (raw.settings as Record<string, unknown>) ?? {},
+        },
+      };
+    })
+    .filter((m): m is CompanyMembership => m !== null);
+
+  if (memberships.length === 0) return base;
+
+  // empresa ativa: a salva em localStorage, senão a primeira
+  const savedId = readActiveCompanyId();
+  const active = memberships.find((m) => m.company.id === savedId) ?? memberships[0];
+  writeActiveCompanyId(active.company.id);
 
   return {
-    company: {
-      id: raw.id,
-      name: raw.name,
-      slug: raw.slug,
-      logoUrl: raw.logo_url ?? null,
-      settings: (raw.settings as Record<string, unknown>) ?? {},
-    },
-    role: data.role as CompanyRole,
+    company: active.company,
+    role: active.role,
+    memberships,
     loading: false,
     migrationMissing: false,
   };
+}
+
+/** Troca a empresa ativa (entre as que o usuário participa). */
+export function switchCompany(companyId: string): void {
+  if (!cached) return;
+  const target = cached.memberships.find((m) => m.company.id === companyId);
+  if (!target) return;
+  writeActiveCompanyId(companyId);
+  notify({ ...cached, company: target.company, role: target.role });
 }
 
 // Login/logout invalida o cache — sem isso, quem loga depois do primeiro
@@ -97,7 +140,7 @@ function loadOnce(): Promise<CompanyState> {
         return s;
       })
       .catch(() => {
-        const fallback: CompanyState = { company: null, role: null, loading: false, migrationMissing: false };
+        const fallback: CompanyState = { company: null, role: null, memberships: [], loading: false, migrationMissing: false };
         notify(fallback);
         return fallback;
       });
@@ -190,11 +233,38 @@ export async function renameCompany(companyId: string, name: string): Promise<vo
   await refreshCompany();
 }
 
+export type InviteResult = "added" | "invited";
+
+/**
+ * Convida um membro por e-mail (RPC owner-only, migration 025).
+ * Se a pessoa já tem conta → vira membro na hora ("added").
+ * Se ainda não → fica como convite pendente e é vinculada ao criar a conta ("invited").
+ */
+export async function inviteMemberByEmail(
+  companyId: string,
+  email: string,
+  role: CompanyRole,
+): Promise<InviteResult> {
+  if (!supabaseClient) throw new Error("Supabase não configurado.");
+  const { data, error } = await supabaseClient.rpc("invite_company_member", {
+    p_company_id: companyId,
+    p_email: email.trim().toLowerCase(),
+    p_role: role,
+  });
+  if (error) {
+    if (error.code === "42883" || /invite_company_member/.test(error.message)) {
+      throw new Error("Execute a migration 025 no Supabase SQL Editor para habilitar convites.");
+    }
+    throw new Error(error.message);
+  }
+  return (data as InviteResult) ?? "invited";
+}
+
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useCompany() {
   const [state, setState] = useState<CompanyState>(
-    cached ?? { company: null, role: null, loading: true, migrationMissing: false },
+    cached ?? { company: null, role: null, memberships: [], loading: true, migrationMissing: false },
   );
   const { active: devMode } = useDevMode();
 
@@ -208,12 +278,14 @@ export function useCompany() {
   }, []);
 
   const refresh = useCallback(() => refreshCompany(), []);
+  const switchTo = useCallback((id: string) => switchCompany(id), []);
 
   const { company, role } = state;
   // Modo DEV destrava o gating de papel — usuário é tratado como dono em tudo.
   return {
     ...state,
     refresh,
+    switchCompany: switchTo,
     devMode,
     isOwner: devMode || role === "owner",
     /** owner ou manager — pode conectar tokens, configurar campanhas, editar filtros */
