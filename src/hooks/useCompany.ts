@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabaseClient } from "@/lib/supabase";
-import { useDevMode } from "@/hooks/useDevMode";
+import { useDevMode, isDevModeActive } from "@/hooks/useDevMode";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -28,6 +28,8 @@ export interface CompanyState {
   role: CompanyRole | null;
   /** Todas as empresas do usuário (para o seletor de empresa). */
   memberships: CompanyMembership[];
+  /** true quando o usuário é super admin (vê todas as empresas no modo DEV). */
+  isSuperAdmin: boolean;
   loading: boolean;
   /** true quando a migration 021 ainda não foi aplicada no Supabase */
   migrationMissing: boolean;
@@ -57,8 +59,22 @@ function writeActiveCompanyId(id: string | null): void {
   } catch {}
 }
 
+function rowToCompany(raw: {
+  id: string; name: string; slug: string; logo_url?: string | null; settings?: unknown;
+}): Company {
+  return {
+    id: raw.id,
+    name: raw.name,
+    slug: raw.slug,
+    logoUrl: raw.logo_url ?? null,
+    settings: (raw.settings as Record<string, unknown>) ?? {},
+  };
+}
+
 async function fetchCompanyState(): Promise<CompanyState> {
-  const base: CompanyState = { company: null, role: null, memberships: [], loading: false, migrationMissing: false };
+  const base: CompanyState = {
+    company: null, role: null, memberships: [], isSuperAdmin: false, loading: false, migrationMissing: false,
+  };
   if (!supabaseClient) return base;
 
   const { data: auth } = await supabaseClient.auth.getUser();
@@ -80,20 +96,32 @@ async function fetchCompanyState(): Promise<CompanyState> {
     .map((row) => {
       const raw = Array.isArray(row.companies) ? row.companies[0] : row.companies;
       if (!raw) return null;
-      return {
-        role: row.role as CompanyRole,
-        company: {
-          id: raw.id,
-          name: raw.name,
-          slug: raw.slug,
-          logoUrl: raw.logo_url ?? null,
-          settings: (raw.settings as Record<string, unknown>) ?? {},
-        },
-      };
+      return { role: row.role as CompanyRole, company: rowToCompany(raw) };
     })
     .filter((m): m is CompanyMembership => m !== null);
 
-  if (memberships.length === 0) return base;
+  // ── Modo DEV: super admin enxerga TODAS as empresas ──────────────────────
+  // O SELECT em companies retorna todas só se a policy de super admin (migration
+  // 026) permitir no servidor — o RLS é a fonte da verdade, não a senha DEV.
+  let isSuperAdmin = false;
+  if (isDevModeActive()) {
+    const { data: allCompanies, error: allErr } = await supabaseClient
+      .from("companies")
+      .select("id, name, slug, logo_url, settings")
+      .order("name");
+    if (!allErr && allCompanies) {
+      const ownIds = new Set(memberships.map((m) => m.company.id));
+      // se há empresas além das que sou membro, então sou super admin
+      const extras = allCompanies.filter((c) => !ownIds.has(c.id));
+      isSuperAdmin = extras.length > 0 || allCompanies.length > 0;
+      // empresas extras entram com papel "owner" (acesso total via policy)
+      extras.forEach((c) => memberships.push({ role: "owner", company: rowToCompany(c) }));
+      // reconfirma super admin: só é "super" se enxerga empresa onde não é membro
+      isSuperAdmin = extras.length > 0;
+    }
+  }
+
+  if (memberships.length === 0) return { ...base, isSuperAdmin };
 
   // empresa ativa: a salva em localStorage, senão a primeira
   const savedId = readActiveCompanyId();
@@ -104,6 +132,7 @@ async function fetchCompanyState(): Promise<CompanyState> {
     company: active.company,
     role: active.role,
     memberships,
+    isSuperAdmin,
     loading: false,
     migrationMissing: false,
   };
@@ -140,7 +169,9 @@ function loadOnce(): Promise<CompanyState> {
         return s;
       })
       .catch(() => {
-        const fallback: CompanyState = { company: null, role: null, memberships: [], loading: false, migrationMissing: false };
+        const fallback: CompanyState = {
+          company: null, role: null, memberships: [], isSuperAdmin: false, loading: false, migrationMissing: false,
+        };
         notify(fallback);
         return fallback;
       });
@@ -233,6 +264,18 @@ export async function renameCompany(companyId: string, name: string): Promise<vo
   await refreshCompany();
 }
 
+/** Lê o token Meta salvo de uma empresa específica (para o painel DEV). */
+export async function fetchCompanyToken(companyId: string): Promise<string> {
+  if (!supabaseClient) return "";
+  const { data, error } = await supabaseClient
+    .from("companies")
+    .select("meta_access_token")
+    .eq("id", companyId)
+    .maybeSingle();
+  if (error || !data) return "";
+  return (data.meta_access_token as string) ?? "";
+}
+
 export type InviteResult = "added" | "invited";
 
 /**
@@ -264,7 +307,7 @@ export async function inviteMemberByEmail(
 
 export function useCompany() {
   const [state, setState] = useState<CompanyState>(
-    cached ?? { company: null, role: null, memberships: [], loading: true, migrationMissing: false },
+    cached ?? { company: null, role: null, memberships: [], isSuperAdmin: false, loading: true, migrationMissing: false },
   );
   const { active: devMode } = useDevMode();
 
@@ -276,6 +319,16 @@ export function useCompany() {
       listeners.delete(setState);
     };
   }, []);
+
+  // Ligar/desligar o modo DEV re-busca: super admin passa a ver (ou parar de
+  // ver) todas as empresas.
+  const prevDevRef = useRef(devMode);
+  useEffect(() => {
+    if (prevDevRef.current !== devMode) {
+      prevDevRef.current = devMode;
+      void refreshCompany();
+    }
+  }, [devMode]);
 
   const refresh = useCallback(() => refreshCompany(), []);
   const switchTo = useCallback((id: string) => switchCompany(id), []);

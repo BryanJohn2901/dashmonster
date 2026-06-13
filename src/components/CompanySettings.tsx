@@ -7,7 +7,7 @@ import {
 import { toast } from "@/hooks/useToast";
 import {
   useCompany, fetchCompanyMembers, updateMemberRole, removeMember, renameCompany, inviteMemberByEmail,
-  type CompanyMember, type CompanyRole,
+  fetchCompanyToken, type CompanyMember, type CompanyRole,
 } from "@/hooks/useCompany";
 import { loadMetaCredentials, saveMetaCredentials } from "@/utils/metaApi";
 
@@ -45,7 +45,7 @@ function SectionCard({ icon: Icon, title, subtitle, children }: {
 }
 
 export function CompanySettings() {
-  const { company, role, isOwner, loading, migrationMissing, memberships, switchCompany } = useCompany();
+  const { company, role, isOwner, loading, migrationMissing, memberships, switchCompany, devMode, isSuperAdmin } = useCompany();
 
   // ── Nome da empresa (derivado: digitação sobrepõe o valor vindo do server) ──
   const [nameOverride, setNameOverride] = useState<string | null>(null);
@@ -57,6 +57,10 @@ export function CompanySettings() {
   const [token, setToken] = useState("");
   const [savingToken, setSavingToken] = useState(false);
   const hasToken = Boolean(loadMetaCredentials().accessToken);
+
+  // Token real da empresa ativa — revelável no modo DEV (super admin)
+  const [companyToken, setCompanyToken] = useState<string>("");
+  const [revealToken, setRevealToken] = useState(false);
 
   // ── Membros (null = ainda carregando) ──
   const [membersState, setMembers] = useState<CompanyMember[] | null>(null);
@@ -75,6 +79,18 @@ export function CompanySettings() {
       .catch(() => { if (active) setMembers([]); });
     return () => { active = false; };
   }, [company]);
+
+  // Carrega o token real da empresa ativa quando em modo DEV.
+  // (O bloco que mostra o token só renderiza com devMode, então não precisa
+  // resetar de forma síncrona aqui — evita re-render em cascata.)
+  useEffect(() => {
+    if (!company || !devMode) return;
+    let active = true;
+    void fetchCompanyToken(company.id)
+      .then((t) => { if (active) { setCompanyToken(t); setRevealToken(false); } })
+      .catch(() => { if (active) setCompanyToken(""); });
+    return () => { active = false; };
+  }, [company, devMode]);
 
   const members = membersState ?? [];
   const loadingMembers = company != null && membersState === null;
@@ -177,7 +193,23 @@ export function CompanySettings() {
 
   return (
     <div className="flex flex-col gap-5">
-      {/* ── Seletor de empresa (só quando participa de mais de uma) ── */}
+      {/* ── Banner DEV: super admin enxerga todas as empresas ── */}
+      {devMode && (
+        <div className="flex items-center gap-2.5 rounded-2xl border px-4 py-3"
+          style={{ backgroundColor: "rgba(99,102,200,0.08)", borderColor: "#6366C8" }}>
+          <KeyRound size={15} style={{ color: "#6366C8" }} className="flex-shrink-0" />
+          <span className="text-xs font-semibold" style={{ color: "var(--dm-text-primary)" }}>
+            Modo DEV ativo
+          </span>
+          <span className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
+            {isSuperAdmin
+              ? `Acesso total — ${memberships.length} empresa${memberships.length !== 1 ? "s" : ""} visíveis com tokens e usuários.`
+              : "Sua conta não é super admin no banco — você vê só as suas empresas. Rode a migration 026 e adicione seu usuário em app_admins."}
+          </span>
+        </div>
+      )}
+
+      {/* ── Seletor de empresa (mais de uma, ou DEV vendo todas) ── */}
       {memberships.length > 1 && (
         <div className="flex items-center gap-3 rounded-2xl border p-4"
           style={{ backgroundColor: "var(--dm-bg-elevated)", borderColor: "var(--dm-border-default)" }}>
@@ -220,10 +252,29 @@ export function CompanySettings() {
       <SectionCard icon={KeyRound} title="Token da API Meta"
         subtitle="O dono configura uma vez e propaga para todas as contas — ninguém reconfigura ao acessar.">
         <div className="flex items-center gap-2 text-xs font-semibold"
-          style={{ color: hasToken ? "#05CD99" : "#F4A60D" }}>
-          {hasToken ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
-          {hasToken ? "Token configurado e ativo" : "Nenhum token configurado ainda"}
+          style={{ color: (devMode ? companyToken : hasToken) ? "#05CD99" : "#F4A60D" }}>
+          {(devMode ? companyToken : hasToken) ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
+          {(devMode ? companyToken : hasToken) ? "Token configurado e ativo" : "Nenhum token configurado ainda"}
         </div>
+
+        {/* Token real desta empresa — só no modo DEV */}
+        {devMode && companyToken && (
+          <div className="flex items-center gap-2 rounded-lg border px-3 py-2"
+            style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)" }}>
+            <span className="min-w-0 flex-1 truncate font-mono text-[11px]" style={{ color: "var(--dm-text-secondary)" }}>
+              {revealToken ? companyToken : `${companyToken.slice(0, 8)}${"•".repeat(24)}${companyToken.slice(-4)}`}
+            </span>
+            <button type="button" onClick={() => setRevealToken((v) => !v)}
+              className="flex-shrink-0 text-[10px] font-bold transition hover:opacity-70" style={{ color: "#6366C8" }}>
+              {revealToken ? "Ocultar" : "Revelar"}
+            </button>
+            <button type="button"
+              onClick={() => { void navigator.clipboard?.writeText(companyToken); toast.success("Token copiado."); }}
+              className="flex-shrink-0 text-[10px] font-bold transition hover:opacity-70" style={{ color: "#6366C8" }}>
+              Copiar
+            </button>
+          </div>
+        )}
         {isOwner && (
           <div className="flex gap-3">
             <input type="password" value={token} onChange={(e) => setToken(e.target.value)}
