@@ -1,7 +1,8 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Camera, Trash2, UserRound, Bell, Lock, Sliders } from "lucide-react";
+import { Camera, Trash2, UserRound, Bell, Lock, Sliders, KeyRound } from "lucide-react";
+import { useDevMode } from "@/hooks/useDevMode";
 import { useTheme } from "next-themes";
 import { useAvatarUrl, resolveAvatarSrc, AVATAR_ICON_COUNT } from "@/hooks/useAvatarUrl";
 import {
@@ -147,6 +148,20 @@ function TabPersonalization() {
     try { localStorage.setItem(DEV_PREVIEW_KEY, next ? "1" : "0"); } catch {}
   };
 
+  // ── Modo DEV (acesso total, protegido por senha) ──
+  const { active: devActive, enable: enableDev, disable: disableDev } = useDevMode();
+  const [pwd, setPwd] = useState("");
+  const [pwdError, setPwdError] = useState(false);
+
+  const handleEnableDev = () => {
+    if (enableDev(pwd)) {
+      setPwd("");
+      setPwdError(false);
+    } else {
+      setPwdError(true);
+    }
+  };
+
   const items: { key: string; label: string; sub: string; value: boolean; onChange: () => void }[] = [
     {
       key: "devPreview",
@@ -183,6 +198,65 @@ function TabPersonalization() {
           </button>
         </div>
       ))}
+
+      {/* ── Modo DEV — acesso total ── */}
+      <div className="rounded-xl p-4"
+        style={{
+          background: devActive ? "rgba(99,102,200,0.08)" : "var(--dm-bg-elevated)",
+          border: `1px solid ${devActive ? "#6366C8" : "var(--dm-border-subtle)"}`,
+        }}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-2.5">
+            <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full"
+              style={{ backgroundColor: devActive ? "#6366C8" : "rgba(99,102,200,0.12)" }}>
+              <KeyRound size={16} style={{ color: devActive ? "#fff" : "#6366C8" }} />
+            </div>
+            <div>
+              <p className="text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>
+                Modo DEV {devActive && <span className="ml-1 text-[11px] font-bold" style={{ color: "#6366C8" }}>· ativo</span>}
+              </p>
+              <p className="mt-0.5 text-xs" style={{ color: "var(--dm-text-tertiary)" }}>
+                Acesso total: destrava a configuração de qualquer empresa, tokens e membros — você é tratado como dono em tudo.
+              </p>
+            </div>
+          </div>
+          {devActive && (
+            <button type="button" onClick={disableDev}
+              className="flex-shrink-0 rounded-lg border px-3 py-1.5 text-[11px] font-semibold transition hover:opacity-80"
+              style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>
+              Desativar
+            </button>
+          )}
+        </div>
+
+        {!devActive && (
+          <div className="mt-3 flex gap-2">
+            <input
+              type="password"
+              value={pwd}
+              onChange={(e) => { setPwd(e.target.value); setPwdError(false); }}
+              onKeyDown={(e) => { if (e.key === "Enter") handleEnableDev(); }}
+              placeholder="Senha do modo DEV"
+              className="h-10 flex-1 rounded-xl border px-3 text-xs outline-none transition focus:ring-1"
+              style={{
+                borderColor: pwdError ? "#EE5D50" : "var(--dm-border-default)",
+                backgroundColor: "var(--dm-bg-surface)",
+                color: "var(--dm-text-primary)",
+              }}
+            />
+            <button type="button" onClick={handleEnableDev}
+              className="flex h-10 items-center gap-1.5 rounded-xl px-4 text-xs font-bold text-white transition hover:opacity-90"
+              style={{ background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)" }}>
+              <KeyRound size={13} /> Ativar
+            </button>
+          </div>
+        )}
+        {pwdError && (
+          <p className="mt-2 text-[11px] font-semibold" style={{ color: "#EE5D50" }}>
+            Senha incorreta.
+          </p>
+        )}
+      </div>
     </div>
   );
 }

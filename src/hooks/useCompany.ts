@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { supabaseClient } from "@/lib/supabase";
+import { useDevMode } from "@/hooks/useDevMode";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -195,6 +196,7 @@ export function useCompany() {
   const [state, setState] = useState<CompanyState>(
     cached ?? { company: null, role: null, loading: true, migrationMissing: false },
   );
+  const { active: devMode } = useDevMode();
 
   useEffect(() => {
     listeners.add(setState);
@@ -208,12 +210,14 @@ export function useCompany() {
   const refresh = useCallback(() => refreshCompany(), []);
 
   const { company, role } = state;
+  // Modo DEV destrava o gating de papel — usuário é tratado como dono em tudo.
   return {
     ...state,
     refresh,
-    isOwner: role === "owner",
+    devMode,
+    isOwner: devMode || role === "owner",
     /** owner ou manager — pode conectar tokens, configurar campanhas, editar filtros */
-    canWrite: role === "owner" || role === "manager",
+    canWrite: devMode || role === "owner" || role === "manager",
     companyId: company?.id ?? null,
   };
 }
