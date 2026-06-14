@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { discoverInstagramAccounts } from "@/lib/instagramDiscovery";
 
-const META_API_VERSION = "v21.0";
+export const runtime = "nodejs";
 
 export interface InstagramAccount {
   id: string;
@@ -12,7 +13,10 @@ export interface InstagramAccount {
 
 /**
  * GET /api/instagram/accounts?accessToken=EAAxxxx
- * Returns Instagram Business Accounts linked to the user's Facebook Pages.
+ *
+ * Lista as contas IG Business acessíveis pelo token. Cobre o modelo de agência
+ * (Business Manager asset sharing): páginas atribuídas + próprias do business +
+ * páginas de cliente compartilhadas — ver lib/instagramDiscovery.
  */
 export async function GET(request: NextRequest) {
   const accessToken = request.nextUrl.searchParams.get("accessToken");
@@ -21,47 +25,27 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "accessToken é obrigatório." }, { status: 400 });
   }
 
-  const url = `https://graph.facebook.com/${META_API_VERSION}/me/accounts?${new URLSearchParams({
-    access_token: accessToken,
-    fields: "id,name,instagram_business_account{id,name,username,followers_count,profile_picture_url}",
-    limit: "200",
-  })}`;
+  const { accounts, warnings } = await discoverInstagramAccounts(accessToken);
 
-  const res = await fetch(url);
-  const json = await res.json() as {
-    data?: Array<{
-      id: string;
-      name: string;
-      instagram_business_account?: {
-        id: string;
-        name?: string;
-        username?: string;
-        followers_count?: number;
-        profile_picture_url?: string;
-      };
-    }>;
-    error?: { message?: string };
-  };
-
-  if (!res.ok || json.error) {
+  // Se nada foi descoberto E houve erro, propaga como falha real.
+  if (accounts.length === 0 && warnings.length > 0) {
     return NextResponse.json(
-      { error: json.error?.message ?? `Instagram API error ${res.status}` },
+      { error: warnings.join(" · ") },
       { status: 502 },
     );
   }
 
-  const accounts: InstagramAccount[] = (json.data ?? [])
-    .filter((page) => page.instagram_business_account)
-    .map((page) => {
-      const ig = page.instagram_business_account!;
-      return {
-        id: ig.id,
-        name: ig.name ?? page.name,
-        username: ig.username ?? "",
-        followersCount: ig.followers_count ?? 0,
-        profilePictureUrl: ig.profile_picture_url,
-      };
-    });
+  if (warnings.length > 0) {
+    console.warn("[IG accounts] avisos de descoberta:", warnings.join(" · "));
+  }
 
-  return NextResponse.json(accounts);
+  const result: InstagramAccount[] = accounts.map((a) => ({
+    id: a.id,
+    name: a.name,
+    username: a.username,
+    followersCount: a.followersCount,
+    profilePictureUrl: a.profilePictureUrl,
+  }));
+
+  return NextResponse.json(result);
 }
