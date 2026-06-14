@@ -3,6 +3,10 @@
     {
       "path": "/api/instagram/accounts/sync-all",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/meta/sync-all",
+      "schedule": "0 * * * *"
     }
   ]
 }

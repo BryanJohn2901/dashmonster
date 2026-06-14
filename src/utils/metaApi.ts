@@ -1,17 +1,24 @@
-import type { CampaignData } from "@/types/campaign";
+import {
+  parseMetaNum,
+  metaInsightsToCampaignData,
+  extractConversions,
+  extractLeads,
+  extractRevenue,
+  type MetaInsight,
+  type MetaAction,
+} from "@/lib/metaTransform";
 import { saveMetaTokenToDB } from "@/utils/supabaseProfiles";
 
-/**
- * Parses a Meta API numeric string ("400.00", "9000000") correctly.
- * Meta always uses US decimal format (dot as decimal separator), NOT Brazilian format.
- * Using parseBR/safeNumber here would strip the decimal dot and inflate values 100x
- * (e.g. "400.00" → parseBR → "40000" → 40000 instead of 400).
- */
-function parseMetaNum(v: string | number | undefined | null): number {
-  if (v == null) return 0;
-  const n = typeof v === "number" ? v : Number(v);
-  return Number.isFinite(n) ? n : 0;
-}
+// Reexporta a transformação canônica — fonte única em lib/metaTransform,
+// compartilhada com o cron server-side (lib/metaSync.ts).
+export {
+  parseMetaNum,
+  metaInsightsToCampaignData,
+  extractConversions,
+  extractLeads,
+  extractRevenue,
+};
+export type { MetaInsight, MetaAction };
 
 const CREDS_KEY = "pta_meta_creds_v1";
 
@@ -95,31 +102,6 @@ export function cacheMetaCredentials(creds: MetaCredentials): void {
 }
 
 // ─── Insights ─────────────────────────────────────────────────────────────────
-
-interface MetaAction {
-  action_type: string;
-  value: string; // numeric string
-}
-
-export interface MetaInsight {
-  campaign_name: string;
-  campaign_id:   string;
-  ad_id?:        string;  // present when level="ad"
-  ad_name?:      string;  // present when level="ad"
-  adset_name?:   string;  // present when level="adset" or "ad"
-  impressions:   string | number; // Meta API returns numeric strings
-  reach:         string | number;
-  clicks:        string | number; // all clicks (including reactions, shares — do NOT use for link metrics)
-  inline_link_clicks?: string | number; // link clicks only — matches Meta Ads Manager "Cliques no link"
-  spend:         string | number; // investment in account currency
-  cpm:           string | number;
-  ctr:           string | number; // all-click CTR percentage — e.g. "2.34" means 2.34%
-  inline_link_click_ctr?: string | number; // link CTR — matches Meta Ads Manager default CTR column
-  date_start:    string;
-  date_stop:     string;
-  actions?:       MetaAction[]; // conversion counts
-  action_values?: MetaAction[]; // conversion revenue values
-}
 
 export interface AdInsight {
   ad_id:        string;
@@ -327,126 +309,3 @@ function pickActionRaw(
   return 0;
 }
 
-// ─── Transformation ──────────────────────────────────────────────────────────
-
-/**
- * Returns the value of the FIRST matching action_type found (for mutually-exclusive
- * purchase hierarchies: purchase > omni_purchase > fb_pixel_purchase).
- */
-function pickAction(actions: MetaAction[] | undefined, ...types: string[]): number {
-  if (!actions) return 0;
-  for (const type of types) {
-    const found = actions.find((a) => a.action_type === type);
-    if (found) return parseFloat(found.value) || 0;
-  }
-  return 0;
-}
-
-// Single source of truth for conversion/lead/revenue extraction.
-// Use these everywhere — never call pickAction inline — so Meta deprecations are fixed once.
-
-/** Counts conversions (purchases). First-match-wins among mutually-exclusive types. */
-export function extractConversions(actions: MetaAction[] | undefined): number {
-  return pickAction(actions, "purchase", "omni_purchase", "offsite_conversion.fb_pixel_purchase");
-}
-
-/**
- * Counts leads. First-match-wins.
- * IMPORTANT: "lead" and "onsite_conversion.lead_grouped" are redundant — Meta returns
- * the same value in both. Summing them = double-count.
- */
-export function extractLeads(actions: MetaAction[] | undefined): number {
-  return pickAction(
-    actions,
-    "onsite_conversion.lead_grouped",
-    "lead",
-    "offsite_conversion.fb_pixel_lead",
-  );
-}
-
-/** Extracts purchase revenue from action_values. */
-export function extractRevenue(actionValues: MetaAction[] | undefined): number {
-  return pickAction(actionValues, "purchase", "omni_purchase", "offsite_conversion.fb_pixel_purchase");
-}
-
-/**
- * Converts Meta Insights API rows into CampaignData records compatible
- * with the DashMonster dashboard.
- *
- * Conversion counting: purchase > omni_purchase > offsite_conversion.fb_pixel_purchase
- * Revenue:            action_values for the same types
- */
-export function metaInsightsToCampaignData(
-  insights: MetaInsight[],
-  adAccountId: string,
-): CampaignData[] {
-  return insights.map((row) => {
-    // parseMetaNum must be used here — Meta returns US decimal strings ("400.00").
-    // Using parseBR/safeNumber would strip the dot and inflate values 100x.
-    const investment  = parseMetaNum(row.spend);
-    const impressions = parseMetaNum(row.impressions);
-
-    // Prefer inline_link_clicks (link clicks only, matches Meta Ads Manager "Cliques").
-    // Fall back to all clicks if inline_link_clicks is absent (e.g. older API responses).
-    const clicks = row.inline_link_clicks != null
-      ? parseMetaNum(row.inline_link_clicks)
-      : parseMetaNum(row.clicks);
-
-    // Conversions — try most specific purchase types first
-    const conversions = pickAction(
-      row.actions,
-      "purchase",
-      "omni_purchase",
-      "offsite_conversion.fb_pixel_purchase",
-    );
-
-    // Revenue — from action_values (monetary value of purchases)
-    const revenue = pickAction(
-      row.action_values,
-      "purchase",
-      "omni_purchase",
-      "offsite_conversion.fb_pixel_purchase",
-    );
-
-    // Leads — first match wins (same priority as Meta Ads Manager default column).
-    // "onsite_conversion.lead_grouped" = grouped leads (Meta's primary metric, most complete).
-    // "lead" = raw lead form completions (fallback for campaigns without grouped events).
-    // "offsite_conversion.fb_pixel_lead" = pixel-tracked off-site leads (last resort).
-    // IMPORTANT: these types are REDUNDANT at campaign level — Meta includes both
-    // "lead" and "onsite_conversion.lead_grouped" with the same value. Summing = double-count.
-    const leads = pickAction(
-      row.actions,
-      "onsite_conversion.lead_grouped",
-      "lead",
-      "offsite_conversion.fb_pixel_lead",
-    );
-
-    // Visualizações de página de destino (landing_page_view) — "Vis. de Página" no funil.
-    const pageViews = pickAction(row.actions, "landing_page_view", "omni_landing_page_view");
-
-    // CTR: Meta returns percentage strings ("2.34" = 2.34%).
-    // Convert to decimal (0–1 range) for storage; recalculated as % when read from DB.
-    const ctrPct = row.inline_link_click_ctr != null
-      ? parseMetaNum(row.inline_link_click_ctr)
-      : parseMetaNum(row.ctr);
-    const ctr = ctrPct / 100;
-
-    return {
-      id:             `meta-${adAccountId}-${row.date_start}-${row.campaign_id}`,
-      date:           row.date_start,
-      campaignName:   row.campaign_name,
-      investment,
-      clicks,
-      impressions,
-      conversions,
-      leads,
-      pageViews,
-      revenue,
-      ctr,
-      cpc:            clicks      > 0 ? investment / clicks      : 0,
-      cpa:            conversions > 0 ? investment / conversions : 0,
-      roas:           investment  > 0 ? revenue    / investment  : 0,
-      conversionRate: clicks      > 0 ? (conversions / clicks) * 100 : 0,
-    };
-  });
-}
