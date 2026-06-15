@@ -10,6 +10,7 @@ import {
   fetchCompanyToken, type CompanyMember, type CompanyRole,
 } from "@/hooks/useCompany";
 import { loadMetaCredentials, saveMetaCredentials } from "@/utils/metaApi";
+import { SuperAdminPanel } from "@/components/SuperAdminPanel";
 
 const ROLE_LABELS: Record<CompanyRole, string> = {
   owner:   "Dono",
@@ -204,10 +205,13 @@ export function CompanySettings() {
           <span className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
             {isSuperAdmin
               ? `Acesso total — ${memberships.length} empresa${memberships.length !== 1 ? "s" : ""} visíveis com tokens e usuários.`
-              : "Sua conta não é super admin no banco — você vê só as suas empresas. Rode a migration 026 e adicione seu usuário em app_admins."}
+              : "Sua conta não é super admin no banco. Rode a migration 026 e insira seu usuário em app_admins (o seed usa um UUID de exemplo, não o seu)."}
           </span>
         </div>
       )}
+
+      {/* ── Painel de super admin: gerencia todas as empresas ── */}
+      {isSuperAdmin && <SuperAdminPanel />}
 
       {/* ── Seletor de empresa (mais de uma, ou DEV vendo todas) ── */}
       {memberships.length > 1 && (

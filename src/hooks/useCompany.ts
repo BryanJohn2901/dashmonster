@@ -101,23 +101,25 @@ async function fetchCompanyState(): Promise<CompanyState> {
     .filter((m): m is CompanyMembership => m !== null);
 
   // ── Modo DEV: super admin enxerga TODAS as empresas ──────────────────────
-  // O SELECT em companies retorna todas só se a policy de super admin (migration
-  // 026) permitir no servidor — o RLS é a fonte da verdade, não a senha DEV.
+  // Fonte da verdade = a função is_super_admin() (migration 026), que lê
+  // app_admins no servidor. NÃO inferir por "vejo empresa onde não sou membro":
+  // um super admin com uma só empresa daria falso-negativo nessa heurística.
   let isSuperAdmin = false;
   if (isDevModeActive()) {
-    const { data: allCompanies, error: allErr } = await supabaseClient
-      .from("companies")
-      .select("id, name, slug, logo_url, settings")
-      .order("name");
-    if (!allErr && allCompanies) {
-      const ownIds = new Set(memberships.map((m) => m.company.id));
-      // se há empresas além das que sou membro, então sou super admin
-      const extras = allCompanies.filter((c) => !ownIds.has(c.id));
-      isSuperAdmin = extras.length > 0 || allCompanies.length > 0;
-      // empresas extras entram com papel "owner" (acesso total via policy)
-      extras.forEach((c) => memberships.push({ role: "owner", company: rowToCompany(c) }));
-      // reconfirma super admin: só é "super" se enxerga empresa onde não é membro
-      isSuperAdmin = extras.length > 0;
+    const { data: isAdmin } = await supabaseClient.rpc("is_super_admin");
+    isSuperAdmin = isAdmin === true;
+    if (isSuperAdmin) {
+      const { data: allCompanies, error: allErr } = await supabaseClient
+        .from("companies")
+        .select("id, name, slug, logo_url, settings")
+        .order("name");
+      if (!allErr && allCompanies) {
+        const ownIds = new Set(memberships.map((m) => m.company.id));
+        // empresas onde não sou membro entram com papel "owner" (acesso via policy)
+        allCompanies
+          .filter((c) => !ownIds.has(c.id))
+          .forEach((c) => memberships.push({ role: "owner", company: rowToCompany(c) }));
+      }
     }
   }
 
@@ -274,6 +276,58 @@ export async function fetchCompanyToken(companyId: string): Promise<string> {
     .maybeSingle();
   if (error || !data) return "";
   return (data.meta_access_token as string) ?? "";
+}
+
+/**
+ * Grava o token Meta de uma empresa específica (RLS: owner OU super admin).
+ * String vazia limpa o token. Usado pelo painel de super admin para configurar
+ * qualquer empresa sem trocar de contexto.
+ */
+export async function setCompanyToken(companyId: string, token: string): Promise<void> {
+  if (!supabaseClient) throw new Error("Supabase não configurado.");
+  const { error } = await supabaseClient
+    .from("companies")
+    .update({ meta_access_token: token.trim() || null })
+    .eq("id", companyId);
+  if (error) throw new Error(error.message);
+}
+
+// ─── Painel de super admin ────────────────────────────────────────────────────
+
+export interface AdminCompany {
+  company: Company;
+  /** true se a empresa já tem token Meta configurado. */
+  hasToken: boolean;
+  /** quantos membros a empresa tem. */
+  memberCount: number;
+}
+
+/**
+ * Lista TODAS as empresas com status de token e nº de membros.
+ * Só retorna tudo se o RLS de super admin (migration 026) permitir no servidor.
+ */
+export async function fetchAdminCompanies(): Promise<AdminCompany[]> {
+  if (!supabaseClient) return [];
+  const { data: comps, error } = await supabaseClient
+    .from("companies")
+    .select("id, name, slug, logo_url, settings, meta_access_token")
+    .order("name");
+  if (error) throw new Error(error.message);
+
+  const { data: mem } = await supabaseClient
+    .from("company_members")
+    .select("company_id");
+  const counts = new Map<string, number>();
+  (mem ?? []).forEach((r) => {
+    const cid = r.company_id as string;
+    counts.set(cid, (counts.get(cid) ?? 0) + 1);
+  });
+
+  return (comps ?? []).map((c) => ({
+    company: rowToCompany(c),
+    hasToken: Boolean((c.meta_access_token as string | null)?.trim()),
+    memberCount: counts.get(c.id as string) ?? 0,
+  }));
 }
 
 export type InviteResult = "added" | "invited";
