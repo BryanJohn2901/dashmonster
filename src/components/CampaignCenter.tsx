@@ -10,7 +10,7 @@ import {
   useCampaignCenter, detectIntent, INTENT_META, INTENT_OPTIONS,
   type CampaignCenterEntry, type CampaignIntent,
 } from "@/hooks/useCampaignCenter";
-import { useCompany, type CompanyRole } from "@/hooks/useCompany";
+import { useCompany, fetchCompanyAdAccounts, type CompanyRole } from "@/hooks/useCompany";
 import type { ResultType } from "@/hooks/useAdvertiserStore";
 import { RESULT_TYPE_OPTIONS, RESULT_TYPE_LABELS } from "@/components/ProfileAnalysis";
 import {
@@ -97,6 +97,28 @@ function ConnectDrawer({ onClose, onImport }: {
   const [search, setSearch]         = useState("");
   const [loading, setLoading]       = useState<"accounts" | "campaigns" | "saving" | null>(null);
   const [error, setError]           = useState<string | null>(null);
+
+  // ── Contas sugeridas (registradas pela empresa/super admin) ──
+  // Viram pré-preenchimento: aparecem com ★ no topo do select e são
+  // auto-selecionadas, pra ninguém caçar o ACT certo entre dezenas do token.
+  const { companyId } = useCompany();
+  const [suggestedActIds, setSuggestedActIds] = useState<Set<string>>(new Set());
+  const normAct = (id: string) => `act_${id.replace(/^act_/, "")}`;
+
+  useEffect(() => {
+    if (!companyId) return;
+    let active = true;
+    void fetchCompanyAdAccounts(companyId)
+      .then((accs) => { if (active) setSuggestedActIds(new Set(accs.map((a) => normAct(a.adAccountId)))); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [companyId]);
+
+  // Contas do token com as sugeridas primeiro
+  const sortedAccounts = useMemo(() => {
+    const isSug = (id: string) => suggestedActIds.has(normAct(id));
+    return [...accounts].sort((a, b) => Number(isSug(b.id)) - Number(isSug(a.id)));
+  }, [accounts, suggestedActIds]);
 
   const catSlugs = useMemo(
     () => Object.fromEntries(cats.map((c) => [c.id, c.slug])) as Record<string, string>,
@@ -186,9 +208,12 @@ function ConnectDrawer({ onClose, onImport }: {
       const accs = await fetchMetaAdAccounts(tk.trim());
       setAccounts(accs);
       saveMetaCredentials({ accessToken: tk.trim() });
-      if (accs.length === 1) {
-        setActId(accs[0].id);
-        await loadCampaigns(accs[0].id, tk.trim());
+      // pré-preenche: conta sugerida (registrada) tem prioridade; senão, a única
+      const suggested = accs.find((a) => suggestedActIds.has(normAct(a.id)));
+      const pick = suggested ?? (accs.length === 1 ? accs[0] : null);
+      if (pick) {
+        setActId(pick.id);
+        await loadCampaigns(pick.id, tk.trim());
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao buscar contas.");
@@ -413,10 +438,18 @@ function ConnectDrawer({ onClose, onImport }: {
                 className="h-9 rounded-[10px] border px-2.5 text-xs outline-none"
                 style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}>
                 <option value="">Selecione…</option>
-                {accounts.map((a) => (
-                  <option key={a.id} value={a.id}>{a.name} ({a.id})</option>
-                ))}
+                {sortedAccounts.map((a) => {
+                  const sug = suggestedActIds.has(normAct(a.id));
+                  return (
+                    <option key={a.id} value={a.id}>{sug ? "★ " : ""}{a.name} ({a.id})</option>
+                  );
+                })}
               </select>
+              {suggestedActIds.size > 0 && (
+                <span className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                  ★ contas sugeridas para esta empresa
+                </span>
+              )}
             </div>
           )}
 
