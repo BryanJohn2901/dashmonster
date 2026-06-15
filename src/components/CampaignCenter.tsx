@@ -10,7 +10,7 @@ import {
   useCampaignCenter, detectIntent, INTENT_META, INTENT_OPTIONS,
   type CampaignCenterEntry, type CampaignIntent,
 } from "@/hooks/useCampaignCenter";
-import { useCompany, fetchCompanyAdAccounts, type CompanyRole } from "@/hooks/useCompany";
+import { useCompany, fetchCompanyAdAccounts, type CompanyRole, type AdAccountEntry } from "@/hooks/useCompany";
 import type { ResultType } from "@/hooks/useAdvertiserStore";
 import { RESULT_TYPE_OPTIONS, RESULT_TYPE_LABELS } from "@/components/ProfileAnalysis";
 import {
@@ -99,26 +99,38 @@ function ConnectDrawer({ onClose, onImport }: {
   const [error, setError]           = useState<string | null>(null);
 
   // ── Contas sugeridas (registradas pela empresa/super admin) ──
-  // Viram pré-preenchimento: aparecem com ★ no topo do select e são
-  // auto-selecionadas, pra ninguém caçar o ACT certo entre dezenas do token.
+  // Viram pré-preenchimento: ★ no topo do select e auto-seleção. São MESCLADAS
+  // na lista mesmo que o token não as retorne — senão "não apareciam".
   const { companyId } = useCompany();
-  const [suggestedActIds, setSuggestedActIds] = useState<Set<string>>(new Set());
+  const [suggested, setSuggested] = useState<AdAccountEntry[]>([]);
   const normAct = (id: string) => `act_${id.replace(/^act_/, "")}`;
+  const suggestedActIds = useMemo(
+    () => new Set(suggested.map((a) => normAct(a.adAccountId))),
+    [suggested],
+  );
 
   useEffect(() => {
     if (!companyId) return;
     let active = true;
     void fetchCompanyAdAccounts(companyId)
-      .then((accs) => { if (active) setSuggestedActIds(new Set(accs.map((a) => normAct(a.adAccountId)))); })
+      .then((accs) => { if (active) setSuggested(accs); })
       .catch(() => {});
     return () => { active = false; };
   }, [companyId]);
 
-  // Contas do token com as sugeridas primeiro
-  const sortedAccounts = useMemo(() => {
-    const isSug = (id: string) => suggestedActIds.has(normAct(id));
-    return [...accounts].sort((a, b) => Number(isSug(b.id)) - Number(isSug(a.id)));
-  }, [accounts, suggestedActIds]);
+  // Opções do select = contas do token ∪ registradas (sugeridas primeiro).
+  // Registrada que o token não retornou entra mesmo assim, como opção própria.
+  const accountOptions = useMemo(() => {
+    const byId = new Map<string, { id: string; name: string; suggested: boolean }>();
+    for (const a of accounts) {
+      byId.set(normAct(a.id), { id: a.id, name: a.name, suggested: suggestedActIds.has(normAct(a.id)) });
+    }
+    for (const s of suggested) {
+      const key = normAct(s.adAccountId);
+      if (!byId.has(key)) byId.set(key, { id: key, name: s.label || key, suggested: true });
+    }
+    return [...byId.values()].sort((a, b) => Number(b.suggested) - Number(a.suggested));
+  }, [accounts, suggested, suggestedActIds]);
 
   const catSlugs = useMemo(
     () => Object.fromEntries(cats.map((c) => [c.id, c.slug])) as Record<string, string>,
@@ -422,7 +434,7 @@ function ConnectDrawer({ onClose, onImport }: {
             </button>
           )}
 
-          {tab === "new" && accounts.length > 0 && (
+          {tab === "new" && accountOptions.length > 0 && (
             <div className="flex flex-col gap-1.5">
               <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
                 Conta de Anúncio (ACT)
@@ -431,23 +443,20 @@ function ConnectDrawer({ onClose, onImport }: {
                 onChange={(e) => {
                   const id = e.target.value;
                   setActId(id);
-                  const acc = accounts.find((a) => a.id === id);
+                  const acc = accountOptions.find((a) => a.id === id);
                   if (acc) setEntryName((prev) => prev || acc.name);
                   void loadCampaigns(id);
                 }}
                 className="h-9 rounded-[10px] border px-2.5 text-xs outline-none"
                 style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}>
                 <option value="">Selecione…</option>
-                {sortedAccounts.map((a) => {
-                  const sug = suggestedActIds.has(normAct(a.id));
-                  return (
-                    <option key={a.id} value={a.id}>{sug ? "★ " : ""}{a.name} ({a.id})</option>
-                  );
-                })}
+                {accountOptions.map((a) => (
+                  <option key={a.id} value={a.id}>{a.suggested ? "★ " : ""}{a.name} ({a.id})</option>
+                ))}
               </select>
               {suggestedActIds.size > 0 && (
                 <span className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
-                  ★ contas sugeridas para esta empresa
+                  ★ contas registradas para esta empresa
                 </span>
               )}
             </div>
