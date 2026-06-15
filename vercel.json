@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/meta/sync-all",
-      "schedule": "0 * * * *"
+      "schedule": "0 5 * * *"
     }
   ]
 }
