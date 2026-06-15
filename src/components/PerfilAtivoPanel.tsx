@@ -284,6 +284,9 @@ export function PerfilAtivoPanel({
 
   const totalGained30    = last30.reduce((s, p) => s + p.dailyFollowersGained, 0);
   const totalLost30      = last30.reduce((s, p) => s + (p.dailyUnfollows ?? 0), 0);
+  // A Meta só entrega unfollows com Advanced Access + conta elegível. Nenhum dia
+  // com perda na janela = métrica não retornada (indisponível), não perda zero.
+  const unfollowsAvailable = last30.some((p) => (p.dailyUnfollows ?? 0) > 0);
   const avgReachDay      = last30.length ? Math.round(last30.reduce((s, p) => s + p.reach, 0) / last30.length) : 0;
   const avgImpDay        = last30.length ? Math.round(last30.reduce((s, p) => s + p.impressions, 0) / last30.length) : 0;
   const totalViews       = last30.reduce((s, p) => s + p.profileViews, 0);
@@ -552,7 +555,10 @@ export function PerfilAtivoPanel({
         <KpiTile icon={TrendingUp}   label="Crescimento 30d"    value={`${growthRate30}%`}          sub={`+${fmtNum(followersDelta30)} seg.`} color="#05CD99" />
         <KpiTile icon={Users}        label="Ganho semanal"      value={`+${fmtNum(followersDelta7)}`} sub="últimos 7 dias"                    color="#60A5FA" />
         <KpiTile icon={TrendingUp}   label="Ganhos 30d"         value={`+${fmtNum(totalGained30)}`} sub="seguidores ganhos"                   color="#34D399" />
-        <KpiTile icon={UserMinus}    label="Perda 30d"          value={`-${fmtNum(totalLost30)}`}   sub="seguidores perdidos"                 color="#EE5D50" />
+        <KpiTile icon={UserMinus}    label="Perda 30d"
+          value={unfollowsAvailable ? `-${fmtNum(totalLost30)}` : "—"}
+          sub={unfollowsAvailable ? "seguidores perdidos" : "indisponível na Meta"}
+          color="#EE5D50" />
         <KpiTile icon={Activity}     label="Engajamento"        value={`${avgEngagement30}%`}        sub="média 30 dias"                      color="#F59E0B" />
         <KpiTile icon={Eye}          label="Alcance médio/dia"  value={fmtNum(avgReachDay)}          sub="pessoas únicas"                     color="#A78BFA" />
         <KpiTile icon={BarChart2}    label="Impressões médio/d" value={fmtNum(avgImpDay)}            sub="média diária"                       color="#F97316" />
@@ -625,6 +631,11 @@ export function PerfilAtivoPanel({
           <p className="mb-3 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--dm-text-secondary)" }}>
             Ganhos vs Perdas diários
           </p>
+          {!unfollowsAvailable && (
+            <p className="-mt-2 mb-3 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+              Perdas indisponíveis nesta conta (a Meta só envia unfollows com Advanced Access e conta elegível).
+            </p>
+          )}
           <ResponsiveContainer width="100%" height={160}>
             <ComposedChart data={chartGains} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--dm-border-subtle)" />

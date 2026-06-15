@@ -213,6 +213,10 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     history,
     followersCount: followersNow,
+    // A Meta só retorna follows_and_unfollows com Advanced Access e conta
+    // elegível (business, ≥100 seguidores). Sem pontos = perda indisponível,
+    // diferente de perda zero — o painel usa isto para mostrar "indisponível".
+    unfollowsAvailable: diag.metricPts.follows_and_unfollows > 0,
     _diag: diag,
   });
 }
