@@ -826,7 +826,14 @@ export function CampaignCenter() {
                         <select value={entry.intent}
                           onChange={(e) => {
                             const intent = e.target.value as CampaignIntent;
-                            updateEntry(entry.campaignId, { intent, goals: {} });
+                            // Intenção dirige o resultType default — sem isto a
+                            // mudança não chegava ao Perfil de Anunciantes (a ponte
+                            // de lá lê resultType). O dropdown Resultado refina depois.
+                            updateEntry(entry.campaignId, {
+                              intent,
+                              resultType: INTENT_META[intent].defaultResultTypes[0],
+                              goals: {},
+                            });
                           }}
                           className="h-9 rounded-[10px] border px-2.5 text-xs outline-none"
                           style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}>
