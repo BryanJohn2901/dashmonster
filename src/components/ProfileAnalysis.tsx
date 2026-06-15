@@ -211,6 +211,7 @@ export const RESULT_TYPE_LABELS: Record<ResultType, string> = {
   "contact":                             "Contatos",
   "view_content":                        "Vis. de Conteúdo",
   "profile_visit":                       "Visitas ao Perfil",
+  "follow":                              "Novos Seguidores",
   "link_click":                          "Cliques no Link",
 };
 
@@ -227,6 +228,7 @@ export const RESULT_TYPE_OPTIONS: { value: ResultType; label: string }[] = [
   { value: "contact",                             label: "Contatos" },
   { value: "view_content",                        label: "Vis. de Conteúdo" },
   { value: "profile_visit",                       label: "Visitas ao Perfil" },
+  { value: "follow",                              label: "Novos Seguidores" },
   { value: "link_click",                          label: "Cliques no Link" },
 ];
 
@@ -258,6 +260,7 @@ const AUTO_DETECT_PRIORITY: ResultType[] = [
   "submit_application",
   "schedule",
   "contact",
+  "follow",
   "view_content",
   "profile_visit",
 ];
@@ -315,11 +318,14 @@ function toAdsetRows(data: MetaInsight[], resultType?: string): AdsetRow[] {
     // new_followers: "follow" (ad engagement objective) OR "page_fan_adds" (traffic-to-profile)
     cur.new_followers += getActionValue(d.actions, "follow")
                        + getActionValue(d.actions, "page_fan_adds");
-    // configurable result type — link_click uses inline_link_clicks for consistency
+    // configurable result type — link_click usa inline_link_clicks; follow soma
+    // follow + page_fan_adds (novos seguidores, igual a cur.new_followers).
     if (resultType) {
       cur.customResult += resultType === "link_click"
         ? (d.inline_link_clicks != null ? parseMetaNum(d.inline_link_clicks) : parseMetaNum(d.clicks))
-        : getActionValue(d.actions, resultType);
+        : resultType === "follow"
+          ? getActionValue(d.actions, "follow") + getActionValue(d.actions, "page_fan_adds")
+          : getActionValue(d.actions, resultType);
     }
     map.set(key ?? "", cur);
   });
@@ -368,7 +374,9 @@ function toDailyRows(data: MetaInsight[], resultType?: string): DailyRow[] {
     if (resultType) {
       cur.customResult += resultType === "link_click"
         ? (d.inline_link_clicks != null ? parseMetaNum(d.inline_link_clicks) : parseMetaNum(d.clicks))
-        : getActionValue(d.actions, resultType);
+        : resultType === "follow"
+          ? getActionValue(d.actions, "follow") + getActionValue(d.actions, "page_fan_adds")
+          : getActionValue(d.actions, resultType);
     }
     map.set(date, cur);
   });

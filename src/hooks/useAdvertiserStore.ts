@@ -19,6 +19,7 @@ export type ResultType =
   | "contact"
   | "view_content"
   | "profile_visit"
+  | "follow"
   | "link_click";
 
 export interface ActiveCampaign {

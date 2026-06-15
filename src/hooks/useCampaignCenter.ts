@@ -57,11 +57,11 @@ export const INTENT_META: Record<CampaignIntent, IntentMeta> = {
     label: "Crescer Perfil",
     color: "#8b5cf6",
     goalFields: [
-      { id: "profile_visits", label: "Visitas",    unit: "qtd" },
       { id: "new_followers",  label: "Seguidores", unit: "qtd" },
+      { id: "profile_visits", label: "Visitas",    unit: "qtd" },
       { id: "cpf",            label: "Custo/seg.", unit: "brl" },
     ],
-    defaultResultTypes: ["profile_visit"],
+    defaultResultTypes: ["follow", "profile_visit"],
   },
   traffic: {
     label: "Tráfego",
@@ -129,6 +129,7 @@ const RESULT_TYPE_TO_INTENT: Partial<Record<ResultType, CampaignIntent>> = {
   "schedule":                             "lead_gen",
   "contact":                              "lead_gen",
   "profile_visit":                        "profile_growth",
+  "follow":                               "profile_growth",
   "link_click":                           "traffic",
   "view_content":                         "traffic",
 };
