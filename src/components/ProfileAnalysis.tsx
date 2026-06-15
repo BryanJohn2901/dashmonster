@@ -3456,7 +3456,11 @@ function ProfileDetailView({
     ...profileProp,
     campaigns: profileProp.campaigns.map((c) => {
       if (c.resultType) return c;
-      const rt = getCenterEntry(c.id)?.resultType;
+      // Só herda o resultType da Central quando o usuário CONFIGUROU de fato
+      // (autoConfigured=false). Se for auto, deixa undefined para a Visão Geral
+      // detectar o tipo de resultado REAL das actions do Meta (autoDetectResultType).
+      const entry = getCenterEntry(c.id);
+      const rt = entry && !entry.autoConfigured ? entry.resultType : undefined;
       return rt ? { ...c, resultType: rt } : c;
     }),
   }), [profileProp, getCenterEntry]);
