@@ -330,6 +330,122 @@ export async function fetchAdminCompanies(): Promise<AdminCompany[]> {
   }));
 }
 
+// ─── Contas de anúncio por empresa (painel super admin) ────────────────────────
+
+export interface AdAccountEntry {
+  id: string;
+  adAccountId: string;
+  label: string;
+  isEnabled: boolean;
+}
+
+/** Contas de anúncio (ad accounts) configuradas numa empresa. */
+export async function fetchCompanyAdAccounts(companyId: string): Promise<AdAccountEntry[]> {
+  if (!supabaseClient) return [];
+  const { data, error } = await supabaseClient
+    .from("user_account_entries")
+    .select("id, ad_account_id, label, is_enabled")
+    .eq("company_id", companyId)
+    .order("created_at");
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((r) => ({
+    id:          r.id as string,
+    adAccountId: (r.ad_account_id as string) ?? "",
+    label:       (r.label as string) ?? "",
+    isEnabled:   (r.is_enabled as boolean) ?? true,
+  }));
+}
+
+/**
+ * Garante uma categoria padrão ("Geral") para a empresa e devolve o id.
+ * Necessário porque user_account_entries.category_id é NOT NULL. O unique de
+ * categorias é (company_id, slug) desde a migration 021, então não colide entre
+ * empresas mesmo reusando o mesmo user_id.
+ */
+async function ensureCompanyCategory(companyId: string, userId: string): Promise<string> {
+  if (!supabaseClient) throw new Error("Supabase não configurado.");
+  const { data: existing } = await supabaseClient
+    .from("user_categories")
+    .select("id")
+    .eq("company_id", companyId)
+    .order("position")
+    .limit(1)
+    .maybeSingle();
+  if (existing?.id) return existing.id as string;
+
+  const { data, error } = await supabaseClient
+    .from("user_categories")
+    .upsert(
+      { user_id: userId, company_id: companyId, slug: "geral", name: "Geral", type: "custom" },
+      { onConflict: "company_id,slug" },
+    )
+    .select("id")
+    .single();
+  if (error) throw new Error(error.message);
+  return data.id as string;
+}
+
+/**
+ * Adiciona uma conta de anúncio numa empresa (RLS: owner OU super admin).
+ * A conta entra habilitada — o cron /api/meta/sync-all passa a sincronizá-la.
+ * O "act_" é removido; a rota da Meta re-adiciona o prefixo.
+ */
+export async function addCompanyAdAccount(
+  companyId: string,
+  adAccountId: string,
+  label: string,
+): Promise<AdAccountEntry> {
+  if (!supabaseClient) throw new Error("Supabase não configurado.");
+  const { data: auth } = await supabaseClient.auth.getUser();
+  const userId = auth.user?.id;
+  if (!userId) throw new Error("Usuário não autenticado.");
+
+  const cleanId = adAccountId.trim().replace(/^act_/, "");
+  if (!cleanId) throw new Error("Informe o ID da conta de anúncio.");
+
+  const categoryId = await ensureCompanyCategory(companyId, userId);
+
+  const { data, error } = await supabaseClient
+    .from("user_account_entries")
+    .insert({
+      user_id:       userId,
+      company_id:    companyId,
+      category_id:   categoryId,
+      label:         label.trim() || cleanId,
+      ad_account_id: cleanId,
+      is_enabled:    true,
+    })
+    .select("id, ad_account_id, label, is_enabled")
+    .single();
+  if (error) throw new Error(error.message);
+  return {
+    id:          data.id as string,
+    adAccountId: data.ad_account_id as string,
+    label:       data.label as string,
+    isEnabled:   data.is_enabled as boolean,
+  };
+}
+
+/** Liga/desliga a sincronização de uma conta de anúncio. */
+export async function toggleCompanyAdAccount(id: string, isEnabled: boolean): Promise<void> {
+  if (!supabaseClient) throw new Error("Supabase não configurado.");
+  const { error } = await supabaseClient
+    .from("user_account_entries")
+    .update({ is_enabled: isEnabled })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+/** Remove uma conta de anúncio da empresa. */
+export async function deleteCompanyAdAccount(id: string): Promise<void> {
+  if (!supabaseClient) throw new Error("Supabase não configurado.");
+  const { error } = await supabaseClient
+    .from("user_account_entries")
+    .delete()
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
 export type InviteResult = "added" | "invited";
 
 /**
