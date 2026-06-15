@@ -1257,6 +1257,7 @@ interface CategorySectionProps {
   entries: UserAccountEntry[];
   onCategoryToggle:  (slug: string, enabled: boolean) => void;
   onCategoryCreated: (cat: UserCategory) => void;
+  onCategoryUpdated?: (cat: UserCategory) => void;
   onEntrySaved:    (entry: UserAccountEntry) => void;
   onEntryDeleted:  (id: string) => void;
   onEntryToggled:  (entry: UserAccountEntry) => void;
@@ -1268,13 +1269,43 @@ interface CategorySectionProps {
 
 function CategorySection({
   slug, name, emoji, categoryRecord, entries,
-  onCategoryToggle, onCategoryCreated, onEntrySaved, onEntryDeleted, onEntryToggled, onEntryUpdated,
+  onCategoryToggle, onCategoryCreated, onCategoryUpdated, onEntrySaved, onEntryDeleted, onEntryToggled, onEntryUpdated,
   isCustom, onDeleteCategory, onPainelSaveNavigate,
 }: CategorySectionProps) {
   const [showAdd,        setShowAdd]        = useState(false);
   const [toggling,       setToggling]       = useState(false);
   const [localRecord,    setLocalRecord]    = useState(categoryRecord);
   const isEnabled = (localRecord ?? categoryRecord)?.isEnabled ?? true;
+
+  // Nome/emoji efetivos: override por empresa (DB) vence o default do template.
+  const rec          = localRecord ?? categoryRecord;
+  const displayName  = rec?.name || name;
+  const displayEmoji = rec?.emoji || emoji;
+
+  // ── Renomear o filtro (nome + emoji) por empresa — slug fica estável ──
+  const [editing,   setEditing]   = useState(false);
+  const [editName,  setEditName]  = useState(displayName);
+  const [editEmoji, setEditEmoji] = useState(displayEmoji);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const openEdit = () => { setEditName(displayName); setEditEmoji(displayEmoji); setEditing(true); };
+  const handleSaveEdit = async () => {
+    if (!editName.trim()) return;
+    setSavingEdit(true);
+    try {
+      const saved = await upsertUserCategory({
+        id:        rec?.id,
+        slug,
+        name:      editName.trim(),
+        type:      isCustom ? "custom" : "fixed",
+        emoji:     editEmoji || null,
+        position:  rec?.position,
+        isEnabled: rec?.isEnabled ?? true,
+      });
+      setLocalRecord(saved);
+      (onCategoryUpdated ?? onCategoryCreated)(saved);
+      setEditing(false);
+    } finally { setSavingEdit(false); }
+  };
   const customFilterOptions = useMemo<CategoryInternalFilterOption[]>(() => {
     if (isCustom) return [];
     const seen = new Set<string>();
@@ -1322,32 +1353,67 @@ function CategorySection({
       {/* Category header */}
       <div className="flex items-center gap-3 px-4 py-3"
         style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
-        <span className="text-base leading-none">{emoji}</span>
-        <div className="flex-1 min-w-0">
-          <p className="text-[13px] font-semibold truncate" style={{ color: "var(--dm-text-primary)" }}>
-            {name}
-          </p>
-          <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
-            {entries.length === 0 ? "Nenhuma conta vinculada" : `${entries.length} conta${entries.length > 1 ? "s" : ""}`}
-          </p>
-        </div>
+        {editing ? (
+          <div className="flex flex-1 items-center gap-2">
+            <input value={editEmoji} onChange={(e) => setEditEmoji(e.target.value)}
+              maxLength={2} placeholder="📌"
+              className="h-8 w-10 rounded-lg border text-center text-base outline-none"
+              style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }} />
+            <input value={editName} onChange={(e) => setEditName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") void handleSaveEdit(); if (e.key === "Escape") setEditing(false); }}
+              autoFocus placeholder="Nome do filtro"
+              className="h-8 flex-1 rounded-lg border px-2.5 text-[13px] outline-none"
+              style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)", color: "var(--dm-text-primary)" }} />
+            <button type="button" onClick={() => void handleSaveEdit()} disabled={savingEdit || !editName.trim()}
+              className="flex h-8 items-center gap-1 rounded-lg px-2.5 text-[11px] font-bold text-white transition hover:opacity-90 disabled:opacity-40"
+              style={{ background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)" }}>
+              {savingEdit ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle2 size={11} />} Salvar
+            </button>
+            <button type="button" onClick={() => setEditing(false)}
+              className="flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-black/5"
+              style={{ color: "var(--dm-text-tertiary)" }}>
+              <XCircle size={13} />
+            </button>
+          </div>
+        ) : (
+          <>
+            <span className="text-base leading-none">{displayEmoji}</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-[13px] font-semibold truncate" style={{ color: "var(--dm-text-primary)" }}>
+                {displayName}
+              </p>
+              <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                {entries.length === 0 ? "Nenhuma conta vinculada" : `${entries.length} conta${entries.length > 1 ? "s" : ""}`}
+              </p>
+            </div>
+
+            {/* Renomear filtro (por empresa) */}
+            <button type="button" onClick={openEdit} title="Renomear filtro"
+              className="flex h-6 w-6 items-center justify-center rounded transition hover:bg-black/5"
+              style={{ color: "var(--dm-text-tertiary)" }}>
+              <Pencil size={12} />
+            </button>
+          </>
+        )}
 
         {/* Toggle enable/disable */}
-        <button type="button" onClick={() => void handleToggle()} disabled={toggling}
-          title={isEnabled ? "Desativar categoria" : "Ativar categoria"}
-          className={`flex h-6 items-center gap-1 rounded-full px-2 text-[10px] font-bold transition disabled:opacity-50 ${
-            isEnabled
-              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-              : "bg-slate-100 text-slate-400 dark:bg-slate-700 dark:text-slate-500"
-          }`}>
-          {toggling
-            ? <Loader2 size={9} className="animate-spin" />
-            : isEnabled ? <CheckCircle2 size={9} /> : <XCircle size={9} />}
-          {isEnabled ? "ativo" : "inativo"}
-        </button>
+        {!editing && (
+          <button type="button" onClick={() => void handleToggle()} disabled={toggling}
+            title={isEnabled ? "Desativar categoria" : "Ativar categoria"}
+            className={`flex h-6 items-center gap-1 rounded-full px-2 text-[10px] font-bold transition disabled:opacity-50 ${
+              isEnabled
+                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                : "bg-slate-100 text-slate-400 dark:bg-slate-700 dark:text-slate-500"
+            }`}>
+            {toggling
+              ? <Loader2 size={9} className="animate-spin" />
+              : isEnabled ? <CheckCircle2 size={9} /> : <XCircle size={9} />}
+            {isEnabled ? "ativo" : "inativo"}
+          </button>
+        )}
 
         {/* Delete (custom categories only) */}
-        {isCustom && onDeleteCategory && (
+        {!editing && isCustom && onDeleteCategory && (
           <button type="button" onClick={() => onDeleteCategory(slug)}
             className="flex h-6 w-6 items-center justify-center rounded transition hover:bg-red-100 hover:text-red-500 dark:hover:bg-red-900/30 dark:hover:text-red-400"
             style={{ color: "var(--dm-text-tertiary)" }}>
@@ -1436,6 +1502,14 @@ export function TabAccounts({ categories, accountEntries, onCategoriesChange, on
     );
   };
 
+  const handleCategoryUpserted = (cat: UserCategory) => {
+    onCategoriesChange(
+      categories.some(c => c.id === cat.id || c.slug === cat.slug)
+        ? categories.map(c => (c.id === cat.id || c.slug === cat.slug) ? cat : c)
+        : [...categories, cat],
+    );
+  };
+
   const handleEntrySaved = (entry: UserAccountEntry) => {
     onEntriesChange(
       accountEntries.some(e => e.id === entry.id)
@@ -1494,6 +1568,7 @@ export function TabAccounts({ categories, accountEntries, onCategoriesChange, on
                 categoryRecord={catRecord} entries={entries}
                 onCategoryToggle={handleToggleCategory}
                 onCategoryCreated={cat => onCategoriesChange([...categories, cat])}
+                onCategoryUpdated={handleCategoryUpserted}
                 onEntrySaved={handleEntrySaved}
                 onEntryDeleted={handleEntryDeleted}
                 onEntryToggled={handleEntryToggled}
@@ -1527,6 +1602,7 @@ export function TabAccounts({ categories, accountEntries, onCategoriesChange, on
                   categoryRecord={cat} entries={entries}
                   onCategoryToggle={handleToggleCategory}
                   onCategoryCreated={created => onCategoriesChange(categories.map(c => c.id === created.id ? created : c))}
+                  onCategoryUpdated={handleCategoryUpserted}
                   onEntrySaved={handleEntrySaved}
                   onEntryDeleted={handleEntryDeleted}
                   onEntryToggled={handleEntryToggled}

@@ -237,8 +237,18 @@ const SECTION_LABELS_BUILTIN: Record<string, string> = {
 // Legacy alias kept for compatibility
 const SECTION_LABELS = SECTION_LABELS_BUILTIN;
 
-/** Resolves a section label — built-in OR custom. */
-function getSectionLabel(sectionId: string, customSections: CustomSection[]): string {
+/**
+ * Resolve o rótulo de uma seção. Prioridade: nome da categoria da EMPRESA
+ * (user_categories, renomeável por empresa) → label built-in (template PTA) →
+ * seção custom → o próprio id. O slug fica estável; só o nome exibido muda.
+ */
+function getSectionLabel(
+  sectionId: string,
+  customSections: CustomSection[],
+  categories?: UserCategory[],
+): string {
+  const cat = categories?.find((c) => c.slug === sectionId);
+  if (cat?.name) return cat.name;
   if (sectionId in SECTION_LABELS_BUILTIN) return SECTION_LABELS_BUILTIN[sectionId];
   return customSections.find((s) => s.id === sectionId)?.label ?? sectionId;
 }
@@ -1110,6 +1120,7 @@ interface ContextBarProps {
   selectedGroup:        string;
   groups:               GroupConfig[];
   customSections:       CustomSection[];
+  categories?:          UserCategory[];
   showCourseGroups:     boolean;
   onSelectGroup:        (id: string) => void;
   checkedCampaignIds:   string[];
@@ -1146,7 +1157,7 @@ function ContextPill({
 }
 
 function ContextBar({
-  selectedGroup, groups, customSections, showCourseGroups, onSelectGroup,
+  selectedGroup, groups, customSections, categories, showCourseGroups, onSelectGroup,
   checkedCampaignIds, campaignsByGroup, onCheckedCampaignIds, onClearCampaignFilter,
   dateFrom, dateTo, onDateFrom, onDateTo, hasActiveFilters, onClearFilters,
 }: ContextBarProps) {
@@ -1249,7 +1260,7 @@ function ContextBar({
                       <div key={g.id}>
                         {newSection && (
                           <p className="px-3 pt-2 pb-1 text-[9px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>
-                            {getSectionLabel(g.section, customSections)}
+                            {getSectionLabel(g.section, customSections, categories)}
                           </p>
                         )}
                         <button
@@ -1424,6 +1435,7 @@ interface CampaignPanelProps {
   showCourseGroups: boolean;
   groups: GroupConfig[];
   customSections: CustomSection[];
+  categories?: UserCategory[];
   selectedCampaign: string;
   campaignsByGroup: Record<string, CampaignSummary[]>;
   checkedCampaignIds: string[];
@@ -1447,7 +1459,7 @@ interface CampaignPanelProps {
 function CampaignPanel({
   selectedGroup, selectedTurma, activeCampaigns, turmasByGroup,
   dateFrom, dateTo, searchCampaign, showCourseGroups,
-  groups, customSections, selectedCampaign, campaignsByGroup, checkedCampaignIds, sortBy,
+  groups, customSections, categories, selectedCampaign, campaignsByGroup, checkedCampaignIds, sortBy,
   onSelectGroup, onSelectTurma, onSelectCampaign, onToggleActive,
   onDateFrom, onDateTo, onSearch, onClearFilters, onSortBy, onCheckedCampaignIds,
   onClearCampaignFilter, isFilterExplicit, hasActiveFilters, onCollapse,
@@ -1546,7 +1558,7 @@ function CampaignPanel({
                 <div className={`${idx > 0 ? "mt-2 border-t" : ""} px-4 pb-1 pt-2.5`} style={{ borderColor: "var(--dm-border-subtle)" }}>
                   <p className="text-[10px] font-extrabold uppercase tracking-widest"
                     style={{ color: "var(--dm-text-tertiary)" }}>
-                    {getSectionLabel(group.section, customSections)}
+                    {getSectionLabel(group.section, customSections, categories)}
                   </p>
                 </div>
               )}
@@ -2566,7 +2578,7 @@ export function Dashboard({
   const overviewSelectionSummary = useMemo(() => {
     if (!selectedCategory) return null;
     const catKey = selectedCategory as ProductCategory;
-    const catName = getSectionLabel(String(selectedCategory), customSections);
+    const catName = getSectionLabel(String(selectedCategory), customSections, categories);
     const groupName =
       selectedGroup === "all"
         ? "Todos os grupos desta categoria"
@@ -2784,6 +2796,7 @@ export function Dashboard({
     showCourseGroups,
     groups: sidebarGroups,
     customSections,
+    categories,
     selectedCampaign,
     campaignsByGroup,
     checkedCampaignIds,
@@ -3104,7 +3117,7 @@ export function Dashboard({
                     >
                       <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: dot }} />
                       <CatIcon size={11} aria-hidden />
-                      <span className="hidden sm:inline">{getSectionLabel(String(cat), customSections)}</span>
+                      <span className="hidden sm:inline">{getSectionLabel(String(cat), customSections, categories)}</span>
                       <span className="sr-only">Trocar categoria</span>
                       <X size={10} className="text-slate-400 dark:text-slate-500" aria-hidden />
                     </button>
@@ -3270,6 +3283,7 @@ export function Dashboard({
                     selectedGroup={selectedGroup}
                     groups={sidebarGroups}
                     customSections={customSections}
+                    categories={categories}
                     showCourseGroups={showCourseGroups}
                     onSelectGroup={handleSelectGroup}
                     checkedCampaignIds={checkedCampaignIds}
