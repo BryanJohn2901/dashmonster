@@ -1392,30 +1392,48 @@ function ProfileOverviewPanel({
     new_followers:  totals.fol,
   };
 
-  const buildReport = (): ReportData => buildReportFromKpisFunnel({
-    title: reportTitle,
-    period: `${dateFrom} → ${dateTo}`,
-    kpis: template.kpis.map((k) =>
-      k.id === "sales" && effectiveResultType
-        ? { ...k, label: RESULT_TYPE_LABELS[effectiveResultType] }
-        : k.id === "cpa" && effectiveResultType
-          ? { ...k, label: `Custo por ${RESULT_TYPE_LABELS[effectiveResultType]}` }
-          : k
-    ),
-    kpiValues,
-    goals,
-    funnelStages: funnelStepIds
-      .map((id) => PROFILE_FUNNEL_STEPS.find((s) => s.id === id))
-      .filter((s): s is ProfileFunnelStep => Boolean(s))
-      .map((s) => ({
-        id: s.id,
-        label: s.id === "sales" && effectiveResultType ? RESULT_TYPE_LABELS[effectiveResultType] : s.label,
-        color: s.color,
-        rateLabel: s.rateLabel,
-      })),
-    funnelValues: funnelVals,
-    investment: totals.inv, impressions: totals.imp, clicks: totals.clk, conversions: totals.conv,
-  });
+  const buildReport = (): ReportData => {
+    const data = buildReportFromKpisFunnel({
+      title: reportTitle,
+      period: `${dateFrom} → ${dateTo}`,
+      kpis: template.kpis.map((k) =>
+        k.id === "sales" && effectiveResultType
+          ? { ...k, label: RESULT_TYPE_LABELS[effectiveResultType] }
+          : k.id === "cpa" && effectiveResultType
+            ? { ...k, label: `Custo por ${RESULT_TYPE_LABELS[effectiveResultType]}` }
+            : k
+      ),
+      kpiValues,
+      goals,
+      funnelStages: funnelStepIds
+        .map((id) => PROFILE_FUNNEL_STEPS.find((s) => s.id === id))
+        .filter((s): s is ProfileFunnelStep => Boolean(s))
+        .map((s) => ({
+          id: s.id,
+          label: s.id === "sales" && effectiveResultType ? RESULT_TYPE_LABELS[effectiveResultType] : s.label,
+          color: s.color,
+          rateLabel: s.rateLabel,
+        })),
+      funnelValues: funnelVals,
+      investment: totals.inv, impressions: totals.imp, clicks: totals.clk, conversions: totals.conv,
+    });
+
+    // Cards personalizados do perfil entram como grupo próprio no relatório.
+    if (customCards.length > 0) {
+      data.groups.push({
+        id: "g_custom_cards",
+        label: "Cards personalizados",
+        items: customCards.map((c) => ({
+          id: `cc_${c.id}`,
+          label: c.title,
+          value: c.value,
+          sub: c.note,
+        })),
+      });
+    }
+
+    return data;
+  };
 
   // ── Loading / error states ────────────────────────────────────────────────
   if (loading) {
