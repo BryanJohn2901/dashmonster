@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "@/hooks/useToast";
+import { useCompany } from "@/hooks/useCompany";
 import { RealtimeChannel, Session } from "@supabase/supabase-js";
 import { Dashboard } from "@/components/Dashboard";
 import { ControlPanel, type CPTab } from "@/components/ControlPanel";
@@ -525,6 +526,10 @@ export default function Home() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Empresa ativa (multi-empresa / super admin) — usada para recarregar ao trocar.
+  const { companyId: activeCompanyId } = useCompany();
+  const companyLoadedRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (!session?.user.id || !isSupabaseConfigured) {
       closeRealtimeChannels();
@@ -630,6 +635,33 @@ export default function Home() {
     // Intencional: só reage ao utilizador autenticado; sync usa refs atualizadas.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user.id]);
+
+  // ── Trocar de empresa recarrega token + dados da nova empresa ────────────────
+  // O effect principal só roda no login. Sem isto, trocar de empresa no painel
+  // (super admin / multi-empresa) deixava campanhas/filtros/contas da anterior
+  // em tela. Pula a 1ª passagem: o effect principal já carregou a empresa inicial.
+  useEffect(() => {
+    if (!activeCompanyId || !session?.user.id) return;
+    if (companyLoadedRef.current === null) { companyLoadedRef.current = activeCompanyId; return; }
+    if (companyLoadedRef.current === activeCompanyId) return;
+    companyLoadedRef.current = activeCompanyId;
+
+    void (async () => {
+      try {
+        const localToken = loadMetaCredentials().accessToken;
+        const dbToken = await fetchMetaTokenFromDB().catch(() => "");
+        if (dbToken && dbToken !== localToken) cacheMetaCredentials({ accessToken: dbToken });
+
+        await loadSupabaseData();
+        const [cats, entries] = await Promise.all([fetchUserCategories(), fetchUserAccountEntries()]);
+        setUserCategories(cats);
+        replaceUserAccountEntries(entries);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Falha ao trocar de empresa.");
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCompanyId]);
 
   const devBypass = process.env.NODE_ENV === "development" && !isSupabaseConfigured;
 
