@@ -4,14 +4,17 @@ import { useEffect, useState } from "react";
 import {
   ShieldCheck, Loader2, Save, Trash2, KeyRound, Users, CheckCircle2,
   AlertCircle, UserPlus, ChevronDown, ChevronRight, Building2, Megaphone, Plus,
+  SlidersHorizontal, History,
 } from "lucide-react";
 import { toast } from "@/hooks/useToast";
 import {
   fetchAdminCompanies, setCompanyToken, fetchCompanyMembers, fetchCompanyToken,
-  inviteMemberByEmail, updateMemberRole, removeMember,
+  inviteMemberByEmail, updateMemberRole, removeMember, switchCompany,
   fetchCompanyAdAccounts, addCompanyAdAccount, toggleCompanyAdAccount, deleteCompanyAdAccount,
   type AdminCompany, type CompanyMember, type CompanyRole, type AdAccountEntry,
 } from "@/hooks/useCompany";
+
+type NavTab = "accounts" | "sync";
 
 const ROLE_LABELS: Record<CompanyRole, string> = {
   owner: "Dono", manager: "Gestor de tráfego", viewer: "Visualização",
@@ -27,7 +30,9 @@ const isEmail = (e: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e);
  * e gerenciar membros de qualquer uma sem trocar de contexto. Visível só para
  * quem é super admin no banco (app_admins, migration 026).
  */
-export function SuperAdminPanel() {
+export function SuperAdminPanel({ onNavigate }: {
+  onNavigate?: (tab: NavTab) => void;
+} = {}) {
   const [rows, setRows] = useState<AdminCompany[] | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
 
@@ -84,6 +89,7 @@ export function SuperAdminPanel() {
               open={openId === row.company.id}
               onToggle={() => setOpenId((id) => (id === row.company.id ? null : row.company.id))}
               onTokenChange={load}
+              onNavigate={onNavigate}
             />
           ))}
         </div>
@@ -92,13 +98,17 @@ export function SuperAdminPanel() {
   );
 }
 
-function CompanyAdminRow({ row, open, onToggle, onTokenChange }: {
+function CompanyAdminRow({ row, open, onToggle, onTokenChange, onNavigate }: {
   row: AdminCompany;
   open: boolean;
   onToggle: () => void;
   onTokenChange: () => void;
+  onNavigate?: (tab: NavTab) => void;
 }) {
   const { company } = row;
+
+  // Atalho: troca pra esta empresa e abre a aba de filtros/histórico.
+  const goto = (tab: NavTab) => { switchCompany(company.id); onNavigate?.(tab); };
   const [hasToken, setHasToken] = useState(row.hasToken);
 
   // ── Token ──
@@ -259,6 +269,22 @@ function CompanyAdminRow({ row, open, onToggle, onTokenChange }: {
 
       {open && (
         <div className="space-y-4 border-t px-4 py-4" style={{ borderColor: "var(--dm-border-default)" }}>
+          {/* Atalhos de personalização (trocam pra esta empresa) */}
+          {onNavigate && (
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => goto("accounts")}
+                className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-semibold transition hover:opacity-80"
+                style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>
+                <SlidersHorizontal size={12} style={{ color: "#6366C8" }} /> Filtros e contas
+              </button>
+              <button type="button" onClick={() => goto("sync")}
+                className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-semibold transition hover:opacity-80"
+                style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>
+                <History size={12} style={{ color: "#6366C8" }} /> Histórico / sincronização
+              </button>
+            </div>
+          )}
+
           {/* Token */}
           <div className="space-y-2">
             <div className="flex items-center gap-1.5 text-[11px] font-bold" style={{ color: "var(--dm-text-secondary)" }}>

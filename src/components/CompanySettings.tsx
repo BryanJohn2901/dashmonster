@@ -45,7 +45,9 @@ function SectionCard({ icon: Icon, title, subtitle, children }: {
   );
 }
 
-export function CompanySettings() {
+export function CompanySettings({ onNavigate }: {
+  onNavigate?: (tab: "accounts" | "sync") => void;
+} = {}) {
   const { company, role, isOwner, loading, migrationMissing, memberships, switchCompany, devMode, isSuperAdmin } = useCompany();
 
   // ── Nome da empresa (derivado: digitação sobrepõe o valor vindo do server) ──
@@ -211,7 +213,7 @@ export function CompanySettings() {
       )}
 
       {/* ── Painel de super admin: gerencia todas as empresas ── */}
-      {isSuperAdmin && <SuperAdminPanel />}
+      {isSuperAdmin && <SuperAdminPanel onNavigate={onNavigate} />}
 
       {/* ── Seletor de empresa (mais de uma, ou DEV vendo todas) ── */}
       {memberships.length > 1 && (

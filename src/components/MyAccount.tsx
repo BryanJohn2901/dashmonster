@@ -429,7 +429,7 @@ export function MyAccount({
         {activeTab === "accounts" && (
           <AccountsHub {...tabAccountsProps} />
         )}
-        {activeTab === "company" && <CompanySettings />}
+        {activeTab === "company" && <CompanySettings onNavigate={(t) => setActiveTab(t)} />}
         {activeTab === "integrations" && (
           <TabIntegrations onSyncNow={() => { void onRefresh?.(); }} />
         )}
