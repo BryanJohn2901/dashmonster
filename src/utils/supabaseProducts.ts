@@ -38,7 +38,9 @@ export async function deleteProductRemote(id: string): Promise<void> {
 
 // ─── Custom tags ──────────────────────────────────────────────────────────────
 
-export type HistoricalKind = "lancamento" | "evento" | "perpetuo" | "instagram";
+// Tipo canônico (inclui kinds custom por empresa). Tags existem para qualquer kind.
+export type { HistoricalKind } from "@/types/historical";
+import type { HistoricalKind } from "@/types/historical";
 
 export async function fetchUserTags(): Promise<Record<HistoricalKind, string[]>> {
   const empty: Record<HistoricalKind, string[]> = {

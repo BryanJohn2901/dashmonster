@@ -1,6 +1,30 @@
 // ─── Discriminator ────────────────────────────────────────────────────────────
 
-export type HistoricalKind = "lancamento" | "evento" | "perpetuo" | "instagram";
+// Os 4 built-in têm formulário próprio. `(string & {})` permite sub-abas custom
+// por empresa (o id da sub-aba vira o kind da linha) mantendo o autocomplete.
+export type HistoricalKind = "lancamento" | "evento" | "perpetuo" | "instagram" | (string & {});
+
+export const BUILTIN_HISTORY_KINDS = ["lancamento", "evento", "perpetuo", "instagram"] as const;
+export type BuiltinHistoryKind = typeof BUILTIN_HISTORY_KINDS[number];
+
+export function isBuiltinHistoryKind(k: string): k is BuiltinHistoryKind {
+  return (BUILTIN_HISTORY_KINDS as readonly string[]).includes(k);
+}
+
+/** Sub-aba custom de uma empresa, guardada em companies.settings. */
+export interface CustomHistoryTab {
+  id: string;     // vira o `kind` da linha (slug curto, ex.: "mentorias")
+  label: string;
+  emoji?: string;
+}
+export const CUSTOM_HISTORY_TABS_KEY = "customHistoryTabs";
+
+export function readCustomHistoryTabs(settings?: Record<string, unknown>): CustomHistoryTab[] {
+  const raw = settings?.[CUSTOM_HISTORY_TABS_KEY];
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((t): t is CustomHistoryTab =>
+    !!t && typeof (t as CustomHistoryTab).id === "string" && typeof (t as CustomHistoryTab).label === "string");
+}
 
 export const HISTORICAL_KIND_LABELS: Record<HistoricalKind, string> = {
   lancamento: "Lançamentos",
@@ -115,11 +139,9 @@ type AllExtras = LancamentoExtras & EventoExtras & PerpetuoExtras & InstagramExt
 
 // ─── Discriminated union ──────────────────────────────────────────────────────
 
-export type HistoricalRow =
-  | (HistoricalRowBase & { kind: "lancamento" } & Partial<AllExtras>)
-  | (HistoricalRowBase & { kind: "evento" } & Partial<AllExtras>)
-  | (HistoricalRowBase & { kind: "perpetuo" } & Partial<AllExtras>)
-  | (HistoricalRowBase & { kind: "instagram" } & Partial<AllExtras>);
+// Intersecção única (extras são todos Partial) — suporta kinds custom além dos
+// 4 built-in sem quebrar a discriminação por `r.kind === "..."`.
+export type HistoricalRow = HistoricalRowBase & Partial<AllExtras>;
 
 // ─── Meta (per-product targets) ───────────────────────────────────────────────
 
