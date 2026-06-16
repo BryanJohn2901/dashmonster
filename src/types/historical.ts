@@ -9,6 +9,22 @@ export const HISTORICAL_KIND_LABELS: Record<HistoricalKind, string> = {
   instagram: "Perfil Instagram",
 };
 
+/** Chave em companies.settings que guarda os rótulos das sub-abas por empresa. */
+export const HISTORY_TAB_LABELS_KEY = "historyTabLabels";
+
+/**
+ * Rótulo da sub-aba do Histórico para uma empresa. Prioriza o override por
+ * empresa (companies.settings.historyTabLabels) sobre o default do template.
+ * O `kind` (slug) fica estável; só o texto exibido muda.
+ */
+export function historyKindLabel(
+  kind: HistoricalKind,
+  labels?: Record<string, string>,
+): string {
+  const override = labels?.[kind];
+  return (typeof override === "string" && override.trim()) ? override.trim() : HISTORICAL_KIND_LABELS[kind];
+}
+
 // ─── Common fields ────────────────────────────────────────────────────────────
 
 interface HistoricalRowBase {

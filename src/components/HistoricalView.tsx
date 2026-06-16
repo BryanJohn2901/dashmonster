@@ -13,7 +13,8 @@ import {
   ArrowUpDown, ArrowUp, ArrowDown, Tag,
 } from "lucide-react";
 import { HistoricoEmpty } from "@/components/empty/HistoricoEmpty";
-import { HISTORICAL_KIND_LABELS, HistoricalKind, HistoricalMeta, HistoricalRow } from "@/types/historical";
+import { HISTORY_TAB_LABELS_KEY, historyKindLabel, HistoricalKind, HistoricalMeta, HistoricalRow } from "@/types/historical";
+import { useCompany } from "@/hooks/useCompany";
 import { parseHistoricalCsvFile } from "@/utils/parseHistoricalCsv";
 import { formatCurrency, formatNumber, formatPercent } from "@/utils/metrics";
 import { isSupabaseConfigured } from "@/lib/supabase";
@@ -302,6 +303,8 @@ interface EntryFormProps {
 }
 
 function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, onClose, onAddTag }: EntryFormProps) {
+  const { company } = useCompany();
+  const histLabels = company?.settings?.[HISTORY_TAB_LABELS_KEY] as Record<string, string> | undefined;
   const [tagDraft, setTagDraft] = useState("");
   const [showTagInput, setShowTagInput] = useState(false);
 
@@ -388,7 +391,7 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
                     className={`flex items-center justify-center gap-2 rounded-lg border-2 px-3 py-2.5 text-xs font-semibold transition ${colors[id]}`}
                   >
                     <Icon size={14} />
-                    {HISTORICAL_KIND_LABELS[id]}
+                    {historyKindLabel(id, histLabels)}
                   </button>
                 );
               })}
@@ -734,6 +737,8 @@ interface HistoricalViewProps {
 }
 
 export function HistoricalView({ selectedKind: propKind, onKindChange }: HistoricalViewProps = {}) {
+  const { company } = useCompany();
+  const histLabels = company?.settings?.[HISTORY_TAB_LABELS_KEY] as Record<string, string> | undefined;
   const [rows,  setRowsState]  = useState<HistoricalRow[]>(loadRows);
   const [metas, setMetasState] = useState<HistoricalMeta[]>(loadMetas);
   const [internalKind, setInternalKind] = useState<HistoricalKind>("lancamento");
@@ -1075,7 +1080,7 @@ export function HistoricalView({ selectedKind: propKind, onKindChange }: Histori
             <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Histórico de Lançamentos</h2>
             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
               {hasData
-                ? `${filtered.length} registro${filtered.length !== 1 ? "s" : ""} em ${HISTORICAL_KIND_LABELS[selectedKind]} · ${kindRows.length} produto${kindRows.length !== 1 ? "s" : ""}`
+                ? `${filtered.length} registro${filtered.length !== 1 ? "s" : ""} em ${historyKindLabel(selectedKind, histLabels)} · ${kindRows.length} produto${kindRows.length !== 1 ? "s" : ""}`
                 : "Nenhum dado ainda. Importe um CSV ou adicione manualmente."}
             </p>
           </div>

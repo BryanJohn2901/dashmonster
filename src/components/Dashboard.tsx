@@ -47,7 +47,8 @@ import { useGoalsStore, type Goals } from "@/hooks/useGoalsStore";
 import { CampaignAnalysis } from "@/components/CampaignAnalysis";
 import { HistoricalView } from "@/components/HistoricalView";
 import { LeadsView } from "@/components/LeadsView";
-import { HISTORICAL_KIND_LABELS, type HistoricalKind } from "@/types/historical";
+import { HISTORY_TAB_LABELS_KEY, historyKindLabel, type HistoricalKind } from "@/types/historical";
+import { useCompany } from "@/hooks/useCompany";
 import { BestCreatives } from "@/components/BestCreatives";
 import { ProfileAnalysis } from "@/components/ProfileAnalysis";
 import { useAdvertiserStore } from "@/hooks/useAdvertiserStore";
@@ -1890,6 +1891,8 @@ export function Dashboard({
   const [mainTab, setMainTab]               = useState<MainTab>("overview");
   const [dashSubTab, setDashSubTab]         = useState<DashSubTab>("overview");
   const [histKind, setHistKind]             = useState<HistoricalKind>("lancamento");
+  const { company: activeCompany }          = useCompany();
+  const histLabels = activeCompany?.settings?.[HISTORY_TAB_LABELS_KEY] as Record<string, string> | undefined;
   const [myAccountTab, setMyAccountTab]     = useState<MyAccountTabId>("profile");
   const {
     dateFrom, dateTo,
@@ -2666,7 +2669,7 @@ export function Dashboard({
             }}
           >
             <Icon size={12} className="flex-shrink-0" />
-            <span className="truncate">{HISTORICAL_KIND_LABELS[id]}</span>
+            <span className="truncate">{historyKindLabel(id, histLabels)}</span>
           </button>
         );
       });

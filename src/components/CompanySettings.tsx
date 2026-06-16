@@ -2,13 +2,16 @@
 
 import { useEffect, useState } from "react";
 import {
-  Building2, Loader2, Save, Trash2, KeyRound, Users, CheckCircle2, AlertCircle, UserPlus, ArrowLeftRight,
+  Building2, Loader2, Save, Trash2, KeyRound, Users, CheckCircle2, AlertCircle, UserPlus, ArrowLeftRight, History,
 } from "lucide-react";
 import { toast } from "@/hooks/useToast";
 import {
   useCompany, fetchCompanyMembers, updateMemberRole, removeMember, renameCompany, inviteMemberByEmail,
-  fetchCompanyToken, type CompanyMember, type CompanyRole,
+  fetchCompanyToken, updateCompanySettings, type CompanyMember, type CompanyRole, type Company,
 } from "@/hooks/useCompany";
+import {
+  HISTORICAL_KIND_LABELS, HISTORY_TAB_LABELS_KEY, type HistoricalKind,
+} from "@/types/historical";
 import { loadMetaCredentials, saveMetaCredentials } from "@/utils/metaApi";
 import { SuperAdminPanel } from "@/components/SuperAdminPanel";
 
@@ -42,6 +45,58 @@ function SectionCard({ icon: Icon, title, subtitle, children }: {
       </div>
       {children}
     </div>
+  );
+}
+
+const HISTORY_KINDS: HistoricalKind[] = ["lancamento", "evento", "perpetuo", "instagram"];
+
+/** Renomear as sub-abas do Histórico por empresa (companies.settings). */
+function HistoryTabsCard({ company }: { company: Company }) {
+  const initial = (company.settings?.[HISTORY_TAB_LABELS_KEY] as Record<string, string> | undefined) ?? {};
+  const [labels, setLabels] = useState<Record<string, string>>(() =>
+    Object.fromEntries(HISTORY_KINDS.map((k) => [k, initial[k] ?? ""])),
+  );
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      // guarda só os renomeados (não-vazios); o slug do kind fica estável
+      const clean: Record<string, string> = {};
+      for (const k of HISTORY_KINDS) {
+        const v = labels[k]?.trim();
+        if (v) clean[k] = v;
+      }
+      await updateCompanySettings(company.id, { ...company.settings, [HISTORY_TAB_LABELS_KEY]: clean });
+      toast.success("Sub-abas do Histórico atualizadas.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao salvar.");
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <SectionCard icon={History} title="Sub-abas do Histórico"
+      subtitle="Renomeie as abas do Histórico para o vocabulário da empresa. Vazio = nome padrão.">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {HISTORY_KINDS.map((k) => (
+          <label key={k} className="flex flex-col gap-1">
+            <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
+              {HISTORICAL_KIND_LABELS[k]}
+            </span>
+            <input value={labels[k]} onChange={(e) => setLabels((p) => ({ ...p, [k]: e.target.value }))}
+              placeholder={HISTORICAL_KIND_LABELS[k]}
+              className="h-10 rounded-xl border px-3 text-[13px] outline-none transition focus:ring-1"
+              style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }} />
+          </label>
+        ))}
+      </div>
+      <button type="button" onClick={() => void handleSave()} disabled={saving}
+        className="flex h-11 w-full items-center justify-center gap-1.5 rounded-xl text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-40"
+        style={{ background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)" }}>
+        {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+        Salvar sub-abas
+      </button>
+    </SectionCard>
   );
 }
 
@@ -297,6 +352,9 @@ export function CompanySettings({ onNavigate }: {
           </div>
         )}
       </SectionCard>
+
+      {/* ── Sub-abas do Histórico (renomear por empresa) ── */}
+      {isOwner && <HistoryTabsCard company={company} />}
 
       {/* ── Membros ── */}
       <SectionCard icon={Users} title={`Membros (${members.length})`}
