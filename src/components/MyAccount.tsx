@@ -10,7 +10,7 @@ import {
   type TabAccountsProps,
 } from "@/components/ControlPanel";
 import { AccountsHub } from "@/components/CampaignCenter";
-import { CompanySettings } from "@/components/CompanySettings";
+import { CompanyStudio } from "@/components/CompanyStudio";
 import type { UserCategory, UserAccountEntry } from "@/types/userConfig";
 import type { MetaSyncResult } from "@/utils/supabaseCampaigns";
 
@@ -429,7 +429,7 @@ export function MyAccount({
         {activeTab === "accounts" && (
           <AccountsHub {...tabAccountsProps} />
         )}
-        {activeTab === "company" && <CompanySettings onNavigate={(t) => setActiveTab(t)} />}
+        {activeTab === "company" && <CompanyStudio categories={categories} onNavigate={(t) => setActiveTab(t)} />}
         {activeTab === "integrations" && (
           <TabIntegrations onSyncNow={() => { void onRefresh?.(); }} />
         )}
