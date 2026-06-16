@@ -152,12 +152,12 @@ function SubTabBar({
   tabs: { id: SubTab; label: string; count?: number; icon: React.ElementType }[];
 }) {
   return (
-    <div className="flex gap-1 border-b" style={{ borderColor: "var(--dm-border-default)" }}>
+    <div className="flex gap-1 overflow-x-auto border-b [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" style={{ borderColor: "var(--dm-border-default)" }}>
       {tabs.map(({ id, label, count, icon: Icon }) => (
         <button
           key={id}
           onClick={() => onChange(id)}
-          className={`flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-xs font-semibold transition ${
+          className={`flex flex-shrink-0 items-center gap-1.5 border-b-2 px-3 py-2.5 text-xs font-semibold transition ${
             active === id
               ? "border-blue-500"
               : "border-transparent"
@@ -319,7 +319,7 @@ function CategoryRoadmap({ category }: { category: ProductCategory }) {
   if (!rm) return null;
 
   return (
-    <article className="rounded-xl border shadow-sm" style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
+    <article className="rounded-2xl border transition-shadow hover:shadow-md" style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
       <button
         onClick={() => setOpen((o) => !o)}
         className="flex w-full items-center justify-between px-4 py-3 text-left"
@@ -399,7 +399,7 @@ function TabOverview({ campaigns, selectedCategory }: { campaigns: AggregatedCam
         ].map(({ label, value, color, bg }) => (
           <div
             key={label}
-            className="rounded-[16px] border p-4"
+            className="rounded-2xl border p-4 transition-shadow hover:shadow-md"
             style={{ background: bg, borderColor: `${color}30` }}
           >
             <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color }}>{label}</p>

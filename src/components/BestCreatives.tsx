@@ -577,7 +577,7 @@ function CreativeCard({
 
   return (
     <div
-      className="group relative flex flex-col overflow-hidden rounded-xl border transition-all hover:shadow-lg hover:-translate-y-0.5"
+      className="group relative flex flex-col overflow-hidden rounded-2xl border transition-all hover:shadow-lg hover:-translate-y-0.5"
       style={{
         borderColor: starred ? "rgba(245,158,11,0.6)" : "var(--dm-border-default)",
         backgroundColor: "var(--dm-bg-surface)",
