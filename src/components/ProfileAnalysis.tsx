@@ -279,6 +279,22 @@ function autoDetectResultType(data: MetaInsight[]): ResultType | undefined {
   return undefined;
 }
 
+/**
+ * Resultado de UMA linha (campanha/conjunto) pelo seu próprio tipo dominante.
+ * Usado quando não há resultType uniforme: a Visão Geral soma o resultado real
+ * de cada campanha em vez de aplicar um único tipo a todas (que zerava as de
+ * tipo diferente do dominante). `follow` soma follow + page_fan_adds.
+ */
+function detectRowResultValue(d: MetaInsight): number {
+  for (const type of AUTO_DETECT_PRIORITY) {
+    const v = type === "follow"
+      ? getActionValue(d.actions, "follow") + getActionValue(d.actions, "page_fan_adds")
+      : getActionValue(d.actions, type);
+    if (v > 0) return v;
+  }
+  return 0;
+}
+
 function pickActionValue(avs: MetaInsight["action_values"], ...types: string[]): number {
   if (!avs) return 0;
   for (const t of types) {
@@ -326,6 +342,9 @@ function toAdsetRows(data: MetaInsight[], resultType?: string): AdsetRow[] {
         : resultType === "follow"
           ? getActionValue(d.actions, "follow") + getActionValue(d.actions, "page_fan_adds")
           : getActionValue(d.actions, resultType);
+    } else {
+      // sem tipo uniforme: cada linha conta o próprio resultado dominante
+      cur.customResult += detectRowResultValue(d);
     }
     map.set(key ?? "", cur);
   });
@@ -377,6 +396,8 @@ function toDailyRows(data: MetaInsight[], resultType?: string): DailyRow[] {
         : resultType === "follow"
           ? getActionValue(d.actions, "follow") + getActionValue(d.actions, "page_fan_adds")
           : getActionValue(d.actions, resultType);
+    } else {
+      cur.customResult += detectRowResultValue(d);
     }
     map.set(date, cur);
   });
@@ -1342,7 +1363,9 @@ function ProfileOverviewPanel({
       .then((data) => {
         const effective = dominantResultType ?? autoDetectResultType(data);
         setDetectedResultType(effective ?? null);
-        setRows(toAdsetRows(data, effective));
+        // dominantResultType (config manual uniforme) manda; senão undefined →
+        // toAdsetRows soma o resultado real de cada campanha (corrige a Visão Geral).
+        setRows(toAdsetRows(data, dominantResultType));
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Erro ao buscar dados."))
       .finally(() => setLoading(false));
@@ -1469,7 +1492,7 @@ function ProfileOverviewPanel({
           }).then((data) => {
               const effective = dominantResultType ?? autoDetectResultType(data);
               setDetectedResultType(effective ?? null);
-              setRows(toAdsetRows(data, effective));
+              setRows(toAdsetRows(data, dominantResultType));
             })
             .catch((e) => setError(e instanceof Error ? e.message : "Erro ao buscar dados."))
             .finally(() => setLoading(false));
