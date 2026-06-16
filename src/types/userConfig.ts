@@ -38,4 +38,6 @@ export const FIXED_CATEGORIES: ReadonlyArray<{
   { slug: "eventos",  name: "Eventos",       emoji: "🎫", defaultPosition: 4 },
 ];
 
-export const MAX_CUSTOM_CATEGORIES = 3;
+// Filtros personalizados por empresa, além dos 5 padrão. Folga para empresas
+// com taxonomias diferentes da PTA (cada empresa monta os seus).
+export const MAX_CUSTOM_CATEGORIES = 10;
