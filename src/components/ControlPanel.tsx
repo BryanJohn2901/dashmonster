@@ -1114,10 +1114,11 @@ function EntryRow({ entry, categorySlug, onDeleted, onToggled, onUpdated }: Entr
         {/* Toggle */}
         <button type="button" onClick={() => void handleToggle()} disabled={toggling}
           title={entry.isEnabled ? "Desativar" : "Ativar"}
-          className="flex-shrink-0 transition disabled:opacity-50">
+          aria-label={`${entry.isEnabled ? "Desativar" : "Ativar"} ${entry.label}`} aria-pressed={entry.isEnabled}
+          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors hover:bg-black/5 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6366C8] disabled:opacity-50 dark:hover:bg-white/10">
           {entry.isEnabled
-            ? <Eye size={13} className="text-emerald-500" />
-            : <EyeOff size={13} style={{ color: "var(--dm-text-tertiary)" }} />}
+            ? <Eye size={14} className="text-emerald-500" />
+            : <EyeOff size={14} style={{ color: "var(--dm-text-tertiary)" }} />}
         </button>
 
         {/* Info */}
@@ -1137,8 +1138,9 @@ function EntryRow({ entry, categorySlug, onDeleted, onToggled, onUpdated }: Entr
 
         {/* Campaign count badge */}
         {campCount > 0 && (
-          <button type="button" onClick={() => setExpanded(v => !v)}
-            className="flex flex-shrink-0 items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold transition"
+          <button type="button" onClick={() => setExpanded(v => !v)} aria-expanded={expanded}
+            aria-label={`${selCount} de ${campCount} campanhas — ${expanded ? "recolher" : "expandir"}`}
+            className="flex flex-shrink-0 items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold tabular-nums transition-all hover:opacity-80 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6366C8]"
             style={{ backgroundColor: "var(--dm-bg-surface)", color: "var(--dm-brand-500)",
               border: "1px solid var(--dm-brand-200)" }}>
             <Link2 size={8} />
@@ -1150,18 +1152,19 @@ function EntryRow({ entry, categorySlug, onDeleted, onToggled, onUpdated }: Entr
         {/* Editar intenção e metas */}
         {campCount > 0 && (
           <button type="button" onClick={() => setEditGoalsOpen(true)}
-            title="Editar intenção, orçamento e metas das campanhas"
-            className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded transition hover:bg-indigo-100 dark:hover:bg-indigo-900/30"
+            title="Editar intenção, orçamento e metas das campanhas" aria-label={`Editar intenção e metas de ${entry.label}`}
+            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors hover:bg-indigo-100 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6366C8] dark:hover:bg-indigo-900/30"
             style={{ color: "var(--dm-brand-500)" }}>
-            <Pencil size={11} />
+            <Pencil size={12} />
           </button>
         )}
 
         {/* Delete */}
         <button type="button" onClick={() => void handleDelete()} disabled={deleting}
-          className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded transition hover:bg-red-100 hover:text-red-500 dark:hover:bg-red-900/30 dark:hover:text-red-400 disabled:opacity-40"
+          title="Remover conta" aria-label={`Remover conta ${entry.label}`}
+          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors hover:bg-red-100 hover:text-red-500 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 disabled:opacity-40 dark:hover:bg-red-900/30 dark:hover:text-red-400"
           style={{ color: "var(--dm-text-tertiary)" }}>
-          {deleting ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />}
+          {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
         </button>
       </div>
 
@@ -1403,10 +1406,10 @@ function CategorySection({
             </div>
 
             {/* Renomear filtro (por empresa) */}
-            <button type="button" onClick={openEdit} title="Renomear filtro"
-              className="flex h-6 w-6 items-center justify-center rounded transition hover:bg-black/5"
+            <button type="button" onClick={openEdit} title="Renomear filtro" aria-label={`Renomear filtro ${displayName}`}
+              className="flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-black/5 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6366C8] dark:hover:bg-white/10"
               style={{ color: "var(--dm-text-tertiary)" }}>
-              <Pencil size={12} />
+              <Pencil size={13} />
             </button>
           </>
         )}
@@ -1415,7 +1418,8 @@ function CategorySection({
         {!editing && (
           <button type="button" onClick={() => void handleToggle()} disabled={toggling}
             title={isEnabled ? "Desativar categoria" : "Ativar categoria"}
-            className={`flex h-6 items-center gap-1 rounded-full px-2 text-[10px] font-bold transition disabled:opacity-50 ${
+            aria-label={`${isEnabled ? "Desativar" : "Ativar"} filtro ${displayName}`} aria-pressed={isEnabled}
+            className={`flex h-6 items-center gap-1 rounded-full px-2 text-[10px] font-bold transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6366C8] disabled:opacity-50 ${
               isEnabled
                 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
                 : "bg-slate-100 text-slate-400 dark:bg-slate-700 dark:text-slate-500"
@@ -1430,9 +1434,10 @@ function CategorySection({
         {/* Delete (custom categories only) */}
         {!editing && isCustom && onDeleteCategory && (
           <button type="button" onClick={() => onDeleteCategory(slug)}
-            className="flex h-6 w-6 items-center justify-center rounded transition hover:bg-red-100 hover:text-red-500 dark:hover:bg-red-900/30 dark:hover:text-red-400"
+            title="Remover filtro" aria-label={`Remover filtro ${displayName}`}
+            className="flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-red-100 hover:text-red-500 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 dark:hover:bg-red-900/30 dark:hover:text-red-400"
             style={{ color: "var(--dm-text-tertiary)" }}>
-            <Trash2 size={12} />
+            <Trash2 size={13} />
           </button>
         )}
       </div>
@@ -1468,9 +1473,10 @@ function CategorySection({
         <div className="px-3 pb-3" style={{ paddingTop: entries.length > 0 ? 0 : "0.75rem" }}>
           <button type="button"
             onClick={() => void ensureRecord().then(() => setShowAdd(true))}
-            className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed py-2 text-[11px] font-semibold transition hover:opacity-80"
+            aria-label={`Adicionar conta em ${displayName}`}
+            className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed py-2.5 text-[11px] font-semibold transition-all hover:border-[#6366C8] hover:text-[#6366C8] active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6366C8]"
             style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>
-            <Plus size={12} /> Adicionar conta
+            <Plus size={13} /> Adicionar conta
           </button>
         </div>
       )}

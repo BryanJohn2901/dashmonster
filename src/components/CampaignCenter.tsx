@@ -946,7 +946,7 @@ function StatCard({ icon: Icon, label, value, accent }: {
   icon: typeof Wallet; label: string; value: string; accent: string;
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-[18px] border p-4 shadow-horizon"
+    <div className="flex items-center gap-3 rounded-[18px] border p-4 shadow-horizon transition-shadow hover:shadow-md"
       style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
       <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full"
         style={{ backgroundColor: accent + "1a" }}>
