@@ -3463,35 +3463,8 @@ export function Dashboard({
 
                 {/* ── KPI 3-Tier layout ── */}
                 {(() => {
-                  /* Tier 1 — Financeiro */
+                  /* Tier 1 — Financeiro (Investido/Receita/ROAS agora no Bento do topo) */
                   const tier1 = [
-                    isMetricVisible("investment") && (
-                      <KpiCard key="investment" tier={1}
-                        title="Total Investido" value={formatCurrency(totals.totalInvestment)}
-                        subtitle={`CTR médio: ${formatPercent(totals.ctr)}`}
-                        icon={Wallet} accentColor="red" invertTrend
-                        goalValue={goals.investment} goalLabel={goals.investment != null ? formatCurrency(goals.investment) : undefined}
-                        goalPct={goals.investment != null ? (totals.totalInvestment / goals.investment) * 100 : null}
-                        goalInvert
-                      />
-                    ),
-                    isMetricVisible("revenue") && (
-                      <KpiCard key="revenue" tier={1}
-                        title="Receita Total" value={formatCurrency(totals.totalRevenue)}
-                        subtitle={`ROAS: ${totals.roas.toFixed(2)}x`}
-                        icon={CircleDollarSign} accentColor="green"
-                        goalValue={goals.revenue} goalLabel={goals.revenue != null ? formatCurrency(goals.revenue) : undefined}
-                        goalPct={goals.revenue != null ? (totals.totalRevenue / goals.revenue) * 100 : null}
-                      />
-                    ),
-                    isMetricVisible("roas") && (
-                      <KpiCard key="roas" tier={1}
-                        title="ROAS" value={`${totals.roas.toFixed(2)}x`}
-                        icon={TrendingUp} accentColor="primary"
-                        goalValue={goals.roas} goalLabel={goals.roas != null ? `${goals.roas.toFixed(1)}x` : undefined}
-                        goalPct={goals.roas != null ? (totals.roas / goals.roas) * 100 : null}
-                      />
-                    ),
                     isMetricVisible("sales_total") && (
                       <KpiCard key="sales_total" tier={1}
                         title="Vendas Total" value={formatNumber(eduzzTotals.salesTotal)}

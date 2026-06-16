@@ -156,8 +156,8 @@ export function OverviewBento({ totals, campaigns, conversions }: {
   ];
 
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-      <div className="lg:row-span-2">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
+      <div className="sm:col-span-2 lg:col-span-1 lg:row-span-2">
         <FunnelTile stages={stages} />
       </div>
       <MetricTile icon={Wallet} label="Investido" color="#6366C8" data={series.investment}
