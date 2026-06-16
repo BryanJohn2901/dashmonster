@@ -35,6 +35,7 @@ import {
 } from "@/utils/instagramApi";
 import type { MetaSyncResult } from "@/utils/supabaseCampaigns";
 import { useAdvertiserStore } from "@/hooks/useAdvertiserStore";
+import { useCompany, readAdAccountSuggestions } from "@/hooks/useCompany";
 import {
   useCampaignCenter, detectIntent, INTENT_META, INTENT_OPTIONS,
   type CampaignIntent,
@@ -108,6 +109,7 @@ function AddEntryForm({
   const [goalsMap, setGoalsMap] = useState<Record<string, Record<string, number>>>({});
   const [campSearch, setCampSearch] = useState("");
   const { upsertEntries: upsertCenterEntries } = useCampaignCenter();
+  const { company } = useCompany();
   const [saving, setSaving] = useState(false);
   const [metaAccounts, setMetaAccounts] = useState<MetaAdAccount[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
@@ -136,17 +138,28 @@ function AddEntryForm({
   const filterReady = !needsInternalFilter || Boolean(internalFilter.trim() || filterQuery.trim());
   const canContinueAfterFilters = accountReady && filterReady;
 
+  // Contas registradas na empresa (companies.settings) — sugestão com ★ e nome
+  // certo, mesclada às contas do token. Aparecem mesmo se o token não as lista.
+  const registeredAccts = useMemo(() => readAdAccountSuggestions(company?.settings), [company?.settings]);
+
   const accountSuggestions = useMemo(() => {
     const q = accountId.trim().toLowerCase();
-    const base = q
+    const norm = (id: string) => id.replace(/^act_/, "");
+    const reg = registeredAccts
+      .map((r) => ({ id: `act_${norm(r.id)}`, name: r.label || `act_${norm(r.id)}`, suggested: true }))
+      .filter((acc) => !q || acc.id.toLowerCase().includes(q) || acc.name.toLowerCase().includes(q));
+    const regIds = new Set(reg.map((r) => norm(r.id)));
+    const fromToken = (q
       ? metaAccounts.filter((acc) =>
           acc.id.toLowerCase().includes(q) ||
           acc.name.toLowerCase().includes(q) ||
           acc.currency.toLowerCase().includes(q),
         )
-      : metaAccounts;
-    return base.slice(0, 8);
-  }, [accountId, metaAccounts]);
+      : metaAccounts)
+      .filter((acc) => !regIds.has(norm(acc.id)))
+      .map((acc) => ({ id: acc.id, name: acc.name, suggested: false }));
+    return [...reg, ...fromToken].slice(0, 8);
+  }, [accountId, metaAccounts, registeredAccts]);
 
   const filterSuggestions = useMemo(() => {
     const q = filterQuery.trim().toLowerCase();
@@ -478,12 +491,14 @@ function AddEntryForm({
                       onMouseDown={(e) => { e.preventDefault(); handlePickAccount(acc.id); }}
                       className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition hover:bg-black/5 dark:hover:bg-white/5"
                     >
-                      <span className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${acc.account_status === 1 ? "bg-emerald-500" : "bg-amber-400"}`} />
+                      {acc.suggested
+                        ? <span className="flex-shrink-0 text-[12px] leading-none" style={{ color: "#6366C8" }}>★</span>
+                        : <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-slate-300 dark:bg-slate-600" />}
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-[11px] font-semibold" style={{ color: "var(--dm-text-primary)" }}>{acc.name}</span>
                         <span className="block truncate font-mono text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>{acc.id}</span>
                       </span>
-                      <span className="text-[9px] font-semibold" style={{ color: "var(--dm-text-tertiary)" }}>{acc.currency}</span>
+                      {acc.suggested && <span className="flex-shrink-0 text-[9px] font-bold" style={{ color: "#6366C8" }}>registrada</span>}
                     </button>
                   ))}
                 </div>
