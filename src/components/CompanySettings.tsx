@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import {
-  Building2, Loader2, Save, Trash2, KeyRound, Users, CheckCircle2, AlertCircle, UserPlus, ArrowLeftRight, History,
+  Building2, Loader2, Save, Trash2, KeyRound, Users, CheckCircle2, AlertCircle, UserPlus, ArrowLeftRight, History, Plus,
 } from "lucide-react";
 import { toast } from "@/hooks/useToast";
 import {
@@ -10,7 +10,8 @@ import {
   fetchCompanyToken, updateCompanySettings, type CompanyMember, type CompanyRole, type Company,
 } from "@/hooks/useCompany";
 import {
-  HISTORICAL_KIND_LABELS, HISTORY_TAB_LABELS_KEY, type HistoricalKind,
+  HISTORICAL_KIND_LABELS, HISTORY_TAB_LABELS_KEY, CUSTOM_HISTORY_TABS_KEY,
+  readCustomHistoryTabs, type CustomHistoryTab, type HistoricalKind,
 } from "@/types/historical";
 import { loadMetaCredentials, saveMetaCredentials } from "@/utils/metaApi";
 import { SuperAdminPanel } from "@/components/SuperAdminPanel";
@@ -49,25 +50,43 @@ function SectionCard({ icon: Icon, title, subtitle, children }: {
 }
 
 const HISTORY_KINDS: HistoricalKind[] = ["lancamento", "evento", "perpetuo", "instagram"];
+const MAX_HISTORY_TABS = 7; // 4 built-in + até 3 custom
 
-/** Renomear as sub-abas do Histórico por empresa (companies.settings). */
+/** Renomear + adicionar sub-abas do Histórico por empresa (companies.settings). */
 function HistoryTabsCard({ company }: { company: Company }) {
-  const initial = (company.settings?.[HISTORY_TAB_LABELS_KEY] as Record<string, string> | undefined) ?? {};
+  const initialLabels = (company.settings?.[HISTORY_TAB_LABELS_KEY] as Record<string, string> | undefined) ?? {};
   const [labels, setLabels] = useState<Record<string, string>>(() =>
-    Object.fromEntries(HISTORY_KINDS.map((k) => [k, initial[k] ?? ""])),
+    Object.fromEntries(HISTORY_KINDS.map((k) => [k, initialLabels[k] ?? ""])),
   );
+  const [customTabs, setCustomTabs] = useState<CustomHistoryTab[]>(() => readCustomHistoryTabs(company.settings));
+  const [newLabel, setNewLabel] = useState("");
+  const [newEmoji, setNewEmoji] = useState("🏷️");
   const [saving, setSaving] = useState(false);
+
+  const totalTabs = HISTORY_KINDS.length + customTabs.length;
+  const canAdd = totalTabs < MAX_HISTORY_TABS;
+
+  const addCustom = () => {
+    const label = newLabel.trim();
+    if (!label || !canAdd) return;
+    setCustomTabs((prev) => [...prev, { id: `ct_${Date.now().toString(36)}`, label, emoji: newEmoji || undefined }]);
+    setNewLabel(""); setNewEmoji("🏷️");
+  };
+  const removeCustom = (id: string) => setCustomTabs((prev) => prev.filter((t) => t.id !== id));
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      // guarda só os renomeados (não-vazios); o slug do kind fica estável
-      const clean: Record<string, string> = {};
+      const cleanLabels: Record<string, string> = {};
       for (const k of HISTORY_KINDS) {
         const v = labels[k]?.trim();
-        if (v) clean[k] = v;
+        if (v) cleanLabels[k] = v;
       }
-      await updateCompanySettings(company.id, { ...company.settings, [HISTORY_TAB_LABELS_KEY]: clean });
+      await updateCompanySettings(company.id, {
+        ...company.settings,
+        [HISTORY_TAB_LABELS_KEY]: cleanLabels,
+        [CUSTOM_HISTORY_TABS_KEY]: customTabs,
+      });
       toast.success("Sub-abas do Histórico atualizadas.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro ao salvar.");
@@ -76,7 +95,8 @@ function HistoryTabsCard({ company }: { company: Company }) {
 
   return (
     <SectionCard icon={History} title="Sub-abas do Histórico"
-      subtitle="Renomeie as abas do Histórico para o vocabulário da empresa. Vazio = nome padrão.">
+      subtitle={`Renomeie as abas padrão e crie as suas (até ${MAX_HISTORY_TABS}). Vazio = nome padrão.`}>
+      {/* Renomear as 4 padrão */}
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {HISTORY_KINDS.map((k) => (
           <label key={k} className="flex flex-col gap-1">
@@ -90,6 +110,49 @@ function HistoryTabsCard({ company }: { company: Company }) {
           </label>
         ))}
       </div>
+
+      {/* Sub-abas personalizadas */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
+            Sub-abas personalizadas
+          </span>
+          <span className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>{totalTabs}/{MAX_HISTORY_TABS}</span>
+        </div>
+
+        {customTabs.map((t) => (
+          <div key={t.id} className="flex items-center gap-2 rounded-lg border px-3 py-2"
+            style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)" }}>
+            <span className="text-base leading-none">{t.emoji || "🏷️"}</span>
+            <span className="min-w-0 flex-1 truncate text-[13px] font-semibold" style={{ color: "var(--dm-text-primary)" }}>{t.label}</span>
+            <span className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>comporta-se como Lançamento</span>
+            <button type="button" onClick={() => removeCustom(t.id)}
+              className="flex-shrink-0 rounded p-1 transition hover:bg-red-100 hover:text-red-500 dark:hover:bg-red-900/30"
+              style={{ color: "var(--dm-text-tertiary)" }}>
+              <Trash2 size={12} />
+            </button>
+          </div>
+        ))}
+
+        {canAdd && (
+          <div className="flex gap-2">
+            <input value={newEmoji} onChange={(e) => setNewEmoji(e.target.value)} maxLength={2}
+              className="h-10 w-12 rounded-xl border text-center text-base outline-none"
+              style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)" }} />
+            <input value={newLabel} onChange={(e) => setNewLabel(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") addCustom(); }}
+              placeholder="Nova sub-aba (ex: Mentorias)"
+              className="h-10 flex-1 rounded-xl border px-3 text-[13px] outline-none transition focus:ring-1"
+              style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }} />
+            <button type="button" onClick={addCustom} disabled={!newLabel.trim()}
+              className="flex h-10 items-center gap-1 rounded-xl px-3 text-xs font-bold transition hover:opacity-80 disabled:opacity-40"
+              style={{ border: "1px solid var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>
+              <Plus size={13} /> Add
+            </button>
+          </div>
+        )}
+      </div>
+
       <button type="button" onClick={() => void handleSave()} disabled={saving}
         className="flex h-11 w-full items-center justify-center gap-1.5 rounded-xl text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-40"
         style={{ background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)" }}>

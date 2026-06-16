@@ -13,8 +13,15 @@ import {
   ArrowUpDown, ArrowUp, ArrowDown, Tag,
 } from "lucide-react";
 import { HistoricoEmpty } from "@/components/empty/HistoricoEmpty";
-import { HISTORY_TAB_LABELS_KEY, historyKindLabel, HistoricalKind, HistoricalMeta, HistoricalRow } from "@/types/historical";
+import {
+  HISTORY_TAB_LABELS_KEY, historyKindLabel, isBuiltinHistoryKind, readCustomHistoryTabs,
+  type CustomHistoryTab, type HistoricalKind, type HistoricalMeta, type HistoricalRow,
+} from "@/types/historical";
 import { useCompany } from "@/hooks/useCompany";
+
+// Sub-aba custom se comporta como "Lançamento" (form/stats/headers genéricos).
+// Só built-in tem shape próprio; o filtro de linhas usa o kind real (não este).
+const baseKind = (k: HistoricalKind): HistoricalKind => isBuiltinHistoryKind(k) ? k : "lancamento";
 import { parseHistoricalCsvFile } from "@/utils/parseHistoricalCsv";
 import { formatCurrency, formatNumber, formatPercent } from "@/utils/metrics";
 import { isSupabaseConfigured } from "@/lib/supabase";
@@ -260,10 +267,10 @@ const rowToForm = (r: HistoricalRow): FormState => {
     ingressosVendidos: str("ingressosVendidos"),
     faturamentoIngresso: money(num("faturamentoIngresso")),
     // Retrocompat: se vendasPos não existe, usa sales; se faturamentoPos não existe, usa revenue
-    vendasPos: str("vendasPos") || (r.kind === "lancamento" && r.sales > 0 ? String(r.sales) : ""),
+    vendasPos: str("vendasPos") || (baseKind(r.kind) === "lancamento" && r.sales > 0 ? String(r.sales) : ""),
     faturamentoPos: num("faturamentoPos") > 0
       ? money(num("faturamentoPos"))
-      : (r.kind === "lancamento" && num("faturamentoIngresso") === 0 && r.revenue > 0 ? money(r.revenue) : ""),
+      : (baseKind(r.kind) === "lancamento" && num("faturamentoIngresso") === 0 && r.revenue > 0 ? money(r.revenue) : ""),
     // Perpetuo
     leads: str("leads"),
     mrr:   money(num("mrr")),
@@ -271,7 +278,7 @@ const rowToForm = (r: HistoricalRow): FormState => {
     // Instagram
     followersGained: str("newFollowers"),
     followersLost: "",
-    profileVisits: r.kind === "instagram" ? String(r.reach) : "",
+    profileVisits: baseKind(r.kind) === "instagram" ? String(r.reach) : "",
     impressionsCount: str("accountsReached"),
     likes: str("likes"),
     comments: str("comments"),
@@ -305,6 +312,8 @@ interface EntryFormProps {
 function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, onClose, onAddTag }: EntryFormProps) {
   const { company } = useCompany();
   const histLabels = company?.settings?.[HISTORY_TAB_LABELS_KEY] as Record<string, string> | undefined;
+  const customTabs = readCustomHistoryTabs(company?.settings);
+  const fk = baseKind(form.kind); // shape do formulário (built-in ou genérico)
   const [tagDraft, setTagDraft] = useState("");
   const [showTagInput, setShowTagInput] = useState(false);
 
@@ -315,7 +324,7 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
   const blurMoney = (key: keyof FormState) => () =>
     onChange({ ...form, [key]: formatMoneyInput(form[key] as string) });
 
-  const allTags = [...PREDEFINED_TAGS[form.kind], ...customTags];
+  const allTags = [...(PREDEFINED_TAGS[form.kind] ?? []), ...customTags];
   const canAddTag = customTags.length < MAX_CUSTOM_TAGS;
 
   function handleAddTag() {
@@ -375,23 +384,29 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
           <div className="px-4 py-4 sm:px-6">
             <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Tipo de dado</p>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {HISTORY_TABS.map(({ id, icon: Icon }) => {
+              {[
+                ...HISTORY_TABS.map((t) => ({ id: t.id as HistoricalKind, Icon: t.icon, label: historyKindLabel(t.id, histLabels), custom: false })),
+                ...customTabs.map((t) => ({ id: t.id as HistoricalKind, Icon: Tag, label: t.label, custom: true })),
+              ].map(({ id, Icon, label, custom }) => {
                 const active = form.kind === id;
-                const colors: Record<HistoricalKind, string> = {
+                const builtinColors: Record<string, string> = {
                   lancamento: active ? "border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" : "border-slate-200 text-slate-600 hover:border-blue-300 dark:border-slate-600 dark:text-slate-400",
                   evento:     active ? "border-rose-500 bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300" : "border-slate-200 text-slate-600 hover:border-rose-300 dark:border-slate-600 dark:text-slate-400",
                   perpetuo:   active ? "border-amber-500 bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" : "border-slate-200 text-slate-600 hover:border-amber-300 dark:border-slate-600 dark:text-slate-400",
                   instagram:  active ? "border-violet-500 bg-violet-50 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300" : "border-slate-200 text-slate-600 hover:border-violet-300 dark:border-slate-600 dark:text-slate-400",
                 };
+                const customColor = active
+                  ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300"
+                  : "border-slate-200 text-slate-600 hover:border-indigo-300 dark:border-slate-600 dark:text-slate-400";
                 return (
                   <button
                     key={id}
                     type="button"
                     onClick={() => onChange({ ...form, kind: id, tag: "" })}
-                    className={`flex items-center justify-center gap-2 rounded-lg border-2 px-3 py-2.5 text-xs font-semibold transition ${colors[id]}`}
+                    className={`flex items-center justify-center gap-2 rounded-lg border-2 px-3 py-2.5 text-xs font-semibold transition ${custom ? customColor : builtinColors[id]}`}
                   >
                     <Icon size={14} />
-                    {historyKindLabel(id, histLabels)}
+                    {label}
                   </button>
                 );
               })}
@@ -410,7 +425,7 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
                 Turma / Edição
                 <input value={form.turma} onChange={set("turma")} placeholder="Ex: 3" className={fieldCls} />
               </label>
-              {form.kind === "lancamento" && (
+              {fk === "lancamento" && (
                 <label className={`${labelCls} sm:col-span-3`}>
                   Nome da Imersão <span className="font-normal text-slate-400">(opcional)</span>
                   <input value={form.imersao} onChange={set("imersao")} placeholder="Ex: Pré-Especialização em Treinamento Feminino" className={fieldCls} />
@@ -483,7 +498,7 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
           ) : null}
 
           {/* ── Kind-contextual fields ── */}
-          {form.kind === "instagram" ? (
+          {fk === "instagram" ? (
             /* Instagram: followers & engagement */
             <div className="px-4 py-5 sm:px-6">
               <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Dados do Perfil</p>
@@ -515,7 +530,7 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
                 </div>
               </div>
             </div>
-          ) : form.kind === "perpetuo" ? (
+          ) : fk === "perpetuo" ? (
             /* Perpétuo: continuous product funnel */
             <div className="px-4 py-5 sm:px-6">
               <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Métricas do Mês</p>
@@ -548,7 +563,7 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
                 </div>
               </div>
             </div>
-          ) : form.kind === "lancamento" ? (
+          ) : fk === "lancamento" ? (
             /* Lançamento: funil + breakdown imersão / pós */
             <div className="px-4 py-5 sm:px-6 space-y-4">
               {/* Funil de tráfego */}
@@ -743,6 +758,7 @@ export function HistoricalView({ selectedKind: propKind, onKindChange }: Histori
   const [metas, setMetasState] = useState<HistoricalMeta[]>(loadMetas);
   const [internalKind, setInternalKind] = useState<HistoricalKind>("lancamento");
   const selectedKind = propKind ?? internalKind;
+  const viewKind = baseKind(selectedKind); // shape de stats/headers/tabela (custom → lancamento)
   const setSelectedKind = (kind: HistoricalKind) => {
     setInternalKind(kind);
     onKindChange?.(kind);
@@ -828,7 +844,7 @@ export function HistoricalView({ selectedKind: propKind, onKindChange }: Histori
   const availableTags = useMemo(() => {
     const matches = (r: HistoricalRow, tag: string) =>
       r.tag === tag || r.product.toLowerCase().includes(tag.toLowerCase());
-    const predefined = PREDEFINED_TAGS[selectedKind].filter((tag) =>
+    const predefined = (PREDEFINED_TAGS[selectedKind] ?? []).filter((tag) =>
       kindRows.some((r) => matches(r, tag)),
     );
     const custom = (customTags[selectedKind] ?? []).filter((tag) =>
@@ -985,7 +1001,7 @@ export function HistoricalView({ selectedKind: propKind, onKindChange }: Histori
   const funnel = useMemo(() => {
     if (filtered.length === 0) return [];
 
-    if (selectedKind === "instagram") {
+    if (viewKind === "instagram") {
       const gained  = filtered.reduce((s, r) => s + ((r as { newFollowers?: number }).newFollowers ?? 0), 0);
       const visits  = filtered.reduce((s, r) => s + r.reach, 0);
       const clicks  = filtered.reduce((s, r) => s + r.clicks, 0);
@@ -998,7 +1014,7 @@ export function HistoricalView({ selectedKind: propKind, onKindChange }: Histori
       ];
     }
 
-    if (selectedKind === "perpetuo") {
+    if (viewKind === "perpetuo") {
       const reach  = filtered.reduce((s, r) => s + r.reach, 0);
       const clicks = filtered.reduce((s, r) => s + r.clicks, 0);
       const leads  = filtered.reduce((s, r) => s + ((r as { leads?: number }).leads ?? 0), 0);
@@ -1017,7 +1033,7 @@ export function HistoricalView({ selectedKind: propKind, onKindChange }: Histori
     const pageViews    = filtered.reduce((s, r) => s + r.pageViews, 0);
     const preCheckouts = filtered.reduce((s, r) => s + r.preCheckouts, 0);
     const sales        = filtered.reduce((s, r) => s + r.sales, 0);
-    const salesLabel   = selectedKind === "evento" ? "Ingressos Vendidos" : "Vendas";
+    const salesLabel   = viewKind === "evento" ? "Ingressos Vendidos" : "Vendas";
     return [
       { label: "Alcance",          value: reach,        rate: 100,                                              fromLabel: "" },
       { label: "Cliques",          value: clicks,       rate: reach > 0        ? (clicks / reach) * 100        : 0, fromLabel: "do alcance" },
@@ -1230,7 +1246,7 @@ export function HistoricalView({ selectedKind: propKind, onKindChange }: Histori
         )}
 
         {/* ── Stat cards ── */}
-        {selectedKind === "instagram" ? (
+        {viewKind === "instagram" ? (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard label="Seguidores Ganhos"  value={formatNumber(filtered.reduce((s,r)=>s+((r as {newFollowers?:number}).newFollowers??0),0))} icon={TrendingUp}   accent="bg-emerald-500" iconColor="text-emerald-500" />
             <StatCard label="Visitas ao Perfil"  value={formatNumber(filtered.reduce((s,r)=>s+r.reach,0))}                                         icon={Target}       accent="bg-blue-500"    iconColor="text-blue-500" />
@@ -1241,7 +1257,7 @@ export function HistoricalView({ selectedKind: propKind, onKindChange }: Histori
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
             <StatCard label="Total Investido"   value={formatCurrency(totals.inv)}  icon={DollarSign}  accent="bg-blue-500"    iconColor="text-blue-500" />
             <StatCard label="Total Faturamento" value={formatCurrency(totals.rev)}  icon={TrendingUp}  accent="bg-emerald-500" iconColor="text-emerald-500" sub={totals.roas > 0 ? `ROAS ${totals.roas.toFixed(2)}x` : undefined} />
-            <StatCard label={selectedKind === "evento" ? "Ingressos Vendidos" : selectedKind === "perpetuo" ? "Vendas/Mês (total)" : "Total de Vendas"}
+            <StatCard label={viewKind === "evento" ? "Ingressos Vendidos" : viewKind === "perpetuo" ? "Vendas/Mês (total)" : "Total de Vendas"}
                       value={formatNumber(totals.sales)} icon={ShoppingCart} accent="bg-violet-500" iconColor="text-violet-500" />
             <StatCard label="ROAS"              value={totals.roas > 0 ? `${totals.roas.toFixed(2)}x` : "—"} icon={Target}     accent="bg-amber-500"  iconColor="text-amber-500" />
             <StatCard label="CAC Médio"         value={totals.avgCac > 0 ? formatCurrency(totals.avgCac) : "—"} icon={BarChart2} accent="bg-slate-400"  iconColor="text-slate-500" />
@@ -1407,11 +1423,11 @@ export function HistoricalView({ selectedKind: propKind, onKindChange }: Histori
             </div>
             <div className="overflow-x-auto">
               {(() => {
-                const headers = selectedKind === "instagram"
+                const headers = viewKind === "instagram"
                   ? ["Mês","Produto","Seguid. Ganhos","Perdidos","Visitas","Alcance","Cliques","Curtidas","Comentários","Compart.","Tx. Eng.","Ações"]
-                  : selectedKind === "perpetuo"
+                  : viewKind === "perpetuo"
                   ? ["Mês","Produto","Investimento","Alcance","Cliques","CTR","Leads","Vendas","Receita","MRR","CAC","ROAS","Ações"]
-                  : selectedKind === "lancamento"
+                  : viewKind === "lancamento"
                   ? ["Mês","Produto","Imersão","Investimento","Alcance","Cliques","CTR","Pag. View","Pré-chk","Ingressos","Fat. Ingresso","Vendas Pós","Fat. Pós","CAC","ROAS","Ações"]
                   : ["Mês","Produto","Investimento","Alcance","Cliques","CTR","Pag. View","Pré-chk","Ingressos","Faturamento","CAC","ROAS","Ações"];
                 const hasCustom = Object.keys(colWidths).length > 0;
@@ -1475,7 +1491,7 @@ export function HistoricalView({ selectedKind: propKind, onKindChange }: Histori
                         </div>
                       </td>
                     );
-                    if (r.kind === "instagram") {
+                    if (baseKind(r.kind) === "instagram") {
                       // reach → profileVisits, clicks → followersGained (repurposed in buildRow)
                       const gained = r.clicks ?? 0;
                       const net    = (rx.totalFollowers ?? 0);
@@ -1502,7 +1518,7 @@ export function HistoricalView({ selectedKind: propKind, onKindChange }: Histori
                         </tr>
                       );
                     }
-                    if (r.kind === "perpetuo") {
+                    if (baseKind(r.kind) === "perpetuo") {
                       const leads = rx.leads ?? 0;
                       const mrr   = rx.mrr   ?? 0;
                       return (
@@ -1526,7 +1542,7 @@ export function HistoricalView({ selectedKind: propKind, onKindChange }: Histori
                       );
                     }
                     // lancamento
-                    if (r.kind === "lancamento") {
+                    if (baseKind(r.kind) === "lancamento") {
                       const ingressos   = (rx.ingressosVendidos   as number) || 0;
                       const fatIngresso = (rx.faturamentoIngresso  as number) || 0;
                       const vendPos     = (rx.vendasPos            as number) || r.sales;
