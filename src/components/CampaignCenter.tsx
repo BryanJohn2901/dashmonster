@@ -109,6 +109,12 @@ function ConnectDrawer({ onClose, onImport }: {
     [suggested],
   );
 
+  // Há contas registradas (sugestões) → abre direto na aba "Novo ACT", onde elas
+  // aparecem com ★. Senão o popup abria em "Já configuradas" e a sugestão sumia.
+  useEffect(() => {
+    if (suggested.length > 0) setTab("new");
+  }, [suggested.length]);
+
   // Opções do select = contas do token ∪ registradas (sugeridas primeiro).
   // Registrada que o token não retornou entra mesmo assim, como opção própria.
   const accountOptions = useMemo(() => {
