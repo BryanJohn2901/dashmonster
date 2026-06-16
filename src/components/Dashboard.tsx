@@ -39,6 +39,7 @@ import {
 } from "@/utils/metrics";
 import { KpiCard } from "@/components/KpiCard";
 import { FunnelCard, reportFunnelFromValues } from "@/components/FunnelCard";
+import { OverviewBento } from "@/components/OverviewBento";
 import { ExportReportButton } from "@/components/ExportReportButton";
 import type { ReportData } from "@/types/report";
 import { ChartsSection } from "@/components/charts/ChartsSection";
@@ -3308,6 +3309,9 @@ export function Dashboard({
                 )}
 
                 {dashSubTab === "overview" && (<>
+                {filteredCampaigns.length > 0 && (
+                  <OverviewBento totals={totals} campaigns={campaignsWithOverrides} conversions={effectiveConversions} />
+                )}
                 {false && overviewSelectionSummary && (
                   <section style={{ display: "none" }}>
                       <span>{filteredCampaigns.length} / {categorizedCampaigns.length} campanhas
