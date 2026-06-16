@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Building2, KeyRound, Megaphone, SlidersHorizontal, History, Users, Loader2, Save,
   Trash2, Plus, CheckCircle2, AlertCircle, ChevronDown, ChevronRight, ArrowLeftRight,
-  UserPlus, ExternalLink, BarChart3,
+  UserPlus, ExternalLink, BarChart3, Star,
 } from "lucide-react";
 import { toast } from "@/hooks/useToast";
 import {
@@ -39,8 +39,9 @@ function Section({ id, icon: Icon, title, summary, status, open, onToggle, child
 }) {
   const statusColor = status === "ok" ? "#05CD99" : status === "todo" ? "#F4A60D" : "var(--dm-text-tertiary)";
   return (
-    <div className="rounded-2xl border" style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: open ? BRAND : "var(--dm-border-default)" }}>
-      <button type="button" onClick={() => onToggle(id)} className="flex w-full items-center gap-3 px-5 py-4 text-left">
+    <div className="rounded-2xl border transition-colors" style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: open ? BRAND : "var(--dm-border-default)" }}>
+      <button type="button" onClick={() => onToggle(id)} aria-expanded={open}
+        className="flex w-full items-center gap-3 rounded-2xl px-5 py-4 text-left transition-colors hover:bg-black/[0.025] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6366C8] dark:hover:bg-white/[0.03]">
         <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: "rgba(99,102,200,0.12)" }}>
           <Icon size={17} style={{ color: BRAND }} />
         </div>
@@ -49,20 +50,26 @@ function Section({ id, icon: Icon, title, summary, status, open, onToggle, child
           <p className="truncate text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>{summary}</p>
         </div>
         {status !== "neutral" && (
-          <span className="flex items-center gap-1 text-[10px] font-bold" style={{ color: statusColor }}>
-            {status === "ok" ? <CheckCircle2 size={13} /> : <AlertCircle size={13} />}
-          </span>
+          status === "ok"
+            ? <CheckCircle2 size={14} style={{ color: statusColor }} aria-label="configurado" />
+            : <AlertCircle size={14} style={{ color: statusColor }} aria-label="pendente" />
         )}
-        {open ? <ChevronDown size={16} style={{ color: "var(--dm-text-tertiary)" }} /> : <ChevronRight size={16} style={{ color: "var(--dm-text-tertiary)" }} />}
+        <ChevronDown size={16} className="flex-shrink-0 transition-transform duration-200"
+          style={{ color: "var(--dm-text-tertiary)", transform: open ? "rotate(0deg)" : "rotate(-90deg)" }} />
       </button>
-      {open && <div className="space-y-3 border-t px-5 py-4" style={{ borderColor: "var(--dm-border-default)" }}>{children}</div>}
+      <div className="grid transition-[grid-template-rows] duration-200 ease-out" style={{ gridTemplateRows: open ? "1fr" : "0fr" }}>
+        <div className="overflow-hidden">
+          <div className="space-y-3 border-t px-5 py-4" style={{ borderColor: "var(--dm-border-default)" }}>{children}</div>
+        </div>
+      </div>
     </div>
   );
 }
 
 const inputCls = "h-11 rounded-xl border px-3.5 text-[13px] outline-none transition focus:ring-1";
 const inputStyle = { borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" } as React.CSSProperties;
-const btnPrimary = "flex items-center justify-center gap-1.5 rounded-xl px-4 text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-40";
+const btnPrimary = "flex items-center justify-center gap-1.5 rounded-xl px-4 text-xs font-bold text-white transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-40 disabled:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6366C8] focus-visible:ring-offset-1";
+const iconBtn = "flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors disabled:opacity-40";
 const btnPrimaryStyle = { background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)" } as React.CSSProperties;
 
 // ─── Estúdio da Empresa ───────────────────────────────────────────────────────
@@ -138,21 +145,21 @@ export function CompanyStudio({ categories = [], onNavigate }: {
           {memberships.length > 1 && (
             <div className="flex items-center gap-2 rounded-xl border px-3 py-2" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
               <ArrowLeftRight size={14} style={{ color: BRAND }} />
-              <select value={company.id} onChange={(e) => switchCompany(e.target.value)}
-                className="bg-transparent text-xs font-semibold outline-none" style={{ color: "var(--dm-text-primary)" }}>
+              <select value={company.id} onChange={(e) => switchCompany(e.target.value)} aria-label="Trocar empresa ativa"
+                className="cursor-pointer bg-transparent text-xs font-semibold outline-none" style={{ color: "var(--dm-text-primary)" }}>
                 {memberships.map((m) => <option key={m.company.id} value={m.company.id}>{m.company.name}</option>)}
               </select>
             </div>
           )}
           {/* Prontidão */}
           <div className="flex items-center gap-3 rounded-xl border px-4 py-2" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
-            <div className="relative h-11 w-11">
-              <svg viewBox="0 0 36 36" className="h-11 w-11 -rotate-90">
+            <div className="relative h-11 w-11" role="img" aria-label={`Prontidão da empresa: ${readiness} por cento`}>
+              <svg viewBox="0 0 36 36" className="h-11 w-11 -rotate-90" aria-hidden="true">
                 <circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--dm-border-default)" strokeWidth="3" />
                 <circle cx="18" cy="18" r="15.5" fill="none" stroke={readiness === 100 ? "#05CD99" : BRAND} strokeWidth="3"
                   strokeDasharray={`${(readiness / 100) * 97.4} 97.4`} strokeLinecap="round" />
               </svg>
-              <span className="absolute inset-0 flex items-center justify-center text-[11px] font-bold" style={{ color: "var(--dm-text-primary)" }}>{readiness}%</span>
+              <span className="absolute inset-0 flex items-center justify-center text-[11px] font-bold tabular-nums" style={{ color: "var(--dm-text-primary)" }}>{readiness}%</span>
             </div>
             <div className="leading-tight">
               <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Prontidão</p>
@@ -167,11 +174,11 @@ export function CompanyStudio({ categories = [], onNavigate }: {
         <div className="mt-4 flex items-center gap-1 overflow-x-auto pb-1">
           {nodes.map((n, i) => (
             <div key={n.label} className="flex items-center gap-1">
-              <div className="flex min-w-[78px] flex-col items-center gap-1 rounded-xl border px-2.5 py-2"
-                style={{ borderColor: n.ok ? "rgba(5,205,153,0.5)" : "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
-                <n.icon size={15} style={{ color: n.ok ? "#05CD99" : "var(--dm-text-tertiary)" }} />
+              <div className="flex min-w-[80px] flex-col items-center gap-1 rounded-xl border px-2.5 py-2 transition-colors"
+                style={{ borderColor: n.ok ? "rgba(5,205,153,0.5)" : "var(--dm-border-default)", backgroundColor: n.ok ? "rgba(5,205,153,0.06)" : "var(--dm-bg-surface)" }}>
+                <n.icon size={15} style={{ color: n.ok ? "#05CD99" : "var(--dm-text-tertiary)" }} aria-hidden="true" />
                 <span className="text-[10px] font-bold" style={{ color: "var(--dm-text-primary)" }}>{n.label}</span>
-                <span className="text-[9px] font-semibold" style={{ color: n.ok ? "#05CD99" : "var(--dm-text-tertiary)" }}>{n.info}</span>
+                <span className="text-[10px] font-semibold tabular-nums" style={{ color: n.ok ? "#05CD99" : "var(--dm-text-tertiary)" }}>{n.info}</span>
               </div>
               {i < nodes.length - 1 && <ChevronRight size={14} style={{ color: "var(--dm-text-tertiary)" }} className="flex-shrink-0" />}
             </div>
@@ -294,14 +301,16 @@ function ContasSection({ company, canEdit, suggestions, open, onToggle }: {
         <div className="flex flex-col gap-1.5">
           {list.map((a) => (
             <div key={a.id} className="flex items-center gap-2 rounded-xl border px-3 py-2" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)" }}>
-              <span className="text-[12px]" style={{ color: BRAND }}>★</span>
+              <Star size={13} className="flex-shrink-0" style={{ color: BRAND, fill: BRAND }} aria-hidden="true" />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[12px] font-semibold" style={{ color: "var(--dm-text-primary)" }}>{a.label || a.id}</p>
                 <p className="truncate font-mono text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>act_{a.id}</p>
               </div>
               {canEdit && (
-                <button type="button" onClick={() => void persist(list.filter((x) => x.id !== a.id))} disabled={saving} className="rounded-md p-1 transition hover:opacity-70 disabled:opacity-40" style={{ color: "#ef4444" }}>
-                  <Trash2 size={12} />
+                <button type="button" onClick={() => void persist(list.filter((x) => x.id !== a.id))} disabled={saving}
+                  aria-label={`Remover conta ${a.label || a.id}`} title="Remover"
+                  className={`${iconBtn} hover:bg-red-500/10`} style={{ color: "#ef4444" }}>
+                  <Trash2 size={13} />
                 </button>
               )}
             </div>
@@ -370,7 +379,7 @@ function HistoricoSection({ company, canEdit, customTabs, totalTabs, open, onTog
           <span className="text-base">{t.emoji || "🏷️"}</span>
           <span className="min-w-0 flex-1 truncate text-[13px] font-semibold" style={{ color: "var(--dm-text-primary)" }}>{t.label}</span>
           <span className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>como Lançamento</span>
-          {canEdit && <button type="button" onClick={() => setTabs((p) => p.filter((x) => x.id !== t.id))} className="rounded p-1 hover:opacity-70" style={{ color: "#ef4444" }}><Trash2 size={12} /></button>}
+          {canEdit && <button type="button" onClick={() => setTabs((p) => p.filter((x) => x.id !== t.id))} aria-label={`Remover sub-aba ${t.label}`} title="Remover" className={`${iconBtn} hover:bg-red-500/10`} style={{ color: "#ef4444" }}><Trash2 size={13} /></button>}
         </div>
       ))}
       {canEdit && canAdd && (
@@ -447,7 +456,7 @@ function EquipeSection({ company, canEdit, members, setMembers, open, onToggle }
                   {(["owner", "manager", "viewer"] as CompanyRole[]).map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
                 </select>
               ) : <span className="text-[10px] font-bold" style={{ color: ROLE_COLORS[m.role] }}>{ROLE_LABELS[m.role]}</span>}
-              {canEdit && <button type="button" onClick={() => void remove(m)} disabled={busyId === m.id} className="rounded-md p-1 hover:opacity-70 disabled:opacity-40" style={{ color: "#ef4444" }}>{busyId === m.id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}</button>}
+              {canEdit && <button type="button" onClick={() => void remove(m)} disabled={busyId === m.id} aria-label={`Remover ${m.email || "membro"}`} title="Remover" className={`${iconBtn} hover:bg-red-500/10`} style={{ color: "#ef4444" }}>{busyId === m.id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={13} />}</button>}
             </div>
           ))}
         </div>
