@@ -10,7 +10,7 @@ import {
   useCampaignCenter, detectIntent, INTENT_META, INTENT_OPTIONS,
   type CampaignCenterEntry, type CampaignIntent,
 } from "@/hooks/useCampaignCenter";
-import { useCompany, fetchCompanyAdAccounts, type CompanyRole, type AdAccountEntry } from "@/hooks/useCompany";
+import { useCompany, readAdAccountSuggestions, type CompanyRole } from "@/hooks/useCompany";
 import type { ResultType } from "@/hooks/useAdvertiserStore";
 import { RESULT_TYPE_OPTIONS, RESULT_TYPE_LABELS } from "@/components/ProfileAnalysis";
 import {
@@ -98,25 +98,16 @@ function ConnectDrawer({ onClose, onImport }: {
   const [loading, setLoading]       = useState<"accounts" | "campaigns" | "saving" | null>(null);
   const [error, setError]           = useState<string | null>(null);
 
-  // ── Contas sugeridas (registradas pela empresa/super admin) ──
-  // Viram pré-preenchimento: ★ no topo do select e auto-seleção. São MESCLADAS
-  // na lista mesmo que o token não as retorne — senão "não apareciam".
-  const { companyId } = useCompany();
-  const [suggested, setSuggested] = useState<AdAccountEntry[]>([]);
+  // ── Contas sugeridas (registro da empresa em companies.settings) ──
+  // Pré-preenchimento: ★ no topo do select e auto-seleção. Mescladas mesmo que o
+  // token não as retorne. NÃO são entries (não acoplam a filtro) — só sugestão.
+  const { company } = useCompany();
+  const suggested = useMemo(() => readAdAccountSuggestions(company?.settings), [company?.settings]);
   const normAct = (id: string) => `act_${id.replace(/^act_/, "")}`;
   const suggestedActIds = useMemo(
-    () => new Set(suggested.map((a) => normAct(a.adAccountId))),
+    () => new Set(suggested.map((a) => normAct(a.id))),
     [suggested],
   );
-
-  useEffect(() => {
-    if (!companyId) return;
-    let active = true;
-    void fetchCompanyAdAccounts(companyId)
-      .then((accs) => { if (active) setSuggested(accs); })
-      .catch(() => {});
-    return () => { active = false; };
-  }, [companyId]);
 
   // Opções do select = contas do token ∪ registradas (sugeridas primeiro).
   // Registrada que o token não retornou entra mesmo assim, como opção própria.
@@ -126,8 +117,11 @@ function ConnectDrawer({ onClose, onImport }: {
       byId.set(normAct(a.id), { id: a.id, name: a.name, suggested: suggestedActIds.has(normAct(a.id)) });
     }
     for (const s of suggested) {
-      const key = normAct(s.adAccountId);
-      if (!byId.has(key)) byId.set(key, { id: key, name: s.label || key, suggested: true });
+      const key = normAct(s.id);
+      const existing = byId.get(key);
+      // registrada manda no nome (rótulo certo) e marca como sugerida
+      if (existing) byId.set(key, { ...existing, name: s.label || existing.name, suggested: true });
+      else byId.set(key, { id: key, name: s.label || key, suggested: true });
     }
     return [...byId.values()].sort((a, b) => Number(b.suggested) - Number(a.suggested));
   }, [accounts, suggested, suggestedActIds]);

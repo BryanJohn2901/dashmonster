@@ -10,8 +10,8 @@ import { toast } from "@/hooks/useToast";
 import {
   fetchAdminCompanies, setCompanyToken, fetchCompanyMembers, fetchCompanyToken,
   inviteMemberByEmail, updateMemberRole, removeMember, switchCompany,
-  fetchCompanyAdAccounts, addCompanyAdAccount, toggleCompanyAdAccount, deleteCompanyAdAccount,
-  type AdminCompany, type CompanyMember, type CompanyRole, type AdAccountEntry,
+  readAdAccountSuggestions, saveAdAccountSuggestions,
+  type AdminCompany, type CompanyMember, type CompanyRole, type AdAccountSuggestion,
 } from "@/hooks/useCompany";
 
 type NavTab = "accounts" | "sync";
@@ -117,12 +117,11 @@ function CompanyAdminRow({ row, open, onToggle, onTokenChange, onNavigate }: {
   const [tokenInput, setTokenInput] = useState("");
   const [savingToken, setSavingToken] = useState(false);
 
-  // ── Contas de anúncio ──
-  const [accounts, setAccounts] = useState<AdAccountEntry[] | null>(null);
+  // ── Contas de anúncio sugeridas (registro em settings, sem categoria) ──
+  const [accounts, setAccounts] = useState<AdAccountSuggestion[]>(() => readAdAccountSuggestions(company.settings));
   const [acctId, setAcctId] = useState("");
   const [acctLabel, setAcctLabel] = useState("");
-  const [addingAcct, setAddingAcct] = useState(false);
-  const [busyAcctId, setBusyAcctId] = useState<string | null>(null);
+  const [savingAccts, setSavingAccts] = useState(false);
 
   // ── Membros ──
   const [members, setMembers] = useState<CompanyMember[] | null>(null);
@@ -131,16 +130,12 @@ function CompanyAdminRow({ row, open, onToggle, onTokenChange, onNavigate }: {
   const [role, setRole] = useState<CompanyRole>("manager");
   const [inviting, setInviting] = useState(false);
 
-  // Carrega token + contas + membros sob demanda quando a linha abre.
+  // Carrega token + membros sob demanda quando a linha abre. (As contas
+  // sugeridas vêm de company.settings, já em memória — sem fetch.)
   useEffect(() => {
     if (!open) return;
     let active = true;
     void fetchCompanyToken(company.id).then((t) => { if (active) setCurrentToken(t); }).catch(() => {});
-    if (accounts === null) {
-      void fetchCompanyAdAccounts(company.id)
-        .then((a) => { if (active) setAccounts(a); })
-        .catch(() => { if (active) setAccounts([]); });
-    }
     if (members === null) {
       void fetchCompanyMembers(company.id)
         .then((m) => { if (active) setMembers(m); })
@@ -149,38 +144,27 @@ function CompanyAdminRow({ row, open, onToggle, onTokenChange, onNavigate }: {
     return () => { active = false; };
   }, [open, company.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const persistAccounts = async (next: AdAccountSuggestion[]) => {
+    setSavingAccts(true);
+    try {
+      await saveAdAccountSuggestions(company.id, company.settings, next);
+      setAccounts(next);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao salvar contas.");
+    } finally { setSavingAccts(false); }
+  };
+
   const handleAddAccount = async () => {
-    if (!acctId.trim()) { toast.error("Informe o ID da conta de anúncio."); return; }
-    setAddingAcct(true);
-    try {
-      const entry = await addCompanyAdAccount(company.id, acctId, acctLabel);
-      setAccounts((prev) => [...(prev ?? []), entry]);
-      setAcctId(""); setAcctLabel("");
-      toast.success(`Conta ${entry.adAccountId} adicionada. O cron passa a sincronizá-la.`);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erro ao adicionar conta.");
-    } finally { setAddingAcct(false); }
+    const id = acctId.trim().replace(/^act_/, "");
+    if (!id) { toast.error("Informe o ID da conta de anúncio."); return; }
+    if (accounts.some((a) => a.id === id)) { toast.error("Essa conta já está na lista."); return; }
+    await persistAccounts([...accounts, { id, label: acctLabel.trim() || id }]);
+    setAcctId(""); setAcctLabel("");
+    toast.success(`Conta ${id} adicionada. Vira sugestão no "Adicionar conta".`);
   };
 
-  const handleToggleAccount = async (a: AdAccountEntry) => {
-    setBusyAcctId(a.id);
-    try {
-      await toggleCompanyAdAccount(a.id, !a.isEnabled);
-      setAccounts((prev) => prev?.map((x) => (x.id === a.id ? { ...x, isEnabled: !x.isEnabled } : x)) ?? prev);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erro ao alterar conta.");
-    } finally { setBusyAcctId(null); }
-  };
-
-  const handleDeleteAccount = async (a: AdAccountEntry) => {
-    setBusyAcctId(a.id);
-    try {
-      await deleteCompanyAdAccount(a.id);
-      setAccounts((prev) => prev?.filter((x) => x.id !== a.id) ?? prev);
-      toast.success(`Conta ${a.adAccountId} removida.`);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erro ao remover conta.");
-    } finally { setBusyAcctId(null); }
+  const handleDeleteAccount = async (a: AdAccountSuggestion) => {
+    await persistAccounts(accounts.filter((x) => x.id !== a.id));
   };
 
   const handleSaveToken = async () => {
@@ -317,16 +301,16 @@ function CompanyAdminRow({ row, open, onToggle, onTokenChange, onNavigate }: {
             </div>
           </div>
 
-          {/* Contas de anúncio */}
+          {/* Contas de anúncio sugeridas */}
           <div className="space-y-2">
             <div className="flex items-center gap-1.5 text-[11px] font-bold" style={{ color: "var(--dm-text-secondary)" }}>
               <Megaphone size={12} /> Contas de anúncio
               <span className="font-normal" style={{ color: "var(--dm-text-tertiary)" }}>
-                — o cron sincroniza as habilitadas
+                — viram sugestão no &ldquo;Adicionar conta&rdquo; (não acoplam a filtro)
               </span>
             </div>
 
-            {/* Adicionar conta */}
+            {/* Registrar conta */}
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <input value={acctId} onChange={(e) => setAcctId(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") void handleAddAccount(); }}
@@ -335,25 +319,20 @@ function CompanyAdminRow({ row, open, onToggle, onTokenChange, onNavigate }: {
                 style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)", color: "var(--dm-text-primary)" }} />
               <input value={acctLabel} onChange={(e) => setAcctLabel(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") void handleAddAccount(); }}
-                placeholder="Apelido (opcional)"
+                placeholder="Nome da conta (opcional)"
                 className="h-9 flex-1 rounded-lg border px-3 text-[12px] outline-none transition focus:ring-1"
                 style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)", color: "var(--dm-text-primary)" }} />
-              <button type="button" onClick={() => void handleAddAccount()} disabled={addingAcct || !acctId.trim()}
+              <button type="button" onClick={() => void handleAddAccount()} disabled={savingAccts || !acctId.trim()}
                 className="flex h-9 items-center justify-center gap-1.5 rounded-lg px-3.5 text-[11px] font-bold text-white transition hover:opacity-90 disabled:opacity-40"
                 style={{ background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)" }}>
-                {addingAcct ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
-                Adicionar
+                {savingAccts ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
+                Registrar
               </button>
             </div>
 
-            {/* Lista de contas */}
-            {accounts === null ? (
-              <div className="flex items-center gap-2 py-2">
-                <Loader2 size={13} className="animate-spin" style={{ color: "var(--dm-text-tertiary)" }} />
-                <span className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>Carregando contas…</span>
-              </div>
-            ) : accounts.length === 0 ? (
-              <p className="py-1 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>Nenhuma conta de anúncio ainda.</p>
+            {/* Lista de contas registradas */}
+            {accounts.length === 0 ? (
+              <p className="py-1 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>Nenhuma conta registrada ainda.</p>
             ) : (
               <div className="flex flex-col gap-1">
                 {accounts.map((a) => (
@@ -361,22 +340,14 @@ function CompanyAdminRow({ row, open, onToggle, onTokenChange, onNavigate }: {
                     style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[12px] font-semibold" style={{ color: "var(--dm-text-primary)" }}>
-                        {a.label || a.adAccountId}
+                        {a.label || a.id}
                       </p>
-                      <p className="truncate font-mono text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>act_{a.adAccountId}</p>
+                      <p className="truncate font-mono text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>act_{a.id}</p>
                     </div>
-                    <button type="button" onClick={() => void handleToggleAccount(a)} disabled={busyAcctId === a.id}
-                      className="flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold transition hover:opacity-80 disabled:opacity-50"
-                      style={{
-                        backgroundColor: a.isEnabled ? "rgba(5,205,153,0.12)" : "rgba(148,163,184,0.15)",
-                        color: a.isEnabled ? "#05CD99" : "var(--dm-text-tertiary)",
-                      }}>
-                      {busyAcctId === a.id ? "…" : a.isEnabled ? "Sincronizando" : "Pausada"}
-                    </button>
-                    <button type="button" onClick={() => void handleDeleteAccount(a)} disabled={busyAcctId === a.id}
+                    <button type="button" onClick={() => void handleDeleteAccount(a)} disabled={savingAccts}
                       className="flex-shrink-0 rounded-md p-1 transition hover:opacity-70 disabled:opacity-40"
                       style={{ color: "#ef4444" }}>
-                      {busyAcctId === a.id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                      <Trash2 size={12} />
                     </button>
                   </div>
                 ))}

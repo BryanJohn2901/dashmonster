@@ -356,94 +356,31 @@ export async function fetchCompanyAdAccounts(companyId: string): Promise<AdAccou
   }));
 }
 
-/**
- * Garante uma categoria padrão ("Geral") para a empresa e devolve o id.
- * Necessário porque user_account_entries.category_id é NOT NULL. O unique de
- * categorias é (company_id, slug) desde a migration 021, então não colide entre
- * empresas mesmo reusando o mesmo user_id.
- */
-async function ensureCompanyCategory(companyId: string, userId: string): Promise<string> {
-  if (!supabaseClient) throw new Error("Supabase não configurado.");
-  const { data: existing } = await supabaseClient
-    .from("user_categories")
-    .select("id")
-    .eq("company_id", companyId)
-    .order("position")
-    .limit(1)
-    .maybeSingle();
-  if (existing?.id) return existing.id as string;
+// ─── Registro de contas de anúncio sugeridas (sem categoria) ──────────────────
+// Guardado em companies.settings. NÃO cria user_account_entry (que exigiria uma
+// categoria e acoplaria tudo num filtro só). Só alimenta o autocomplete do
+// "Adicionar conta" — o acoplamento a um filtro acontece quando o usuário de
+// fato adiciona a conta, escolhendo o filtro ali.
 
-  const { data, error } = await supabaseClient
-    .from("user_categories")
-    .upsert(
-      { user_id: userId, company_id: companyId, slug: "geral", name: "Geral", type: "custom" },
-      { onConflict: "company_id,slug" },
-    )
-    .select("id")
-    .single();
-  if (error) throw new Error(error.message);
-  return data.id as string;
+export interface AdAccountSuggestion { id: string; label: string }
+export const AD_ACCOUNT_SUGGESTIONS_KEY = "adAccountSuggestions";
+
+/** Lê o registro de sugestões de uma empresa (a partir de company.settings). */
+export function readAdAccountSuggestions(settings?: Record<string, unknown>): AdAccountSuggestion[] {
+  const raw = settings?.[AD_ACCOUNT_SUGGESTIONS_KEY];
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((s): s is AdAccountSuggestion => !!s && typeof (s as AdAccountSuggestion).id === "string")
+    .map((s) => ({ id: String(s.id).replace(/^act_/, ""), label: String(s.label ?? "") }));
 }
 
-/**
- * Adiciona uma conta de anúncio numa empresa (RLS: owner OU super admin).
- * A conta entra habilitada — o cron /api/meta/sync-all passa a sincronizá-la.
- * O "act_" é removido; a rota da Meta re-adiciona o prefixo.
- */
-export async function addCompanyAdAccount(
+/** Persiste o registro de sugestões (RLS: owner OU super admin via policy 026). */
+export async function saveAdAccountSuggestions(
   companyId: string,
-  adAccountId: string,
-  label: string,
-): Promise<AdAccountEntry> {
-  if (!supabaseClient) throw new Error("Supabase não configurado.");
-  const { data: auth } = await supabaseClient.auth.getUser();
-  const userId = auth.user?.id;
-  if (!userId) throw new Error("Usuário não autenticado.");
-
-  const cleanId = adAccountId.trim().replace(/^act_/, "");
-  if (!cleanId) throw new Error("Informe o ID da conta de anúncio.");
-
-  const categoryId = await ensureCompanyCategory(companyId, userId);
-
-  const { data, error } = await supabaseClient
-    .from("user_account_entries")
-    .insert({
-      user_id:       userId,
-      company_id:    companyId,
-      category_id:   categoryId,
-      label:         label.trim() || cleanId,
-      ad_account_id: cleanId,
-      is_enabled:    true,
-    })
-    .select("id, ad_account_id, label, is_enabled")
-    .single();
-  if (error) throw new Error(error.message);
-  return {
-    id:          data.id as string,
-    adAccountId: data.ad_account_id as string,
-    label:       data.label as string,
-    isEnabled:   data.is_enabled as boolean,
-  };
-}
-
-/** Liga/desliga a sincronização de uma conta de anúncio. */
-export async function toggleCompanyAdAccount(id: string, isEnabled: boolean): Promise<void> {
-  if (!supabaseClient) throw new Error("Supabase não configurado.");
-  const { error } = await supabaseClient
-    .from("user_account_entries")
-    .update({ is_enabled: isEnabled })
-    .eq("id", id);
-  if (error) throw new Error(error.message);
-}
-
-/** Remove uma conta de anúncio da empresa. */
-export async function deleteCompanyAdAccount(id: string): Promise<void> {
-  if (!supabaseClient) throw new Error("Supabase não configurado.");
-  const { error } = await supabaseClient
-    .from("user_account_entries")
-    .delete()
-    .eq("id", id);
-  if (error) throw new Error(error.message);
+  settings: Record<string, unknown> | undefined,
+  suggestions: AdAccountSuggestion[],
+): Promise<void> {
+  await updateCompanySettings(companyId, { ...(settings ?? {}), [AD_ACCOUNT_SUGGESTIONS_KEY]: suggestions });
 }
 
 export type InviteResult = "added" | "invited";
