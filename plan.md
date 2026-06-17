@@ -172,3 +172,10 @@ Funcionalidades da view nova:
 - Badge de `capi_status` (enviado/pendente/falhou) com `capi_error` no `title` da linha.
 - Aviso quando a empresa ativa não tem `meta_pixel_id` configurado (consulta leve em `companies`).
 - Não inclui export CSV próprio (fora de escopo desta rodada — o botão "Exportar CSV" do header global é específico de campanhas, não de `events_log`).
+
+## 8. Settings UI — seção "Tracking Pixel" em `CompanyStudio.tsx` ✅ feito
+
+Faltava como o usuário de fato configura `meta_pixel_id`/`meta_capi_token`/`dominio_autorizado` sem rodar SQL manual — a única forma até aqui. Adicionado seguindo o padrão exato da seção "Conexão Meta" já existente (`ConexaoSection`/`setCompanyToken`):
+- `src/hooks/useCompany.ts`: `fetchCompanyTracking(companyId)` / `setCompanyTracking(companyId, config)` — mesmo padrão de `fetchCompanyToken`/`setCompanyToken` (`supabaseClient.from("companies").update(...)`, RLS faz a autorização de owner).
+- `src/components/CompanyStudio.tsx`: nova seção `TrackingSection` no Estúdio da Empresa (accordion, gated por `canEdit={isOwner}`), com os 3 campos + texto explicando a diferença entre `meta_capi_token` e o token de Conexão Meta, e o aviso de que `dominio_autorizado` é só hostname (sem protocolo/porta).
+- Acessível em **Minha conta → Estúdio da Empresa → Tracking Pixel**.

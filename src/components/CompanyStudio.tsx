@@ -4,14 +4,15 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Building2, KeyRound, Megaphone, SlidersHorizontal, History, Users, Loader2, Save,
   Trash2, Plus, CheckCircle2, AlertCircle, ChevronDown, ChevronRight, ArrowLeftRight,
-  UserPlus, ExternalLink, BarChart3, Star,
+  UserPlus, ExternalLink, BarChart3, Star, Radar,
 } from "lucide-react";
 import { toast } from "@/hooks/useToast";
 import {
   useCompany, renameCompany, fetchCompanyToken, setCompanyToken,
   fetchCompanyMembers, inviteMemberByEmail, updateMemberRole, removeMember,
   readAdAccountSuggestions, saveAdAccountSuggestions, updateCompanySettings,
-  type CompanyMember, type CompanyRole, type AdAccountSuggestion, type Company,
+  fetchCompanyTracking, setCompanyTracking,
+  type CompanyMember, type CompanyRole, type AdAccountSuggestion, type Company, type TrackingConfig,
 } from "@/hooks/useCompany";
 import { saveMetaCredentials } from "@/utils/metaApi";
 import {
@@ -29,7 +30,7 @@ const MAX_HISTORY_TABS = 7;
 const isEmail = (e: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e);
 const BRAND = "#6366C8";
 
-type SectionId = "identidade" | "conexao" | "contas" | "filtros" | "historico" | "equipe";
+type SectionId = "identidade" | "conexao" | "tracking" | "contas" | "filtros" | "historico" | "equipe";
 
 // ─── Accordion section ────────────────────────────────────────────────────────
 
@@ -84,11 +85,13 @@ export function CompanyStudio({ categories = [], onNavigate }: {
 
   // ── dados assíncronos ──
   const [token, setTokenVal] = useState<string>("");
+  const [tracking, setTrackingVal] = useState<TrackingConfig>({ metaPixelId: "", metaCapiToken: "", dominioAutorizado: "" });
   const [members, setMembers] = useState<CompanyMember[] | null>(null);
   useEffect(() => {
     if (!company) return;
     let active = true;
     void fetchCompanyToken(company.id).then((t) => { if (active) setTokenVal(t); }).catch(() => {});
+    void fetchCompanyTracking(company.id).then((t) => { if (active) setTrackingVal(t); }).catch(() => {});
     void fetchCompanyMembers(company.id).then((m) => { if (active) setMembers(m); }).catch(() => { if (active) setMembers([]); });
     return () => { active = false; };
   }, [company]);
@@ -189,6 +192,7 @@ export function CompanyStudio({ categories = [], onNavigate }: {
       {/* ── Seções ── */}
       <IdentidadeSection company={company} canEdit={isOwner} open={open.has("identidade")} onToggle={toggle} />
       <ConexaoSection company={company} canEdit={isOwner} token={token} onToken={setTokenVal} open={open.has("conexao")} onToggle={toggle} />
+      <TrackingSection company={company} canEdit={isOwner} tracking={tracking} onTracking={setTrackingVal} open={open.has("tracking")} onToggle={toggle} />
       <ContasSection company={company} canEdit={isOwner} suggestions={suggestions} open={open.has("contas")} onToggle={toggle} />
       <FiltrosSection filters={enabledFilters} onNavigate={onNavigate} open={open.has("filtros")} onToggle={toggle} />
       <HistoricoSection company={company} canEdit={isOwner} customTabs={customTabs} totalTabs={totalHistoryTabs} open={open.has("historico")} onToggle={toggle} />
@@ -258,6 +262,82 @@ function ConexaoSection({ company, canEdit, token, onToken, open, onToggle }: {
             {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} {has ? "Substituir" : "Salvar"}
           </button>
         </div>
+      )}
+    </Section>
+  );
+}
+
+// ─── Tracking Pixel (Server-Side) ─────────────────────────────────────────────
+
+function TrackingSection({ company, canEdit, tracking, onTracking, open, onToggle }: {
+  company: Company; canEdit: boolean; tracking: TrackingConfig; onTracking: (t: TrackingConfig) => void; open: boolean; onToggle: (id: SectionId) => void;
+}) {
+  const [pixelId, setPixelId] = useState(tracking.metaPixelId);
+  const [capiToken, setCapiToken] = useState(tracking.metaCapiToken);
+  const [dominio, setDominio] = useState(tracking.dominioAutorizado);
+  const [saving, setSaving] = useState(false);
+  const [revealToken, setRevealToken] = useState(false);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPixelId(tracking.metaPixelId);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCapiToken(tracking.metaCapiToken);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setDominio(tracking.dominioAutorizado);
+  }, [tracking]);
+
+  const has = Boolean(tracking.metaPixelId.trim());
+  const dirty = pixelId !== tracking.metaPixelId || capiToken !== tracking.metaCapiToken || dominio !== tracking.dominioAutorizado;
+  const slug = company.slug;
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const next: TrackingConfig = { metaPixelId: pixelId.trim(), metaCapiToken: capiToken.trim(), dominioAutorizado: dominio.trim() };
+      await setCompanyTracking(company.id, next);
+      onTracking(next);
+      toast.success("Tracking pixel configurado!");
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Erro ao salvar."); } finally { setSaving(false); }
+  };
+
+  return (
+    <Section id="tracking" icon={Radar} title="Tracking Pixel" summary={has ? "Pixel configurado e ativo" : "Nenhum pixel ainda"} status={has ? "ok" : "todo"} open={open} onToggle={onToggle}>
+      <p className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
+        Pixel server-side próprio (form submit, clique WhatsApp, dataLayer) que repassa eventos pra Meta Conversions API. Instale{" "}
+        <code className="rounded bg-black/[0.04] px-1 py-0.5 dark:bg-white/[0.06]">/api/tracking/pixel.js</code> no site do cliente e chame{" "}
+        <code className="rounded bg-black/[0.04] px-1 py-0.5 dark:bg-white/[0.06]">Tracker.init(&quot;{slug}&quot;)</code>.
+      </p>
+      <label className="flex flex-col gap-1">
+        <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Pixel ID (Meta)</span>
+        <input value={pixelId} disabled={!canEdit} onChange={(e) => setPixelId(e.target.value)} placeholder="123456789012345" className={`${inputCls} h-10 font-mono disabled:opacity-60`} style={inputStyle} />
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Token CAPI (Conversions API)</span>
+        <div className="flex items-center gap-2">
+          <input
+            type={revealToken ? "text" : "password"}
+            value={capiToken}
+            disabled={!canEdit}
+            onChange={(e) => setCapiToken(e.target.value)}
+            placeholder="EAAxxxx…"
+            className={`flex-1 ${inputCls} h-10 font-mono disabled:opacity-60`}
+            style={inputStyle}
+          />
+          {capiToken && (
+            <button type="button" onClick={() => setRevealToken((v) => !v)} className="text-[10px] font-bold" style={{ color: BRAND }}>{revealToken ? "Ocultar" : "Revelar"}</button>
+          )}
+        </div>
+        <span className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>Diferente do token de gestão de anúncios da Conexão Meta — gere em Events Manager → Configurações → Conversions API.</span>
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Domínio autorizado</span>
+        <input value={dominio} disabled={!canEdit} onChange={(e) => setDominio(e.target.value)} placeholder="meusite.com.br" className={`${inputCls} h-10 font-mono disabled:opacity-60`} style={inputStyle} />
+        <span className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>Só o hostname, sem protocolo nem porta (ex: <code>meusite.com.br</code>, não <code>https://meusite.com.br</code>).</span>
+      </label>
+      {canEdit && (
+        <button type="button" onClick={() => void save()} disabled={saving || !dirty} className={`h-11 w-full ${btnPrimary}`} style={btnPrimaryStyle}>
+          {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} Salvar tracking
+        </button>
       )}
     </Section>
   );

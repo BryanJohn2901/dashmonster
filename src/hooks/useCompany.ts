@@ -292,6 +292,43 @@ export async function setCompanyToken(companyId: string, token: string): Promise
   if (error) throw new Error(error.message);
 }
 
+export interface TrackingConfig {
+  metaPixelId: string;
+  metaCapiToken: string;
+  dominioAutorizado: string;
+}
+
+/** Lê a config do tracking pixel (meta_pixel_id, meta_capi_token, dominio_autorizado) de uma empresa. */
+export async function fetchCompanyTracking(companyId: string): Promise<TrackingConfig> {
+  const empty: TrackingConfig = { metaPixelId: "", metaCapiToken: "", dominioAutorizado: "" };
+  if (!supabaseClient) return empty;
+  const { data, error } = await supabaseClient
+    .from("companies")
+    .select("meta_pixel_id, meta_capi_token, dominio_autorizado")
+    .eq("id", companyId)
+    .maybeSingle();
+  if (error || !data) return empty;
+  return {
+    metaPixelId: (data.meta_pixel_id as string) ?? "",
+    metaCapiToken: (data.meta_capi_token as string) ?? "",
+    dominioAutorizado: (data.dominio_autorizado as string) ?? "",
+  };
+}
+
+/** Grava a config do tracking pixel de uma empresa (RLS: owner). String vazia limpa o campo. */
+export async function setCompanyTracking(companyId: string, config: TrackingConfig): Promise<void> {
+  if (!supabaseClient) throw new Error("Supabase não configurado.");
+  const { error } = await supabaseClient
+    .from("companies")
+    .update({
+      meta_pixel_id: config.metaPixelId.trim() || null,
+      meta_capi_token: config.metaCapiToken.trim() || null,
+      dominio_autorizado: config.dominioAutorizado.trim() || null,
+    })
+    .eq("id", companyId);
+  if (error) throw new Error(error.message);
+}
+
 // ─── Painel de super admin ────────────────────────────────────────────────────
 
 export interface AdminCompany {
