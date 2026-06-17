@@ -18,6 +18,7 @@ import {
   type CustomHistoryTab, type HistoricalKind, type HistoricalMeta, type HistoricalRow,
 } from "@/types/historical";
 import { useCompany } from "@/hooks/useCompany";
+import { toast } from "@/hooks/useToast";
 
 // Sub-aba custom se comporta como "Lançamento" (form/stats/headers genéricos).
 // Só built-in tem shape próprio; o filtro de linhas usa o kind real (não este).
@@ -1082,7 +1083,13 @@ export function HistoricalView({ selectedKind: propKind, onKindChange }: Histori
           onAddTag={async (tag) => {
             const next = { ...customTags, [form.kind]: [...(customTags[form.kind] ?? []), tag] };
             setCustomTags(next);
-            if (isSupabaseConfigured) addUserTag(form.kind, tag).catch(() => {});
+            if (isSupabaseConfigured) {
+              addUserTag(form.kind, tag).catch((err) => {
+                console.error("[Histórico] falha ao salvar tag:", err);
+                toast.error(`Tag "${tag}" não foi salva: ${err instanceof Error ? err.message : "erro desconhecido"}.`);
+                setCustomTags((prev) => ({ ...prev, [form.kind]: (prev[form.kind] ?? []).filter((t) => t !== tag) }));
+              });
+            }
           }}
         />
       )}
@@ -1173,7 +1180,13 @@ export function HistoricalView({ selectedKind: propKind, onKindChange }: Histori
                           const next = { ...customTags, [selectedKind]: allCustomTags.filter(t => t !== tag) };
                           setCustomTags(next);
                           if (selectedTag === tag) setSelectedTag("all");
-                          try { await deleteUserTag(selectedKind, tag); } catch { /* silent */ }
+                          try {
+                            await deleteUserTag(selectedKind, tag);
+                          } catch (err) {
+                            console.error("[Histórico] falha ao remover tag:", err);
+                            toast.error(`Não foi possível remover a tag "${tag}".`);
+                            setCustomTags((prev) => ({ ...prev, [selectedKind]: [...(prev[selectedKind] ?? []), tag] }));
+                          }
                         }}
                         className="ml-0.5 flex h-4 w-4 items-center justify-center rounded-full text-slate-400 hover:bg-red-100 hover:text-red-500 dark:hover:bg-red-900/30 dark:hover:text-red-400 transition"
                         title="Remover tag"
@@ -1200,7 +1213,13 @@ export function HistoricalView({ selectedKind: propKind, onKindChange }: Histori
                           const next = { ...customTags, [selectedKind]: [...allCustomTags, name] };
                           setCustomTags(next);
                           setNewTagDraft(""); setAddingTag(false);
-                          try { await addUserTag(selectedKind, name); } catch { /* silent */ }
+                          try {
+                            await addUserTag(selectedKind, name);
+                          } catch (err) {
+                            console.error("[Histórico] falha ao salvar tag:", err);
+                            toast.error(`Tag "${name}" não foi salva: ${err instanceof Error ? err.message : "erro desconhecido"}.`);
+                            setCustomTags((prev) => ({ ...prev, [selectedKind]: (prev[selectedKind] ?? []).filter((t) => t !== name) }));
+                          }
                         }
                         if (e.key === "Escape") { setAddingTag(false); setNewTagDraft(""); }
                       }}
@@ -1232,7 +1251,13 @@ export function HistoricalView({ selectedKind: propKind, onKindChange }: Histori
                       onClick={async () => {
                         const next = { ...customTags, [selectedKind]: allCustomTags.filter(t2 => t2 !== tag) };
                         setCustomTags(next);
-                        try { await deleteUserTag(selectedKind, tag); } catch { /* silent */ }
+                        try {
+                          await deleteUserTag(selectedKind, tag);
+                        } catch (err) {
+                          console.error("[Histórico] falha ao remover tag:", err);
+                          toast.error(`Não foi possível remover a tag "${tag}".`);
+                          setCustomTags((prev) => ({ ...prev, [selectedKind]: [...(prev[selectedKind] ?? []), tag] }));
+                        }
                       }}
                       className="ml-0.5 flex h-4 w-4 items-center justify-center rounded-full text-slate-300 hover:bg-red-100 hover:text-red-400 transition"
                     >
