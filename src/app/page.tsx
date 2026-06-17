@@ -16,6 +16,7 @@ import {
   fetchSharedDataSource,
   fetchSupabaseCampaigns,
   MetaSyncResult,
+  SharedDataSource,
   replaceSupabaseCampaigns,
   saveSharedDataSource,
   subscribeSharedDataSource,
@@ -43,10 +44,7 @@ declare global {
 }
 
 /** Tracks the currently active data source for the disconnect badge */
-export interface DataSource {
-  type: "google_sheets" | "csv" | "meta";
-  label: string;
-}
+export type DataSource = SharedDataSource;
 
 /** Chave localStorage para o período de busca selecionado pelo usuário. */
 const SYNC_LOOKBACK_LS_KEY = "pta_sync_lookback_days";

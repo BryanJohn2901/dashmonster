@@ -1,5 +1,5 @@
 import Papa from "papaparse";
-import { CampaignData, CampaignRawRow } from "@/types/campaign";
+import { CampaignData, CampaignRawRow, LeadRow } from "@/types/campaign";
 import { calculateDerivedMetrics } from "@/utils/metrics";
 
 type GenericCsvRow = Record<string, unknown>;
@@ -304,6 +304,98 @@ export const fetchCampaignSheetData = async (
     });
   });
 };
+
+// ─── Leads via planilha (aba Leads + quebra por origem) ───────────────────────
+//
+// Planilha de leads orgânicos/diversos: cada linha é um lead individual, já com
+// a origem (canal) e o produto identificados por coluna. Reusa o mesmo motor de
+// aliases/parse das campanhas.
+
+const LEAD_ALIASES = {
+  date:    ["data", "dia", "date", "datahora", "carimbodedatahora", "timestamp"],
+  origem:  ["origem", "fonte", "canal", "source", "deonde", "lead"],
+  produto: ["produto", "product", "curso", "oferta"],
+  name:    ["nome", "name", "fullname", "nomecompleto", "contato"],
+  email:   ["email", "e-mail", "mail"],
+  phone:   ["telefone", "phone", "whatsapp", "celular", "fone", "tel"],
+} as const;
+
+const str = (v: string | number | undefined): string =>
+  v === undefined || v === null ? "" : String(v).trim();
+
+/** Chave estável p/ upsert idempotente — a planilha não tem id próprio. */
+const buildLeadDedupeKey = (lead: Omit<LeadRow, "id" | "source">): string => {
+  const ident = lead.email || lead.phone || lead.fullName || "";
+  return [lead.createdTime, normalizeKey(lead.origem), normalizeKey(ident), normalizeKey(lead.produto ?? "")]
+    .join("|");
+};
+
+const parseLeadRows = (rows: GenericCsvRow[]): LeadRow[] => {
+  const out: LeadRow[] = [];
+
+  rows.forEach((row) => {
+    const fullName = str(findColumnValue(row, [...LEAD_ALIASES.name]));
+    const email    = str(findColumnValue(row, [...LEAD_ALIASES.email]));
+    const phone    = str(findColumnValue(row, [...LEAD_ALIASES.phone]));
+
+    // Linha sem qualquer identificação não é um lead válido.
+    if (!fullName && !email && !phone) return;
+
+    const rawDate = str(findColumnValue(row, [...LEAD_ALIASES.date]));
+    const createdTime = rawDate ? parseDate(rawDate.split(" ")[0]) : "";
+    const origem  = str(findColumnValue(row, [...LEAD_ALIASES.origem])) || "Orgânico";
+    const produto = str(findColumnValue(row, [...LEAD_ALIASES.produto])) || undefined;
+
+    const base = {
+      createdTime,
+      fullName: fullName || null,
+      email: email || null,
+      phone: phone || null,
+      origem,
+      produto,
+    };
+    const dedupeKey = buildLeadDedupeKey(base);
+
+    out.push({ id: dedupeKey, source: "sheet", ...base });
+  });
+
+  if (out.length === 0) {
+    throw new Error("Nenhum lead válido na planilha (precisa de nome, email ou telefone).");
+  }
+
+  return out;
+};
+
+/** Busca leads de uma planilha Google Sheets pública (CSV gviz, ao vivo). */
+export const fetchLeadsSheetData = async (sheetUrl: string): Promise<LeadRow[]> => {
+  const csvUrl = buildGoogleSheetsCsvUrl(sheetUrl);
+
+  return new Promise((resolve, reject) => {
+    Papa.parse<GenericCsvRow>(csvUrl, {
+      header: true,
+      download: true,
+      delimiter: "",
+      skipEmptyLines: true,
+      complete: (results) => {
+        try {
+          if (results.errors.length > 0) {
+            reject(new Error("Falha ao fazer parse do CSV da planilha de leads."));
+            return;
+          }
+          resolve(parseLeadRows(results.data));
+        } catch (error) {
+          reject(error instanceof Error ? error : new Error("Erro ao processar a planilha de leads."));
+        }
+      },
+      error: () => {
+        reject(new Error("Não foi possível carregar a planilha de leads. Verifique se ela está pública."));
+      },
+    });
+  });
+};
+
+/** Chave de dedupe exposta p/ persistência (mesmo cálculo do parser). */
+export const leadDedupeKey = buildLeadDedupeKey;
 
 export const parseCampaignCsvFile = async (file: File): Promise<CampaignData[]> => {
   return new Promise((resolve, reject) => {

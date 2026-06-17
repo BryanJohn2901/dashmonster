@@ -35,7 +35,8 @@ import {
 } from "@/utils/instagramApi";
 import type { MetaSyncResult } from "@/utils/supabaseCampaigns";
 import { useAdvertiserStore } from "@/hooks/useAdvertiserStore";
-import { useCompany, readAdAccountSuggestions } from "@/hooks/useCompany";
+import { useCompany, readAdAccountSuggestions, updateCompanySettings, refreshCompany } from "@/hooks/useCompany";
+import { LEADS_SHEET_URL_KEY, syncLeadsSheet } from "@/utils/supabaseLeads";
 import {
   useCampaignCenter, detectIntent, INTENT_META, INTENT_OPTIONS,
   type CampaignIntent,
@@ -2126,7 +2127,157 @@ export function TabIntegrations({ onSyncNow }: { onSyncNow?: () => void }) {
       {/* Instagram App */}
       <InstagramIntegrationSection />
 
+      {/* Fontes adicionais: leads via planilha + vendas Eduzz */}
+      <AdditionalSourcesSection />
+
     </div>
+  );
+}
+
+// ─── Fontes adicionais (leads via planilha + webhook Eduzz) ───────────────────
+
+const EDUZZ_WEBHOOK_SECRET_KEY = "eduzz_webhook_secret";
+
+function AdditionalSourcesSection() {
+  const { company } = useCompany();
+  const settings = company?.settings ?? {};
+
+  const [sheetUrl, setSheetUrl] = useState(() => String(settings[LEADS_SHEET_URL_KEY] ?? ""));
+  const [eduzzSecret, setEduzzSecret] = useState(() => String(settings[EDUZZ_WEBHOOK_SECRET_KEY] ?? ""));
+  const [savingSheet, setSavingSheet] = useState(false);
+  const [sheetMsg, setSheetMsg] = useState("");
+  const [savedSecret, setSavedSecret] = useState(false);
+
+  const webhookUrl =
+    typeof window !== "undefined" && eduzzSecret.trim()
+      ? `${window.location.origin}/api/eduzz/webhook?secret=${encodeURIComponent(eduzzSecret.trim())}`
+      : "";
+
+  const persist = async (patch: Record<string, unknown>) => {
+    if (!company) return;
+    await updateCompanySettings(company.id, { ...settings, ...patch });
+    await refreshCompany();
+  };
+
+  const handleSaveSheet = async () => {
+    if (!company) return;
+    setSavingSheet(true);
+    setSheetMsg("");
+    try {
+      await persist({ [LEADS_SHEET_URL_KEY]: sheetUrl.trim() });
+      if (sheetUrl.trim()) {
+        const n = await syncLeadsSheet();
+        setSheetMsg(`${n} lead${n !== 1 ? "s" : ""} sincronizado${n !== 1 ? "s" : ""}.`);
+      } else {
+        setSheetMsg("Planilha desconectada.");
+      }
+    } catch (e) {
+      setSheetMsg(e instanceof Error ? e.message : "Falha ao sincronizar.");
+    } finally {
+      setSavingSheet(false);
+    }
+  };
+
+  const handleGenerateSecret = () => {
+    const s = (crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)).replace(/-/g, "");
+    setEduzzSecret(s);
+  };
+
+  const handleSaveSecret = async () => {
+    await persist({ [EDUZZ_WEBHOOK_SECRET_KEY]: eduzzSecret.trim() });
+    setSavedSecret(true);
+    setTimeout(() => setSavedSecret(false), 2000);
+  };
+
+  const inputStyle = {
+    borderColor: "var(--dm-border-default)",
+    backgroundColor: "var(--dm-bg-elevated)",
+    color: "var(--dm-text-primary)",
+  } as const;
+
+  return (
+    <>
+      {/* Planilha de leads */}
+      <section>
+        <div className="mb-3 flex items-center gap-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
+            <User size={15} style={{ color: "var(--dm-brand-500)" }} />
+          </div>
+          <div>
+            <p className="text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>Leads via planilha</p>
+            <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>Google Sheets pública · colunas: data, origem, produto, nome/email/telefone</p>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <input
+            type="url"
+            value={sheetUrl}
+            onChange={e => setSheetUrl(e.target.value)}
+            placeholder="https://docs.google.com/spreadsheets/d/…"
+            className="h-9 w-full rounded-lg border px-3 text-xs outline-none focus:ring-1"
+            style={inputStyle}
+          />
+          {sheetMsg && (
+            <p className="text-[11px] font-medium" style={{ color: "var(--dm-text-secondary)" }}>{sheetMsg}</p>
+          )}
+          <button type="button" onClick={() => void handleSaveSheet()} disabled={savingSheet || !company}
+            className="flex h-8 w-full items-center justify-center gap-1 rounded-lg text-xs font-bold text-white transition disabled:opacity-50"
+            style={{ backgroundColor: "var(--dm-brand-500)" }}>
+            {savingSheet ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
+            {savingSheet ? "Sincronizando…" : "Salvar e sincronizar"}
+          </button>
+        </div>
+      </section>
+
+      {/* Vendas Eduzz */}
+      <section>
+        <div className="mb-3 flex items-center gap-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
+            <Zap size={15} style={{ color: "var(--dm-brand-500)" }} />
+          </div>
+          <div>
+            <p className="text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>Vendas Eduzz</p>
+            <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>Webhook em tempo real (myeduzz → Notificações)</p>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={eduzzSecret}
+              onChange={e => setEduzzSecret(e.target.value)}
+              placeholder="segredo do webhook"
+              className="h-9 flex-1 rounded-lg border px-3 text-xs font-mono outline-none focus:ring-1"
+              style={inputStyle}
+            />
+            <button type="button" onClick={handleGenerateSecret}
+              className="flex h-9 items-center justify-center gap-1 rounded-lg border px-3 text-xs font-semibold transition"
+              style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>
+              <RefreshCw size={11} /> Gerar
+            </button>
+          </div>
+
+          {webhookUrl && (
+            <div className="rounded-lg border px-3 py-2" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)" }}>
+              <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>URL do webhook</p>
+              <code className="block break-all text-[11px]" style={{ color: "var(--dm-text-secondary)" }}>{webhookUrl}</code>
+            </div>
+          )}
+
+          <button type="button" onClick={() => void handleSaveSecret()} disabled={!company}
+            className="flex h-8 w-full items-center justify-center gap-1 rounded-lg text-xs font-bold text-white transition disabled:opacity-50"
+            style={{ backgroundColor: savedSecret ? "var(--dm-success-text)" : "var(--dm-brand-500)" }}>
+            {savedSecret ? <CheckCircle2 size={11} /> : <Save size={11} />}
+            {savedSecret ? "Salvo!" : "Salvar segredo"}
+          </button>
+          <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+            Cole a URL acima no Eduzz. Só vendas <strong>pagas</strong> entram no dashboard como receita.
+          </p>
+        </div>
+      </section>
+    </>
   );
 }
 

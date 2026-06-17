@@ -1,5 +1,5 @@
 import { RealtimeChannel } from "@supabase/supabase-js";
-import { CampaignData } from "@/types/campaign";
+import { CampaignData, SourceChannel } from "@/types/campaign";
 import { supabaseClient } from "@/lib/supabase";
 import { getCompanyContext } from "@/hooks/useCompany";
 import { calculateDerivedMetrics } from "@/utils/metrics";
@@ -15,11 +15,11 @@ interface SupabaseCampaignRow {
   leads: number;
   page_views: number;
   revenue: number;
-  source: "csv" | "google_sheets" | "meta";
+  source: SourceChannel;
 }
 
 export interface SharedDataSource {
-  type: "csv" | "google_sheets" | "meta";
+  type: SourceChannel;
   label: string;
 }
 
@@ -35,6 +35,9 @@ const mapSupabaseRow = (row: SupabaseCampaignRow, index: number): CampaignData =
       leads: Number(row.leads ?? 0),
       pageViews: Number(row.page_views ?? 0),
       revenue: Number(row.revenue ?? 0),
+      // Proveniência da linha — dirige a quebra por canal no overview
+      // (origem derivada de `source` via DEFAULT_ORIGIN_BY_SOURCE).
+      source: (row.source ?? "meta") as SourceChannel,
     },
     index,
   );
@@ -145,16 +148,18 @@ export const subscribeSupabaseCampaigns = (
 
 export const replaceSupabaseCampaigns = async (
   campaigns: CampaignData[],
-  source: "csv" | "google_sheets" | "meta",
+  source: SourceChannel,
 ): Promise<void> => {
   if (!supabaseClient) {
     throw new Error("Supabase não configurado.");
   }
 
+  // Multi-fonte: apaga só as linhas DESTA fonte. As demais (Meta, Eduzz, etc.)
+  // coexistem — antes este delete limpava a tabela inteira.
   const { error: deleteError } = await supabaseClient
     .from("campaign_metrics")
     .delete()
-    .neq("id", "00000000-0000-0000-0000-000000000000");
+    .eq("source", source);
 
   if (deleteError) {
     throw new Error(`Erro ao limpar dados antigos: ${deleteError.message}`);
@@ -249,10 +254,14 @@ export interface MetaSyncResult {
 }
 
 /**
- * Upserts Meta Ads daily data into campaign_metrics without touching other rows.
- * Requires the unique constraint (date, campaign_name, source) — see migration 005.
+ * Upserts daily campaign data into campaign_metrics for a single source without
+ * touching rows of other sources. Requires the unique constraint
+ * (date, campaign_name, source) — see migration 005.
  */
-export const upsertMetaCampaigns = async (campaigns: CampaignData[]): Promise<MetaSyncResult> => {
+const upsertCampaignsBySource = async (
+  campaigns: CampaignData[],
+  source: SourceChannel,
+): Promise<MetaSyncResult> => {
   if (!supabaseClient) throw new Error("Supabase não configurado.");
   if (campaigns.length === 0) return { synced: 0, dateFrom: "", dateTo: "" };
 
@@ -288,7 +297,7 @@ export const upsertMetaCampaigns = async (campaigns: CampaignData[]): Promise<Me
     leads: item.leads ?? 0,
     page_views: item.pageViews ?? 0,
     revenue: item.revenue,
-    source: "meta" as const,
+    source,
     ...(company ? { company_id: company.id } : {}),
   }));
 
@@ -332,6 +341,14 @@ export const upsertMetaCampaigns = async (campaigns: CampaignData[]): Promise<Me
     dateTo: dates[dates.length - 1],
   };
 };
+
+/** Upsert não-destrutivo de dados Meta (preserva linhas de outras fontes). */
+export const upsertMetaCampaigns = (campaigns: CampaignData[]): Promise<MetaSyncResult> =>
+  upsertCampaignsBySource(campaigns, "meta");
+
+/** Backfill de vendas Eduzz via CSV/planilha (o webhook grava server-side). */
+export const upsertEduzzSales = (campaigns: CampaignData[]): Promise<MetaSyncResult> =>
+  upsertCampaignsBySource(campaigns, "eduzz");
 
 export const subscribeSharedDataSource = (onChange: () => Promise<void>): RealtimeChannel => {
   if (!supabaseClient) {

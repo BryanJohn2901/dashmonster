@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useTheme } from "next-themes";
-import { CampaignData, ProductCategory } from "@/types/campaign";
+import { CampaignData, LeadRow, ProductCategory, SourceChannel } from "@/types/campaign";
 import type { UserAccountEntry, UserCategory } from "@/types/userConfig";
 import {
   PTA_PAINEL_SAVE_NAV_EVENT,
@@ -31,6 +31,8 @@ import {
   fetchMetaAdAccounts, fetchMetaCampaigns, loadMetaCredentials, saveMetaCredentials,
 } from "@/utils/metaApi";
 import { LEADS_MIGRATION_FILE, type MetaSyncResult } from "@/utils/supabaseCampaigns";
+import { fetchLeads as fetchDbLeads, subscribeLeads } from "@/utils/supabaseLeads";
+import { isSupabaseConfigured } from "@/lib/supabase";
 import type { MetaAdAccount, MetaCampaign } from "@/utils/metaApi";
 import { CategoryGate, CATEGORY_LABEL, CATEGORY_ICON, CATEGORY_DOT, ICON_MAP, COLOR_HEX } from "@/components/CategoryGate";
 import {
@@ -67,7 +69,7 @@ import { useManualMetrics } from "@/hooks/useManualMetrics";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface DataSource {
-  type: "google_sheets" | "csv" | "meta";
+  type: SourceChannel;
   label: string;
 }
 
@@ -98,6 +100,8 @@ function formatDataSourcePill(ds: DataSource | null | undefined): { title: strin
     meta: "Meta Ads",
     csv: "CSV",
     google_sheets: "Google Sheets",
+    eduzz: "Eduzz",
+    sheet: "Planilha",
   };
   return { title: titles[ds.type], subtitle: ds.label };
 }
@@ -1902,6 +1906,27 @@ export function Dashboard({
     setDateTo:   setDateToPersist,
   } = useDateRange();
 
+  // ── Leads de outras fontes (planilha/Eduzz) p/ a quebra por canal no overview ─
+  const [dbLeads, setDbLeads] = useState<LeadRow[]>([]);
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    const load = () => fetchDbLeads().then(setDbLeads).catch(() => {});
+    void load();
+    const channel = subscribeLeads(load);
+    return () => { void channel.unsubscribe(); };
+  }, []);
+
+  const leadsByOrigin = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const l of dbLeads) {
+      const d = l.createdTime?.slice(0, 10);
+      if (dateFrom && d && d < dateFrom) continue;
+      if (dateTo && d && d > dateTo) continue;
+      map.set(l.origem, (map.get(l.origem) ?? 0) + 1);
+    }
+    return Array.from(map, ([origem, leads]) => ({ origem, leads }));
+  }, [dbLeads, dateFrom, dateTo]);
+
   // ── Metric visibility — shared across all tabs ────────────────────────────
   const { hidden: hiddenMetrics, toggle: toggleMetric, showAll: showAllMetrics, hideAll: hideAllMetrics, isVisible: isMetricVisible, allVisible: allMetricsVisible } = useMetricVisibility();
 
@@ -3322,7 +3347,7 @@ export function Dashboard({
 
                 {dashSubTab === "overview" && (<>
                 {filteredCampaigns.length > 0 && (
-                  <OverviewBento totals={totals} campaigns={campaignsWithOverrides} conversions={effectiveConversions} onManage={onOpenControlPanel} />
+                  <OverviewBento totals={totals} campaigns={campaignsWithOverrides} conversions={effectiveConversions} leadsByOrigin={leadsByOrigin} onManage={onOpenControlPanel} />
                 )}
                 {false && overviewSelectionSummary && (
                   <section style={{ display: "none" }}>

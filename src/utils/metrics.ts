@@ -5,6 +5,8 @@ import {
   CampaignData,
   DashboardTotals,
   DailyTrendPoint,
+  DEFAULT_ORIGIN_BY_SOURCE,
+  OriginBreakdown,
 } from "@/types/campaign";
 import type { ManualOverrideStore } from "@/hooks/useManualMetrics";
 
@@ -40,6 +42,40 @@ export const calculateDerivedMetrics = (
     roas,
     conversionRate,
   };
+};
+
+/** Canal de negócio da linha: `origem` explícita, senão derivado da proveniência. */
+export const resolveOrigin = (campaign: CampaignData): string =>
+  campaign.origem?.trim() || DEFAULT_ORIGIN_BY_SOURCE[campaign.source ?? "meta"];
+
+/**
+ * Quebra os somatórios por canal de negócio (origem). Alimenta os chips do card —
+ * ex.: "250 leads = 150 Meta · 50 Google · 50 Orgânico". Ordena por leads desc.
+ */
+export const aggregateByOrigin = (campaigns: CampaignData[]): OriginBreakdown[] => {
+  const map = new Map<string, OriginBreakdown>();
+
+  campaigns.forEach((c) => {
+    const origem = resolveOrigin(c);
+    const current = map.get(origem) ?? {
+      origem,
+      investment: 0,
+      clicks: 0,
+      impressions: 0,
+      conversions: 0,
+      leads: 0,
+      revenue: 0,
+    };
+    current.investment += c.investment;
+    current.clicks += c.clicks;
+    current.impressions += c.impressions;
+    current.conversions += c.conversions;
+    current.leads += c.leads ?? 0;
+    current.revenue += c.revenue;
+    map.set(origem, current);
+  });
+
+  return Array.from(map.values()).sort((a, b) => b.leads - a.leads || b.revenue - a.revenue);
 };
 
 export const aggregateTotals = (campaigns: CampaignData[]): DashboardTotals => {
@@ -84,6 +120,7 @@ export const aggregateTotals = (campaigns: CampaignData[]): DashboardTotals => {
     cpc,
     cpm,
     cpl,
+    sourceBreakdown: aggregateByOrigin(campaigns),
   };
 };
 

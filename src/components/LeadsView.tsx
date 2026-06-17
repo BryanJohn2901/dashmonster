@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Search, RefreshCw, Calendar, User } from "lucide-react";
 import { loadMetaCredentials } from "@/utils/metaApi";
 import { useAdvertiserStore } from "@/hooks/useAdvertiserStore";
 import { classifyCampaign, classifyCourse } from "@/utils/campaignClassifier";
+import { fetchLeads as fetchDbLeads, subscribeLeads, syncLeadsSheet } from "@/utils/supabaseLeads";
+import { isSupabaseConfigured } from "@/lib/supabase";
 import type { MetaLeadRow } from "@/app/api/meta/leads/route";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -36,7 +38,16 @@ const PRODUCT_LABELS: Record<string, string> = {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface EnrichedLead extends MetaLeadRow {
+/** Lead unificado p/ a tabela: Meta lead forms + leads da planilha (banco). */
+interface EnrichedLead {
+  id: string;
+  fullName: string | null;
+  email: string | null;
+  phone: string | null;
+  createdTime: string;
+  campaignName: string;
+  /** Canal de negócio ("Meta Ads", "Orgânico", "Google"…). */
+  origem: string;
   categoryTag: string;
   productTag:  string;
 }
@@ -77,12 +88,42 @@ function Chip({
 
 export function LeadsView() {
   const { profiles }                          = useAdvertiserStore();
-  const [leads, setLeads]                     = useState<EnrichedLead[]>([]);
+  const [metaLeads, setMetaLeads]             = useState<EnrichedLead[]>([]);
+  const [dbLeads, setDbLeads]                 = useState<EnrichedLead[]>([]);
   const [loading, setLoading]                 = useState(false);
   const [error, setError]                     = useState<string | null>(null);
   const [search, setSearch]                   = useState("");
   const [categoryFilter, setCategoryFilter]   = useState<string | null>(null);
   const [productFilter, setProductFilter]     = useState<string | null>(null);
+  const [origemFilter, setOrigemFilter]       = useState<string | null>(null);
+
+  // Leads de outras fontes (planilha/Eduzz) vêm do banco e são populados pelo
+  // sync da planilha; aqui só lemos + ouvimos realtime.
+  const loadDbLeads = useCallback(async () => {
+    if (!isSupabaseConfigured) return;
+    try {
+      const rows = await fetchDbLeads();
+      setDbLeads(rows.map((l) => ({
+        id:           l.id,
+        fullName:     l.fullName,
+        email:        l.email,
+        phone:        l.phone,
+        createdTime:  l.createdTime,
+        campaignName: l.produto ?? "",
+        origem:       l.origem,
+        categoryTag:  classifyCampaign(l.produto ?? ""),
+        productTag:   classifyCourse(l.produto ?? ""),
+      })));
+    } catch { /* tabela ausente / sem permissão — não bloqueia */ }
+  }, []);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    // Puxa a planilha de leads ao vivo (se configurada) e depois carrega do banco.
+    void syncLeadsSheet().catch(() => {}).finally(() => { void loadDbLeads(); });
+    const channel = subscribeLeads(loadDbLeads);
+    return () => { void channel.unsubscribe(); };
+  }, [loadDbLeads]);
 
   const today = new Date().toISOString().split("T")[0];
   const minus30 = new Date(Date.now() - 30 * 86400_000).toISOString().split("T")[0];
@@ -119,12 +160,18 @@ export function LeadsView() {
       const json = (await res.json()) as { leads: MetaLeadRow[]; errors?: string[] };
 
       const enriched: EnrichedLead[] = (json.leads ?? []).map((lead) => ({
-        ...lead,
-        categoryTag: classifyCampaign(lead.campaignName),
-        productTag:  classifyCourse(lead.campaignName),
+        id:           lead.id,
+        fullName:     lead.fullName,
+        email:        lead.email,
+        phone:        lead.phone,
+        createdTime:  lead.createdTime,
+        campaignName: lead.campaignName,
+        origem:       "Meta Ads",
+        categoryTag:  classifyCampaign(lead.campaignName),
+        productTag:   classifyCourse(lead.campaignName),
       }));
 
-      setLeads(enriched);
+      setMetaLeads(enriched);
 
       if (json.errors?.length) {
         setError(`Avisos: ${json.errors.slice(0, 2).join(" | ")}`);
@@ -138,11 +185,33 @@ export function LeadsView() {
 
   useEffect(() => { fetchLeads(); }, [fetchLeads]);
 
+  // Botão "Atualizar": re-puxa Meta + re-sincroniza a planilha de leads.
+  const handleRefresh = useCallback(async () => {
+    await Promise.allSettled([
+      fetchLeads(),
+      syncLeadsSheet().then(() => loadDbLeads()),
+    ]);
+  }, [fetchLeads, loadDbLeads]);
+
   // ── Derived ──────────────────────────────────────────────────────────────────
+
+  // Leads Meta (pré-filtrados por data na API) + leads do banco (planilha/Eduzz,
+  // filtrados por data aqui). Dedup por id.
+  const leads = useMemo<EnrichedLead[]>(() => {
+    const inRange = dbLeads.filter((l) => {
+      const d = l.createdTime?.slice(0, 10);
+      if (!d) return true;
+      return (!dateFrom || d >= dateFrom) && (!dateTo || d <= dateTo);
+    });
+    const merged = [...metaLeads, ...inRange];
+    const seen = new Set<string>();
+    return merged.filter((l) => (seen.has(l.id) ? false : (seen.add(l.id), true)));
+  }, [metaLeads, dbLeads, dateFrom, dateTo]);
 
   const filtered = leads.filter((l) => {
     if (categoryFilter && l.categoryTag !== categoryFilter) return false;
     if (productFilter  && l.productTag  !== productFilter)  return false;
+    if (origemFilter   && l.origem      !== origemFilter)   return false;
     if (search) {
       const q = search.toLowerCase();
       return (
@@ -150,14 +219,16 @@ export function LeadsView() {
         l.email?.toLowerCase().includes(q) ||
         l.phone?.includes(q) ||
         l.campaignName.toLowerCase().includes(q) ||
+        l.origem.toLowerCase().includes(q) ||
         false
       );
     }
     return true;
   });
 
-  const categories = [...new Set(leads.map((l) => l.categoryTag))];
+  const categories = [...new Set(leads.map((l) => l.categoryTag).filter(Boolean))];
   const products   = [...new Set(leads.map((l) => l.productTag).filter(Boolean))];
+  const origens    = [...new Set(leads.map((l) => l.origem).filter(Boolean))];
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
@@ -170,13 +241,13 @@ export function LeadsView() {
             Leads ao Vivo
           </h2>
           <p className="text-[11px] mt-0.5" style={{ color: "var(--dm-text-tertiary)" }}>
-            Meta Lead Ads · {filtered.length} lead{filtered.length !== 1 ? "s" : ""}
+            {origens.length > 0 ? origens.join(" · ") : "Meta Lead Ads"} · {filtered.length} lead{filtered.length !== 1 ? "s" : ""}
             {leads.length !== filtered.length && ` (${leads.length} total)`}
           </p>
         </div>
         <button
           type="button"
-          onClick={fetchLeads}
+          onClick={() => void handleRefresh()}
           disabled={loading}
           className="flex-shrink-0 flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-opacity hover:opacity-70 disabled:opacity-40"
           style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}
@@ -232,6 +303,20 @@ export function LeadsView() {
           />
         </div>
       </div>
+
+      {/* Origem chips — quebra por canal (Meta · Google · Orgânico…) */}
+      {origens.length > 1 && (
+        <div className="mb-2 flex flex-wrap gap-1.5">
+          {origens.map((o) => (
+            <Chip
+              key={o}
+              label={o}
+              active={origemFilter === o}
+              onClick={() => setOrigemFilter(origemFilter === o ? null : o)}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Filter chips */}
       {(categories.length > 0 || products.length > 0) && (
@@ -307,7 +392,7 @@ export function LeadsView() {
                   background:   "var(--dm-bg-elevated)",
                 }}
               >
-                {["Nome", "Data", "Número", "E-mail", "Categoria", "Produto"].map((h) => (
+                {["Nome", "Data", "Número", "E-mail", "Origem", "Categoria", "Produto"].map((h) => (
                   <th
                     key={h}
                     className="px-4 py-2.5 text-left font-semibold"
@@ -353,6 +438,14 @@ export function LeadsView() {
                     </td>
                     <td className="px-4 py-2.5" style={{ color: "var(--dm-text-secondary)" }}>
                       {lead.email ?? "—"}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <span
+                        className="rounded-full px-2 py-0.5 text-[9px] font-semibold whitespace-nowrap"
+                        style={{ background: "var(--dm-primary-soft)", color: "var(--dm-primary)" }}
+                      >
+                        {lead.origem}
+                      </span>
                     </td>
                     <td className="px-4 py-2.5">
                       <span

@@ -5,6 +5,24 @@ export type BuiltinCategory = "pos" | "livros" | "ebooks" | "perpetuo" | "evento
 /** Accepts built-in literal types + any custom string (open enum pattern). */
 export type ProductCategory = BuiltinCategory | (string & {});
 
+// ─── Fonte vs canal ─────────────────────────────────────────────────────────
+//
+// Dois eixos que antes eram confundidos num campo só:
+//   • `source` = proveniência TÉCNICA da linha (como o dado entrou no sistema).
+//                Enum fixo, casa com a coluna `source` de campaign_metrics.
+//   • `origem` = canal de NEGÓCIO que dirige a quebra por fonte no card
+//                ("Meta Ads", "Google", "Orgânico", "Indicação"…). String livre.
+export type SourceChannel = "meta" | "eduzz" | "sheet" | "csv" | "google_sheets";
+
+/** Deriva o rótulo de canal padrão a partir da proveniência técnica. */
+export const DEFAULT_ORIGIN_BY_SOURCE: Record<SourceChannel, string> = {
+  meta:          "Meta Ads",
+  eduzz:         "Eduzz",
+  sheet:         "Planilha",
+  csv:           "Planilha",
+  google_sheets: "Planilha",
+};
+
 export interface CampaignRawRow {
   Data: string;
   "Nome da Campanha": string;
@@ -31,6 +49,36 @@ export interface CampaignData {
   cpa: number;
   roas: number;
   conversionRate: number;
+  /** Proveniência técnica da linha. Default "meta" quando ausente (legado). */
+  source?: SourceChannel;
+  /** Canal de negócio p/ a quebra por fonte no card. Default derivado de `source`. */
+  origem?: string;
+}
+
+/** Somatório de métricas de um canal de negócio (uma fatia do sourceBreakdown). */
+export interface OriginBreakdown {
+  origem: string;
+  investment: number;
+  clicks: number;
+  impressions: number;
+  conversions: number;
+  leads: number;
+  revenue: number;
+}
+
+/** Lead individual unificado (Meta lead forms + planilha) consumido pela aba Leads. */
+export interface LeadRow {
+  id: string;
+  createdTime: string;
+  fullName: string | null;
+  email: string | null;
+  phone: string | null;
+  /** Canal de negócio ("Meta Ads", "Orgânico", "Google"…). */
+  origem: string;
+  /** Produto identificado (coluna da planilha ou nome da campanha). */
+  produto?: string;
+  campaignName?: string;
+  source: SourceChannel;
 }
 
 export interface DashboardTotals {
@@ -50,6 +98,8 @@ export interface DashboardTotals {
   cpc: number;
   cpm: number;
   cpl: number;
+  /** Quebra dos totais por canal de negócio (Meta · Google · Orgânico · …). */
+  sourceBreakdown: OriginBreakdown[];
 }
 
 export interface DailyTrendPoint {

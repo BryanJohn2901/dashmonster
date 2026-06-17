@@ -2,8 +2,20 @@
 
 import { useMemo, useState } from "react";
 import { TrendingUp, TrendingDown, Wallet, Target, Coins, Gauge, Filter, Megaphone, Search, Settings2 } from "lucide-react";
-import type { CampaignData, DashboardTotals } from "@/types/campaign";
+import type { CampaignData, DashboardTotals, OriginBreakdown } from "@/types/campaign";
 import { formatBRL, formatInt, formatCompact, formatPercent } from "@/lib/format";
+
+// ─── Cores por canal (dentro do sistema, sem pastel) ──────────────────────────
+const ORIGIN_COLORS: Record<string, string> = {
+  "Meta Ads": "#6366C8",
+  "Google":   "#0ea5e9",
+  "Orgânico": "#05CD99",
+  "Eduzz":    "#f59e0b",
+  "Planilha": "#8B5CF6",
+};
+const ORIGIN_FALLBACK = ["#6366C8", "#0ea5e9", "#05CD99", "#f59e0b", "#8B5CF6", "#e11d48"];
+const originColor = (origem: string, index: number): string =>
+  ORIGIN_COLORS[origem] ?? ORIGIN_FALLBACK[index % ORIGIN_FALLBACK.length];
 
 // ─── Sparkline (SVG inline, sem libs) ─────────────────────────────────────────
 
@@ -55,8 +67,27 @@ function Delta({ value, invert }: { value: number | null; invert?: boolean }) {
 
 // ─── Metric tile ──────────────────────────────────────────────────────────────
 
-function MetricTile({ icon: Icon, label, value, sub, color, data, invertDelta }: {
+/** Fatia da quebra por canal exibida sob o valor do tile. */
+export interface TileBreakdown { label: string; value: string; color: string; }
+
+/** Chips de quebra por canal — ex.: "150 Meta · 50 Google · 50 Orgânico". */
+function BreakdownChips({ items }: { items: TileBreakdown[] }) {
+  if (items.length < 2) return null; // 1 canal só não precisa de quebra
+  return (
+    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+      {items.map((b) => (
+        <span key={b.label} className="flex items-center gap-1 text-[10px] font-semibold tabular-nums" style={{ color: "var(--dm-text-secondary)" }}>
+          <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ backgroundColor: b.color }} />
+          {b.value} <span style={{ color: "var(--dm-text-tertiary)" }} className="font-medium">{b.label}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function MetricTile({ icon: Icon, label, value, sub, color, data, invertDelta, breakdown }: {
   icon: typeof Wallet; label: string; value: string; sub?: string; color: string; data: number[]; invertDelta?: boolean;
+  breakdown?: TileBreakdown[];
 }) {
   return (
     <div className="flex flex-col justify-between gap-2.5 rounded-2xl border p-4 transition-shadow hover:shadow-md"
@@ -74,14 +105,16 @@ function MetricTile({ icon: Icon, label, value, sub, color, data, invertDelta }:
         {value}
       </p>
       <Sparkline data={data} color={color} />
-      {sub && <span className="text-[10px] font-medium" style={{ color: "var(--dm-text-tertiary)" }}>{sub}</span>}
+      {breakdown && breakdown.length > 1
+        ? <BreakdownChips items={breakdown} />
+        : sub && <span className="text-[10px] font-medium" style={{ color: "var(--dm-text-tertiary)" }}>{sub}</span>}
     </div>
   );
 }
 
 // ─── Funil compacto ───────────────────────────────────────────────────────────
 
-function FunnelTile({ stages }: { stages: { label: string; value: number; color: string }[] }) {
+function FunnelTile({ stages }: { stages: { label: string; value: number; color: string; breakdown?: TileBreakdown[] }[] }) {
   const max = Math.max(...stages.map((s) => s.value), 1);
   return (
     <div className="flex flex-col gap-3 rounded-2xl border p-5"
@@ -113,6 +146,16 @@ function FunnelTile({ stages }: { stages: { label: string; value: number; color:
               <div className="h-2.5 w-full overflow-hidden rounded-full" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
                 <div className="h-full rounded-full transition-all duration-500" style={{ width: `${widthPct}%`, background: `linear-gradient(90deg, ${s.color}, ${s.color}cc)` }} />
               </div>
+              {s.breakdown && s.breakdown.length > 1 && (
+                <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 pl-0.5">
+                  {s.breakdown.map((b) => (
+                    <span key={b.label} className="flex items-center gap-1 text-[9px] font-semibold tabular-nums" style={{ color: "var(--dm-text-secondary)" }}>
+                      <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ backgroundColor: b.color }} />
+                      {b.value} <span className="font-medium" style={{ color: "var(--dm-text-tertiary)" }}>{b.label}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           );
         })}
@@ -198,10 +241,12 @@ function CampaignsTile({ campaigns, onManage }: { campaigns: CampaignData[]; onM
 
 // ─── Bento ────────────────────────────────────────────────────────────────────
 
-export function OverviewBento({ totals, campaigns, conversions, onManage }: {
+export function OverviewBento({ totals, campaigns, conversions, leadsByOrigin, onManage }: {
   totals: DashboardTotals;
   campaigns: CampaignData[];
   conversions: number;
+  /** Leads da tabela `leads` (planilha/Eduzz) agrupados por origem. */
+  leadsByOrigin?: { origem: string; leads: number }[];
   onManage?: () => void;
 }) {
   const series = useMemo(() => {
@@ -224,10 +269,48 @@ export function OverviewBento({ totals, campaigns, conversions, onManage }: {
   const cpa = conversions > 0 ? totals.totalInvestment / conversions : 0;
   const cpaSeries = series.investment.map((inv, i) => { const c = series.conversions[i]; return c > 0 ? inv / c : 0; });
 
+  // ── Quebra por canal ────────────────────────────────────────────────────────
+  // Leads = campaign_metrics (Meta) + tabela leads (Google/Orgânico via planilha).
+  const leadsBreakdownMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const b of totals.sourceBreakdown) {
+      if (b.leads > 0) map.set(b.origem, (map.get(b.origem) ?? 0) + b.leads);
+    }
+    for (const l of leadsByOrigin ?? []) {
+      if (l.leads > 0) map.set(l.origem, (map.get(l.origem) ?? 0) + l.leads);
+    }
+    return map;
+  }, [totals.sourceBreakdown, leadsByOrigin]);
+
+  const totalLeads = useMemo(
+    () => Array.from(leadsBreakdownMap.values()).reduce((a, b) => a + b, 0),
+    [leadsBreakdownMap],
+  );
+
+  const toChips = (
+    rows: { origem: string; v: number }[],
+    fmt: (v: number) => string,
+  ): TileBreakdown[] =>
+    rows
+      .filter((r) => r.v > 0)
+      .sort((a, b) => b.v - a.v)
+      .map((r, i) => ({ label: r.origem, value: fmt(r.v), color: originColor(r.origem, i) }));
+
+  const sel = (pick: (b: OriginBreakdown) => number, fmt: (v: number) => string) =>
+    toChips(totals.sourceBreakdown.map((b) => ({ origem: b.origem, v: pick(b) })), fmt);
+
+  const leadsChips = toChips(
+    Array.from(leadsBreakdownMap, ([origem, v]) => ({ origem, v })),
+    formatInt,
+  );
+  const investmentChips = sel((b) => b.investment, formatBRL);
+  const resultsChips     = sel((b) => b.conversions, formatInt);
+  const revenueChips      = sel((b) => b.revenue, formatBRL);
+
   const stages = [
     { label: "Impressões", value: totals.totalImpressions, color: "#6366C8" },
     { label: "Cliques",    value: totals.totalClicks,      color: "#0ea5e9" },
-    ...(totals.totalLeads > 0 ? [{ label: "Leads", value: totals.totalLeads, color: "#f59e0b" }] : []),
+    ...(totalLeads > 0 ? [{ label: "Leads", value: totalLeads, color: "#f59e0b", breakdown: leadsChips }] : []),
     { label: "Resultados", value: conversions,             color: "#05CD99" },
   ];
 
@@ -238,13 +321,16 @@ export function OverviewBento({ totals, campaigns, conversions, onManage }: {
         <FunnelTile stages={stages} />
       </div>
       <MetricTile icon={Wallet} label="Investido" color="#6366C8" data={series.investment}
-        value={formatBRL(totals.totalInvestment)} sub={`CTR ${formatPercent(totals.ctr)}`} invertDelta />
+        value={formatBRL(totals.totalInvestment)} sub={`CTR ${formatPercent(totals.ctr)}`} invertDelta
+        breakdown={investmentChips} />
       <MetricTile icon={Target} label="Resultados" color="#05CD99" data={series.conversions}
-        value={formatInt(conversions)} sub={totals.totalRevenue > 0 ? `Receita ${formatCompact(totals.totalRevenue)}` : undefined} />
+        value={formatInt(conversions)} sub={totals.totalRevenue > 0 ? `Receita ${formatCompact(totals.totalRevenue)}` : undefined}
+        breakdown={resultsChips} />
       <MetricTile icon={Coins} label="Custo / Resultado" color="#f59e0b" data={cpaSeries}
         value={cpa > 0 ? formatBRL(cpa) : "—"} sub="CPA médio" invertDelta />
       <MetricTile icon={Gauge} label="ROAS" color="#e11d48" data={series.revenue}
-        value={`${totals.roas.toFixed(2)}x`} sub={totals.totalRevenue > 0 ? `Receita ${formatBRL(totals.totalRevenue)}` : "sem receita"} />
+        value={`${totals.roas.toFixed(2)}x`} sub={totals.totalRevenue > 0 ? `Receita ${formatBRL(totals.totalRevenue)}` : "sem receita"}
+        breakdown={revenueChips} />
     </div>
     <CampaignsTile campaigns={campaigns} onManage={onManage} />
     </div>
