@@ -3310,7 +3310,7 @@ export function Dashboard({
 
                 {dashSubTab === "overview" && (<>
                 {filteredCampaigns.length > 0 && (
-                  <OverviewBento totals={totals} campaigns={campaignsWithOverrides} conversions={effectiveConversions} />
+                  <OverviewBento totals={totals} campaigns={campaignsWithOverrides} conversions={effectiveConversions} onManage={onOpenControlPanel} />
                 )}
                 {false && overviewSelectionSummary && (
                   <section style={{ display: "none" }}>

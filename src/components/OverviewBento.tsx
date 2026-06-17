@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
-import { TrendingUp, TrendingDown, Wallet, Target, Coins, Gauge, Filter } from "lucide-react";
+import { useMemo, useState } from "react";
+import { TrendingUp, TrendingDown, Wallet, Target, Coins, Gauge, Filter, Megaphone, Search, Settings2 } from "lucide-react";
 import type { CampaignData, DashboardTotals } from "@/types/campaign";
 import { formatBRL, formatInt, formatCompact, formatPercent } from "@/lib/format";
 
@@ -121,12 +121,88 @@ function FunnelTile({ stages }: { stages: { label: string; value: number; color:
   );
 }
 
+// ─── Tile de campanhas (ver + puxar) ──────────────────────────────────────────
+
+function CampaignsTile({ campaigns, onManage }: { campaigns: CampaignData[]; onManage?: () => void }) {
+  const [query, setQuery] = useState("");
+  const list = useMemo(() => {
+    const byName = new Map<string, { name: string; inv: number; res: number; imp: number }>();
+    for (const c of campaigns) {
+      const cur = byName.get(c.campaignName) ?? { name: c.campaignName, inv: 0, res: 0, imp: 0 };
+      cur.inv += c.investment; cur.res += c.conversions; cur.imp += c.impressions;
+      byName.set(c.campaignName, cur);
+    }
+    return [...byName.values()].sort((a, b) => b.inv - a.inv);
+  }, [campaigns]);
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return q ? list.filter((c) => c.name.toLowerCase().includes(q)) : list;
+  }, [list, query]);
+  const maxInv = Math.max(...list.map((c) => c.inv), 1);
+
+  return (
+    <div className="flex flex-col gap-3 rounded-2xl border p-5" style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="flex items-center gap-2 text-sm font-bold" style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ backgroundColor: "rgba(99,102,200,0.12)" }}>
+            <Megaphone size={14} style={{ color: "#6366C8" }} />
+          </span>
+          Campanhas
+          <span className="rounded-full px-2 py-0.5 text-[10px] font-bold tabular-nums" style={{ backgroundColor: "rgba(99,102,200,0.12)", color: "#6366C8" }}>{list.length}</span>
+        </span>
+        <div className="relative ml-auto min-w-[160px] flex-1 sm:max-w-xs">
+          <Search size={13} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--dm-text-tertiary)" }} />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar campanha…"
+            aria-label="Buscar campanha"
+            className="h-9 w-full rounded-xl border pl-8 pr-3 text-[12px] outline-none transition focus:ring-1"
+            style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }} />
+        </div>
+        {onManage && (
+          <button type="button" onClick={onManage}
+            className="flex h-9 items-center gap-1.5 rounded-xl px-3.5 text-[12px] font-bold text-white transition-all hover:opacity-90 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6366C8]"
+            style={{ background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)" }}>
+            <Settings2 size={13} /> Puxar / gerenciar
+          </button>
+        )}
+      </div>
+
+      {filtered.length === 0 ? (
+        <p className="py-3 text-center text-[12px]" style={{ color: "var(--dm-text-tertiary)" }}>
+          {list.length === 0 ? "Nenhuma campanha configurada ainda." : "Nenhuma campanha encontrada."}
+        </p>
+      ) : (
+        <div className="flex max-h-72 flex-col gap-1.5 overflow-y-auto pr-1">
+          {filtered.map((c) => {
+            const pct = (c.inv / maxInv) * 100;
+            return (
+              <div key={c.name} className="flex items-center gap-3 rounded-xl border px-3 py-2 transition-colors hover:border-[#6366C8]"
+                style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)" }}>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[12px] font-semibold" style={{ color: "var(--dm-text-primary)" }}>{c.name}</p>
+                  <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full" style={{ backgroundColor: "var(--dm-bg-surface)" }}>
+                    <div className="h-full rounded-full" style={{ width: `${pct}%`, background: "linear-gradient(90deg,#6366C8,#6366C8aa)" }} />
+                  </div>
+                </div>
+                <div className="flex-shrink-0 text-right">
+                  <p className="text-[12px] font-bold tabular-nums" style={{ color: "var(--dm-text-primary)" }}>{formatBRL(c.inv)}</p>
+                  <p className="text-[10px] tabular-nums" style={{ color: "var(--dm-text-tertiary)" }}>{formatInt(c.res)} result.</p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Bento ────────────────────────────────────────────────────────────────────
 
-export function OverviewBento({ totals, campaigns, conversions }: {
+export function OverviewBento({ totals, campaigns, conversions, onManage }: {
   totals: DashboardTotals;
   campaigns: CampaignData[];
   conversions: number;
+  onManage?: () => void;
 }) {
   const series = useMemo(() => {
     const byDate = new Map<string, { inv: number; rev: number; conv: number; clk: number }>();
@@ -156,6 +232,7 @@ export function OverviewBento({ totals, campaigns, conversions }: {
   ];
 
   return (
+    <div className="flex flex-col gap-3 sm:gap-4">
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
       <div className="sm:col-span-2 lg:col-span-1 lg:row-span-2">
         <FunnelTile stages={stages} />
@@ -168,6 +245,8 @@ export function OverviewBento({ totals, campaigns, conversions }: {
         value={cpa > 0 ? formatBRL(cpa) : "—"} sub="CPA médio" invertDelta />
       <MetricTile icon={Gauge} label="ROAS" color="#e11d48" data={series.revenue}
         value={`${totals.roas.toFixed(2)}x`} sub={totals.totalRevenue > 0 ? `Receita ${formatBRL(totals.totalRevenue)}` : "sem receita"} />
+    </div>
+    <CampaignsTile campaigns={campaigns} onManage={onManage} />
     </div>
   );
 }
