@@ -186,3 +186,12 @@ Antes, ir de "vejo a aba Tracking vazia" até "sei o que fazer" exigia adivinhar
 - **Botão "Configurar agora →"** no aviso de "tracking não configurado" (`TrackingEventsView.tsx`) — chama `onConfigure` (prop nova), que em `Dashboard.tsx` troca pra aba "Minha conta", sub-aba "Empresa" e sinaliza qual seção abrir.
 - **`CompanyStudio.tsx`** ganhou prop `focusSection` — abre e rola automaticamente até a seção certa do accordion (`id="studio-section-<id>"` + `scrollIntoView`). Repassado via `MyAccount.tsx` (`focusStudioSection`), espelhando o padrão já existente de `activeTab`/`onTabChange` controlado por `Dashboard.tsx`.
 - **Snippet de instalação pronto pra copiar** dentro da seção "Tracking Pixel": depois de salvar o Pixel ID, aparece o `<script>` exato (com o slug real da empresa e a origem do app) com botão "Copiar" — sem precisar montar a tag manualmente.
+
+## 10. Desacoplar captura de Meta (feedback do usuário: "quero testar nosso pixel, não o da Meta") ✅ feito
+
+Até aqui o `track-event/route.ts` retornava 400 e **nem gravava no `events_log`** se `meta_pixel_id`/`meta_capi_token` estivessem vazios — impossível testar o pixel próprio sem credenciais Meta reais primeiro. Mudança:
+- Removido o gate 400. Captura grava em `events_log` sempre que a empresa existe e o domínio bate (igual antes).
+- Repasse pra Meta CAPI vira **best-effort**: só roda se `meta_pixel_id` E `meta_capi_token` estiverem preenchidos. Quando não estão, `capi_status` nasce `"skipped"` (novo valor, sem migration — coluna é `TEXT` livre, sem `CHECK`) em vez de tentar e falhar.
+- `CompanyStudio.tsx`: seção "Tracking Pixel" reorganizada — snippet de instalação e campo de domínio aparecem sempre (não dependem mais de Pixel ID preenchido); Pixel ID/Token CAPI viram visualmente "opcional", numa subseção separada ("Enviar também pra Meta Conversions API").
+- `TrackingEventsView.tsx`: aviso de Meta não configurada virou informativo (cinza, "Eventos sendo capturados normalmente...") em vez de bloqueante (âmbar, "Tracking não configurado"). Badge de status ganhou `skipped` (cinza, "Capturado (sem Meta)").
+- `__tests__/tracking.test.ts`: teste antigo "400 quando tracking não configurado" virou "200 + grava sem chamar Meta CAPI quando empresa não tem pixel configurado".

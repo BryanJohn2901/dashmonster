@@ -70,13 +70,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Cliente não encontrado." }, { status: 404, headers });
   }
 
-  if (!company.meta_pixel_id || !company.meta_capi_token) {
-    return NextResponse.json(
-      { error: "Tracking não configurado para este cliente." },
-      { status: 400, headers },
-    );
-  }
-
   // Validação de domínio é checagem de aplicação, não de CORS — o preflight
   // sempre é permitido (não dá pra inspecionar o body antes dele), então é
   // aqui que `dominio_autorizado` realmente bloqueia clientes não autorizados.
@@ -107,6 +100,11 @@ export async function POST(request: NextRequest) {
   // Não substitui um `fbp`/`fbc` real — suficiente só pro MVP.
   const fingerprintId = createHash("sha256").update(`${ip}|${userAgent}`).digest("hex");
 
+  // Captura funciona independente da Meta: events_log grava sempre que o
+  // domínio bate, mesmo sem meta_pixel_id/meta_capi_token configurados.
+  // Repasse pra Meta CAPI é best-effort, abaixo, só quando ambos existem.
+  const metaConfigured = Boolean(company.meta_pixel_id && company.meta_capi_token);
+
   const { data: inserted, error: insertError } = await db
     .from("events_log")
     .insert({
@@ -115,12 +113,17 @@ export async function POST(request: NextRequest) {
       fingerprint_id: fingerprintId,
       event_url: payload.event_url,
       user_data: payload.user_data ?? {},
+      capi_status: metaConfigured ? "pending" : "skipped",
     })
     .select("id")
     .single();
 
   if (insertError || !inserted) {
     console.error("[tracking] falha ao gravar events_log:", insertError?.message);
+    return NextResponse.json({ received: true }, { status: 200, headers });
+  }
+
+  if (!metaConfigured) {
     return NextResponse.json({ received: true }, { status: 200, headers });
   }
 

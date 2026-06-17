@@ -294,7 +294,7 @@ function TrackingSection({ company, canEdit, tracking, onTracking, open, onToggl
     setDominio(tracking.dominioAutorizado);
   }, [tracking]);
 
-  const has = Boolean(tracking.metaPixelId.trim());
+  const metaConfigured = Boolean(tracking.metaPixelId.trim());
   const dirty = pixelId !== tracking.metaPixelId || capiToken !== tracking.metaCapiToken || dominio !== tracking.dominioAutorizado;
   const slug = company.slug;
   const origin = typeof window !== "undefined" ? window.location.origin : "";
@@ -320,23 +320,33 @@ function TrackingSection({ company, canEdit, tracking, onTracking, open, onToggl
   };
 
   return (
-    <Section id="tracking" icon={Radar} title="Tracking Pixel" summary={has ? "Pixel configurado e ativo" : "Nenhum pixel ainda"} status={has ? "ok" : "todo"} open={open} onToggle={onToggle}>
+    <Section id="tracking" icon={Radar} title="Tracking Pixel" summary={metaConfigured ? "Pixel ativo + envio pra Meta" : "Pixel ativo (sem Meta CAPI)"} status="ok" open={open} onToggle={onToggle}>
       <p className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
-        Pixel server-side próprio (form submit, clique WhatsApp, dataLayer) que repassa eventos pra Meta Conversions API.
-        {has ? " Cole o código abaixo no site do cliente — depois os eventos aparecem na aba " : " Preencha e salve os campos abaixo, depois instale o código que aparece aqui no site do cliente — os eventos aparecem na aba "}
-        <strong style={{ color: "var(--dm-text-secondary)" }}>Tracking</strong>.
+        Pixel server-side próprio (form submit, clique WhatsApp, dataLayer) — captura e mostra na aba{" "}
+        <strong style={{ color: "var(--dm-text-secondary)" }}>Tracking</strong> mesmo sem nenhuma credencial da Meta abaixo.
+        O envio pra Meta Conversions API é opcional, só acontece se Pixel ID e Token CAPI estiverem preenchidos.
       </p>
-      {has && (
-        <div className="rounded-xl border" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)" }}>
-          <div className="flex items-center justify-between border-b px-3 py-1.5" style={{ borderColor: "var(--dm-border-default)" }}>
-            <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Código de instalação</span>
-            <button type="button" onClick={() => void copySnippet()} className="text-[10px] font-bold transition-opacity hover:opacity-70" style={{ color: copied ? "#05CD99" : BRAND }}>
-              {copied ? "Copiado!" : "Copiar"}
-            </button>
-          </div>
-          <pre className="overflow-x-auto px-3 py-2.5 font-mono text-[11px] leading-relaxed" style={{ color: "var(--dm-text-secondary)" }}>{snippet}</pre>
+      <div className="rounded-xl border" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)" }}>
+        <div className="flex items-center justify-between border-b px-3 py-1.5" style={{ borderColor: "var(--dm-border-default)" }}>
+          <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Código de instalação</span>
+          <button type="button" onClick={() => void copySnippet()} className="text-[10px] font-bold transition-opacity hover:opacity-70" style={{ color: copied ? "#05CD99" : BRAND }}>
+            {copied ? "Copiado!" : "Copiar"}
+          </button>
         </div>
-      )}
+        <pre className="overflow-x-auto px-3 py-2.5 font-mono text-[11px] leading-relaxed" style={{ color: "var(--dm-text-secondary)" }}>{snippet}</pre>
+      </div>
+      <label className="flex flex-col gap-1">
+        <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Domínio autorizado (opcional)</span>
+        <input value={dominio} disabled={!canEdit} onChange={(e) => setDominio(e.target.value)} placeholder="meusite.com.br" className={`${inputCls} h-10 font-mono disabled:opacity-60`} style={inputStyle} />
+        <span className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+          Só o hostname, sem protocolo nem porta (ex: <code>meusite.com.br</code>, não <code>https://meusite.com.br</code>). Em branco = aceita qualquer origem (ok pra testar).
+        </span>
+      </label>
+
+      <div className="mt-1 flex items-center gap-2 border-t pt-3" style={{ borderColor: "var(--dm-border-default)" }}>
+        <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Enviar também pra Meta Conversions API</span>
+        <span className="rounded-full px-2 py-0.5 text-[9px] font-semibold" style={{ background: "rgba(100,116,139,0.12)", color: "var(--dm-text-tertiary)" }}>opcional</span>
+      </div>
       <label className="flex flex-col gap-1">
         <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Pixel ID (Meta)</span>
         <input value={pixelId} disabled={!canEdit} onChange={(e) => setPixelId(e.target.value)} placeholder="123456789012345" className={`${inputCls} h-10 font-mono disabled:opacity-60`} style={inputStyle} />
@@ -358,11 +368,6 @@ function TrackingSection({ company, canEdit, tracking, onTracking, open, onToggl
           )}
         </div>
         <span className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>Diferente do token de gestão de anúncios da Conexão Meta — gere em Events Manager → Configurações → Conversions API.</span>
-      </label>
-      <label className="flex flex-col gap-1">
-        <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Domínio autorizado</span>
-        <input value={dominio} disabled={!canEdit} onChange={(e) => setDominio(e.target.value)} placeholder="meusite.com.br" className={`${inputCls} h-10 font-mono disabled:opacity-60`} style={inputStyle} />
-        <span className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>Só o hostname, sem protocolo nem porta (ex: <code>meusite.com.br</code>, não <code>https://meusite.com.br</code>).</span>
       </label>
       {canEdit && (
         <button type="button" onClick={() => void save()} disabled={saving || !dirty} className={`h-11 w-full ${btnPrimary}`} style={btnPrimaryStyle}>

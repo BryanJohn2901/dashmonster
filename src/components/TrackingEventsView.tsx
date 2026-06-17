@@ -13,7 +13,7 @@ interface TrackingEvent {
   fingerprint_id: string;
   event_url: string | null;
   user_data: { em?: string; ph?: string } | null;
-  capi_status: "pending" | "sent" | "failed";
+  capi_status: "pending" | "sent" | "failed" | "skipped";
   capi_error: string | null;
   created_at: string;
 }
@@ -42,15 +42,17 @@ const EVENT_COLORS: Record<string, { bg: string; text: string }> = {
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  sent: "Enviado",
-  pending: "Pendente",
-  failed: "Falhou",
+  sent: "Enviado à Meta",
+  pending: "Enviando…",
+  failed: "Falhou na Meta",
+  skipped: "Capturado (sem Meta)",
 };
 
 const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
   sent: { bg: "rgba(16,185,129,0.12)", text: "#059669" },
   pending: { bg: "rgba(245,158,11,0.12)", text: "#d97706" },
   failed: { bg: "rgba(239,68,68,0.12)", text: "#dc2626" },
+  skipped: { bg: "rgba(100,116,139,0.12)", text: "var(--dm-text-tertiary)" },
 };
 
 function fmt(iso: string) {
@@ -154,7 +156,8 @@ export function TrackingEventsView({ onConfigure }: { onConfigure?: () => void }
   });
 
   const eventTypes = [...new Set(events.map((e) => e.event_name))];
-  const notConfigured = !loading && !error && !config?.meta_pixel_id;
+  // Captura funciona sem Meta — isso é só um lembrete de que o envio CAPI está desligado, não um erro.
+  const metaNotConfigured = !loading && !error && !config?.meta_pixel_id;
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
@@ -228,21 +231,21 @@ export function TrackingEventsView({ onConfigure }: { onConfigure?: () => void }
         </div>
       )}
 
-      {/* Tracking não configurado */}
-      {notConfigured && (
+      {/* Meta CAPI não configurada (informativo, não bloqueia captura) */}
+      {metaNotConfigured && (
         <div
           className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs"
-          style={{ borderColor: "rgba(245,158,11,0.3)", background: "rgba(245,158,11,0.08)", color: "#d97706" }}
+          style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)" }}
         >
-          <span>Tracking ainda não configurado para esta empresa.</span>
+          <span>Eventos sendo capturados normalmente. Envio pra Meta Conversions API está desligado (Pixel ID/Token não configurados).</span>
           {onConfigure && (
             <button
               type="button"
               onClick={onConfigure}
               className="flex-shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-bold transition-opacity hover:opacity-80"
-              style={{ borderColor: "rgba(245,158,11,0.5)", color: "#d97706" }}
+              style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-primary)" }}
             >
-              Configurar agora →
+              Configurar Meta →
             </button>
           )}
         </div>

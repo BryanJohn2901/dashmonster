@@ -57,10 +57,14 @@ describe("POST /api/tracking/track-event", () => {
     expect(res.status).toBe(404);
   });
 
-  it("400 quando empresa existe mas tracking não configurado", async () => {
-    mockSingle.mockResolvedValueOnce({ data: { id: "c1", meta_pixel_id: null, meta_capi_token: null }, error: null });
+  it("200 + grava events_log sem chamar Meta CAPI quando empresa não tem pixel configurado", async () => {
+    mockSingle.mockResolvedValueOnce({ data: { id: "c1", meta_pixel_id: null, meta_capi_token: null, dominio_autorizado: null }, error: null });
     const res = await POST(buildRequest({ client_id: "sem-config", event_name: "Lead", event_url: "http://x" }));
-    expect(res.status).toBe(400);
+
+    expect(res.status).toBe(200);
+    expect(mockInsert).toHaveBeenCalledWith(expect.objectContaining({ company_id: "c1", capi_status: "skipped" }));
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(mockUpdate).not.toHaveBeenCalled();
   });
 
   it("403 quando domínio não bate com dominio_autorizado", async () => {
@@ -96,6 +100,7 @@ describe("POST /api/tracking/track-event", () => {
         event_url: "http://localhost:3000/pagina",
         user_data: { em: "hash-email", ph: "hash-tel" },
         fingerprint_id: expect.any(String),
+        capi_status: "pending",
       }),
     );
 
