@@ -1,6 +1,6 @@
 # Plano: Tracking Pixel Server-Side (MVP) — dashmonster
 
-> **Status**: implementado e verificado por teste automatizado. Falta só validação manual ponta-a-ponta contra Meta CAPI real (seção 5, item 8) — depende de credenciais locais que não foram compartilhadas com o agente.
+> **Status**: backend implementado e verificado por teste automatizado; frontend adicionado (seção 7, fora do PRD original) substituindo a página "Leads". Falta só validação manual ponta-a-ponta contra Meta CAPI real e visual da nova tela (seção 5, itens 1/3/6/8) — depende de credenciais locais que não foram compartilhadas com o agente.
 
 ## Contexto
 
@@ -152,3 +152,16 @@ Documenta, pra próximos agentes que mexerem nessa pasta, as decisões/trade-off
 - `meta_capi_token` é distinto de `companies.meta_access_token` (este último é o token de gestão de anúncios já existente, não serve pra CAPI).
 - Falha de CAPI nunca pode virar 500 pro pixel — pixel sempre recebe resposta rápida independente do resultado do POST pra Meta.
 - Não mexe no `CLAUDE.md` raiz (que só referencia `AGENTS.md`) — este é um arquivo novo, escopado à pasta.
+- `dominio_autorizado` guarda só hostname, sem porta (ver seção 5).
+
+## 7. Frontend — `src/components/TrackingEventsView.tsx` (novo, fora do escopo original do PRD) ✅ feito
+
+Decisão confirmada com usuário: a página "Leads" (`mainTab === "leads"`, antes Meta Lead Ads via `LeadsView.tsx`) foi **substituída** por esta view, que lê `events_log` direto do client via `supabaseClient` (RLS `events_log_member_select`, sem precisar de `supabaseAdmin()`). Item do menu renomeado de "Leads" pra "Tracking" (`Dashboard.tsx`, ícone trocado de `UserCheck` pra `Radar`), `id` interno (`"leads"`) mantido sem alteração pra não tocar nos outros pontos que referenciam essa string (`showRightPanel`, `needsCategory`).
+
+`LeadsView.tsx` e a rota `/api/meta/leads` **não foram apagados** — só desconectados da navegação, caso o usuário queira reaproveitar depois.
+
+Funcionalidades da view nova:
+- Filtro de data (mesmo padrão visual do `LeadsView`), busca por URL/fingerprint, chips por `event_name`.
+- Badge de `capi_status` (enviado/pendente/falhou) com `capi_error` no `title` da linha.
+- Aviso quando a empresa ativa não tem `meta_pixel_id` configurado (consulta leve em `companies`).
+- Não inclui export CSV próprio (fora de escopo desta rodada — o botão "Exportar CSV" do header global é específico de campanhas, não de `events_log`).

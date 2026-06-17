@@ -13,7 +13,7 @@ import {
   Target, Trash2, TrendingUp, Trophy, Upload, UserRound, Users, Wallet, X, XCircle, Zap,
   LayoutDashboard, History, LineChart, Sparkles, Database, Dna, Weight, HeartPulse,
   Medal, PersonStanding, Flame, BookText, MonitorSmartphone, Ticket, Library, VenetianMask,
-  UserCheck
+  Radar
 } from "lucide-react";
 import Link from "next/link";
 import { useTheme } from "next-themes";
@@ -49,7 +49,7 @@ import { CampaignTable } from "@/components/CampaignTable";
 import { useGoalsStore, type Goals } from "@/hooks/useGoalsStore";
 import { CampaignAnalysis } from "@/components/CampaignAnalysis";
 import { HistoricalView } from "@/components/HistoricalView";
-import { LeadsView } from "@/components/LeadsView";
+import { TrackingEventsView } from "@/components/TrackingEventsView";
 import { HISTORY_TAB_LABELS_KEY, historyKindLabel, readCustomHistoryTabs, type HistoricalKind } from "@/types/historical";
 import { useCompany } from "@/hooks/useCompany";
 import { BestCreatives } from "@/components/BestCreatives";
@@ -154,7 +154,7 @@ const SIDEBAR_ACCOUNT_TABS: Array<{ id: MyAccountTabId; label: string; icon: Rea
 const MAIN_TABS: Array<{ id: MainTab; label: string; shortLabel: string; icon: React.ElementType }> = [
   { id: "overview",   label: "Dashboard",             shortLabel: "Dashboard", icon: LayoutDashboard },
   { id: "history",    label: "Histórico",             shortLabel: "Histórico", icon: History },
-  { id: "leads",      label: "Leads",                 shortLabel: "Leads",     icon: UserCheck },
+  { id: "leads",      label: "Tracking",              shortLabel: "Tracking",  icon: Radar },
   { id: "profiles",   label: "Perfil de Anunciantes", shortLabel: "Perfil",    icon: Target },
   { id: "products",   label: "Base de Produtos",      shortLabel: "Produtos",  icon: Database },
   { id: "myaccount",  label: "Minha conta",            shortLabel: "Conta",     icon: UserRound },
@@ -3781,7 +3781,7 @@ export function Dashboard({
 
           {mainTab === "history" && <HistoricalView selectedKind={histKind} onKindChange={setHistKind} />}
 
-          {mainTab === "leads" && <LeadsView />}
+          {mainTab === "leads" && <TrackingEventsView />}
 
           {mainTab === "products"  && <ProductBase />}
           {mainTab === "profiles" && (
