@@ -141,7 +141,10 @@ WHERE slug = '<slug-teste>';
 - `supabase/migrations/028_tracking_pixel.sql` (novo)
 - `src/app/api/tracking/track-event/route.ts` (novo)
 - `src/app/api/tracking/pixel.js/route.ts` (novo)
+- `src/components/TrackingEventsView.tsx` (novo, seção 7)
+- `__tests__/tracking.test.ts` (novo, cobre `track-event` sem precisar de Supabase real)
 - `src/lib/supabaseAdmin.ts` (reaproveitado, sem alteração)
+- `src/lib/supabase.ts` / `src/hooks/useCompany.ts` (reaproveitados pelo frontend, sem alteração)
 - `src/app/api/instagram/webhook/route.ts` (referência de padrão, não modificado)
 
 ## 6. `src/app/api/tracking/CLAUDE.md` (novo) ✅ feito
