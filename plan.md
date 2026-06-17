@@ -13,7 +13,9 @@ Decisões de arquitetura (confirmadas com usuário):
 2. **Backend**: Next.js API route (`src/app/api/tracking/*`), não Supabase Edge Function.
 3. **Script pixel.js**: servido via route handler Next.js, mesmo domínio do dashboard.
 
-## 1. Migration — `supabase/migrations/028_tracking_pixel.sql` ✅ feito (rodado no Supabase)
+## 1. Migration — `supabase/migrations/029_tracking_pixel.sql` ✅ feito (rodado no Supabase)
+
+> Renomeada de `028_tracking_pixel.sql` pra `029_` após rebase em `main`, que passou a usar `028_multi_source.sql` pra outra feature (tabela `leads`). Conteúdo idêntico, só o número mudou — o que você já rodou no Supabase SQL Editor continua válido, não precisa rodar de novo.
 
 **A. Estende `companies`** (segue template de `022_company_meta_token.sql`):
 ```sql
@@ -138,7 +140,7 @@ WHERE slug = '<slug-teste>';
 10. ✅ (via teste automatizado) Empresa sem `meta_pixel_id` → 400 limpo, sem chamada à Meta CAPI.
 
 ## Arquivos críticos
-- `supabase/migrations/028_tracking_pixel.sql` (novo)
+- `supabase/migrations/029_tracking_pixel.sql` (novo)
 - `src/app/api/tracking/track-event/route.ts` (novo)
 - `src/app/api/tracking/pixel.js/route.ts` (novo)
 - `src/components/TrackingEventsView.tsx` (novo, seção 7)

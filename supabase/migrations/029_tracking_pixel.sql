@@ -1,6 +1,6 @@
 -- ============================================================
 -- Tracking Pixel Server-Side (MVP)
--- Execute este SQL no Supabase SQL Editor (após a 027)
+-- Execute este SQL no Supabase SQL Editor (após a 028_multi_source)
 --
 -- Reaproveita `companies` como conceito de "workspace" do pixel —
 -- cada empresa configura seu pixel/CAPI uma vez e o script
