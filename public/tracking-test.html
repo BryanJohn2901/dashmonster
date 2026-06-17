@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8" />
+<title>Tracking Pixel — teste manual</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 480px; margin: 40px auto; padding: 0 16px; }
+  label { display: block; margin-top: 12px; font-size: 14px; }
+  input { display: block; width: 100%; padding: 8px; margin-top: 4px; box-sizing: border-box; }
+  button { margin-top: 16px; padding: 10px 16px; }
+  a.wa { display: inline-block; margin-top: 24px; }
+  pre { background: #f4f4f4; padding: 8px; font-size: 12px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+  <h1>Teste do pixel</h1>
+  <p>Troque <code>SLUG_AQUI</code> abaixo (no script) pelo <code>slug</code> da empresa configurada via SQL.</p>
+
+  <form action="https://example.com/obrigado" method="get">
+    <label>Email
+      <input type="email" name="email" value="teste@exemplo.com" required />
+    </label>
+    <label>Telefone
+      <input type="tel" name="phone" value="11999999999" required />
+    </label>
+    <button type="submit">Enviar (Lead)</button>
+  </form>
+
+  <a class="wa" href="https://wa.me/5511999999999">Falar no WhatsApp (Contact)</a>
+
+  <h2>dataLayer (Purchase)</h2>
+  <button id="btn-purchase">Disparar purchase no dataLayer</button>
+
+  <h2>Log</h2>
+  <pre id="log"></pre>
+
+  <script src="/api/tracking/pixel.js"></script>
+  <script>
+    window.Tracker.init("SLUG_AQUI");
+
+    var logEl = document.getElementById("log");
+    function log(msg) {
+      logEl.textContent += msg + "\n";
+    }
+    log("Tracker inicializado. Abra a aba Network do DevTools pra ver as chamadas a /api/tracking/track-event.");
+
+    document.getElementById("btn-purchase").addEventListener("click", function () {
+      window.dataLayer.push({ event: "purchase", ecommerce: { value: 99.9, currency: "BRL" } });
+      log("dataLayer.push(purchase) disparado.");
+    });
+  </script>
+</body>
+</html>
