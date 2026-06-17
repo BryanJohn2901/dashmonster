@@ -470,7 +470,12 @@ function ThemeToggle() {
 /* Sidebar inline theme toggle — dois botões lado a lado (estilo NeuroBank) */
 function SidebarThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme();
-  const isDark = resolvedTheme === "dark";
+  const [mounted, setMounted] = useState(false);
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => setMounted(true), []);
+  // resolvedTheme só existe após o mount (next-themes lê localStorage/SO no client) —
+  // usar antes disso causa mismatch de hidratação entre server e client.
+  const isDark = mounted && resolvedTheme === "dark";
   return (
     <div
       className="flex items-center gap-0.5 rounded-full p-[3px]"
