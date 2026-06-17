@@ -112,22 +112,34 @@ export async function POST(request: NextRequest) {
   // Repasse pra Meta CAPI é best-effort, abaixo, só quando ambos existem.
   const metaConfigured = Boolean(company.meta_pixel_id && company.meta_capi_token);
 
-  const { data: inserted, error: insertError } = await db
+  const baseRow = {
+    company_id: company.id,
+    event_name: payload.event_name,
+    fingerprint_id: fingerprintId,
+    event_url: payload.event_url,
+    user_data: payload.user_data ?? {},
+    lead_email: payload.pii?.email?.trim() || null,
+    lead_phone: payload.pii?.phone?.trim() || null,
+    capi_status: metaConfigured ? "pending" : "skipped",
+  };
+
+  let { data: inserted, error: insertError } = await db
     .from("events_log")
     .insert({
-      company_id: company.id,
-      event_name: payload.event_name,
-      fingerprint_id: fingerprintId,
-      event_url: payload.event_url,
+      ...baseRow,
       page_title: payload.page_title?.trim() || null,
-      user_data: payload.user_data ?? {},
-      lead_email: payload.pii?.email?.trim() || null,
-      lead_phone: payload.pii?.phone?.trim() || null,
       extra_fields: payload.pii?.fields ?? {},
-      capi_status: metaConfigured ? "pending" : "skipped",
     })
     .select("id")
     .single();
+
+  // `page_title`/`extra_fields` (migration 033) podem ainda não existir no
+  // banco se o deploy do código rodou antes da migration manual — não pode
+  // perder o evento por isso, regrava sem esses campos como fallback.
+  if (insertError?.message?.includes("page_title") || insertError?.message?.includes("extra_fields")) {
+    console.warn("[tracking] colunas page_title/extra_fields ausentes (migration 033 pendente), gravando sem elas");
+    ({ data: inserted, error: insertError } = await db.from("events_log").insert(baseRow).select("id").single());
+  }
 
   if (insertError || !inserted) {
     console.error("[tracking] falha ao gravar events_log:", insertError?.message);

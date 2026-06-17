@@ -76,6 +76,11 @@ const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
 
 const UTM_KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"];
 
+const EVENTS_SELECT = "id, event_name, fingerprint_id, event_url, page_title, user_data, lead_email, lead_phone, extra_fields, capi_status, capi_error, created_at";
+// Sem page_title/extra_fields (migration 033) — usado se a migration ainda não rodou no banco,
+// pra não derrubar a tela inteira enquanto ela não é aplicada manualmente no Supabase.
+const EVENTS_SELECT_FALLBACK = "id, event_name, fingerprint_id, event_url, user_data, lead_email, lead_phone, capi_status, capi_error, created_at";
+
 function fmt(iso: string) {
   return new Date(iso).toLocaleString("pt-BR", {
     day: "2-digit",
@@ -330,7 +335,7 @@ export function TrackingEventsView({ onConfigure }: { onConfigure?: () => void }
     const [eventsRes, configRes] = await Promise.all([
       supabaseClient
         .from("events_log")
-        .select("id, event_name, fingerprint_id, event_url, page_title, user_data, lead_email, lead_phone, extra_fields, capi_status, capi_error, created_at")
+        .select(EVENTS_SELECT)
         .eq("company_id", companyId)
         .gte("created_at", `${dateFrom}T00:00:00`)
         .lte("created_at", `${dateTo}T23:59:59`)
@@ -343,7 +348,22 @@ export function TrackingEventsView({ onConfigure }: { onConfigure?: () => void }
         .single(),
     ]);
 
-    if (eventsRes.error) {
+    if (eventsRes.error?.message?.includes("page_title") || eventsRes.error?.message?.includes("extra_fields")) {
+      // Migration 033 ainda não rodou no Supabase — busca sem as colunas novas em vez de quebrar a tela.
+      const retry = await supabaseClient
+        .from("events_log")
+        .select(EVENTS_SELECT_FALLBACK)
+        .eq("company_id", companyId)
+        .gte("created_at", `${dateFrom}T00:00:00`)
+        .lte("created_at", `${dateTo}T23:59:59`)
+        .order("created_at", { ascending: false })
+        .limit(1000);
+      if (retry.error) {
+        setError(retry.error.message);
+      } else {
+        setEvents((retry.data as TrackingEvent[]) ?? []);
+      }
+    } else if (eventsRes.error) {
       setError(eventsRes.error.message);
     } else {
       setEvents((eventsRes.data as TrackingEvent[]) ?? []);

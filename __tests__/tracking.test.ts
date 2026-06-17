@@ -167,6 +167,28 @@ describe("POST /api/tracking/track-event", () => {
     );
   });
 
+  it("regrava sem page_title/extra_fields se a migration 033 ainda não rodou no banco", async () => {
+    mockSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockInsert
+      .mockImplementationOnce(() => ({
+        select: () => ({
+          single: () => Promise.resolve({ data: null, error: { message: 'column events_log.page_title does not exist' } }),
+        }),
+      }))
+      .mockImplementationOnce(() => ({
+        select: () => ({ single: () => Promise.resolve({ data: { id: "evt-2" }, error: null }) }),
+      }));
+
+    const res = await POST(
+      buildRequest({ client_id: "acme", event_name: "Lead", event_url: "http://localhost:3000/", page_title: "X" }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockInsert).toHaveBeenCalledTimes(2);
+    expect(mockInsert.mock.calls[1][0]).not.toHaveProperty("page_title");
+    expect(mockInsert.mock.calls[1][0]).not.toHaveProperty("extra_fields");
+  });
+
   it("segue mesmo sem Origin/Referer (soft-fail)", async () => {
     mockSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
     const req = new NextRequest("http://localhost:3000/api/tracking/track-event", {
