@@ -1901,7 +1901,17 @@ export function Dashboard({
   onUpdateProfile,
   onOpenControlPanel,
 }: DashboardProps) {
-  const [mainTab, setMainTab]               = useState<MainTab>("overview");
+  const [mainTab, setMainTabState] = useState<MainTab>(() => {
+    try {
+      const saved = localStorage.getItem("dm_main_tab");
+      if (saved && MAIN_TABS.some((t) => t.id === saved)) return saved as MainTab;
+    } catch {}
+    return "overview";
+  });
+  const setMainTab = useCallback((tab: MainTab) => {
+    setMainTabState(tab);
+    try { localStorage.setItem("dm_main_tab", tab); } catch {}
+  }, []);
   const [dashSubTab, setDashSubTab]         = useState<DashSubTab>("overview");
   const [histKind, setHistKind]             = useState<HistoricalKind>("lancamento");
   const { company: activeCompany }          = useCompany();

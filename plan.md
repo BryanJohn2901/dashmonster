@@ -230,3 +230,13 @@ Pixel confirmado funcionando (PageView + Lead chegando em `events_log`). Pedido:
   - Card de "Dados capturados" no topo (email/telefone reais) quando o visitante converteu.
   - Timeline cronológica (mais antigo → mais recente, como uma jornada) de todos os eventos: horário, tipo, caminho da URL (sem os `utm_*`, que já aparecem como chips), chips de UTM, e status CAPI nos eventos Lead.
 - Filtros de data/chip/busca continuam filtrando os eventos antes de agrupar; busca agora também procura em email/telefone do lead, não só URL/fingerprint.
+
+## 13. Bugs fora do escopo de tracking, achados/corrigidos no caminho
+
+Não fazem parte do PRD original, mas surgiram testando o resto do app na mesma sessão:
+
+**Migration `032_user_tags_company_id.sql`** — `addUserTag()` (`src/utils/supabaseProducts.ts`) tentava inserir `company_id` numa coluna que não existia em `user_tags`. Causa raiz: a migration `021_companies_multi_tenant.sql` adiciona `company_id`+RLS por empresa numa lista de tabelas, mas só se a tabela **já existir** naquele momento (checa `information_schema.tables`). Como `user_tags` (migration `011`) nunca tinha rodado neste projeto até o usuário rodar agora (ver seção de Histórico mais acima), a 021 pulou ela silenciosamente — sem `company_id`, com as policies antigas só-por-usuário da 011. A 032 replica manualmente o que a 021 teria feito. Esse tipo de gap (migration condicional que silenciosamente pula tabela ainda não criada) pode se repetir com outras tabelas que historicamente ficaram pra trás — vale desconfiar se aparecer outro erro de "column does not exist" parecido.
+
+Também corrigido: `addUserTag`/`deleteUserTag` lançavam o objeto de erro bruto do Supabase (`throw error`), que não é `instanceof Error` — por isso o toast de erro (corrigido na seção do Histórico) sempre mostrava "erro desconhecido" em vez da mensagem real. Agora fazem `throw new Error(error.message)`.
+
+**`mainTab` sem persistência (`Dashboard.tsx`)** — recarregar qualquer página sempre voltava pra aba "Dashboard" (Visão Geral), porque `mainTab` era só `useState` em memória, sem salvar em lugar nenhum — diferente de outros estados da sidebar que já usam `localStorage` (ex: `dm_sidebar_collapsed`). Não é regressão de nada feito nesta sessão, gap pré-existente. Corrigido: `mainTab` agora persiste em `localStorage` (`dm_main_tab`), mesmo padrão (lazy initializer + try/catch pra SSR-safety).

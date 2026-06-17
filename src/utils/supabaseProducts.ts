@@ -68,7 +68,7 @@ export async function addUserTag(kind: HistoricalKind, name: string): Promise<vo
   const { error } = await supabaseClient
     .from("user_tags")
     .insert({ user_id: userId, kind, name, ...(company ? { company_id: company.id } : {}) });
-  if (error) throw error;
+  if (error) throw new Error(error.message);
 }
 
 export async function deleteUserTag(kind: HistoricalKind, name: string): Promise<void> {
@@ -81,5 +81,5 @@ export async function deleteUserTag(kind: HistoricalKind, name: string): Promise
     .eq("user_id", userId)
     .eq("kind", kind)
     .eq("name", name);
-  if (error) throw error;
+  if (error) throw new Error(error.message);
 }
