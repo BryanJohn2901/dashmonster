@@ -152,7 +152,11 @@ export async function GET(request: NextRequest) {
     status: 200,
     headers: {
       "Content-Type": "application/javascript; charset=utf-8",
-      "Cache-Control": "public, max-age=300",
+      // MVP em iteração ativa: cache de 5min já causou confusão (cliente rodando
+      // versão antiga do script logo após um deploy, parecendo "bug" no backend).
+      // no-store até o script estabilizar — reavaliar cache só quando o pixel
+      // parar de mudar com frequência.
+      "Cache-Control": "no-store",
       "Access-Control-Allow-Origin": "*",
     },
   });
