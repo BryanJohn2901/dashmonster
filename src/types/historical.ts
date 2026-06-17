@@ -95,6 +95,15 @@ export interface LancamentoExtras {
   faturamentoPos?: number;
 }
 
+/** Métrica livre que o usuário adiciona ao funil de um registro de Evento — só naquele registro, não vira molde. */
+export interface CustomMetric {
+  id: string;
+  label: string;
+  value: number;
+  /** Se true, entra como etapa extra no gráfico "Funil de Conversão". */
+  inFunnel: boolean;
+}
+
 export interface EventoExtras {
   reach: number;
   clicks: number;
@@ -106,6 +115,7 @@ export interface EventoExtras {
   cac: number;
   roas: number;
   lotes?: Array<{ label: string; tickets: number; price: number }>;
+  customMetrics?: CustomMetric[];
 }
 
 export interface PerpetuoExtras {

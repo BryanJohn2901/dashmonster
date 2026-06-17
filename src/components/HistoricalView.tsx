@@ -15,7 +15,7 @@ import {
 import { HistoricoEmpty } from "@/components/empty/HistoricoEmpty";
 import {
   HISTORY_TAB_LABELS_KEY, historyKindLabel, isBuiltinHistoryKind, readCustomHistoryTabs,
-  type CustomHistoryTab, type HistoricalKind, type HistoricalMeta, type HistoricalRow,
+  type CustomHistoryTab, type CustomMetric, type HistoricalKind, type HistoricalMeta, type HistoricalRow,
 } from "@/types/historical";
 import { useCompany } from "@/hooks/useCompany";
 import { toast } from "@/hooks/useToast";
@@ -45,6 +45,9 @@ const PREDEFINED_TAGS: Record<HistoricalKind, string[]> = {
 };
 
 const MAX_CUSTOM_TAGS = 5;
+
+// Sugestões de métricas livres pro funil de Evento — só atalhos pra preencher o rótulo, não são campos fixos.
+const SUGGESTED_METRICS = ["Formulários preenchidos", "Pessoas ao vivo", "Pessoas no grupo"];
 
 type SyncStatus = "idle" | "loading" | "synced" | "local" | "error";
 
@@ -132,6 +135,8 @@ interface FormState {
   // Instagram extras
   followersGained: string; followersLost: string; profileVisits: string;
   impressionsCount: string; likes: string; comments: string; shares: string;
+  // Evento extras — métricas livres só desse registro (não viram molde)
+  customMetrics: Array<{ id: string; label: string; value: string; inFunnel: boolean }>;
 }
 
 const HISTORY_TABS: Array<{ id: HistoricalKind; icon: React.ElementType }> = [
@@ -151,6 +156,7 @@ const EMPTY_FORM: FormState = {
   leads: "", mrr: "", churn: "",
   followersGained: "", followersLost: "", profileVisits: "",
   impressionsCount: "", likes: "", comments: "", shares: "",
+  customMetrics: [],
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -191,6 +197,11 @@ const buildRow = (form: FormState, kind: HistoricalKind): HistoricalRow => {
   const monthKey = `${year}-${String(monthNum).padStart(2, "0")}`;
   const abbr = MONTH_ABBR[form.month] ?? form.month.slice(0, 3);
 
+  // Métricas livres do Evento — só vão pro registro se tiverem rótulo preenchido.
+  const customMetrics: CustomMetric[] = form.customMetrics
+    .filter((m) => m.label.trim())
+    .map((m) => ({ id: m.id, label: m.label.trim(), value: p(m.value), inFunnel: m.inFunnel }));
+
   const base = {
     kind,
     tag: form.tag.trim() || undefined,
@@ -206,6 +217,7 @@ const buildRow = (form: FormState, kind: HistoricalKind): HistoricalRow => {
     sales, salesRate: preCheckouts > 0 ? (sales / preCheckouts) * 100 : 0,
     cac: sales > 0 ? investment / sales : 0,
     roas: investment > 0 && revenue > 0 ? revenue / investment : 0,
+    ...(kind === "evento" && customMetrics.length > 0 ? { customMetrics } : {}),
   };
 
   if (kind === "lancamento") {
@@ -284,6 +296,10 @@ const rowToForm = (r: HistoricalRow): FormState => {
     likes: str("likes"),
     comments: str("comments"),
     shares: str("shares"),
+    // Evento — métricas livres do registro
+    customMetrics: ((rx.customMetrics as CustomMetric[] | undefined) ?? []).map((m) => ({
+      id: m.id, label: m.label, value: m.value > 0 ? String(m.value) : "", inFunnel: m.inFunnel,
+    })),
   };
 };
 
@@ -327,6 +343,19 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
 
   const allTags = [...(PREDEFINED_TAGS[form.kind] ?? []), ...customTags];
   const canAddTag = customTags.length < MAX_CUSTOM_TAGS;
+
+  // Métricas livres do funil de Evento — só desse registro, não viram molde da empresa.
+  function addCustomMetric(label = "") {
+    // eslint-disable-next-line react-hooks/purity -- só roda no clique (handler), nunca durante o render
+    const id = `cm_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+    onChange({ ...form, customMetrics: [...form.customMetrics, { id, label, value: "", inFunnel: false }] });
+  }
+  function updateCustomMetric(id: string, patch: Partial<FormState["customMetrics"][number]>) {
+    onChange({ ...form, customMetrics: form.customMetrics.map((m) => (m.id === id ? { ...m, ...patch } : m)) });
+  }
+  function removeCustomMetric(id: string) {
+    onChange({ ...form, customMetrics: form.customMetrics.filter((m) => m.id !== id) });
+  }
 
   function handleAddTag() {
     const trimmed = tagDraft.trim();
@@ -660,6 +689,68 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
                 </label>
                 <label className={labelCls}>Faturamento (R$)<input value={form.revenue} onChange={set("revenue")} onBlur={blurMoney("revenue")} placeholder="16.309,00" className={fieldCls} /></label>
               </div>
+
+              {/* Métricas personalizadas — livres, só desse registro */}
+              <div className="mt-3 bg-slate-50 rounded-lg px-3 py-3 dark:bg-[#151821]/40">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Métricas personalizadas</p>
+                {form.customMetrics.length > 0 && (
+                  <div className="mb-2 flex flex-col gap-2">
+                    {form.customMetrics.map((m) => (
+                      <div key={m.id} className="flex flex-wrap items-center gap-2">
+                        <input
+                          value={m.label}
+                          onChange={(e) => updateCustomMetric(m.id, { label: e.target.value })}
+                          placeholder="Nome da métrica"
+                          className={`${fieldCls} flex-1 min-w-[140px]`}
+                        />
+                        <input
+                          value={m.value}
+                          onChange={(e) => updateCustomMetric(m.id, { value: e.target.value })}
+                          placeholder="0"
+                          className={`${fieldCls} w-24`}
+                        />
+                        <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-400">
+                          <input
+                            type="checkbox"
+                            checked={m.inFunnel}
+                            onChange={(e) => updateCustomMetric(m.id, { inFunnel: e.target.checked })}
+                            className="h-3.5 w-3.5 accent-brand"
+                          />
+                          No funil
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => removeCustomMetric(m.id)}
+                          aria-label={`Remover métrica ${m.label || "sem nome"}`}
+                          className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-red-100 hover:text-red-500 dark:hover:bg-red-900/30 dark:hover:text-red-400"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {SUGGESTED_METRICS.filter((s) => !form.customMetrics.some((m) => m.label === s)).map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => addCustomMetric(s)}
+                      className="inline-flex items-center gap-1 rounded-full border border-dashed border-slate-300 px-2.5 py-1 text-[11px] font-medium text-slate-400 transition hover:border-blue-400 hover:text-blue-500 dark:border-slate-600 dark:text-slate-500 dark:hover:border-blue-500 dark:hover:text-blue-400"
+                    >
+                      <Plus size={10} /> {s}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => addCustomMetric()}
+                    className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-[#151821] dark:text-slate-300 dark:hover:bg-slate-700"
+                  >
+                    <Plus size={10} /> Campo personalizado
+                  </button>
+                </div>
+              </div>
+
               <div className="mt-3 bg-slate-50 rounded-lg px-3 py-3 dark:bg-[#151821]/40">
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Calculado automaticamente</p>
                 <div className="flex flex-wrap gap-2">
@@ -1035,13 +1126,31 @@ export function HistoricalView({ selectedKind: propKind, onKindChange }: Histori
     const preCheckouts = filtered.reduce((s, r) => s + r.preCheckouts, 0);
     const sales        = filtered.reduce((s, r) => s + r.sales, 0);
     const salesLabel   = viewKind === "evento" ? "Ingressos Vendidos" : "Vendas";
-    return [
+    const stages = [
       { label: "Alcance",          value: reach,        rate: 100,                                              fromLabel: "" },
       { label: "Cliques",          value: clicks,       rate: reach > 0        ? (clicks / reach) * 100        : 0, fromLabel: "do alcance" },
       { label: "Visualiz. Página", value: pageViews,    rate: clicks > 0       ? (pageViews / clicks) * 100    : 0, fromLabel: "dos cliques" },
       { label: "Pré-checkout",     value: preCheckouts, rate: pageViews > 0    ? (preCheckouts / pageViews) * 100 : 0, fromLabel: "das páginas" },
       { label: salesLabel,         value: sales,        rate: preCheckouts > 0 ? (sales / preCheckouts) * 100  : 0, fromLabel: "dos pré-checkout" },
     ];
+
+    // Métricas personalizadas marcadas "No funil" (só Evento) — agregadas por
+    // rótulo entre os registros filtrados, encadeadas após as etapas fixas.
+    if (viewKind === "evento") {
+      const customAgg = new Map<string, number>();
+      for (const r of filtered) {
+        for (const m of (r as { customMetrics?: CustomMetric[] }).customMetrics ?? []) {
+          if (!m.inFunnel) continue;
+          customAgg.set(m.label, (customAgg.get(m.label) ?? 0) + m.value);
+        }
+      }
+      for (const [label, value] of customAgg) {
+        const prev = stages[stages.length - 1].value;
+        stages.push({ label, value, rate: prev > 0 ? (value / prev) * 100 : 0, fromLabel: "da etapa anterior" });
+      }
+    }
+
+    return stages;
   }, [filtered, selectedKind]);
 
   const sortedFiltered = useMemo(() => {
@@ -1343,7 +1452,7 @@ export function HistoricalView({ selectedKind: propKind, onKindChange }: Histori
                   {funnel.map((stage, idx) => {
                     const maxVal = funnel[0].value;
                     const widthPct = maxVal > 0 ? (stage.value / maxVal) * 100 : 0;
-                    const colors = ["bg-blue-500", "bg-blue-400", "bg-violet-400", "bg-violet-500", "bg-emerald-500"];
+                    const colors = ["bg-blue-500", "bg-blue-400", "bg-violet-400", "bg-violet-500", "bg-emerald-500", "bg-amber-500", "bg-rose-500", "bg-cyan-500"];
                     return (
                       <div key={stage.label}>
                         <div className="mb-1 flex items-center justify-between text-xs">
@@ -1351,7 +1460,7 @@ export function HistoricalView({ selectedKind: propKind, onKindChange }: Histori
                           <span className="text-slate-500 dark:text-slate-400">{formatNumber(stage.value)}{idx > 0 ? ` · ${formatPercent(stage.rate)}` : ""}</span>
                         </div>
                         <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-[#151821]">
-                          <div className={`h-full rounded-full ${colors[idx]}`} style={{ width: `${widthPct.toFixed(1)}%` }} />
+                          <div className={`h-full rounded-full ${colors[idx % colors.length]}`} style={{ width: `${widthPct.toFixed(1)}%` }} />
                         </div>
                         {idx < funnel.length - 1 && (
                           <div className="mt-1 flex justify-center">
