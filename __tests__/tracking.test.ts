@@ -3,7 +3,7 @@ import { NextRequest } from "next/server";
 const mockSingle = jest.fn();
 const mockSelect = jest.fn(() => ({ eq: () => ({ single: mockSingle }) }));
 const mockInsertSelect = jest.fn(() => ({ single: jest.fn(() => Promise.resolve({ data: { id: "evt-1" }, error: null })) }));
-const mockInsert = jest.fn(() => ({ select: mockInsertSelect }));
+const mockInsert: jest.Mock = jest.fn(() => ({ select: mockInsertSelect }));
 const mockEq = jest.fn(() => Promise.resolve({ data: null, error: null }));
 const mockUpdate = jest.fn(() => ({ eq: mockEq }));
 

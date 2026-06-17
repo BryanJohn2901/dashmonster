@@ -202,6 +202,12 @@ function Chip({ label, active, onClick }: { label: string; active: boolean; onCl
 // ─── Detail drawer ────────────────────────────────────────────────────────────
 
 function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => void }) {
+  // events vem ordenado do mais recente pro mais antigo (groupByVisitor) — o
+  // primeiro lead da lista é o cadastro mais recente, é o default exibido.
+  const leadEvents = visitor.events.filter((e) => e.lead_email || e.lead_phone);
+  const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
+  const selectedLead = leadEvents.find((e) => e.id === selectedLeadId) ?? leadEvents[0] ?? null;
+
   if (typeof document === "undefined") return null;
 
   const timeline = [...visitor.events].reverse(); // ordem cronológica: o que ele fez primeiro até o último
@@ -224,24 +230,34 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 py-5">
-          {visitor.isLead && (
+          {selectedLead && (
             <div className="mb-5 rounded-xl border p-3" style={{ borderColor: "var(--dm-primary)", background: "rgba(49,52,145,0.06)" }}>
-              <p className="mb-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-primary)" }}>Dados capturados</p>
-              {visitor.leadEmail && (
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-primary)" }}>
+                  Dados capturados {selectedLead.id === leadEvents[0]?.id ? "(mais recente)" : ""}
+                </p>
+                <span className="text-[10px] tabular-nums" style={{ color: "var(--dm-text-tertiary)" }}>{fmt(selectedLead.created_at)}</span>
+              </div>
+              {selectedLead.lead_email && (
                 <p className="mb-1 flex items-center gap-1.5 text-xs" style={{ color: "var(--dm-text-primary)" }}>
-                  <Mail size={12} style={{ color: "var(--dm-text-tertiary)" }} /> {visitor.leadEmail}
+                  <Mail size={12} style={{ color: "var(--dm-text-tertiary)" }} /> {selectedLead.lead_email}
                 </p>
               )}
-              {visitor.leadPhone && (
+              {selectedLead.lead_phone && (
                 <p className="mb-1 flex items-center gap-1.5 text-xs" style={{ color: "var(--dm-text-primary)" }}>
-                  <Phone size={12} style={{ color: "var(--dm-text-tertiary)" }} /> {visitor.leadPhone}
+                  <Phone size={12} style={{ color: "var(--dm-text-tertiary)" }} /> {selectedLead.lead_phone}
                 </p>
               )}
-              {Object.entries(visitor.leadFields).map(([key, value]) => (
+              {Object.entries(selectedLead.extra_fields ?? {}).map(([key, value]) => (
                 <p key={key} className="mt-1 text-xs" style={{ color: "var(--dm-text-primary)" }}>
                   <span style={{ color: "var(--dm-text-tertiary)" }}>{key}:</span> {value}
                 </p>
               ))}
+              {leadEvents.length > 1 && (
+                <p className="mt-2 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                  {leadEvents.length} cadastros deste visitante — clique num evento &quot;Lead&quot; na jornada abaixo pra ver os dados daquele cadastro.
+                </p>
+              )}
             </div>
           )}
 
@@ -254,17 +270,30 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
               const evColor = EVENT_COLORS[event.event_name] ?? { bg: "rgba(100,100,100,0.10)", text: "var(--dm-text-tertiary)" };
               const utm = parseUtm(event.event_url);
               const utmEntries = Object.entries(utm);
+              const isLeadEvent = Boolean(event.lead_email || event.lead_phone);
+              const isSelected = isLeadEvent && event.id === selectedLead?.id;
               return (
-                <div key={event.id} className="relative">
+                <div
+                  key={event.id}
+                  className="relative"
+                  onClick={isLeadEvent ? () => setSelectedLeadId(event.id) : undefined}
+                  style={isLeadEvent ? { cursor: "pointer" } : undefined}
+                >
                   <span
                     className="absolute -left-[21px] top-1 h-2.5 w-2.5 rounded-full border-2"
-                    style={{ background: "var(--dm-bg-surface)", borderColor: evColor.text }}
+                    style={{ background: isSelected ? evColor.text : "var(--dm-bg-surface)", borderColor: evColor.text }}
                   />
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="rounded-full px-2 py-0.5 text-[9px] font-semibold whitespace-nowrap" style={{ background: evColor.bg, color: evColor.text }}>
+                    <span
+                      className="rounded-full px-2 py-0.5 text-[9px] font-semibold whitespace-nowrap"
+                      style={{ background: evColor.bg, color: evColor.text, outline: isSelected ? `1px solid ${evColor.text}` : undefined }}
+                    >
                       {EVENT_LABELS[event.event_name] ?? event.event_name}
                     </span>
                     <span className="text-[10px] tabular-nums" style={{ color: "var(--dm-text-tertiary)" }}>{fmt(event.created_at)}</span>
+                    {isSelected && (
+                      <span className="text-[9px] font-semibold" style={{ color: "var(--dm-primary)" }}>· exibindo acima</span>
+                    )}
                   </div>
                   {event.page_title && (
                     <p className="mt-1 text-[11px] font-semibold" style={{ color: "var(--dm-text-primary)" }}>
@@ -273,7 +302,7 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
                   )}
                   <p className="mt-0.5 break-all text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
                     <MapPin size={10} className="mr-1 inline" />
-                    {urlPath(event.event_url)}
+                    {event.event_url || "—"}
                   </p>
                   {utmEntries.length > 0 && (
                     <div className="mt-1.5 flex flex-wrap gap-1">
@@ -598,7 +627,7 @@ export function TrackingEventsView({ onConfigure }: { onConfigure?: () => void }
         </div>
       )}
 
-      {openVisitor && <VisitorDrawer visitor={openVisitor} onClose={() => setSelectedVisitor(null)} />}
+      {openVisitor && <VisitorDrawer key={openVisitor.fingerprintId} visitor={openVisitor} onClose={() => setSelectedVisitor(null)} />}
     </div>
   );
 }
