@@ -1,9 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { TrendingUp, TrendingDown, Wallet, Target, Coins, Gauge, Filter, Megaphone, Search, Settings2 } from "lucide-react";
+import { Wallet, Target, Coins, Gauge, Filter, Megaphone, Search, Settings2 } from "lucide-react";
 import type { CampaignData, DashboardTotals, OriginBreakdown } from "@/types/campaign";
 import { formatBRL, formatInt, formatCompact, formatPercent } from "@/lib/format";
+import { StatCard } from "@/components/ui/StatCard";
+import { BreakdownChips, type TileBreakdown } from "@/components/ui/BreakdownChips";
+import { SectionHeader } from "@/components/ui/SectionHeader";
 
 // ─── Cores por canal (dentro do sistema, sem pastel) ──────────────────────────
 const ORIGIN_COLORS: Record<string, string> = {
@@ -17,100 +20,9 @@ const ORIGIN_FALLBACK = ["#6366C8", "#0ea5e9", "#05CD99", "#f59e0b", "#8B5CF6", 
 const originColor = (origem: string, index: number): string =>
   ORIGIN_COLORS[origem] ?? ORIGIN_FALLBACK[index % ORIGIN_FALLBACK.length];
 
-// ─── Sparkline (SVG inline, sem libs) ─────────────────────────────────────────
+// ─── Metric tile (delega ao StatCard compartilhado) ───────────────────────────
 
-function Sparkline({ data, color }: { data: number[]; color: string }) {
-  if (data.length < 2) return <div className="h-7" />;
-  const max = Math.max(...data);
-  const min = Math.min(...data);
-  const range = max - min || 1;
-  const w = 100, h = 28;
-  const pts = data.map((v, i) => `${(i / (data.length - 1)) * w},${h - ((v - min) / range) * h}`);
-  const area = `0,${h} ${pts.join(" ")} ${w},${h}`;
-  const gid = useMemo(() => `spark-${Math.random().toString(36).slice(2)}`, []);
-  return (
-    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="h-7 w-full" aria-hidden="true">
-      <defs>
-        <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.25" />
-          <stop offset="100%" stopColor={color} stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <polygon points={area} fill={`url(#${gid})`} />
-      <polyline points={pts.join(" ")} fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-    </svg>
-  );
-}
-
-function pctChange(data: number[]): number | null {
-  const nonZero = data.filter((v) => v !== 0);
-  if (nonZero.length < 2) return null;
-  const first = nonZero[0];
-  const last = nonZero[nonZero.length - 1];
-  if (first === 0) return null;
-  return ((last - first) / Math.abs(first)) * 100;
-}
-
-function Delta({ value, invert }: { value: number | null; invert?: boolean }) {
-  if (value == null || !isFinite(value)) return null;
-  const good = invert ? value < 0 : value > 0;
-  const flat = Math.abs(value) < 0.5;
-  const color = flat ? "var(--dm-text-tertiary)" : good ? "#05CD99" : "#EE5D50";
-  const Icon = value >= 0 ? TrendingUp : TrendingDown;
-  return (
-    <span className="flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums"
-      style={{ color, backgroundColor: `${color}1a` }}>
-      <Icon size={11} /> {value >= 0 ? "+" : ""}{value.toFixed(0)}%
-    </span>
-  );
-}
-
-// ─── Metric tile ──────────────────────────────────────────────────────────────
-
-/** Fatia da quebra por canal exibida sob o valor do tile. */
-export interface TileBreakdown { label: string; value: string; color: string; }
-
-/** Chips de quebra por canal — ex.: "150 Meta · 50 Google · 50 Orgânico". */
-function BreakdownChips({ items }: { items: TileBreakdown[] }) {
-  if (items.length < 2) return null; // 1 canal só não precisa de quebra
-  return (
-    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-      {items.map((b) => (
-        <span key={b.label} className="flex items-center gap-1 text-[10px] font-semibold tabular-nums" style={{ color: "var(--dm-text-secondary)" }}>
-          <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ backgroundColor: b.color }} />
-          {b.value} <span style={{ color: "var(--dm-text-tertiary)" }} className="font-medium">{b.label}</span>
-        </span>
-      ))}
-    </div>
-  );
-}
-
-function MetricTile({ icon: Icon, label, value, sub, color, data, invertDelta, breakdown }: {
-  icon: typeof Wallet; label: string; value: string; sub?: string; color: string; data: number[]; invertDelta?: boolean;
-  breakdown?: TileBreakdown[];
-}) {
-  return (
-    <div className="flex flex-col justify-between gap-2.5 rounded-2xl border p-4 transition-shadow hover:shadow-md"
-      style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
-      <div className="flex items-center justify-between">
-        <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
-          <span className="flex h-6 w-6 items-center justify-center rounded-lg" style={{ backgroundColor: `${color}1a` }}>
-            <Icon size={13} style={{ color }} />
-          </span>
-          {label}
-        </span>
-        <Delta value={pctChange(data)} invert={invertDelta} />
-      </div>
-      <p className="text-[26px] font-bold leading-none tabular-nums" style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>
-        {value}
-      </p>
-      <Sparkline data={data} color={color} />
-      {breakdown && breakdown.length > 1
-        ? <BreakdownChips items={breakdown} />
-        : sub && <span className="text-[10px] font-medium" style={{ color: "var(--dm-text-tertiary)" }}>{sub}</span>}
-    </div>
-  );
-}
+const MetricTile = StatCard;
 
 // ─── Funil compacto ───────────────────────────────────────────────────────────
 
@@ -119,12 +31,7 @@ function FunnelTile({ stages }: { stages: { label: string; value: number; color:
   return (
     <div className="flex flex-col gap-3 rounded-2xl border p-5"
       style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
-      <div className="flex items-center gap-2">
-        <span className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ backgroundColor: "rgba(99,102,200,0.12)" }}>
-          <Filter size={14} style={{ color: "#6366C8" }} />
-        </span>
-        <span className="text-sm font-bold" style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>Funil de conversão</span>
-      </div>
+      <SectionHeader icon={Filter} title="Funil de conversão" color="#6366C8" />
       <div className="flex flex-col gap-2.5">
         {stages.map((s, i) => {
           const prev = i > 0 ? stages[i - 1].value : null;
@@ -147,13 +54,8 @@ function FunnelTile({ stages }: { stages: { label: string; value: number; color:
                 <div className="h-full rounded-full transition-all duration-500" style={{ width: `${widthPct}%`, background: `linear-gradient(90deg, ${s.color}, ${s.color}cc)` }} />
               </div>
               {s.breakdown && s.breakdown.length > 1 && (
-                <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 pl-0.5">
-                  {s.breakdown.map((b) => (
-                    <span key={b.label} className="flex items-center gap-1 text-[9px] font-semibold tabular-nums" style={{ color: "var(--dm-text-secondary)" }}>
-                      <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ backgroundColor: b.color }} />
-                      {b.value} <span className="font-medium" style={{ color: "var(--dm-text-tertiary)" }}>{b.label}</span>
-                    </span>
-                  ))}
+                <div className="pl-0.5">
+                  <BreakdownChips items={s.breakdown} size="xs" />
                 </div>
               )}
             </div>
@@ -185,29 +87,30 @@ function CampaignsTile({ campaigns, onManage }: { campaigns: CampaignData[]; onM
 
   return (
     <div className="flex flex-col gap-3 rounded-2xl border p-5" style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
-      <div className="flex flex-wrap items-center gap-3">
-        <span className="flex items-center gap-2 text-sm font-bold" style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ backgroundColor: "rgba(99,102,200,0.12)" }}>
-            <Megaphone size={14} style={{ color: "#6366C8" }} />
-          </span>
-          Campanhas
-          <span className="rounded-full px-2 py-0.5 text-[10px] font-bold tabular-nums" style={{ backgroundColor: "rgba(99,102,200,0.12)", color: "#6366C8" }}>{list.length}</span>
-        </span>
-        <div className="relative ml-auto min-w-[160px] flex-1 sm:max-w-xs">
-          <Search size={13} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--dm-text-tertiary)" }} />
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar campanha…"
-            aria-label="Buscar campanha"
-            className="h-9 w-full rounded-xl border pl-8 pr-3 text-[12px] outline-none transition focus:ring-1"
-            style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }} />
-        </div>
-        {onManage && (
-          <button type="button" onClick={onManage}
-            className="flex h-9 items-center gap-1.5 rounded-xl px-3.5 text-[12px] font-bold text-white transition-all hover:opacity-90 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6366C8]"
-            style={{ background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)" }}>
-            <Settings2 size={13} /> Puxar / gerenciar
-          </button>
-        )}
-      </div>
+      <SectionHeader
+        icon={Megaphone}
+        title="Campanhas"
+        color="#6366C8"
+        count={list.length}
+        right={
+          <>
+            <div className="relative min-w-[160px] flex-1 sm:max-w-xs">
+              <Search size={13} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--dm-text-tertiary)" }} />
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar campanha…"
+                aria-label="Buscar campanha"
+                className="h-9 w-full rounded-xl border pl-8 pr-3 text-[12px] outline-none transition focus:ring-1"
+                style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }} />
+            </div>
+            {onManage && (
+              <button type="button" onClick={onManage}
+                className="flex h-9 items-center gap-1.5 rounded-xl px-3.5 text-[12px] font-bold text-white transition-all hover:opacity-90 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6366C8]"
+                style={{ background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)" }}>
+                <Settings2 size={13} /> Puxar / gerenciar
+              </button>
+            )}
+          </>
+        }
+      />
 
       {filtered.length === 0 ? (
         <p className="py-3 text-center text-[12px]" style={{ color: "var(--dm-text-tertiary)" }}>

@@ -8,6 +8,7 @@ import {
   Pie, PieChart, ResponsiveContainer, Tooltip,
   XAxis, YAxis,
 } from "recharts";
+import { Activity, PieChart as PieIcon, BarChart2, type LucideIcon } from "lucide-react";
 import {
   BudgetDistributionPoint, CampaignComparisonPoint, DailyTrendPoint,
 } from "@/types/campaign";
@@ -126,12 +127,14 @@ function ToggleGroup<T extends string>({
 // ─── Card wrapper ─────────────────────────────────────────────────────────────
 
 function ChartCard({
-  title, subtitle, children, action,
+  title, subtitle, children, action, icon: Icon, iconColor = "#6366C8",
 }: {
   title: string;
   subtitle?: string;
   children: React.ReactNode;
   action?: React.ReactNode;
+  icon?: LucideIcon;
+  iconColor?: string;
 }) {
   return (
     <article
@@ -139,11 +142,18 @@ function ChartCard({
       style={{ borderRadius: "var(--dm-shape-xl)" }}
     >
       <div className="mb-4 flex flex-col items-start justify-between gap-2 sm:flex-row sm:items-start">
-        <div>
-          <h3 className="text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>{title}</h3>
-          {subtitle && (
-            <p className="mt-0.5 text-xs" style={{ color: "var(--dm-text-tertiary)" }}>{subtitle}</p>
+        <div className="flex items-center gap-2">
+          {Icon && (
+            <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: `${iconColor}1a` }}>
+              <Icon size={14} style={{ color: iconColor }} />
+            </span>
           )}
+          <div>
+            <h3 className="text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>{title}</h3>
+            {subtitle && (
+              <p className="mt-0.5 text-xs" style={{ color: "var(--dm-text-tertiary)" }}>{subtitle}</p>
+            )}
+          </div>
         </div>
         {action}
       </div>
@@ -487,6 +497,7 @@ export function ChartsSection({
       {/* ── Trend chart — full width ── */}
       <div className="xl:col-span-12">
         <ChartCard
+          icon={Activity}
           title="Evolução Diária"
           subtitle="Cliques e conversões ao longo do tempo"
           action={
@@ -513,6 +524,8 @@ export function ChartsSection({
       {/* ── Budget chart — 4/12 normal, 12/12 quando horizontal ── */}
       <div className={comparisonMode === "horizontal" ? "xl:col-span-12" : "xl:col-span-4"}>
         <ChartCard
+          icon={PieIcon}
+          iconColor="#8B5CF6"
           title="Distribuição de Orçamento"
           subtitle={budgetMode === "mensal" ? "Investimento mês a mês" : "Investimento por campanha"}
           action={
@@ -534,6 +547,8 @@ export function ChartsSection({
       {/* ── Comparison chart — 8/12 normal, 12/12 quando horizontal ── */}
       <div className={comparisonMode === "horizontal" ? "xl:col-span-12" : "xl:col-span-8"}>
         <ChartCard
+          icon={BarChart2}
+          iconColor="#0ea5e9"
           title="Investimento vs Receita"
           subtitle="Comparativo por campanha no período"
           action={

@@ -13,6 +13,7 @@ import type { MetaCampaignCreative, AdInsight } from "@/utils/metaApi";
 import { fetchMetaCreativesPage, fetchAdInsights, loadMetaCredentials } from "@/utils/metaApi";
 import { formatCurrency, formatPercent } from "@/utils/metrics";
 import { CriativosEmpty } from "@/components/empty/CriativosEmpty";
+import { SegmentedTabs } from "@/components/ui/SegmentedTabs";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -44,11 +45,12 @@ type MediaFilter  = "all" | "image" | "video" | "carousel";
 const TYPE_LABEL: Record<MetaCampaignCreative["mediaType"], string> = {
   image: "Imagem", video: "Vídeo", carousel: "Carrossel", unknown: "Anúncio",
 };
-const TYPE_COLOR: Record<MetaCampaignCreative["mediaType"], string> = {
-  image:    "bg-emerald-500/10 text-emerald-500",
-  video:    "bg-blue-500/10 text-blue-500",
-  carousel: "bg-violet-500/10 text-violet-500",
-  unknown:  "bg-slate-500/10 text-slate-400",
+// Paleta única do sistema (sem pastel Tailwind): imagem=verde, vídeo=azul, carrossel=roxo.
+const TYPE_COLOR: Record<MetaCampaignCreative["mediaType"], { bg: string; text: string }> = {
+  image:    { bg: "rgba(5,205,153,0.10)",  text: "#05CD99" },
+  video:    { bg: "rgba(14,165,233,0.10)", text: "#0ea5e9" },
+  carousel: { bg: "rgba(139,92,246,0.10)", text: "#8B5CF6" },
+  unknown:  { bg: "var(--dm-bg-elevated)", text: "var(--dm-text-tertiary)" },
 };
 
 function getCacheKey(ids: string[]) { return `pta_creatives_v2_${ids.sort().join(",")}`; }
@@ -270,8 +272,8 @@ function AdThumb({
       )}
 
       {/* Media type badge */}
-      <span className={`absolute left-2 top-2 rounded-full px-2 py-0.5 text-[10px] font-bold backdrop-blur-sm ${TYPE_COLOR[ad.mediaType]}`}
-        style={{ backgroundColor: "rgba(0,0,0,0.45)" }}>
+      <span className="absolute left-2 top-2 rounded-full px-2 py-0.5 text-[10px] font-bold backdrop-blur-sm"
+        style={{ backgroundColor: "rgba(0,0,0,0.45)", color: TYPE_COLOR[ad.mediaType].text }}>
         {TYPE_LABEL[ad.mediaType]}
       </span>
     </div>
@@ -492,8 +494,8 @@ function CardLivePreview({
               <Loader2 size={18} className="animate-spin text-white/35" />
             </div>
             <span
-              className={`absolute left-2 top-2 z-10 rounded-full px-2 py-0.5 text-[10px] font-bold backdrop-blur-sm ${TYPE_COLOR[ad.mediaType]}`}
-              style={{ backgroundColor: "rgba(0,0,0,0.45)" }}
+              className="absolute left-2 top-2 z-10 rounded-full px-2 py-0.5 text-[10px] font-bold backdrop-blur-sm"
+              style={{ backgroundColor: "rgba(0,0,0,0.45)", color: TYPE_COLOR[ad.mediaType].text }}
             >
               {TYPE_LABEL[ad.mediaType]}
             </span>
@@ -537,8 +539,8 @@ function CardLivePreview({
 
           {/* Media type badge */}
           <span
-            className={`absolute left-2 top-2 z-10 rounded-full px-2 py-0.5 text-[10px] font-bold backdrop-blur-sm ${TYPE_COLOR[ad.mediaType]}`}
-            style={{ backgroundColor: "rgba(0,0,0,0.45)" }}
+            className="absolute left-2 top-2 z-10 rounded-full px-2 py-0.5 text-[10px] font-bold backdrop-blur-sm"
+            style={{ backgroundColor: "rgba(0,0,0,0.45)", color: TYPE_COLOR[ad.mediaType].text }}
           >
             {TYPE_LABEL[ad.mediaType]}
           </span>
@@ -1132,7 +1134,8 @@ function PreviewModal({
             className="flex flex-shrink-0 items-center gap-2.5 px-5 pb-4 pt-6"
             style={{ borderBottom: "1px solid var(--dm-border-subtle)" }}
           >
-            <span className={`flex-shrink-0 rounded-[5px] px-2 py-0.5 text-[9px] font-bold tracking-wide ${TYPE_COLOR[ad.mediaType]}`}>
+            <span className="flex-shrink-0 rounded-[5px] px-2 py-0.5 text-[9px] font-bold tracking-wide"
+              style={{ backgroundColor: TYPE_COLOR[ad.mediaType].bg, color: TYPE_COLOR[ad.mediaType].text }}>
               {TYPE_LABEL[ad.mediaType].toUpperCase()}
             </span>
             {score !== null && (
@@ -1605,26 +1608,18 @@ export function BestCreatives({
       {/* ── Header bar ─────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-2">
 
-        {/* Sub-tabs */}
-        {(["gallery", "rankings", "starred"] as const).map((id) => {
-          const labels = { gallery: "Galeria", rankings: "Rankings", starred: "⭐ Destaques" };
-          const counts = { gallery: metaAds.length, rankings: null, starred: starCount } as Record<string, number | null>;
-          return (
-            <button key={id} type="button" onClick={() => setSubTab(id)}
-              className="flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-semibold transition-all"
-              style={subTab === id
-                ? { backgroundColor: "var(--dm-brand-500)", color: "#fff" }
-                : { backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-secondary)", border: "1px solid var(--dm-border-default)" }}>
-              {labels[id]}
-              {counts[id] !== null && (
-                <span className="rounded-full px-1.5 py-0.5 text-[10px] font-bold"
-                  style={{ backgroundColor: subTab === id ? "rgba(255,255,255,0.2)" : "var(--dm-bg-surface)" }}>
-                  {counts[id]}
-                </span>
-              )}
-            </button>
-          );
-        })}
+        {/* Sub-tabs (barra única do dashboard) */}
+        <div className="min-w-[220px] flex-1">
+          <SegmentedTabs
+            active={subTab}
+            onChange={setSubTab}
+            tabs={[
+              { id: "gallery"  as SubTab, label: "Galeria",   icon: ImageIcon, count: metaAds.length },
+              { id: "rankings" as SubTab, label: "Rankings",  icon: Trophy },
+              { id: "starred"  as SubTab, label: "Destaques", icon: Star, count: starCount },
+            ]}
+          />
+        </div>
 
         {/* Right side */}
         <div className="ml-auto flex items-center gap-2">

@@ -6,11 +6,13 @@ import {
   Globe, ImageIcon, PauseCircle, Square, Star, TrendingUp,
   XCircle, Zap, ChevronLeft, ChevronRight, BarChart2,
   CalendarDays, Repeat, GraduationCap, BookOpen, Users, Megaphone,
-  ShoppingCart, RefreshCcw, Target, Mail, Ticket, UserCheck, AtSign,
+  ShoppingCart, RefreshCcw, Target, Mail, Ticket, UserCheck, AtSign, Gauge,
 } from "lucide-react";
 import { AggregatedCampaign, ProductCategory } from "@/types/campaign";
 import { formatCurrency, formatNumber, formatPercent } from "@/utils/metrics";
 import { PerfilAtivoPanel } from "@/components/PerfilAtivoPanel";
+import { StatCard } from "@/components/ui/StatCard";
+import { SegmentedTabs } from "@/components/ui/SegmentedTabs";
 
 interface CampaignAnalysisProps {
   campaigns: AggregatedCampaign[];
@@ -36,11 +38,11 @@ interface TaskSuggestion {
 
 const CATEGORY_META: Record<Category, { label: string; icon: React.ElementType; color: string; bg: string }> = {
   pausar:    { label: "Pausar",    icon: PauseCircle,   color: "#EF4444", bg: "rgba(239,68,68,0.12)" },
-  criativo:  { label: "Criativo",  icon: ImageIcon,     color: "#A78BFA", bg: "rgba(167,139,250,0.12)" },
-  landing:   { label: "Landing",   icon: Globe,         color: "#F97316", bg: "rgba(249,115,22,0.12)" },
+  criativo:  { label: "Criativo",  icon: ImageIcon,     color: "#8B5CF6", bg: "rgba(139,92,246,0.12)" },
+  landing:   { label: "Landing",   icon: Globe,         color: "#0ea5e9", bg: "rgba(14,165,233,0.12)" },
   orçamento: { label: "Orçamento", icon: DollarSign,    color: "#F59E0B", bg: "rgba(245,158,11,0.12)" },
-  targeting: { label: "Targeting", icon: Target,        color: "#60A5FA", bg: "rgba(96,165,250,0.12)" },
-  escalar:   { label: "Escalar",   icon: TrendingUp,    color: "#10B981", bg: "rgba(16,185,129,0.12)" },
+  targeting: { label: "Targeting", icon: Target,        color: "#6366C8", bg: "rgba(99,102,200,0.12)" },
+  escalar:   { label: "Escalar",   icon: TrendingUp,    color: "#05CD99", bg: "rgba(5,205,153,0.12)" },
 };
 
 const PRIORITY_COLOR: Record<Priority, { border: string; bg: string; text: string; dot: string }> = {
@@ -143,47 +145,6 @@ function HealthRing({ score }: { score: number }) {
 }
 
 // ─── Sub-tab bar ─────────────────────────────────────────────────────────────
-
-function SubTabBar({
-  active, onChange, tabs,
-}: {
-  active: SubTab;
-  onChange: (t: SubTab) => void;
-  tabs: { id: SubTab; label: string; count?: number; icon: React.ElementType }[];
-}) {
-  return (
-    <div className="flex gap-1 overflow-x-auto border-b [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" style={{ borderColor: "var(--dm-border-default)" }}>
-      {tabs.map(({ id, label, count, icon: Icon }) => (
-        <button
-          key={id}
-          onClick={() => onChange(id)}
-          className={`flex flex-shrink-0 items-center gap-1.5 border-b-2 px-3 py-2.5 text-xs font-semibold transition ${
-            active === id
-              ? "border-blue-500"
-              : "border-transparent"
-          }`}
-          style={{
-            color: active === id ? "var(--dm-brand-500)" : "var(--dm-text-secondary)",
-          }}
-        >
-          <Icon size={13} />
-          {label}
-          {count !== undefined && count > 0 && (
-            <span
-              className="rounded-md px-1.5 py-0.5 text-[10px] font-bold"
-              style={{
-                backgroundColor: active === id ? "var(--dm-brand-50)" : "var(--dm-bg-elevated)",
-                color: active === id ? "var(--dm-brand-500)" : "var(--dm-text-tertiary)",
-              }}
-            >
-              {count}
-            </span>
-          )}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 // ─── Paginator ────────────────────────────────────────────────────────────────
 
@@ -389,23 +350,13 @@ function TabOverview({ campaigns, selectedCategory }: { campaigns: AggregatedCam
 
   return (
     <div className="space-y-5 pt-4">
-      {/* ── Bento summary tiles ── */}
+      {/* ── Summary tiles (linguagem do bento) ── */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {[
-          { label: "Investimento Total", value: formatCurrency(totalInvest), color: "#60A5FA", bg: "rgba(96,165,250,0.10)" },
-          { label: "Receita Total",      value: formatCurrency(totalRevenue), color: "#10B981", bg: "rgba(16,185,129,0.10)" },
-          { label: "ROAS Geral",         value: `${overallRoas.toFixed(2)}x`, color: overallRoas >= 2 ? "#10B981" : overallRoas >= 1 ? "#F59E0B" : "#EF4444", bg: overallRoas >= 2 ? "rgba(16,185,129,0.10)" : overallRoas >= 1 ? "rgba(245,158,11,0.10)" : "rgba(239,68,68,0.10)" },
-          { label: "Campanhas Saudáveis", value: `${healthyCount}/${campaigns.length}`, color: "#A78BFA", bg: "rgba(167,139,250,0.10)" },
-        ].map(({ label, value, color, bg }) => (
-          <div
-            key={label}
-            className="rounded-2xl border p-4 transition-shadow hover:shadow-md"
-            style={{ background: bg, borderColor: `${color}30` }}
-          >
-            <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color }}>{label}</p>
-            <p className="text-lg font-black leading-tight" style={{ color: "var(--dm-text-primary)" }}>{value}</p>
-          </div>
-        ))}
+        <StatCard icon={DollarSign} label="Investimento Total" value={formatCurrency(totalInvest)} color="#6366C8" />
+        <StatCard icon={TrendingUp} label="Receita Total"      value={formatCurrency(totalRevenue)} color="#05CD99" />
+        <StatCard icon={Gauge}      label="ROAS Geral"         value={`${overallRoas.toFixed(2)}x`}
+          color={overallRoas >= 2 ? "#05CD99" : overallRoas >= 1 ? "#F59E0B" : "#EF4444"} />
+        <StatCard icon={CheckCircle2} label="Campanhas Saudáveis" value={`${healthyCount}/${campaigns.length}`} color="#8B5CF6" />
       </div>
 
       {/* Category roadmap */}
@@ -416,13 +367,13 @@ function TabOverview({ campaigns, selectedCategory }: { campaigns: AggregatedCam
         <p className="mb-3 text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>Top 10 por Investimento</p>
         <div className="space-y-2">
           {top10.map((c, idx) => {
-            const roasColor = c.roas >= 3 ? "#10B981" : c.roas >= 1.5 ? "#60A5FA" : c.roas >= 1 ? "#F59E0B" : "#EF4444";
-            const barColor  = c.roas >= 3 ? "#10B981" : c.roas >= 1.5 ? "#313491" : c.roas >= 1 ? "#F59E0B" : "#EF4444";
+            const roasColor = c.roas >= 3 ? "#05CD99" : c.roas >= 1.5 ? "#0ea5e9" : c.roas >= 1 ? "#F59E0B" : "#EF4444";
+            const barColor  = c.roas >= 3 ? "#05CD99" : c.roas >= 1.5 ? "#313491" : c.roas >= 1 ? "#F59E0B" : "#EF4444";
             const pct       = (c.investment / maxInv) * 100;
             return (
               <div
                 key={c.campaignName}
-                className="rounded-[14px] border p-3 transition hover:border-opacity-60"
+                className="rounded-2xl border p-3 transition-shadow hover:shadow-md"
                 style={{
                   backgroundColor: "var(--dm-bg-surface)",
                   borderColor: "var(--dm-border-default)",
@@ -900,9 +851,9 @@ export function CampaignAnalysis({ campaigns, selectedCategory, isMetricVisible,
       </div>
 
       {/* ── Sub-tab card ── */}
-      <div className="rounded-xl border shadow-sm" style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
+      <div className="rounded-2xl border shadow-sm" style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
         <div className="px-5 pt-4">
-          <SubTabBar active={subTab} onChange={setSubTab} tabs={TABS} />
+          <SegmentedTabs active={subTab} onChange={setSubTab} tabs={TABS} />
         </div>
         <div className="px-5 pb-5">
           {subTab === "overview"   && <TabOverview  campaigns={campaigns} selectedCategory={selectedCategory} />}
