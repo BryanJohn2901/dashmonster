@@ -84,7 +84,7 @@ function Chip({ label, active, onClick }: { label: string; active: boolean; onCl
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function TrackingEventsView() {
+export function TrackingEventsView({ onConfigure }: { onConfigure?: () => void } = {}) {
   const { companyId } = useCompany();
   const [events, setEvents] = useState<TrackingEvent[]>([]);
   const [config, setConfig] = useState<TrackingConfig | null>(null);
@@ -231,11 +231,20 @@ export function TrackingEventsView() {
       {/* Tracking não configurado */}
       {notConfigured && (
         <div
-          className="mb-4 rounded-lg border px-3 py-2 text-xs"
+          className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs"
           style={{ borderColor: "rgba(245,158,11,0.3)", background: "rgba(245,158,11,0.08)", color: "#d97706" }}
         >
-          Tracking ainda não configurado para esta empresa. Defina <code>meta_pixel_id</code>,{" "}
-          <code>meta_capi_token</code> e <code>dominio_autorizado</code> na tabela <code>companies</code>.
+          <span>Tracking ainda não configurado para esta empresa.</span>
+          {onConfigure && (
+            <button
+              type="button"
+              onClick={onConfigure}
+              className="flex-shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-bold transition-opacity hover:opacity-80"
+              style={{ borderColor: "rgba(245,158,11,0.5)", color: "#d97706" }}
+            >
+              Configurar agora →
+            </button>
+          )}
         </div>
       )}
 

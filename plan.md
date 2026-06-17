@@ -179,3 +179,10 @@ Faltava como o usuário de fato configura `meta_pixel_id`/`meta_capi_token`/`dom
 - `src/hooks/useCompany.ts`: `fetchCompanyTracking(companyId)` / `setCompanyTracking(companyId, config)` — mesmo padrão de `fetchCompanyToken`/`setCompanyToken` (`supabaseClient.from("companies").update(...)`, RLS faz a autorização de owner).
 - `src/components/CompanyStudio.tsx`: nova seção `TrackingSection` no Estúdio da Empresa (accordion, gated por `canEdit={isOwner}`), com os 3 campos + texto explicando a diferença entre `meta_capi_token` e o token de Conexão Meta, e o aviso de que `dominio_autorizado` é só hostname (sem protocolo/porta).
 - Acessível em **Minha conta → Estúdio da Empresa → Tracking Pixel**.
+
+## 9. Fluxo de configuração guiado (feedback do usuário: "fluxo confuso") ✅ feito
+
+Antes, ir de "vejo a aba Tracking vazia" até "sei o que fazer" exigia adivinhar onde configurar e copiar/colar manualmente o slug no snippet do pixel. Fechado o loop:
+- **Botão "Configurar agora →"** no aviso de "tracking não configurado" (`TrackingEventsView.tsx`) — chama `onConfigure` (prop nova), que em `Dashboard.tsx` troca pra aba "Minha conta", sub-aba "Empresa" e sinaliza qual seção abrir.
+- **`CompanyStudio.tsx`** ganhou prop `focusSection` — abre e rola automaticamente até a seção certa do accordion (`id="studio-section-<id>"` + `scrollIntoView`). Repassado via `MyAccount.tsx` (`focusStudioSection`), espelhando o padrão já existente de `activeTab`/`onTabChange` controlado por `Dashboard.tsx`.
+- **Snippet de instalação pronto pra copiar** dentro da seção "Tracking Pixel": depois de salvar o Pixel ID, aparece o `<script>` exato (com o slug real da empresa e a origem do app) com botão "Copiar" — sem precisar montar a tag manualmente.

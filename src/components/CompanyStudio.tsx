@@ -30,7 +30,7 @@ const MAX_HISTORY_TABS = 7;
 const isEmail = (e: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e);
 const BRAND = "#6366C8";
 
-type SectionId = "identidade" | "conexao" | "tracking" | "contas" | "filtros" | "historico" | "equipe";
+export type SectionId = "identidade" | "conexao" | "tracking" | "contas" | "filtros" | "historico" | "equipe";
 
 // ─── Accordion section ────────────────────────────────────────────────────────
 
@@ -40,7 +40,7 @@ function Section({ id, icon: Icon, title, summary, status, open, onToggle, child
 }) {
   const statusColor = status === "ok" ? "#05CD99" : status === "todo" ? "#F4A60D" : "var(--dm-text-tertiary)";
   return (
-    <div className="rounded-2xl border transition-colors" style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: open ? BRAND : "var(--dm-border-default)" }}>
+    <div id={`studio-section-${id}`} className="rounded-2xl border transition-colors scroll-mt-4" style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: open ? BRAND : "var(--dm-border-default)" }}>
       <button type="button" onClick={() => onToggle(id)} aria-expanded={open}
         className="flex w-full items-center gap-3 rounded-2xl px-5 py-4 text-left transition-colors hover:bg-black/[0.025] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6366C8] dark:hover:bg-white/[0.03]">
         <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: "rgba(99,102,200,0.12)" }}>
@@ -75,13 +75,23 @@ const btnPrimaryStyle = { background: "linear-gradient(135deg,#6366C8 0%,#313491
 
 // ─── Estúdio da Empresa ───────────────────────────────────────────────────────
 
-export function CompanyStudio({ categories = [], onNavigate }: {
+export function CompanyStudio({ categories = [], onNavigate, focusSection }: {
   categories?: UserCategory[];
   onNavigate?: (tab: "accounts" | "sync") => void;
+  /** Abre + rola até essa seção ao montar/mudar (ex: vindo de "Configurar agora" na aba Tracking). */
+  focusSection?: SectionId | null;
 }) {
   const { company, role, isOwner, loading, migrationMissing, memberships, switchCompany, isSuperAdmin } = useCompany();
   const [open, setOpen] = useState<Set<SectionId>>(new Set(["conexao", "contas"]));
   const toggle = (id: SectionId) => setOpen((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+
+  useEffect(() => {
+    if (!focusSection) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setOpen((p) => (p.has(focusSection) ? p : new Set(p).add(focusSection)));
+    const el = document.getElementById(`studio-section-${focusSection}`);
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [focusSection]);
 
   // ── dados assíncronos ──
   const [token, setTokenVal] = useState<string>("");
@@ -280,15 +290,16 @@ function TrackingSection({ company, canEdit, tracking, onTracking, open, onToggl
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setPixelId(tracking.metaPixelId);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCapiToken(tracking.metaCapiToken);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setDominio(tracking.dominioAutorizado);
   }, [tracking]);
 
   const has = Boolean(tracking.metaPixelId.trim());
   const dirty = pixelId !== tracking.metaPixelId || capiToken !== tracking.metaCapiToken || dominio !== tracking.dominioAutorizado;
   const slug = company.slug;
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const snippet = `<script src="${origin}/api/tracking/pixel.js"></script>\n<script>Tracker.init("${slug}");</script>`;
+  const [copied, setCopied] = useState(false);
 
   const save = async () => {
     setSaving(true);
@@ -300,13 +311,32 @@ function TrackingSection({ company, canEdit, tracking, onTracking, open, onToggl
     } catch (e) { toast.error(e instanceof Error ? e.message : "Erro ao salvar."); } finally { setSaving(false); }
   };
 
+  const copySnippet = async () => {
+    try {
+      await navigator.clipboard.writeText(snippet);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch { toast.error("Não foi possível copiar."); }
+  };
+
   return (
     <Section id="tracking" icon={Radar} title="Tracking Pixel" summary={has ? "Pixel configurado e ativo" : "Nenhum pixel ainda"} status={has ? "ok" : "todo"} open={open} onToggle={onToggle}>
       <p className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
-        Pixel server-side próprio (form submit, clique WhatsApp, dataLayer) que repassa eventos pra Meta Conversions API. Instale{" "}
-        <code className="rounded bg-black/[0.04] px-1 py-0.5 dark:bg-white/[0.06]">/api/tracking/pixel.js</code> no site do cliente e chame{" "}
-        <code className="rounded bg-black/[0.04] px-1 py-0.5 dark:bg-white/[0.06]">Tracker.init(&quot;{slug}&quot;)</code>.
+        Pixel server-side próprio (form submit, clique WhatsApp, dataLayer) que repassa eventos pra Meta Conversions API.
+        {has ? " Cole o código abaixo no site do cliente — depois os eventos aparecem na aba " : " Preencha e salve os campos abaixo, depois instale o código que aparece aqui no site do cliente — os eventos aparecem na aba "}
+        <strong style={{ color: "var(--dm-text-secondary)" }}>Tracking</strong>.
       </p>
+      {has && (
+        <div className="rounded-xl border" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)" }}>
+          <div className="flex items-center justify-between border-b px-3 py-1.5" style={{ borderColor: "var(--dm-border-default)" }}>
+            <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Código de instalação</span>
+            <button type="button" onClick={() => void copySnippet()} className="text-[10px] font-bold transition-opacity hover:opacity-70" style={{ color: copied ? "#05CD99" : BRAND }}>
+              {copied ? "Copiado!" : "Copiar"}
+            </button>
+          </div>
+          <pre className="overflow-x-auto px-3 py-2.5 font-mono text-[11px] leading-relaxed" style={{ color: "var(--dm-text-secondary)" }}>{snippet}</pre>
+        </div>
+      )}
       <label className="flex flex-col gap-1">
         <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Pixel ID (Meta)</span>
         <input value={pixelId} disabled={!canEdit} onChange={(e) => setPixelId(e.target.value)} placeholder="123456789012345" className={`${inputCls} h-10 font-mono disabled:opacity-60`} style={inputStyle} />

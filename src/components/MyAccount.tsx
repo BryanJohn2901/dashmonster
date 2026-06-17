@@ -10,7 +10,7 @@ import {
   type TabAccountsProps,
 } from "@/components/ControlPanel";
 import { AccountsHub } from "@/components/CampaignCenter";
-import { CompanyStudio } from "@/components/CompanyStudio";
+import { CompanyStudio, type SectionId as StudioSectionId } from "@/components/CompanyStudio";
 import type { UserCategory, UserAccountEntry } from "@/types/userConfig";
 import type { MetaSyncResult } from "@/utils/supabaseCampaigns";
 
@@ -43,6 +43,8 @@ interface MyAccountProps {
   /** Controlled tab — lifted to Dashboard for sidebar nav */
   activeTab?:         AccountTab;
   onTabChange?:       (tab: AccountTab) => void;
+  /** Abre + rola até essa seção do Estúdio da Empresa (ex: vindo do botão "Configurar agora" da aba Tracking). */
+  focusStudioSection?: StudioSectionId | null;
 }
 
 // ─── Sub-tab definitions ──────────────────────────────────────────────────────
@@ -269,7 +271,7 @@ export function MyAccount({
   onCategoriesChange, onEntriesChange,
   onUpdateProfile, onSignOut,
   syncStatus, campaignCount, dataSource, onRefresh, onClearData,
-  activeTab: propTab, onTabChange,
+  activeTab: propTab, onTabChange, focusStudioSection,
 }: MyAccountProps) {
   const [internalTab, setInternalTab] = useState<AccountTab>("profile");
   const activeTab = propTab ?? internalTab;
@@ -429,7 +431,7 @@ export function MyAccount({
         {activeTab === "accounts" && (
           <AccountsHub {...tabAccountsProps} />
         )}
-        {activeTab === "company" && <CompanyStudio categories={categories} onNavigate={(t) => setActiveTab(t)} />}
+        {activeTab === "company" && <CompanyStudio categories={categories} onNavigate={(t) => setActiveTab(t)} focusSection={focusStudioSection} />}
         {activeTab === "integrations" && (
           <TabIntegrations onSyncNow={() => { void onRefresh?.(); }} />
         )}
