@@ -40,3 +40,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Claude Code skills / agents (tooling local, fora do produto)
+.claude/skills/
+.agents/skills/
