@@ -101,7 +101,10 @@ export function TrackingEventsView() {
       setError("Supabase não configurado.");
       return;
     }
-    if (!companyId) return;
+    if (!companyId) {
+      setError("Nenhuma empresa selecionada.");
+      return;
+    }
 
     setLoading(true);
     setError(null);
@@ -151,7 +154,7 @@ export function TrackingEventsView() {
   });
 
   const eventTypes = [...new Set(events.map((e) => e.event_name))];
-  const notConfigured = !loading && !config?.meta_pixel_id;
+  const notConfigured = !loading && !error && !config?.meta_pixel_id;
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
