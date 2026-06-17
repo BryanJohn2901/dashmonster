@@ -147,6 +147,26 @@ describe("POST /api/tracking/track-event", () => {
     );
   });
 
+  it("grava page_title e extra_fields do formulário", async () => {
+    mockSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    await POST(
+      buildRequest({
+        client_id: "acme",
+        event_name: "Lead",
+        event_url: "http://localhost:3000/pagina",
+        page_title: "Página de Vendas",
+        pii: { email: "a@b.com", fields: { nome: "Wesley", cidade: "SP" } },
+      }),
+    );
+
+    expect(mockInsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        page_title: "Página de Vendas",
+        extra_fields: { nome: "Wesley", cidade: "SP" },
+      }),
+    );
+  });
+
   it("segue mesmo sem Origin/Referer (soft-fail)", async () => {
     mockSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
     const req = new NextRequest("http://localhost:3000/api/tracking/track-event", {

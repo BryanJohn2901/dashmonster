@@ -8,11 +8,13 @@ interface TrackEventPayload {
   client_id: string;
   event_name: string;
   event_url: string;
+  /** document.title no momento do evento — pra exibir o nome real da página no dashboard. */
+  page_title?: string;
   /** ID persistente gerado pelo pixel.js e gravado em cookie 1ª parte (`_dm_uid`). */
   user_id?: string;
   user_data?: { em?: string; ph?: string };
-  /** Email/telefone em texto puro (não hasheado) — só pra exibição no dashboard, NUNCA repassado à Meta. */
-  pii?: { email?: string; phone?: string };
+  /** Email/telefone/demais campos em texto puro (não hasheados) — só pra exibição no dashboard, NUNCA repassados à Meta. */
+  pii?: { email?: string; phone?: string; fields?: Record<string, string> };
   custom_data?: Record<string, unknown>;
 }
 
@@ -117,9 +119,11 @@ export async function POST(request: NextRequest) {
       event_name: payload.event_name,
       fingerprint_id: fingerprintId,
       event_url: payload.event_url,
+      page_title: payload.page_title?.trim() || null,
       user_data: payload.user_data ?? {},
       lead_email: payload.pii?.email?.trim() || null,
       lead_phone: payload.pii?.phone?.trim() || null,
+      extra_fields: payload.pii?.fields ?? {},
       capi_status: metaConfigured ? "pending" : "skipped",
     })
     .select("id")

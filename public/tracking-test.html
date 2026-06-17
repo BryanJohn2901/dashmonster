@@ -17,11 +17,17 @@
   <p>PageView dispara sozinho ao carregar a página. Lead dispara no submit do form abaixo.</p>
 
   <form action="https://example.com/obrigado" method="get">
+    <label>Nome
+      <input type="text" name="nome" value="Visitante Teste" required />
+    </label>
     <label>Email
       <input type="email" name="email" value="teste@exemplo.com" required />
     </label>
     <label>Telefone
       <input type="tel" name="phone" value="11999999999" required />
+    </label>
+    <label>Cidade
+      <input type="text" name="cidade" value="São Paulo" />
     </label>
     <button type="submit">Enviar (Lead)</button>
   </form>

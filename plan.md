@@ -239,4 +239,21 @@ Não fazem parte do PRD original, mas surgiram testando o resto do app na mesma 
 
 Também corrigido: `addUserTag`/`deleteUserTag` lançavam o objeto de erro bruto do Supabase (`throw error`), que não é `instanceof Error` — por isso o toast de erro (corrigido na seção do Histórico) sempre mostrava "erro desconhecido" em vez da mensagem real. Agora fazem `throw new Error(error.message)`.
 
+## 14. Título da página, todos os campos do form, UTM legível (feedback do usuário após ver o drawer funcionando) ✅ feito
+
+Pedido: (1) mostrar nome/título da página em vez de só a URL/slug no histórico do visitante; (2) capturar todos os campos do formulário, não só email/telefone; (3) UTMs vinham com `+`/`%XX` literais no drawer (ex.: `%5BAo+Vivo%5D...`) — decodificar pra texto legível.
+
+**Migration `033_events_log_title_fields.sql`**: `events_log.page_title` (TEXT) + `events_log.extra_fields` (JSONB, default `{}`).
+
+**`pixel.js`**: `send()` agora manda `page_title: document.title` em todo evento (não só Lead). `attachFormListener` varre `input/select/textarea` do form (não só `email`/`tel`), excluindo `submit/button/hidden/password/file/reset/image`; email/telefone continuam indo pra `pii.email`/`pii.phone` (+ hash), os demais campos nomeados vão pra `pii.fields: {name: value}` — limite de 25 campos, valor truncado em 500 chars (proteção contra forms gigantes/abuso).
+
+**`track-event/route.ts`**: aceita `payload.page_title` e `payload.pii.fields`, grava em `events_log.page_title`/`extra_fields`. Mesma regra de sempre: nada disso é repassado à Meta CAPI, só pra exibição no dashboard.
+
+**`TrackingEventsView.tsx`**:
+- Timeline do drawer mostra `page_title` em destaque acima do caminho da URL (quando disponível); tabela usa `page_title` como fallback quando não há UTM pra mostrar.
+- Card "Dados capturados" agora lista todos os `extra_fields` do evento de Lead, além de email/telefone.
+- `parseUtm()` ganhou `decodeUtmValue()` — decodifica `+`→espaço e `%XX` em loop (até 4 passadas) até estabilizar, corrige o caso de UTM vinda com encoding duplicado (comum em parâmetros dinâmicos de anúncio tipo `{{ad.name}}` que a plataforma já encoda antes de virar query string).
+
+Sem nova credencial/config necessária — tudo retrocompatível (campos novos são opcionais, eventos antigos sem `page_title`/`extra_fields` continuam funcionando normalmente).
+
 **`mainTab` sem persistência (`Dashboard.tsx`)** — recarregar qualquer página sempre voltava pra aba "Dashboard" (Visão Geral), porque `mainTab` era só `useState` em memória, sem salvar em lugar nenhum — diferente de outros estados da sidebar que já usam `localStorage` (ex: `dm_sidebar_collapsed`). Não é regressão de nada feito nesta sessão, gap pré-existente. Corrigido: `mainTab` agora persiste em `localStorage` (`dm_main_tab`), mesmo padrão (lazy initializer + try/catch pra SSR-safety).

@@ -56,7 +56,13 @@ function buildPixelScript(apiBase: string): string {
 
   function send(clientId, eventName, extra) {
     var body = Object.assign(
-      { client_id: clientId, event_name: eventName, event_url: window.location.href, user_id: getUserId() },
+      {
+        client_id: clientId,
+        event_name: eventName,
+        event_url: window.location.href,
+        page_title: document.title || undefined,
+        user_id: getUserId(),
+      },
       extra
     );
     return fetch(TRACK_URL, {
@@ -91,20 +97,35 @@ function buildPixelScript(apiBase: string): string {
         safe(async function () {
           var userData = {};
           var pii = {};
-          var inputs = form.querySelectorAll("input[type='email'], input[type='tel']");
-          for (var i = 0; i < inputs.length; i++) {
-            var input = inputs[i];
-            if (!input.value) continue;
-            var hash = await sha256Hex(input.value);
-            if (input.type === "email") {
-              pii.email = input.value.trim();
-              if (hash) userData.em = hash;
+          var fields = {};
+          var skipTypes = { submit: 1, button: 1, hidden: 1, password: 1, file: 1, reset: 1, image: 1 };
+          var fieldCount = 0;
+          var formEls = form.querySelectorAll("input, select, textarea");
+          for (var i = 0; i < formEls.length; i++) {
+            var el = formEls[i];
+            var type = (el.type || "").toLowerCase();
+            if (skipTypes[type]) continue;
+            var key = el.name || el.id;
+            if (!key || !el.value) continue;
+
+            if (type === "email") {
+              var emHash = await sha256Hex(el.value);
+              pii.email = el.value.trim();
+              if (emHash) userData.em = emHash;
+              continue;
             }
-            if (input.type === "tel") {
-              pii.phone = input.value.trim();
-              if (hash) userData.ph = hash;
+            if (type === "tel") {
+              var phHash = await sha256Hex(el.value);
+              pii.phone = el.value.trim();
+              if (phHash) userData.ph = phHash;
+              continue;
             }
+
+            if (fieldCount >= 25) continue; // limite de segurança contra forms gigantes
+            fields[key] = String(el.value).slice(0, 500);
+            fieldCount++;
           }
+          if (Object.keys(fields).length > 0) pii.fields = fields;
           await send(clientId, "Lead", { user_data: userData, pii: pii });
           clearTimeout(fallback);
           release();

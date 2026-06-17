@@ -13,9 +13,11 @@ interface TrackingEvent {
   event_name: string;
   fingerprint_id: string;
   event_url: string | null;
+  page_title: string | null;
   user_data: { em?: string; ph?: string } | null;
   lead_email: string | null;
   lead_phone: string | null;
+  extra_fields: Record<string, string> | null;
   capi_status: "pending" | "sent" | "failed" | "skipped";
   capi_error: string | null;
   created_at: string;
@@ -34,7 +36,9 @@ interface Visitor {
   isLead: boolean;
   leadEmail: string | null;
   leadPhone: string | null;
+  leadFields: Record<string, string>;
   lastUrl: string | null;
+  lastPageTitle: string | null;
   lastUtm: Record<string, string>;
 }
 
@@ -94,6 +98,25 @@ function relativeTime(iso: string): string {
   return fmt(iso);
 }
 
+// Anúncios (ex.: Meta) costumam montar a UTM a partir de um placeholder
+// ({{ad.name}} etc.) que já vem URL-encoded — somado ao encoding normal da
+// query string, o valor chega com 2 camadas (%2520, %252F, "+" literal...).
+// Decodifica em loop até estabilizar (defensivo: nunca lança, só desiste).
+function decodeUtmValue(raw: string): string {
+  let value = raw;
+  for (let i = 0; i < 4; i++) {
+    if (!/%[0-9A-Fa-f]{2}/.test(value) && !value.includes("+")) break;
+    try {
+      const decoded = decodeURIComponent(value.replace(/\+/g, " "));
+      if (decoded === value) break;
+      value = decoded;
+    } catch {
+      break;
+    }
+  }
+  return value;
+}
+
 function parseUtm(url: string | null): Record<string, string> {
   if (!url) return {};
   try {
@@ -101,7 +124,7 @@ function parseUtm(url: string | null): Record<string, string> {
     const out: Record<string, string> = {};
     for (const key of UTM_KEYS) {
       const v = u.searchParams.get(key);
-      if (v) out[key] = v;
+      if (v) out[key] = decodeUtmValue(v);
     }
     return out;
   } catch {
@@ -142,7 +165,9 @@ function groupByVisitor(events: TrackingEvent[]): Visitor[] {
       isLead: Boolean(leadEvent),
       leadEmail: leadEvent?.lead_email ?? null,
       leadPhone: leadEvent?.lead_phone ?? null,
+      leadFields: leadEvent?.extra_fields ?? {},
       lastUrl: sorted[0].event_url,
+      lastPageTitle: sorted[0].page_title,
       lastUtm: parseUtm(sorted[0].event_url),
     });
   }
@@ -203,10 +228,15 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
                 </p>
               )}
               {visitor.leadPhone && (
-                <p className="flex items-center gap-1.5 text-xs" style={{ color: "var(--dm-text-primary)" }}>
+                <p className="mb-1 flex items-center gap-1.5 text-xs" style={{ color: "var(--dm-text-primary)" }}>
                   <Phone size={12} style={{ color: "var(--dm-text-tertiary)" }} /> {visitor.leadPhone}
                 </p>
               )}
+              {Object.entries(visitor.leadFields).map(([key, value]) => (
+                <p key={key} className="mt-1 text-xs" style={{ color: "var(--dm-text-primary)" }}>
+                  <span style={{ color: "var(--dm-text-tertiary)" }}>{key}:</span> {value}
+                </p>
+              ))}
             </div>
           )}
 
@@ -231,8 +261,13 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
                     </span>
                     <span className="text-[10px] tabular-nums" style={{ color: "var(--dm-text-tertiary)" }}>{fmt(event.created_at)}</span>
                   </div>
-                  <p className="mt-1 break-all text-[11px]" style={{ color: "var(--dm-text-secondary)" }}>
-                    <MapPin size={10} className="mr-1 inline" style={{ color: "var(--dm-text-tertiary)" }} />
+                  {event.page_title && (
+                    <p className="mt-1 text-[11px] font-semibold" style={{ color: "var(--dm-text-primary)" }}>
+                      {event.page_title}
+                    </p>
+                  )}
+                  <p className="mt-0.5 break-all text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                    <MapPin size={10} className="mr-1 inline" />
                     {urlPath(event.event_url)}
                   </p>
                   {utmEntries.length > 0 && (
@@ -295,7 +330,7 @@ export function TrackingEventsView({ onConfigure }: { onConfigure?: () => void }
     const [eventsRes, configRes] = await Promise.all([
       supabaseClient
         .from("events_log")
-        .select("id, event_name, fingerprint_id, event_url, user_data, lead_email, lead_phone, capi_status, capi_error, created_at")
+        .select("id, event_name, fingerprint_id, event_url, page_title, user_data, lead_email, lead_phone, extra_fields, capi_status, capi_error, created_at")
         .eq("company_id", companyId)
         .gte("created_at", `${dateFrom}T00:00:00`)
         .lte("created_at", `${dateTo}T23:59:59`)
@@ -335,7 +370,7 @@ export function TrackingEventsView({ onConfigure }: { onConfigure?: () => void }
       const q = search.toLowerCase();
       return (
         v.fingerprintId.toLowerCase().includes(q) ||
-        v.events.some((e) => e.event_url?.toLowerCase().includes(q)) ||
+        v.events.some((e) => e.event_url?.toLowerCase().includes(q) || e.page_title?.toLowerCase().includes(q)) ||
         v.leadEmail?.toLowerCase().includes(q) ||
         v.leadPhone?.toLowerCase().includes(q) ||
         false
@@ -521,7 +556,9 @@ export function TrackingEventsView({ onConfigure }: { onConfigure?: () => void }
                           ))}
                         </div>
                       ) : (
-                        <span className="truncate block" style={{ color: "var(--dm-text-tertiary)" }}>{urlPath(visitor.lastUrl)}</span>
+                        <span className="truncate block" style={{ color: "var(--dm-text-tertiary)" }}>
+                          {visitor.lastPageTitle || urlPath(visitor.lastUrl)}
+                        </span>
                       )}
                     </td>
                     <td className="px-4 py-2.5">
