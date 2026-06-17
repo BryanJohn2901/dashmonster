@@ -8,6 +8,8 @@ interface TrackEventPayload {
   client_id: string;
   event_name: string;
   event_url: string;
+  /** ID persistente gerado pelo pixel.js e gravado em cookie 1ª parte (`_dm_uid`). */
+  user_id?: string;
   user_data?: { em?: string; ph?: string };
   custom_data?: Record<string, unknown>;
 }
@@ -94,11 +96,12 @@ export async function POST(request: NextRequest) {
     "unknown";
   const userAgent = request.headers.get("user-agent") ?? "unknown";
 
-  // Fingerprint fraco por design (MVP): sem cookie/localStorage, o mesmo
-  // visitante gera ids diferentes entre redes, e IPs compartilhados (NAT
-  // corporativo, CGNAT mobile) colidem usuários distintos num único id.
-  // Não substitui um `fbp`/`fbc` real — suficiente só pro MVP.
-  const fingerprintId = createHash("sha256").update(`${ip}|${userAgent}`).digest("hex");
+  // `user_id` é o cookie persistente (_dm_uid) gerado pelo pixel.js — sobrevive
+  // entre páginas/sessões no mesmo browser, é a fonte de verdade quando existe.
+  // Fallback pra sha256(ip+UA) só quando o pixel não manda (ex: cliente antigo,
+  // cookies bloqueados): fraco por design, IPs compartilhados colidem usuários
+  // distintos — não substitui um `fbp`/`fbc` real, é só rede de segurança.
+  const fingerprintId = payload.user_id?.trim() || createHash("sha256").update(`${ip}|${userAgent}`).digest("hex");
 
   // Captura funciona independente da Meta: events_log grava sempre que o
   // domínio bate, mesmo sem meta_pixel_id/meta_capi_token configurados.

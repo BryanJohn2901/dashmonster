@@ -8,10 +8,41 @@ function buildPixelScript(apiBase: string): string {
   "use strict";
 
   var TRACK_URL = ${JSON.stringify(`${apiBase}/api/tracking/track-event`)};
+  var COOKIE_NAME = "_dm_uid";
+  var COOKIE_DAYS = 400; // máximo aceito pelo Chrome pra cookies de 1ª parte
   var inFlightForms = new WeakSet();
 
   function safe(fn) {
     try { fn(); } catch (err) { console.error("[Tracker]", err); }
+  }
+
+  // ─── Identificador persistente (1ª parte, sobrevive entre páginas/sessões) ──
+  function readCookie(name) {
+    var match = document.cookie.match(new RegExp("(?:^|; )" + name + "=([^;]*)"));
+    return match ? decodeURIComponent(match[1]) : null;
+  }
+
+  function writeCookie(name, value, days) {
+    var expires = new Date(Date.now() + days * 86400000).toUTCString();
+    document.cookie = name + "=" + encodeURIComponent(value) + "; expires=" + expires + "; path=/; SameSite=Lax";
+  }
+
+  function randomId() {
+    if (window.crypto && window.crypto.randomUUID) return window.crypto.randomUUID();
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
+      var r = (Math.random() * 16) | 0;
+      var v = c === "x" ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  }
+
+  function getUserId() {
+    var id = readCookie(COOKIE_NAME);
+    if (!id) {
+      id = randomId();
+      writeCookie(COOKIE_NAME, id, COOKIE_DAYS);
+    }
+    return id;
   }
 
   async function sha256Hex(value) {
@@ -25,7 +56,7 @@ function buildPixelScript(apiBase: string): string {
 
   function send(clientId, eventName, extra) {
     var body = Object.assign(
-      { client_id: clientId, event_name: eventName, event_url: window.location.href },
+      { client_id: clientId, event_name: eventName, event_url: window.location.href, user_id: getUserId() },
       extra
     );
     return fetch(TRACK_URL, {
@@ -33,7 +64,11 @@ function buildPixelScript(apiBase: string): string {
       headers: { "Content-Type": "application/json" },
       keepalive: true,
       body: JSON.stringify(body),
-    }).catch(function () {});
+    }).catch(function (err) { console.error("[Tracker] falha ao enviar evento:", err); });
+  }
+
+  function trackPageView(clientId) {
+    void send(clientId, "PageView", {});
   }
 
   function attachFormListener(clientId) {
@@ -73,61 +108,10 @@ function buildPixelScript(apiBase: string): string {
     );
   }
 
-  function attachWhatsAppListener(clientId) {
-    document.addEventListener(
-      "click",
-      function (e) {
-        var link = e.target.closest && e.target.closest("a[href*='whatsapp']");
-        if (!link) return;
-        e.preventDefault();
-
-        var navigated = false;
-        function go() {
-          if (navigated) return;
-          navigated = true;
-          window.location.href = link.href;
-        }
-        var fallback = setTimeout(go, 300);
-
-        safe(async function () {
-          await send(clientId, "Contact", {});
-          clearTimeout(fallback);
-          go();
-        });
-      },
-      true
-    );
-  }
-
-  // Suporta o shape GA4 ecommerce documentado para o MVP — schemas
-  // diferentes de dataLayer (Universal Analytics, GTM customizado) são
-  // um rough edge conhecido; mapeamento semântico genérico fica fora
-  // do escopo MVP (ver PRD: "AI semântica" explicitamente out-of-scope).
-  function attachDataLayerInterceptor(clientId) {
-    window.dataLayer = window.dataLayer || [];
-    var originalPush = window.dataLayer.push.bind(window.dataLayer);
-    window.dataLayer.push = function () {
-      var args = arguments;
-      safe(function () {
-        for (var i = 0; i < args.length; i++) {
-          var item = args[i];
-          if (item && (item.event === "purchase" || item.ecommerce)) {
-            var ecommerce = item.ecommerce || {};
-            send(clientId, "Purchase", {
-              custom_data: { value: ecommerce.value, currency: ecommerce.currency },
-            });
-          }
-        }
-      });
-      return originalPush.apply(window.dataLayer, args);
-    };
-  }
-
   window.Tracker = {
     init: function (clientId) {
+      safe(function () { trackPageView(clientId); });
       safe(function () { attachFormListener(clientId); });
-      safe(function () { attachWhatsAppListener(clientId); });
-      safe(function () { attachDataLayerInterceptor(clientId); });
     },
   };
 })();

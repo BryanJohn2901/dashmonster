@@ -195,3 +195,21 @@ Até aqui o `track-event/route.ts` retornava 400 e **nem gravava no `events_log`
 - `CompanyStudio.tsx`: seção "Tracking Pixel" reorganizada — snippet de instalação e campo de domínio aparecem sempre (não dependem mais de Pixel ID preenchido); Pixel ID/Token CAPI viram visualmente "opcional", numa subseção separada ("Enviar também pra Meta Conversions API").
 - `TrackingEventsView.tsx`: aviso de Meta não configurada virou informativo (cinza, "Eventos sendo capturados normalmente...") em vez de bloqueante (âmbar, "Tracking não configurado"). Badge de status ganhou `skipped` (cinza, "Capturado (sem Meta)").
 - `__tests__/tracking.test.ts`: teste antigo "400 quando tracking não configurado" virou "200 + grava sem chamar Meta CAPI quando empresa não tem pixel configurado".
+
+## 11. Pixel v2 — PageView automático + ID persistente via cookie (feedback do usuário: "instalei e nenhum evento chegou, nem cookie de histórico") ✅ feito
+
+Diagnóstico ao vivo com o usuário revelou duas coisas:
+1. O pixel original **nunca disparava nada sozinho** — só capturava em ação explícita (submit/clique/dataLayer.push). Sem PageView automático, "instalar e não ver nada" era esperado se a página só foi carregada/recarregada sem interação.
+2. Fingerprint era só `sha256(ip+UA)`, sem persistência — não dava pra reconhecer o mesmo visitante em visitas diferentes (sem `_fbp`-like).
+
+Reescrita do `pixel.js` (`src/app/api/tracking/pixel.js/route.ts`), escopo reduzido a propósito pra simplificar:
+- **Cookie 1ª parte `_dm_uid`** (400 dias, `SameSite=Lax`): gerado via `crypto.randomUUID()` (fallback manual pra browsers sem suporte) na primeira visita, lido nas seguintes. Mandado em todo evento como `user_id`.
+- **PageView automático** no `Tracker.init()` — não depende de nenhuma ação do visitante.
+- **Lead** continua no submit do form (`input[type=email]`/`input[type=tel]`), sem mudança de comportamento.
+- **Removidos**: clique WhatsApp (`Contact`) e interceptor de `dataLayer` (`Purchase`) — fora de escopo por enquanto, podem voltar depois reaproveitando o `send()` que já existe.
+- `send()` agora loga erro no console em vez de engolir silenciosamente (`catch` vazio) — facilita debug igual ao que aconteceu aqui (não dava pra saber que a chamada tinha falhado sem abrir Network manualmente).
+
+Backend (`track-event/route.ts`):
+- `TrackEventPayload` ganhou `user_id?: string` opcional.
+- `fingerprintId = payload.user_id?.trim() || sha256(ip+UA)` — cookie é fonte de verdade quando existe, hash IP+UA vira só fallback (cliente com cache de pixel.js antigo, cookies bloqueados).
+- `public/tracking-test.html` atualizado: removidos os controles de WhatsApp/Purchase que não fazem mais nada; texto explica que PageView dispara sozinho.

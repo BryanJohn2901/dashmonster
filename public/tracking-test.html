@@ -8,13 +8,13 @@
   label { display: block; margin-top: 12px; font-size: 14px; }
   input { display: block; width: 100%; padding: 8px; margin-top: 4px; box-sizing: border-box; }
   button { margin-top: 16px; padding: 10px 16px; }
-  a.wa { display: inline-block; margin-top: 24px; }
   pre { background: #f4f4f4; padding: 8px; font-size: 12px; white-space: pre-wrap; }
 </style>
 </head>
 <body>
   <h1>Teste do pixel</h1>
-  <p>Troque <code>SLUG_AQUI</code> abaixo (no script) pelo <code>slug</code> da empresa configurada via SQL.</p>
+  <p>Troque <code>SLUG_AQUI</code> abaixo (no script) pelo <code>slug</code> da empresa configurada no Estúdio da Empresa.</p>
+  <p>PageView dispara sozinho ao carregar a página. Lead dispara no submit do form abaixo.</p>
 
   <form action="https://example.com/obrigado" method="get">
     <label>Email
@@ -25,11 +25,6 @@
     </label>
     <button type="submit">Enviar (Lead)</button>
   </form>
-
-  <a class="wa" href="https://wa.me/5511999999999">Falar no WhatsApp (Contact)</a>
-
-  <h2>dataLayer (Purchase)</h2>
-  <button id="btn-purchase">Disparar purchase no dataLayer</button>
 
   <h2>Log</h2>
   <pre id="log"></pre>
@@ -42,12 +37,8 @@
     function log(msg) {
       logEl.textContent += msg + "\n";
     }
-    log("Tracker inicializado. Abra a aba Network do DevTools pra ver as chamadas a /api/tracking/track-event.");
-
-    document.getElementById("btn-purchase").addEventListener("click", function () {
-      window.dataLayer.push({ event: "purchase", ecommerce: { value: 99.9, currency: "BRL" } });
-      log("dataLayer.push(purchase) disparado.");
-    });
+    log("Tracker inicializado (cookie _dm_uid: " + document.cookie.replace(/.*_dm_uid=([^;]*).*|.*/, "$1") + ").");
+    log("PageView deve ter sido enviado automaticamente. Abra a aba Network do DevTools, filtre por track-event.");
   </script>
 </body>
 </html>

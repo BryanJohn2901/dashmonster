@@ -122,6 +122,31 @@ describe("POST /api/tracking/track-event", () => {
     expect(mockUpdate).toHaveBeenCalledWith({ capi_status: "failed", capi_error: "rede fora" });
   });
 
+  it("usa user_id do cookie persistente como fingerprint_id quando enviado", async () => {
+    mockSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    await POST(
+      buildRequest({
+        client_id: "acme",
+        event_name: "PageView",
+        event_url: "http://localhost:3000/",
+        user_id: "uuid-persistente-123",
+      }),
+    );
+
+    expect(mockInsert).toHaveBeenCalledWith(
+      expect.objectContaining({ fingerprint_id: "uuid-persistente-123" }),
+    );
+  });
+
+  it("cai pro hash de IP+UA quando não vem user_id (fallback)", async () => {
+    mockSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    await POST(buildRequest({ client_id: "acme", event_name: "PageView", event_url: "http://localhost:3000/" }));
+
+    expect(mockInsert).toHaveBeenCalledWith(
+      expect.objectContaining({ fingerprint_id: expect.stringMatching(/^[a-f0-9]{64}$/) }),
+    );
+  });
+
   it("segue mesmo sem Origin/Referer (soft-fail)", async () => {
     mockSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
     const req = new NextRequest("http://localhost:3000/api/tracking/track-event", {
