@@ -257,3 +257,26 @@ Pedido: (1) mostrar nome/título da página em vez de só a URL/slug no históri
 Sem nova credencial/config necessária — tudo retrocompatível (campos novos são opcionais, eventos antigos sem `page_title`/`extra_fields` continuam funcionando normalmente).
 
 **`mainTab` sem persistência (`Dashboard.tsx`)** — recarregar qualquer página sempre voltava pra aba "Dashboard" (Visão Geral), porque `mainTab` era só `useState` em memória, sem salvar em lugar nenhum — diferente de outros estados da sidebar que já usam `localStorage` (ex: `dm_sidebar_collapsed`). Não é regressão de nada feito nesta sessão, gap pré-existente. Corrigido: `mainTab` agora persiste em `localStorage` (`dm_main_tab`), mesmo padrão (lazy initializer + try/catch pra SSR-safety).
+
+## 15. Resiliência a migration atrasada + drawer multi-cadastro + rótulo de campo ✅ feito
+
+Depois do deploy da seção 14, a tela de Tracking quebrou ("column events_log.page_title does not exist") porque a migration 033 ainda não tinha rodado no Supabase — deploy de código é automático (`git push`), migration é manual. Corrigido nas duas pontas:
+- **Leitura** (`TrackingEventsView.tsx`): `EVENTS_SELECT`/`EVENTS_SELECT_FALLBACK` — se o select com as colunas novas falhar citando uma delas, refaz sem elas em vez de quebrar a tela.
+- **Escrita** (`track-event/route.ts`): `insertEvent()` com `OPTIONAL_COLUMN_GROUPS` — generaliza o fallback por grupo de colunas (1 grupo por migration), tentando de novo sem o grupo que faltar. Sem isso o evento era perdido silenciosamente até a migration rodar.
+- `pixel.js` também perdeu o cache de 5min (`Cache-Control: no-store`) — o cache fazia o cliente rodar a versão antiga do script por até 5min após cada deploy, gerando falso-negativo ("não captura X") que na real era só script desatualizado.
+
+Depois, feedback de uso: "achei que tava mostrando só o primeiro cadastro" + "quero a URL completa" — `VisitorDrawer` ganhou estado local pra trocar qual cadastro o card "Dados capturados" exibe (clicar num evento "Lead" na jornada troca o card, default = mais recente) e a jornada passou a mostrar a URL completa em vez de só o path.
+
+Por fim: builders tipo Elementor nomeiam o input do form como `form_fields[name]` — `humanizeFieldKey()` extrai o nome de dentro dos colchetes e formata como rótulo (`form_fields[name]` → "Nome:"), com o mesmo ícone/estilo de email/telefone.
+
+## 16. Geolocalização por evento (substitui VisitorAPI) ✅ feito
+
+Pedido: capturar País/Estado/Cidade em todo evento, "lógica inteligente, moderna e prática" — sem reintroduzir um serviço externo tipo VisitorAPI.
+
+**Decisão de arquitetura**: app roda na Vercel (`vercel.json` na raiz), que já resolve geo-IP e injeta nos headers (`x-vercel-ip-country`, `x-vercel-ip-country-region`, `x-vercel-ip-city`) em **toda** requisição, de graça — sem chamada a API externa, sem custo, sem latência extra, sem mandar o IP do visitante pra um terceiro. Lido via `@vercel/functions` (`geolocation(request)`), pacote oficial da Vercel — é a forma documentada de acessar isso desde o Next 15, que removeu `request.geo`/`request.ip`. Só funciona em produção na Vercel; em dev local os 3 campos vêm `null` (não dá pra simular sem deployar, comportamento esperado).
+
+**Migration `034_events_log_geo.sql`**: `events_log.country` (TEXT, código ISO alpha-2 ex. "BR"), `country_region` (TEXT, código do estado ex. "SP"), `city` (TEXT).
+
+**`track-event/route.ts`**: `geolocation(request)` lido uma vez por request, gravado junto no insert. Entra no novo grupo `["country", "country_region", "city"]` de `OPTIONAL_COLUMN_GROUPS` — mesma resiliência da seção 15 se a 034 ainda não tiver rodado.
+
+**`TrackingEventsView.tsx`**: nova coluna "Local" na tabela (1 por visitante, última localização conhecida) e linha de localização em cada evento da jornada no drawer. `flagEmoji()` calcula a bandeira a partir do código ISO no client (sem guardar emoji no banco) e `formatLocation()` monta "🇧🇷 São Paulo, SP · BR".

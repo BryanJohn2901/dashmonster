@@ -189,6 +189,29 @@ describe("POST /api/tracking/track-event", () => {
     expect(mockInsert.mock.calls[1][0]).not.toHaveProperty("extra_fields");
   });
 
+  it("regrava sem country/country_region/city se a migration 034 ainda não rodou no banco", async () => {
+    mockSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockInsert
+      .mockImplementationOnce(() => ({
+        select: () => ({
+          single: () => Promise.resolve({ data: null, error: { message: 'column events_log.country does not exist' } }),
+        }),
+      }))
+      .mockImplementationOnce(() => ({
+        select: () => ({ single: () => Promise.resolve({ data: { id: "evt-3" }, error: null }) }),
+      }));
+
+    const res = await POST(
+      buildRequest({ client_id: "acme", event_name: "PageView", event_url: "http://localhost:3000/" }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockInsert).toHaveBeenCalledTimes(2);
+    expect(mockInsert.mock.calls[1][0]).not.toHaveProperty("country");
+    expect(mockInsert.mock.calls[1][0]).not.toHaveProperty("country_region");
+    expect(mockInsert.mock.calls[1][0]).not.toHaveProperty("city");
+  });
+
   it("segue mesmo sem Origin/Referer (soft-fail)", async () => {
     mockSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
     const req = new NextRequest("http://localhost:3000/api/tracking/track-event", {

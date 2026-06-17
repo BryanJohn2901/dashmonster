@@ -18,6 +18,9 @@ interface TrackingEvent {
   lead_email: string | null;
   lead_phone: string | null;
   extra_fields: Record<string, string> | null;
+  country: string | null;
+  country_region: string | null;
+  city: string | null;
   capi_status: "pending" | "sent" | "failed" | "skipped";
   capi_error: string | null;
   created_at: string;
@@ -40,6 +43,7 @@ interface Visitor {
   lastUrl: string | null;
   lastPageTitle: string | null;
   lastUtm: Record<string, string>;
+  lastLocation: { country: string | null; countryRegion: string | null; city: string | null };
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -76,10 +80,25 @@ const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
 
 const UTM_KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"];
 
-const EVENTS_SELECT = "id, event_name, fingerprint_id, event_url, page_title, user_data, lead_email, lead_phone, extra_fields, capi_status, capi_error, created_at";
-// Sem page_title/extra_fields (migration 033) — usado se a migration ainda não rodou no banco,
-// pra não derrubar a tela inteira enquanto ela não é aplicada manualmente no Supabase.
+const EVENTS_SELECT = "id, event_name, fingerprint_id, event_url, page_title, user_data, lead_email, lead_phone, extra_fields, country, country_region, city, capi_status, capi_error, created_at";
+// Sem page_title/extra_fields/country/country_region/city (migrations 033/034) — usado se
+// alguma das duas ainda não rodou no banco, pra não derrubar a tela enquanto ela não é
+// aplicada manualmente no Supabase.
 const EVENTS_SELECT_FALLBACK = "id, event_name, fingerprint_id, event_url, user_data, lead_email, lead_phone, capi_status, capi_error, created_at";
+
+// Bandeira a partir do código ISO (ex.: "BR" -> 🇧🇷) — calculada no client,
+// não precisa guardar emoji no banco.
+function flagEmoji(countryCode: string | null): string {
+  if (!countryCode || !/^[A-Za-z]{2}$/.test(countryCode)) return "";
+  return String.fromCodePoint(...[...countryCode.toUpperCase()].map((c) => 127397 + c.charCodeAt(0)));
+}
+
+function formatLocation(loc: { country: string | null; countryRegion: string | null; city: string | null }): string {
+  const parts = [loc.city, loc.countryRegion].filter(Boolean);
+  const flag = flagEmoji(loc.country);
+  if (parts.length === 0 && !loc.country) return "";
+  return `${flag} ${parts.join(", ")}${loc.country ? (parts.length ? ` · ${loc.country}` : loc.country) : ""}`.trim();
+}
 
 function fmt(iso: string) {
   return new Date(iso).toLocaleString("pt-BR", {
@@ -184,6 +203,7 @@ function groupByVisitor(events: TrackingEvent[]): Visitor[] {
       lastUrl: sorted[0].event_url,
       lastPageTitle: sorted[0].page_title,
       lastUtm: parseUtm(sorted[0].event_url),
+      lastLocation: { country: sorted[0].country, countryRegion: sorted[0].country_region, city: sorted[0].city },
     });
   }
 
@@ -315,6 +335,11 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
                     <MapPin size={10} className="mr-1 inline" />
                     {event.event_url || "—"}
                   </p>
+                  {formatLocation({ country: event.country, countryRegion: event.country_region, city: event.city }) && (
+                    <p className="mt-0.5 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                      {formatLocation({ country: event.country, countryRegion: event.country_region, city: event.city })}
+                    </p>
+                  )}
                   {utmEntries.length > 0 && (
                     <div className="mt-1.5 flex flex-wrap gap-1">
                       {utmEntries.map(([k, v]) => (
@@ -388,8 +413,11 @@ export function TrackingEventsView({ onConfigure }: { onConfigure?: () => void }
         .single(),
     ]);
 
-    if (eventsRes.error?.message?.includes("page_title") || eventsRes.error?.message?.includes("extra_fields")) {
-      // Migration 033 ainda não rodou no Supabase — busca sem as colunas novas em vez de quebrar a tela.
+    const missingNewColumn = ["page_title", "extra_fields", "country", "country_region", "city"].some((col) =>
+      eventsRes.error?.message?.includes(col),
+    );
+    if (missingNewColumn) {
+      // Migration 033/034 ainda não rodou no Supabase — busca sem as colunas novas em vez de quebrar a tela.
       const retry = await supabaseClient
         .from("events_log")
         .select(EVENTS_SELECT_FALLBACK)
@@ -577,7 +605,7 @@ export function TrackingEventsView({ onConfigure }: { onConfigure?: () => void }
           <table className="w-full min-w-[680px] text-xs">
             <thead>
               <tr style={{ borderBottom: "1px solid var(--dm-border-default)", background: "var(--dm-bg-elevated)" }}>
-                {["Visitante", "Última ação", "Eventos", "Origem / UTM", "Lead"].map((h) => (
+                {["Visitante", "Última ação", "Eventos", "Origem / UTM", "Local", "Lead"].map((h) => (
                   <th key={h} className="px-4 py-2.5 text-left font-semibold" style={{ color: "var(--dm-text-tertiary)" }}>
                     {h}
                   </th>
@@ -620,6 +648,9 @@ export function TrackingEventsView({ onConfigure }: { onConfigure?: () => void }
                           {visitor.lastPageTitle || urlPath(visitor.lastUrl)}
                         </span>
                       )}
+                    </td>
+                    <td className="px-4 py-2.5 whitespace-nowrap" style={{ color: "var(--dm-text-secondary)" }}>
+                      {formatLocation(visitor.lastLocation) || <span style={{ color: "var(--dm-text-tertiary)" }}>—</span>}
                     </td>
                     <td className="px-4 py-2.5">
                       {visitor.isLead ? (

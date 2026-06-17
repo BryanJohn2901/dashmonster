@@ -1,8 +1,36 @@
 import { createHash } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
+import { geolocation } from "@vercel/functions";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 const META_API_VERSION = "v19.0";
+
+// Colunas adicionadas em migrations recentes, agrupadas por migration —
+// como o deploy do código (git push) é automático mas a migration é rodada
+// manualmente no Supabase, sempre existe uma janela onde o código já espera
+// uma coluna que o banco ainda não tem. Em vez de perder o evento, insertEvent
+// detecta a coluna ausente pela mensagem de erro do Postgres e regrava sem o
+// grupo inteiro daquela migration, tentando de novo.
+const OPTIONAL_COLUMN_GROUPS: string[][] = [
+  ["page_title", "extra_fields"], // migration 033
+  ["country", "country_region", "city"], // migration 034
+];
+
+async function insertEvent(db: ReturnType<typeof supabaseAdmin>, fullRow: Record<string, unknown>) {
+  const candidate = { ...fullRow };
+  let result = await db.from("events_log").insert(candidate).select("id").single();
+
+  for (const group of OPTIONAL_COLUMN_GROUPS) {
+    if (!result.error) break;
+    const missing = group.some((col) => col in candidate && result.error?.message?.includes(col));
+    if (!missing) continue;
+    console.warn(`[tracking] colunas ${group.join("/")} ausentes (migration pendente), gravando sem elas`);
+    for (const col of group) delete candidate[col];
+    result = await db.from("events_log").insert(candidate).select("id").single();
+  }
+
+  return result;
+}
 
 interface TrackEventPayload {
   client_id: string;
@@ -100,6 +128,12 @@ export async function POST(request: NextRequest) {
     "unknown";
   const userAgent = request.headers.get("user-agent") ?? "unknown";
 
+  // País/estado/cidade vêm de graça dos headers x-vercel-ip-* (rede da Vercel
+  // já resolve geo-IP em toda requisição, sem chamada a API externa, sem custo,
+  // sem latência extra e sem mandar o IP do visitante pra um terceiro). Em dev
+  // local (sem Vercel) os 3 campos vêm undefined — fica NULL no banco, normal.
+  const geo = geolocation(request);
+
   // `user_id` é o cookie persistente (_dm_uid) gerado pelo pixel.js — sobrevive
   // entre páginas/sessões no mesmo browser, é a fonte de verdade quando existe.
   // Fallback pra sha256(ip+UA) só quando o pixel não manda (ex: cliente antigo,
@@ -123,23 +157,14 @@ export async function POST(request: NextRequest) {
     capi_status: metaConfigured ? "pending" : "skipped",
   };
 
-  let { data: inserted, error: insertError } = await db
-    .from("events_log")
-    .insert({
-      ...baseRow,
-      page_title: payload.page_title?.trim() || null,
-      extra_fields: payload.pii?.fields ?? {},
-    })
-    .select("id")
-    .single();
-
-  // `page_title`/`extra_fields` (migration 033) podem ainda não existir no
-  // banco se o deploy do código rodou antes da migration manual — não pode
-  // perder o evento por isso, regrava sem esses campos como fallback.
-  if (insertError?.message?.includes("page_title") || insertError?.message?.includes("extra_fields")) {
-    console.warn("[tracking] colunas page_title/extra_fields ausentes (migration 033 pendente), gravando sem elas");
-    ({ data: inserted, error: insertError } = await db.from("events_log").insert(baseRow).select("id").single());
-  }
+  const { data: inserted, error: insertError } = await insertEvent(db, {
+    ...baseRow,
+    page_title: payload.page_title?.trim() || null,
+    extra_fields: payload.pii?.fields ?? {},
+    country: geo.country ?? null,
+    country_region: geo.countryRegion ?? null,
+    city: geo.city ?? null,
+  });
 
   if (insertError || !inserted) {
     console.error("[tracking] falha ao gravar events_log:", insertError?.message);
