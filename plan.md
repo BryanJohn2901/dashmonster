@@ -161,9 +161,11 @@ Documenta, pra próximos agentes que mexerem nessa pasta, as decisões/trade-off
 
 ## 7. Frontend — `src/components/TrackingEventsView.tsx` (novo, fora do escopo original do PRD) ✅ feito
 
-Decisão confirmada com usuário: a página "Leads" (`mainTab === "leads"`, antes Meta Lead Ads via `LeadsView.tsx`) foi **substituída** por esta view, que lê `events_log` direto do client via `supabaseClient` (RLS `events_log_member_select`, sem precisar de `supabaseAdmin()`). Item do menu renomeado de "Leads" pra "Tracking" (`Dashboard.tsx`, ícone trocado de `UserCheck` pra `Radar`), `id` interno (`"leads"`) mantido sem alteração pra não tocar nos outros pontos que referenciam essa string (`showRightPanel`, `needsCategory`).
+**Decisão revisada após rebase em `main`**: a ideia original era substituir a página "Leads" por esta view (main estava com `LeadsView` quebrado, sem token Meta). Só que, em paralelo, `main` reescreveu `LeadsView.tsx` num dashboard de leads multi-fonte de verdade (Meta + planilha + Eduzz, tabela `leads` nova via `028_multi_source.sql`) — não estava abandonado. Pra não apagar esse trabalho, a decisão final foi: **Tracking vira aba nova e separada**, "Leads" volta a apontar pro `LeadsView` (versão da `main`).
 
-`LeadsView.tsx` e a rota `/api/meta/leads` **não foram apagados** — só desconectados da navegação, caso o usuário queira reaproveitar depois.
+- `MainTab` ganhou o valor `"tracking"` (`Dashboard.tsx`), com `MAIN_TABS` tendo as duas entradas: `{ id: "leads", ..., icon: UserCheck }` (inalterado) e `{ id: "tracking", label: "Tracking", icon: Radar }` (novo).
+- `showRightPanel` e `needsCategory` passaram a excluir `"tracking"` também (mesmo padrão de `"leads"`/`"profiles"`/`"products"`).
+- Render: `{mainTab === "leads" && <LeadsView />}` e `{mainTab === "tracking" && <TrackingEventsView />}`, lado a lado.
 
 Funcionalidades da view nova:
 - Filtro de data (mesmo padrão visual do `LeadsView`), busca por URL/fingerprint, chips por `event_name`.

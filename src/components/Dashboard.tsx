@@ -13,7 +13,7 @@ import {
   Target, Trash2, TrendingUp, Trophy, Upload, UserRound, Users, Wallet, X, XCircle, Zap,
   LayoutDashboard, History, LineChart, Sparkles, Database, Dna, Weight, HeartPulse,
   Medal, PersonStanding, Flame, BookText, MonitorSmartphone, Ticket, Library, VenetianMask,
-  Radar
+  UserCheck, Radar
 } from "lucide-react";
 import Link from "next/link";
 import { useTheme } from "next-themes";
@@ -49,6 +49,7 @@ import { CampaignTable } from "@/components/CampaignTable";
 import { useGoalsStore, type Goals } from "@/hooks/useGoalsStore";
 import { CampaignAnalysis } from "@/components/CampaignAnalysis";
 import { HistoricalView } from "@/components/HistoricalView";
+import { LeadsView } from "@/components/LeadsView";
 import { TrackingEventsView } from "@/components/TrackingEventsView";
 import { HISTORY_TAB_LABELS_KEY, historyKindLabel, readCustomHistoryTabs, type HistoricalKind } from "@/types/historical";
 import { useCompany } from "@/hooks/useCompany";
@@ -106,7 +107,7 @@ function formatDataSourcePill(ds: DataSource | null | undefined): { title: strin
   return { title: titles[ds.type], subtitle: ds.label };
 }
 
-type MainTab = "overview" | "history" | "leads" | "profiles" | "products" | "myaccount";
+type MainTab = "overview" | "history" | "leads" | "tracking" | "profiles" | "products" | "myaccount";
 type DashSubTab = "overview" | "analysis" | "creatives";
 
 const DASH_SUB_TABS: Array<{ id: DashSubTab; label: string; icon: React.ElementType }> = [
@@ -154,7 +155,8 @@ const SIDEBAR_ACCOUNT_TABS: Array<{ id: MyAccountTabId; label: string; icon: Rea
 const MAIN_TABS: Array<{ id: MainTab; label: string; shortLabel: string; icon: React.ElementType }> = [
   { id: "overview",   label: "Dashboard",             shortLabel: "Dashboard", icon: LayoutDashboard },
   { id: "history",    label: "Histórico",             shortLabel: "Histórico", icon: History },
-  { id: "leads",      label: "Tracking",              shortLabel: "Tracking",  icon: Radar },
+  { id: "leads",      label: "Leads",                 shortLabel: "Leads",     icon: UserCheck },
+  { id: "tracking",   label: "Tracking",              shortLabel: "Tracking",  icon: Radar },
   { id: "profiles",   label: "Perfil de Anunciantes", shortLabel: "Perfil",    icon: Target },
   { id: "products",   label: "Base de Produtos",      shortLabel: "Produtos",  icon: Database },
   { id: "myaccount",  label: "Minha conta",            shortLabel: "Conta",     icon: UserRound },
@@ -2601,7 +2603,7 @@ export function Dashboard({
     return undefined; // multiple entries, different selections — don't guess
   }, [isFilterExplicit, checkedCampaignIds, selectedGroup, campaignConfigs, accountEntries]);
 
-  const showRightPanel     = mainTab !== "history" && mainTab !== "leads" && mainTab !== "profiles" && mainTab !== "products";
+  const showRightPanel     = mainTab !== "history" && mainTab !== "leads" && mainTab !== "tracking" && mainTab !== "profiles" && mainTab !== "products";
   const showCourseGroups   = selectedCategory !== null;
   const sidebarGroups      = selectedCategory
     ? allGroups.filter((g) => g.section === (selectedCategory as string))
@@ -2637,7 +2639,7 @@ export function Dashboard({
   }, [selectedCategory, selectedGroup, allGroups, dateFrom, dateTo]);
 
   // Whether the current tab needs a category to be meaningful
-  const needsCategory = mainTab !== "history" && mainTab !== "leads" && mainTab !== "profiles" && mainTab !== "products";
+  const needsCategory = mainTab !== "history" && mainTab !== "leads" && mainTab !== "tracking" && mainTab !== "profiles" && mainTab !== "products";
 
   const handleClearFilters = () => {
     setDateFromPersist(""); setDateToPersist(""); setSearchCampaign(""); setSelectedGroup("all"); setSelectedCampaign("all"); setCheckedCampaignIds([]);
@@ -3781,7 +3783,9 @@ export function Dashboard({
 
           {mainTab === "history" && <HistoricalView selectedKind={histKind} onKindChange={setHistKind} />}
 
-          {mainTab === "leads" && <TrackingEventsView />}
+          {mainTab === "leads" && <LeadsView />}
+
+          {mainTab === "tracking" && <TrackingEventsView />}
 
           {mainTab === "products"  && <ProductBase />}
           {mainTab === "profiles" && (
