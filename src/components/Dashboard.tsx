@@ -2109,6 +2109,21 @@ export function Dashboard({
     return map;
   }, [campaignConfigs]);
 
+  // ── Mapa campanha→seção a partir da CONFIG da empresa (D-2) ─────────────────
+  // A config (qual campanha está em qual grupo/filtro) é a fonte de verdade por
+  // empresa. Substitui a classificação por keyword hardcoded (PTA) como primária.
+  const campaignSectionMap = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const g of allGroups) {
+      for (const camp of campaignsByGroup[g.id] ?? []) {
+        const set = map.get(camp.name) ?? new Set<string>();
+        set.add(g.section);
+        map.set(camp.name, set);
+      }
+    }
+    return map;
+  }, [allGroups, campaignsByGroup]);
+
   // ── Category filtering (first pass) ─────────────────────────────────────────
   const categorizedCampaigns = useMemo(() => {
     if (!selectedCategory) return campaigns;
@@ -2121,17 +2136,14 @@ export function Dashboard({
           accountSectionMap[accountId.replace(/^act_/, "")] === selectedCategory
         );
       }
-      // Supabase-loaded campaign — classify by name using both functions for full coverage
-      const byName = classifyCampaign(c.campaignName);
-      if (byName === selectedCategory) return true;
-      // For groups whose section is set but name classifier doesn't match (e.g. custom groups),
-      // check if any group in the target section has this campaign name verified
-      const groupsInCategory = allGroups.filter((g) => g.section === selectedCategory && campaignsByGroup[g.id]?.length);
-      return groupsInCategory.some((g) =>
-        campaignsByGroup[g.id].some((camp) => camp.name === c.campaignName),
-      );
+      // Config da empresa MANDA: se a campanha está configurada em algum grupo,
+      // usa a seção dele (adapta por empresa, sem keyword hardcoded).
+      const configured = campaignSectionMap.get(c.campaignName);
+      if (configured && configured.size > 0) return configured.has(selectedCategory);
+      // Sem config: fallback ao classificador por nome (legado PTA).
+      return classifyCampaign(c.campaignName) === selectedCategory;
     });
-  }, [campaigns, selectedCategory, accountSectionMap, allGroups, campaignsByGroup]);
+  }, [campaigns, selectedCategory, accountSectionMap, campaignSectionMap]);
 
   const turmasByGroup = useMemo<Record<string, string[]>>(() => {
     const map: Record<string, Set<string>> = {};
