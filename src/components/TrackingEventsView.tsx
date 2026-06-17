@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { Search, RefreshCw, Calendar, Radar } from "lucide-react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
+import { Search, RefreshCw, Calendar, Radar, X, Mail, Phone, MapPin } from "lucide-react";
 import { supabaseClient } from "@/lib/supabase";
 import { useCompany } from "@/hooks/useCompany";
 
@@ -13,6 +14,8 @@ interface TrackingEvent {
   fingerprint_id: string;
   event_url: string | null;
   user_data: { em?: string; ph?: string } | null;
+  lead_email: string | null;
+  lead_phone: string | null;
   capi_status: "pending" | "sent" | "failed" | "skipped";
   capi_error: string | null;
   created_at: string;
@@ -21,6 +24,18 @@ interface TrackingEvent {
 interface TrackingConfig {
   meta_pixel_id: string | null;
   dominio_autorizado: string | null;
+}
+
+interface Visitor {
+  fingerprintId: string;
+  events: TrackingEvent[]; // mais recente primeiro
+  firstSeen: string;
+  lastSeen: string;
+  isLead: boolean;
+  leadEmail: string | null;
+  leadPhone: string | null;
+  lastUrl: string | null;
+  lastUtm: Record<string, string>;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -55,6 +70,8 @@ const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
   skipped: { bg: "rgba(100,116,139,0.12)", text: "var(--dm-text-tertiary)" },
 };
 
+const UTM_KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"];
+
 function fmt(iso: string) {
   return new Date(iso).toLocaleString("pt-BR", {
     day: "2-digit",
@@ -63,6 +80,74 @@ function fmt(iso: string) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function relativeTime(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 1) return "agora mesmo";
+  if (mins < 60) return `há ${mins} min`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `há ${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `há ${days}d`;
+  return fmt(iso);
+}
+
+function parseUtm(url: string | null): Record<string, string> {
+  if (!url) return {};
+  try {
+    const u = new URL(url);
+    const out: Record<string, string> = {};
+    for (const key of UTM_KEYS) {
+      const v = u.searchParams.get(key);
+      if (v) out[key] = v;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+// Caminho da página sem os parâmetros utm_* (esses já aparecem como chips à parte).
+function urlPath(url: string | null): string {
+  if (!url) return "—";
+  try {
+    const u = new URL(url);
+    for (const key of UTM_KEYS) u.searchParams.delete(key);
+    const query = u.searchParams.toString();
+    return u.pathname + (query ? `?${query}` : "");
+  } catch {
+    return url;
+  }
+}
+
+function groupByVisitor(events: TrackingEvent[]): Visitor[] {
+  const map = new Map<string, TrackingEvent[]>();
+  for (const e of events) {
+    const list = map.get(e.fingerprint_id);
+    if (list) list.push(e);
+    else map.set(e.fingerprint_id, [e]);
+  }
+
+  const visitors: Visitor[] = [];
+  for (const [fingerprintId, list] of map) {
+    const sorted = [...list].sort((a, b) => b.created_at.localeCompare(a.created_at));
+    const leadEvent = sorted.find((e) => e.lead_email || e.lead_phone);
+    visitors.push({
+      fingerprintId,
+      events: sorted,
+      lastSeen: sorted[0].created_at,
+      firstSeen: sorted[sorted.length - 1].created_at,
+      isLead: Boolean(leadEvent),
+      leadEmail: leadEvent?.lead_email ?? null,
+      leadPhone: leadEvent?.lead_phone ?? null,
+      lastUrl: sorted[0].event_url,
+      lastUtm: parseUtm(sorted[0].event_url),
+    });
+  }
+
+  return visitors.sort((a, b) => b.lastSeen.localeCompare(a.lastSeen));
 }
 
 // ─── Filter chip ──────────────────────────────────────────────────────────────
@@ -84,6 +169,101 @@ function Chip({ label, active, onClick }: { label: string; active: boolean; onCl
   );
 }
 
+// ─── Detail drawer ────────────────────────────────────────────────────────────
+
+function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => void }) {
+  if (typeof document === "undefined") return null;
+
+  const timeline = [...visitor.events].reverse(); // ordem cronológica: o que ele fez primeiro até o último
+
+  return createPortal(
+    <>
+      <div className="fixed inset-0 z-40 bg-black/30 backdrop-blur-[2px]" onClick={onClose} />
+      <div
+        className="fixed inset-y-0 right-0 z-50 flex w-full flex-col overflow-hidden border-l shadow-2xl sm:max-w-[460px]"
+        style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}
+      >
+        <div className="flex flex-shrink-0 items-center justify-between border-b px-6 py-4" style={{ borderColor: "var(--dm-border-default)" }}>
+          <div>
+            <h3 className="text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>Histórico do visitante</h3>
+            <p className="font-mono text-[10px] mt-0.5" style={{ color: "var(--dm-text-tertiary)" }}>{visitor.fingerprintId}</p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Fechar" className="flex h-7 w-7 items-center justify-center rounded-full transition-opacity hover:opacity-70" style={{ color: "var(--dm-text-tertiary)" }}>
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          {visitor.isLead && (
+            <div className="mb-5 rounded-xl border p-3" style={{ borderColor: "var(--dm-primary)", background: "rgba(49,52,145,0.06)" }}>
+              <p className="mb-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-primary)" }}>Dados capturados</p>
+              {visitor.leadEmail && (
+                <p className="mb-1 flex items-center gap-1.5 text-xs" style={{ color: "var(--dm-text-primary)" }}>
+                  <Mail size={12} style={{ color: "var(--dm-text-tertiary)" }} /> {visitor.leadEmail}
+                </p>
+              )}
+              {visitor.leadPhone && (
+                <p className="flex items-center gap-1.5 text-xs" style={{ color: "var(--dm-text-primary)" }}>
+                  <Phone size={12} style={{ color: "var(--dm-text-tertiary)" }} /> {visitor.leadPhone}
+                </p>
+              )}
+            </div>
+          )}
+
+          <p className="mb-3 text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
+            Jornada · {timeline.length} evento{timeline.length !== 1 ? "s" : ""}
+          </p>
+
+          <div className="relative flex flex-col gap-4 border-l pl-4" style={{ borderColor: "var(--dm-border-default)" }}>
+            {timeline.map((event) => {
+              const evColor = EVENT_COLORS[event.event_name] ?? { bg: "rgba(100,100,100,0.10)", text: "var(--dm-text-tertiary)" };
+              const utm = parseUtm(event.event_url);
+              const utmEntries = Object.entries(utm);
+              return (
+                <div key={event.id} className="relative">
+                  <span
+                    className="absolute -left-[21px] top-1 h-2.5 w-2.5 rounded-full border-2"
+                    style={{ background: "var(--dm-bg-surface)", borderColor: evColor.text }}
+                  />
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="rounded-full px-2 py-0.5 text-[9px] font-semibold whitespace-nowrap" style={{ background: evColor.bg, color: evColor.text }}>
+                      {EVENT_LABELS[event.event_name] ?? event.event_name}
+                    </span>
+                    <span className="text-[10px] tabular-nums" style={{ color: "var(--dm-text-tertiary)" }}>{fmt(event.created_at)}</span>
+                  </div>
+                  <p className="mt-1 break-all text-[11px]" style={{ color: "var(--dm-text-secondary)" }}>
+                    <MapPin size={10} className="mr-1 inline" style={{ color: "var(--dm-text-tertiary)" }} />
+                    {urlPath(event.event_url)}
+                  </p>
+                  {utmEntries.length > 0 && (
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {utmEntries.map(([k, v]) => (
+                        <span key={k} className="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] dark:bg-slate-700" style={{ color: "var(--dm-text-tertiary)" }}>
+                          {k.replace("utm_", "")}: <strong style={{ color: "var(--dm-text-secondary)" }}>{v}</strong>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {event.event_name === "Lead" && (
+                    <span
+                      className="mt-1.5 inline-block rounded-full px-2 py-0.5 text-[9px] font-semibold"
+                      style={{ background: STATUS_COLORS[event.capi_status].bg, color: STATUS_COLORS[event.capi_status].text }}
+                      title={event.capi_error ?? undefined}
+                    >
+                      {STATUS_LABELS[event.capi_status]}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </>,
+    document.body,
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function TrackingEventsView({ onConfigure }: { onConfigure?: () => void } = {}) {
@@ -94,6 +274,7 @@ export function TrackingEventsView({ onConfigure }: { onConfigure?: () => void }
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [eventFilter, setEventFilter] = useState<string | null>(null);
+  const [selectedVisitor, setSelectedVisitor] = useState<Visitor | null>(null);
 
   const [dateFrom, setDateFrom] = useState(() => new Date(Date.now() - 30 * 86400_000).toISOString().split("T")[0]);
   const [dateTo, setDateTo] = useState(() => new Date().toISOString().split("T")[0]);
@@ -114,12 +295,12 @@ export function TrackingEventsView({ onConfigure }: { onConfigure?: () => void }
     const [eventsRes, configRes] = await Promise.all([
       supabaseClient
         .from("events_log")
-        .select("id, event_name, fingerprint_id, event_url, user_data, capi_status, capi_error, created_at")
+        .select("id, event_name, fingerprint_id, event_url, user_data, lead_email, lead_phone, capi_status, capi_error, created_at")
         .eq("company_id", companyId)
         .gte("created_at", `${dateFrom}T00:00:00`)
         .lte("created_at", `${dateTo}T23:59:59`)
         .order("created_at", { ascending: false })
-        .limit(500),
+        .limit(1000),
       supabaseClient
         .from("companies")
         .select("meta_pixel_id, dominio_autorizado")
@@ -146,11 +327,19 @@ export function TrackingEventsView({ onConfigure }: { onConfigure?: () => void }
 
   // ── Derived ──────────────────────────────────────────────────────────────────
 
-  const filtered = events.filter((e) => {
-    if (eventFilter && e.event_name !== eventFilter) return false;
+  const visitors = useMemo(() => groupByVisitor(events), [events]);
+
+  const filteredVisitors = visitors.filter((v) => {
+    if (eventFilter && !v.events.some((e) => e.event_name === eventFilter)) return false;
     if (search) {
       const q = search.toLowerCase();
-      return e.event_url?.toLowerCase().includes(q) || e.fingerprint_id.toLowerCase().includes(q) || false;
+      return (
+        v.fingerprintId.toLowerCase().includes(q) ||
+        v.events.some((e) => e.event_url?.toLowerCase().includes(q)) ||
+        v.leadEmail?.toLowerCase().includes(q) ||
+        v.leadPhone?.toLowerCase().includes(q) ||
+        false
+      );
     }
     return true;
   });
@@ -158,6 +347,11 @@ export function TrackingEventsView({ onConfigure }: { onConfigure?: () => void }
   const eventTypes = [...new Set(events.map((e) => e.event_name))];
   // Captura funciona sem Meta — isso é só um lembrete de que o envio CAPI está desligado, não um erro.
   const metaNotConfigured = !loading && !error && !config?.meta_pixel_id;
+
+  // Mantém o drawer em sincronia se um refresh trouxer novos eventos do mesmo visitante.
+  const openVisitor = selectedVisitor
+    ? (visitors.find((v) => v.fingerprintId === selectedVisitor.fingerprintId) ?? selectedVisitor)
+    : null;
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
@@ -170,8 +364,7 @@ export function TrackingEventsView({ onConfigure }: { onConfigure?: () => void }
             Eventos de Tracking
           </h2>
           <p className="text-[11px] mt-0.5" style={{ color: "var(--dm-text-tertiary)" }}>
-            Pixel Server-Side · {filtered.length} evento{filtered.length !== 1 ? "s" : ""}
-            {events.length !== filtered.length && ` (${events.length} total)`}
+            Pixel Server-Side · {filteredVisitors.length} visitante{filteredVisitors.length !== 1 ? "s" : ""} · {events.length} evento{events.length !== 1 ? "s" : ""}
           </p>
         </div>
         <button
@@ -208,7 +401,7 @@ export function TrackingEventsView({ onConfigure }: { onConfigure?: () => void }
           <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: "var(--dm-text-tertiary)" }} />
           <input
             type="text"
-            placeholder="URL ou fingerprint..."
+            placeholder="URL, e-mail, telefone ou fingerprint..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full rounded-lg border pl-7 pr-3 py-1.5 text-xs"
@@ -283,13 +476,13 @@ export function TrackingEventsView({ onConfigure }: { onConfigure?: () => void }
         </div>
       )}
 
-      {/* Table */}
-      {filtered.length > 0 && (
+      {/* Table — 1 linha por visitante */}
+      {filteredVisitors.length > 0 && (
         <div className="overflow-x-auto rounded-2xl border" style={{ borderColor: "var(--dm-border-default)" }}>
           <table className="w-full min-w-[680px] text-xs">
             <thead>
               <tr style={{ borderBottom: "1px solid var(--dm-border-default)", background: "var(--dm-bg-elevated)" }}>
-                {["Evento", "Data", "Status CAPI", "Origem", "Dados", "Fingerprint"].map((h) => (
+                {["Visitante", "Última ação", "Eventos", "Origem / UTM", "Lead"].map((h) => (
                   <th key={h} className="px-4 py-2.5 text-left font-semibold" style={{ color: "var(--dm-text-tertiary)" }}>
                     {h}
                   </th>
@@ -297,51 +490,48 @@ export function TrackingEventsView({ onConfigure }: { onConfigure?: () => void }
               </tr>
             </thead>
             <tbody>
-              {filtered.map((event, i) => {
-                const evColor = EVENT_COLORS[event.event_name] ?? { bg: "rgba(100,100,100,0.10)", text: "var(--dm-text-tertiary)" };
-                const statusColor = STATUS_COLORS[event.capi_status];
+              {filteredVisitors.map((visitor, i) => {
+                const utmEntries = Object.entries(visitor.lastUtm);
                 return (
                   <tr
-                    key={event.id}
-                    title={event.capi_error ?? undefined}
+                    key={visitor.fingerprintId}
+                    onClick={() => setSelectedVisitor(visitor)}
+                    className="cursor-pointer transition-colors hover:opacity-80"
                     style={{
-                      borderBottom: i < filtered.length - 1 ? "1px solid var(--dm-border-subtle)" : undefined,
+                      borderBottom: i < filteredVisitors.length - 1 ? "1px solid var(--dm-border-subtle)" : undefined,
                       background: i % 2 === 0 ? "var(--dm-bg-surface)" : "var(--dm-bg-card)",
                     }}
                   >
-                    <td className="px-4 py-2.5">
-                      <span
-                        className="rounded-full px-2 py-0.5 text-[9px] font-semibold whitespace-nowrap"
-                        style={{ background: evColor.bg, color: evColor.text }}
-                      >
-                        {EVENT_LABELS[event.event_name] ?? event.event_name}
-                      </span>
+                    <td className="px-4 py-2.5 font-mono text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                      {visitor.fingerprintId.slice(0, 12)}…
                     </td>
-                    <td className="px-4 py-2.5 tabular-nums whitespace-nowrap" style={{ color: "var(--dm-text-secondary)" }}>
-                      {fmt(event.created_at)}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <span
-                        className="rounded-full px-2 py-0.5 text-[9px] font-semibold whitespace-nowrap"
-                        style={{ background: statusColor.bg, color: statusColor.text }}
-                      >
-                        {STATUS_LABELS[event.capi_status]}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2.5 max-w-[260px] truncate" style={{ color: "var(--dm-text-secondary)" }}>
-                      {event.event_url ?? "—"}
+                    <td className="px-4 py-2.5 tabular-nums whitespace-nowrap" style={{ color: "var(--dm-text-secondary)" }} title={fmt(visitor.lastSeen)}>
+                      {relativeTime(visitor.lastSeen)}
                     </td>
                     <td className="px-4 py-2.5" style={{ color: "var(--dm-text-secondary)" }}>
-                      {event.user_data?.em && (
-                        <span className="mr-1 rounded bg-slate-100 px-1.5 py-0.5 text-[9px] dark:bg-slate-700">e-mail</span>
-                      )}
-                      {event.user_data?.ph && (
-                        <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] dark:bg-slate-700">tel</span>
-                      )}
-                      {!event.user_data?.em && !event.user_data?.ph && "—"}
+                      {visitor.events.length}
                     </td>
-                    <td className="px-4 py-2.5 font-mono text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
-                      {event.fingerprint_id.slice(0, 10)}…
+                    <td className="px-4 py-2.5 max-w-[280px]">
+                      {utmEntries.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {utmEntries.slice(0, 2).map(([k, v]) => (
+                            <span key={k} className="truncate rounded bg-slate-100 px-1.5 py-0.5 text-[9px] dark:bg-slate-700" style={{ color: "var(--dm-text-tertiary)", maxWidth: 130 }}>
+                              {v}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="truncate block" style={{ color: "var(--dm-text-tertiary)" }}>{urlPath(visitor.lastUrl)}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      {visitor.isLead ? (
+                        <span className="rounded-full px-2 py-0.5 text-[9px] font-semibold whitespace-nowrap" style={{ background: EVENT_COLORS.Lead.bg, color: EVENT_COLORS.Lead.text }}>
+                          ✓ converteu
+                        </span>
+                      ) : (
+                        <span style={{ color: "var(--dm-text-tertiary)" }}>—</span>
+                      )}
                     </td>
                   </tr>
                 );
@@ -350,6 +540,8 @@ export function TrackingEventsView({ onConfigure }: { onConfigure?: () => void }
           </table>
         </div>
       )}
+
+      {openVisitor && <VisitorDrawer visitor={openVisitor} onClose={() => setSelectedVisitor(null)} />}
     </div>
   );
 }

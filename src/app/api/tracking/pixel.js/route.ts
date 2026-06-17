@@ -90,16 +90,22 @@ function buildPixelScript(apiBase: string): string {
 
         safe(async function () {
           var userData = {};
+          var pii = {};
           var inputs = form.querySelectorAll("input[type='email'], input[type='tel']");
           for (var i = 0; i < inputs.length; i++) {
             var input = inputs[i];
             if (!input.value) continue;
             var hash = await sha256Hex(input.value);
-            if (!hash) continue;
-            if (input.type === "email") userData.em = hash;
-            if (input.type === "tel") userData.ph = hash;
+            if (input.type === "email") {
+              pii.email = input.value.trim();
+              if (hash) userData.em = hash;
+            }
+            if (input.type === "tel") {
+              pii.phone = input.value.trim();
+              if (hash) userData.ph = hash;
+            }
           }
-          await send(clientId, "Lead", { user_data: userData });
+          await send(clientId, "Lead", { user_data: userData, pii: pii });
           clearTimeout(fallback);
           release();
         });

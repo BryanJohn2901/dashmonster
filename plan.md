@@ -213,3 +213,20 @@ Backend (`track-event/route.ts`):
 - `TrackEventPayload` ganhou `user_id?: string` opcional.
 - `fingerprintId = payload.user_id?.trim() || sha256(ip+UA)` — cookie é fonte de verdade quando existe, hash IP+UA vira só fallback (cliente com cache de pixel.js antigo, cookies bloqueados).
 - `public/tracking-test.html` atualizado: removidos os controles de WhatsApp/Purchase que não fazem mais nada; texto explica que PageView dispara sozinho.
+
+## 12. Visão por visitante + dados reais do Lead (feedback do usuário: "pixel funcionando, agora vamos melhorar") ✅ feito
+
+Pixel confirmado funcionando (PageView + Lead chegando em `events_log`). Pedido: linhas clicáveis, sem duplicar visitante por ação, histórico organizado de páginas/UTMs por clique, e dados reais do lead (não só hash) quando ele se cadastra. Decisão confirmada com usuário: capturar email/telefone **em texto puro** além do hash (trade-off de privacidade explícito — aumenta responsabilidade sobre esse dado, mas sem isso não dá pra contatar o lead de verdade).
+
+**Migration `031_events_log_lead_pii.sql`**: `events_log.lead_email`/`lead_phone` (TEXT, nullable) — mesmo padrão de `public.leads` (texto puro, só RLS, sem encriptação extra, consistente com o resto do repo).
+
+**`pixel.js`**: form listener agora manda `pii: { email, phone }` (texto puro) **além** de `user_data: { em, ph }` (hash, inalterado). `pii` nunca é referenciado na montagem do `capiPayload` da Meta — só hash vai pra lá, por design, não tocar nisso sem entender o motivo.
+
+**`track-event/route.ts`**: aceita `payload.pii`, grava em `lead_email`/`lead_phone` no insert. Meta CAPI continua recebendo só `user_data.em`/`ph`.
+
+**`TrackingEventsView.tsx`** — reescrito de "1 linha por evento" pra "1 linha por visitante" (`groupByVisitor()`, agrupa por `fingerprint_id`):
+- Tabela: Visitante (fingerprint curto) · **Última ação** (tempo relativo: "há 5 min", "há 2h"; tooltip com data/hora absoluta) · Eventos (contagem) · Origem/UTM (chips dos parâmetros `utm_*` da última URL, parseados via `parseUtm()`) · Lead (badge "✓ converteu" se algum evento tem `lead_email`/`lead_phone`).
+- Linha clicável → abre **drawer lateral** (`VisitorDrawer`, padrão `createPortal` + overlay, mesmo shape do `GoalsPanel` em `Dashboard.tsx` — não existe componente de modal genérico no repo, cada feature replica o padrão local) com:
+  - Card de "Dados capturados" no topo (email/telefone reais) quando o visitante converteu.
+  - Timeline cronológica (mais antigo → mais recente, como uma jornada) de todos os eventos: horário, tipo, caminho da URL (sem os `utm_*`, que já aparecem como chips), chips de UTM, e status CAPI nos eventos Lead.
+- Filtros de data/chip/busca continuam filtrando os eventos antes de agrupar; busca agora também procura em email/telefone do lead, não só URL/fingerprint.

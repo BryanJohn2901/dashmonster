@@ -11,6 +11,8 @@ interface TrackEventPayload {
   /** ID persistente gerado pelo pixel.js e gravado em cookie 1ª parte (`_dm_uid`). */
   user_id?: string;
   user_data?: { em?: string; ph?: string };
+  /** Email/telefone em texto puro (não hasheado) — só pra exibição no dashboard, NUNCA repassado à Meta. */
+  pii?: { email?: string; phone?: string };
   custom_data?: Record<string, unknown>;
 }
 
@@ -116,6 +118,8 @@ export async function POST(request: NextRequest) {
       fingerprint_id: fingerprintId,
       event_url: payload.event_url,
       user_data: payload.user_data ?? {},
+      lead_email: payload.pii?.email?.trim() || null,
+      lead_phone: payload.pii?.phone?.trim() || null,
       capi_status: metaConfigured ? "pending" : "skipped",
     })
     .select("id")
