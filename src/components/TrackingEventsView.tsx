@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
-import { Search, RefreshCw, Calendar, Radar, X, Mail, Phone, MapPin } from "lucide-react";
+import { Search, RefreshCw, Calendar, Radar, X, Mail, Phone, MapPin, User } from "lucide-react";
 import { supabaseClient } from "@/lib/supabase";
 import { useCompany } from "@/hooks/useCompany";
 
@@ -150,6 +150,16 @@ function urlPath(url: string | null): string {
   }
 }
 
+// Builders de formulário (Elementor, WP Forms etc.) costumam nomear o input
+// com notação de array — ex.: "form_fields[name]", "data[telefone]" — extrai
+// só o nome legível de dentro dos colchetes e formata como rótulo.
+function humanizeFieldKey(key: string): string {
+  const bracketMatch = key.match(/\[([^\]]+)\]\s*$/);
+  const raw = bracketMatch ? bracketMatch[1] : key;
+  const spaced = raw.replace(/[_-]+/g, " ").trim();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
 function groupByVisitor(events: TrackingEvent[]): Visitor[] {
   const map = new Map<string, TrackingEvent[]>();
   for (const e of events) {
@@ -249,8 +259,9 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
                 </p>
               )}
               {Object.entries(selectedLead.extra_fields ?? {}).map(([key, value]) => (
-                <p key={key} className="mt-1 text-xs" style={{ color: "var(--dm-text-primary)" }}>
-                  <span style={{ color: "var(--dm-text-tertiary)" }}>{key}:</span> {value}
+                <p key={key} className="mb-1 flex items-center gap-1.5 text-xs" style={{ color: "var(--dm-text-primary)" }}>
+                  <User size={12} style={{ color: "var(--dm-text-tertiary)" }} />
+                  <span style={{ color: "var(--dm-text-tertiary)" }}>{humanizeFieldKey(key)}:</span> {value}
                 </p>
               ))}
               {leadEvents.length > 1 && (
