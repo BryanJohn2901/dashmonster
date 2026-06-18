@@ -19,12 +19,13 @@ import { resolveDefaultPixel, resolvePixelById } from "@/lib/resolvePixel";
  *      JSON estruturado (data.buyer/data.utm/data.tracker/data.price). Só ele
  *      garante telefone do comprador e os campos tracker_trk* de correlação.
  *
- *   URL (qualquer um dos 2): https://<seu-dominio>/api/eduzz/webhook?secret=<SEGREDO_DA_EMPRESA>
+ *   URL (qualquer um dos 2): https://<seu-dominio>/api/eduzz/webhook?secret=<SEGREDO_DA_CONFIG>
  *
- * O <SEGREDO_DA_EMPRESA> é definido na aba Integrações (companies.settings →
- * eduzz_webhook_secret) e identifica a empresa dona da venda, igual nos 2
- * formatos — não usamos o `producer.originSecret` que o formato moderno manda
- * dentro do payload, pra manter 1 só mecanismo de identificação de empresa.
+ * O <SEGREDO_DA_CONFIG> é criado na aba Tracking → Configuração → Vendas
+ * (Eduzz) — migration 041, tabela `eduzz_webhook_configs` (várias configs
+ * nomeadas por empresa, RLS owner+manager). Identifica a empresa dona da
+ * venda igual nos 2 formatos — não usamos o `producer.originSecret` que o
+ * formato moderno manda dentro do payload, pra manter 1 só mecanismo.
  *
  * Cada venda paga faz 2 coisas, sempre as 2:
  *   a) acumula uma linha diária em campaign_metrics (source="eduzz", revenue,
@@ -389,16 +390,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Servidor sem service_role configurado." }, { status: 500 });
   }
 
-  // Identifica a empresa dona pelo segredo guardado em companies.settings —
-  // mesmo mecanismo pros 2 formatos (não usamos producer.originSecret do
-  // formato moderno, pra manter só 1 jeito de identificar a empresa).
-  const { data: company, error: companyError } = await db
-    .from("companies")
-    .select("id")
-    .eq("settings->>eduzz_webhook_secret", secret)
-    .maybeSingle();
+  // Identifica a empresa dona pelo segredo — mesmo mecanismo pros 2 formatos
+  // (não usamos producer.originSecret do formato moderno, pra manter só 1
+  // jeito de identificar a empresa). migration 041: o segredo agora vive em
+  // eduzz_webhook_configs (várias configs nomeadas por empresa), não mais
+  // direto em companies.settings. Se a tabela ainda não existir (migration
+  // pendente), cai pro campo legado — mesmo padrão de resiliência de sempre.
+  const configRes = await db.from("eduzz_webhook_configs").select("company_id").eq("secret", secret).maybeSingle();
 
-  if (companyError || !company) {
+  let companyId: string | null = null;
+  if (configRes.error?.message?.includes("eduzz_webhook_configs")) {
+    const legacy = await db.from("companies").select("id").eq("settings->>eduzz_webhook_secret", secret).maybeSingle();
+    companyId = (legacy.data?.id as string | undefined) ?? null;
+  } else {
+    companyId = (configRes.data?.company_id as string | undefined) ?? null;
+  }
+
+  if (!companyId) {
     return NextResponse.json({ error: "Segredo não corresponde a nenhuma empresa." }, { status: 403 });
   }
 
@@ -407,7 +415,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ received: true, ignored: sale.ignored });
   }
 
-  if (await alreadyProcessed(db, company.id, sale.transactionId)) {
+  if (await alreadyProcessed(db, companyId, sale.transactionId)) {
     return NextResponse.json({ received: true, duplicate: true });
   }
 
@@ -416,14 +424,14 @@ export async function POST(request: NextRequest) {
   const { data: existing } = await db
     .from("campaign_metrics")
     .select("revenue, conversions")
-    .eq("company_id", company.id)
+    .eq("company_id", companyId)
     .eq("date", sale.date)
     .eq("campaign_name", sale.productName)
     .eq("source", EDUZZ_SOURCE)
     .maybeSingle();
 
   const metricsPayload = {
-    company_id: company.id,
+    company_id: companyId,
     date: sale.date,
     campaign_name: sale.productName,
     investment: 0,
@@ -453,7 +461,7 @@ export async function POST(request: NextRequest) {
   // Purchase em events_log + Meta CAPI nunca pode derrubar a resposta —
   // se a Eduzz não receber 200 rápido, ela reenfileira a notificação.
   try {
-    await recordSale(db, company.id, sale);
+    await recordSale(db, companyId, sale);
   } catch (err) {
     console.error("[eduzz webhook] falha ao registrar Purchase:", err instanceof Error ? err.message : err);
   }

@@ -390,6 +390,81 @@ export async function deleteTrackingPixel(pixelId: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+// ─── Webhook de vendas Eduzz (migration 041) ──────────────────────────────────
+
+// Antes disso o segredo vivia em companies.settings (JSONB), escrito via
+// UPDATE direto em `companies` — só que o trigger da migration 035 só deixa
+// MANAGER editar 3 colunas de pixel, `settings` é owner-only. Resultado: um
+// gestor de tráfego clicava em salvar e a escrita era rejeitada pelo Postgres
+// (silenciosamente, porque a UI não tratava o erro). Tabela própria com RLS
+// owner+manager direta (igual tracking_pixels) resolve os 2 problemas: o
+// gestor consegue salvar, e dá pra nomear cada config (várias contas/produtos
+// Eduzz da mesma empresa). `secret` é único globalmente e imutável — pra
+// trocar o segredo de uma config, crie uma nova e apague a antiga (mesma
+// lógica do `slug` do pixel: o valor que entra na URL não pode mudar sozinho).
+export interface EduzzWebhookConfig {
+  id: string;
+  name: string;
+  secret: string;
+  createdAt: string;
+}
+
+const EDUZZ_WEBHOOK_CONFIGS_SELECT = "id, name, secret, created_at";
+
+function rowToEduzzWebhookConfig(row: Record<string, unknown>): EduzzWebhookConfig {
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    secret: row.secret as string,
+    createdAt: row.created_at as string,
+  };
+}
+
+function randomSecret(): string {
+  return (crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)).replace(/-/g, "");
+}
+
+/** Lista as configs de webhook Eduzz de uma empresa (mais antiga primeiro). */
+export async function fetchEduzzWebhookConfigs(companyId: string): Promise<EduzzWebhookConfig[]> {
+  if (!supabaseClient) return [];
+  const { data, error } = await supabaseClient
+    .from("eduzz_webhook_configs")
+    .select(EDUZZ_WEBHOOK_CONFIGS_SELECT)
+    .eq("company_id", companyId)
+    .order("created_at", { ascending: true });
+  if (error || !data) return [];
+  return data.map(rowToEduzzWebhookConfig);
+}
+
+/** Cria uma config nova com segredo aleatório (RLS: owner OU manager). */
+export async function createEduzzWebhookConfig(companyId: string, name: string): Promise<EduzzWebhookConfig> {
+  if (!supabaseClient) throw new Error("Supabase não configurado.");
+  const { data, error } = await supabaseClient
+    .from("eduzz_webhook_configs")
+    .insert({ company_id: companyId, name: name.trim() || "Nova config", secret: randomSecret() })
+    .select(EDUZZ_WEBHOOK_CONFIGS_SELECT)
+    .single();
+  if (error || !data) throw new Error(error?.message ?? "Erro ao criar config.");
+  return rowToEduzzWebhookConfig(data);
+}
+
+/** Renomeia uma config (RLS: owner OU manager) — secret não muda, é o que está cadastrado na Eduzz. */
+export async function renameEduzzWebhookConfig(configId: string, name: string): Promise<void> {
+  if (!supabaseClient) throw new Error("Supabase não configurado.");
+  const { error } = await supabaseClient
+    .from("eduzz_webhook_configs")
+    .update({ name: name.trim() || "Config sem nome" })
+    .eq("id", configId);
+  if (error) throw new Error(error.message);
+}
+
+/** Remove uma config (RLS: owner OU manager) — webhook cadastrado na Eduzz com esse segredo para de funcionar. */
+export async function deleteEduzzWebhookConfig(configId: string): Promise<void> {
+  if (!supabaseClient) throw new Error("Supabase não configurado.");
+  const { error } = await supabaseClient.from("eduzz_webhook_configs").delete().eq("id", configId);
+  if (error) throw new Error(error.message);
+}
+
 // ─── Painel de super admin ────────────────────────────────────────────────────
 
 export interface AdminCompany {

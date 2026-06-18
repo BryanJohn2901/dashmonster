@@ -8,9 +8,10 @@ function sha256(value: string) {
 process.env.NEXT_PUBLIC_SUPABASE_URL = "http://localhost";
 process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key";
 
-// companies: só usado pra achar a empresa pelo segredo do webhook.
-const mockCompanyMaybeSingle = jest.fn();
-const mockCompanySelect = jest.fn(() => ({ eq: () => ({ maybeSingle: mockCompanyMaybeSingle }) }));
+// eduzz_webhook_configs (migration 041): só usado pra achar a empresa pelo
+// segredo do webhook — substituiu o lookup antigo em companies.settings.
+const mockConfigMaybeSingle = jest.fn();
+const mockConfigSelect = jest.fn(() => ({ eq: () => ({ maybeSingle: mockConfigMaybeSingle }) }));
 
 // events_log.select: 3 usos diferentes (idempotência, match por tracker code,
 // match por email/telefone) — todos terminam em maybeSingle(), na MESMA ordem
@@ -64,7 +65,7 @@ const mockMetricsSelect = jest.fn(() => makeMetricsQuery());
 const mockMetricsUpsert = jest.fn(() => Promise.resolve({ error: null }));
 
 const mockFrom = jest.fn((table: string) => {
-  if (table === "companies") return { select: mockCompanySelect };
+  if (table === "eduzz_webhook_configs") return { select: mockConfigSelect };
   if (table === "tracking_pixels") return { select: mockPixelSelect };
   if (table === "events_log") return { select: mockEventsLogSelect, insert: mockInsert, update: mockUpdate };
   if (table === "campaign_metrics") return { select: mockMetricsSelect, upsert: mockMetricsUpsert };
@@ -85,7 +86,7 @@ function buildRequest(body: unknown, secret = "s3cr3t") {
   });
 }
 
-const COMPANY_OK = { id: "company-1" };
+const COMPANY_OK = { company_id: "company-1" };
 const PIXEL_OK = {
   id: "pixel-1",
   meta_pixel_id: "PIXEL_123",
@@ -145,13 +146,13 @@ describe("POST /api/eduzz/webhook", () => {
   });
 
   it("403 quando o secret não corresponde a nenhuma empresa", async () => {
-    mockCompanyMaybeSingle.mockResolvedValueOnce({ data: null, error: null });
+    mockConfigMaybeSingle.mockResolvedValueOnce({ data: null, error: null });
     const res = await POST(buildRequest(LEGACY_PAYLOAD));
     expect(res.status).toBe(403);
   });
 
   it("formato antigo: ignora status não pago, não aciona nada", async () => {
-    mockCompanyMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
     const res = await POST(buildRequest({ ...LEGACY_PAYLOAD, trans_status: "1" }));
     const json = await res.json();
     expect(json.ignored).toContain("status");
@@ -159,7 +160,7 @@ describe("POST /api/eduzz/webhook", () => {
   });
 
   it("formato antigo: agrega em campaign_metrics (regressão do comportamento que já existia)", async () => {
-    mockCompanyMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
     mockNotYetProcessed();
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // resolveVisitMatch: sem match por email (sem telefone no payload antigo)
     mockPixelMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem pixel default -> sem Meta
@@ -174,7 +175,7 @@ describe("POST /api/eduzz/webhook", () => {
   });
 
   it("formato moderno: evento que não é invoice_paid é ignorado", async () => {
-    mockCompanyMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
     const res = await POST(buildRequest({ ...MODERN_PAYLOAD, event: "myeduzz.invoice_scheduled" }));
     const json = await res.json();
     expect(json.ignored).toContain("event=");
@@ -182,7 +183,7 @@ describe("POST /api/eduzz/webhook", () => {
   });
 
   it("formato moderno: grava Purchase em events_log e manda pra Meta CAPI quando o pixel está configurado", async () => {
-    mockCompanyMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
     mockNotYetProcessed();
     // resolveVisitMatch: sem tracker code -> tenta email (sem match) -> tenta telefone (sem match).
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null });
@@ -220,7 +221,7 @@ describe("POST /api/eduzz/webhook", () => {
   });
 
   it("não chama a Meta quando a empresa não tem pixel configurado (mas grava o evento)", async () => {
-    mockCompanyMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
     mockNotYetProcessed();
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por email
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por telefone
@@ -233,7 +234,7 @@ describe("POST /api/eduzz/webhook", () => {
   });
 
   it("idempotência: não reprocessa a mesma transação 2x (retry da Eduzz)", async () => {
-    mockCompanyMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: { id: "evt-already" }, error: null }); // já existe
 
     const res = await POST(buildRequest(MODERN_PAYLOAD));
@@ -245,7 +246,7 @@ describe("POST /api/eduzz/webhook", () => {
   });
 
   it("correlaciona por tracker.code1 com uma visita rastreada e reaproveita fbp/fbc/event_url", async () => {
-    mockCompanyMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
     mockNotYetProcessed();
     mockEventsLogMaybeSingle.mockResolvedValueOnce({
       data: {
@@ -277,7 +278,7 @@ describe("POST /api/eduzz/webhook", () => {
   });
 
   it("sem nenhum match: usa fingerprint sintético (hash do email) e não manda fbp/fbc/event_source_url", async () => {
-    mockCompanyMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
     mockNotYetProcessed();
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por email
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por telefone
