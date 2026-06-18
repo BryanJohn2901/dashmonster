@@ -333,6 +333,36 @@ describe("POST /api/eduzz/webhook", () => {
     expect(mockInsert).toHaveBeenCalledWith(expect.objectContaining({ installments: 3, payment_method: "installmentBankslip" }));
   });
 
+  it("order bump: notificação separada da venda principal grava is_order_bump e o vínculo com mainSaleId", async () => {
+    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockNotYetProcessed();
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por email
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por telefone
+    mockPixelMaybeSingle.mockResolvedValueOnce({ data: PIXEL_OK, error: null });
+
+    const payload = {
+      ...MODERN_PAYLOAD,
+      data: {
+        ...MODERN_PAYLOAD.data,
+        transaction: { id: "TX-BUMP-1" },
+        items: [{ name: "Gadget Y" }],
+        paid: { value: 50, currency: "BRL" },
+        orderBump: { has: true, isMainSale: false, mainSaleId: "TX-MODERN-1" },
+      },
+    };
+    await POST(buildRequest(payload));
+
+    expect(mockInsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        is_order_bump: true,
+        main_sale_transaction_id: "TX-MODERN-1",
+        product_name: "Gadget Y",
+        value: 50,
+        external_transaction_id: "TX-BUMP-1",
+      }),
+    );
+  });
+
   it("assinatura recorrente: 1ª cobrança processa normal e usa o valor cheio (price, não paid)", async () => {
     mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // shouldSkipRecurring: 1ª vez, sem renovação anterior

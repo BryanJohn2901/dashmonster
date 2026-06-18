@@ -19,6 +19,7 @@ const OPTIONAL_COLUMN_GROUPS: string[][] = [
   ["recurrence_key"], // migration 042
   ["installments"], // migration 043
   ["product_name"], // migration 044
+  ["is_order_bump", "main_sale_transaction_id"], // migration 046
 ];
 
 export async function insertEventsLogRow(db: SupabaseClient, fullRow: Record<string, unknown>) {

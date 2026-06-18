@@ -115,6 +115,10 @@ interface SaleEvent {
   installmentNumber: number | null;
   /** Total de parcelas (ex.: boleto em 3x) — só pra exibição, a Eduzz não manda isso pra cartão (parcelamento de cartão é da operadora, invisível pra plataforma). */
   installments: number | null;
+  /** true quando essa fatura é um order bump (produto extra do checkout), não a venda principal — vem como notificação própria, com seu próprio transactionId/valor/produto. */
+  isOrderBump: boolean;
+  /** transactionId da venda principal a que esse order bump pertence (data.orderBump.mainSaleId) — null pra venda principal e pro formato antigo (sem suporte). */
+  mainSaleTransactionId: string | null;
 }
 
 function parseLegacyPayload(body: RawPayload): SaleEvent | { ignored: string } {
@@ -149,6 +153,9 @@ function parseLegacyPayload(body: RawPayload): SaleEvent | { ignored: string } {
     recurrenceKey: null,
     installmentNumber: null,
     installments: null,
+    // Postback antigo não manda o campo orderBump — sem suporte a essa detecção nesse formato.
+    isOrderBump: false,
+    mainSaleTransactionId: null,
   };
 }
 
@@ -169,6 +176,8 @@ interface EduzzModernPayload {
     contract?: { id?: string; isUnlimitedInstallments?: boolean };
     /** Presente quando o pagamento é boleto parcelado — cada parcela paga manda seu próprio invoice_paid. */
     bankSlipInstallment?: { installmentNumber?: number; totalInstallments?: number };
+    /** Order bump: o produto extra do checkout chega como notificação invoice_paid própria (próprio transaction.id/price), não dentro do payload da venda principal — `isMainSale: false` identifica essa fatura como o bump, `mainSaleId` referencia o transaction.id da venda principal. */
+    orderBump?: { has?: boolean; isMainSale?: boolean; mainSaleId?: number | string | null };
   };
 }
 
@@ -213,6 +222,8 @@ function parseModernPayload(body: EduzzModernPayload): SaleEvent | { ignored: st
     recurrenceKey: data.contract?.id ?? null,
     installmentNumber: data.bankSlipInstallment?.installmentNumber ?? null,
     installments: data.bankSlipInstallment?.totalInstallments ?? null,
+    isOrderBump: Boolean(data.orderBump?.has && data.orderBump?.isMainSale === false),
+    mainSaleTransactionId: data.orderBump?.mainSaleId != null ? String(data.orderBump.mainSaleId) : null,
   };
 }
 
@@ -326,6 +337,8 @@ async function recordSale(db: SupabaseClient, companyId: string, sale: SaleEvent
     source: EDUZZ_SOURCE,
     payment_method: sale.paymentMethod,
     installments: sale.installments,
+    is_order_bump: sale.isOrderBump,
+    main_sale_transaction_id: sale.mainSaleTransactionId,
     fbp,
     fbc,
   });
