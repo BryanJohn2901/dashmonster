@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { Search, RefreshCw, Calendar, Radar, X, Mail, Phone, MapPin, User, Settings, ChevronDown } from "lucide-react";
 import { supabaseClient } from "@/lib/supabase";
-import { useCompany, fetchCompanyTracking, type TrackingConfig } from "@/hooks/useCompany";
+import { useCompany } from "@/hooks/useCompany";
 import { TrackingConfigPanel } from "@/components/TrackingConfigPanel";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -26,11 +26,6 @@ interface TrackingEvent {
   capi_status: "pending" | "sent" | "failed" | "skipped";
   capi_error: string | null;
   created_at: string;
-}
-
-interface TrackingBannerConfig {
-  meta_pixel_id: string | null;
-  dominio_autorizado: string | null;
 }
 
 interface Visitor {
@@ -377,12 +372,11 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-const EMPTY_TRACKING_CONFIG: TrackingConfig = { metaPixelId: "", metaCapiToken: "", dominioAutorizado: "", metaTestEventCode: "" };
-
 export function TrackingEventsView() {
   const { company, companyId, canWrite } = useCompany();
   const [events, setEvents] = useState<TrackingEvent[]>([]);
-  const [config, setConfig] = useState<TrackingBannerConfig | null>(null);
+  // true se PELO MENOS 1 pixel da empresa tem Pixel ID preenchido (banner "Meta não configurada").
+  const [anyMetaConfigured, setAnyMetaConfigured] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -392,16 +386,7 @@ export function TrackingEventsView() {
   const [dateFrom, setDateFrom] = useState(() => new Date(Date.now() - 30 * 86400_000).toISOString().split("T")[0]);
   const [dateTo, setDateTo] = useState(() => new Date().toISOString().split("T")[0]);
 
-  // Config completa do pixel (Pixel ID/Token CAPI/domínio) — carregada à parte
-  // do `config` acima (que só tem os 2 campos do banner "Meta não configurada").
-  const [trackingConfig, setTrackingConfig] = useState<TrackingConfig>(EMPTY_TRACKING_CONFIG);
   const [configOpen, setConfigOpen] = useState(false);
-  useEffect(() => {
-    if (!company) return;
-    let active = true;
-    void fetchCompanyTracking(company.id).then((t) => { if (active) setTrackingConfig(t); }).catch(() => {});
-    return () => { active = false; };
-  }, [company]);
 
   const fetchEvents = useCallback(async () => {
     if (!supabaseClient) {
@@ -416,7 +401,7 @@ export function TrackingEventsView() {
     setLoading(true);
     setError(null);
 
-    const [eventsRes, configRes] = await Promise.all([
+    const [eventsRes, pixelsRes] = await Promise.all([
       supabaseClient
         .from("events_log")
         .select(EVENTS_SELECT)
@@ -425,12 +410,16 @@ export function TrackingEventsView() {
         .lte("created_at", `${dateTo}T23:59:59`)
         .order("created_at", { ascending: false })
         .limit(1000),
-      supabaseClient
-        .from("companies")
-        .select("meta_pixel_id, dominio_autorizado")
-        .eq("id", companyId)
-        .single(),
+      supabaseClient.from("tracking_pixels").select("meta_pixel_id").eq("company_id", companyId),
     ]);
+
+    if (pixelsRes.error?.message?.includes("tracking_pixels")) {
+      // Migration 037 ainda não rodou — cai pra coluna legada de companies (1 pixel só).
+      const legacy = await supabaseClient.from("companies").select("meta_pixel_id").eq("id", companyId).single();
+      setAnyMetaConfigured(Boolean(legacy.data?.meta_pixel_id));
+    } else if (!pixelsRes.error) {
+      setAnyMetaConfigured((pixelsRes.data ?? []).some((p) => p.meta_pixel_id));
+    }
 
     const missingNewColumn = ["page_title", "extra_fields", "country", "country_region", "city", "event_id"].some((col) =>
       eventsRes.error?.message?.includes(col),
@@ -454,9 +443,6 @@ export function TrackingEventsView() {
       setError(eventsRes.error.message);
     } else {
       setEvents((eventsRes.data as TrackingEvent[]) ?? []);
-    }
-    if (!configRes.error) {
-      setConfig(configRes.data as TrackingBannerConfig);
     }
 
     setLoading(false);
@@ -488,7 +474,7 @@ export function TrackingEventsView() {
 
   const eventTypes = [...new Set(events.map((e) => e.event_name))];
   // Captura funciona sem Meta — isso é só um lembrete de que o envio CAPI está desligado, não um erro.
-  const metaNotConfigured = !loading && !error && !config?.meta_pixel_id;
+  const metaNotConfigured = !loading && !error && !anyMetaConfigured;
 
   // Mantém o drawer em sincronia se um refresh trouxer novos eventos do mesmo visitante.
   const openVisitor = selectedVisitor
@@ -540,7 +526,7 @@ export function TrackingEventsView() {
       {/* Config do pixel — instalação, domínio autorizado e Meta CAPI (opcional) */}
       {configOpen && company && (
         <div className="mb-5 rounded-2xl border p-4" style={{ borderColor: "var(--dm-primary)", backgroundColor: "var(--dm-bg-surface)" }}>
-          <TrackingConfigPanel company={company} canEdit={canWrite} tracking={trackingConfig} onTracking={setTrackingConfig} />
+          <TrackingConfigPanel company={company} canEdit={canWrite} />
         </div>
       )}
 

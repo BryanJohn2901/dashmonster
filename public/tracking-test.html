@@ -13,7 +13,9 @@
 </head>
 <body>
   <h1>Teste do pixel</h1>
-  <p>Troque <code>SLUG_AQUI</code> abaixo (no script) pelo <code>slug</code> da empresa configurada no Estúdio da Empresa.</p>
+  <p>Troque <code>SLUG_AQUI</code> abaixo (no script) pelo <code>slug</code> da empresa configurada no Estúdio da Empresa.
+  Copie o código de instalação exato de um pixel específico (aba Tracking → Configuração) pra testar com nome/domínio
+  daquele pixel — o 2º argumento de <code>Tracker.init()</code> é o slug do pixel, opcional (sem ele, usa o pixel padrão).</p>
   <p>PageView dispara sozinho ao carregar a página. Lead dispara no submit do form abaixo.</p>
   <p>Se a empresa tiver <strong>Pixel ID</strong> configurado, o script também carrega o fbq da Meta no navegador — abra
   Events Manager → <strong>Eventos de teste</strong>, cole o código gerado lá no campo "Código de teste" da aba Tracking,

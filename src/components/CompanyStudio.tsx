@@ -11,8 +11,7 @@ import {
   useCompany, renameCompany, fetchCompanyToken, setCompanyToken,
   fetchCompanyMembers, inviteMemberByEmail, updateMemberRole, removeMember,
   readAdAccountSuggestions, saveAdAccountSuggestions, updateCompanySettings,
-  fetchCompanyTracking,
-  type CompanyMember, type CompanyRole, type AdAccountSuggestion, type Company, type TrackingConfig,
+  type CompanyMember, type CompanyRole, type AdAccountSuggestion, type Company,
 } from "@/hooks/useCompany";
 import { saveMetaCredentials } from "@/utils/metaApi";
 import { TrackingConfigPanel } from "@/components/TrackingConfigPanel";
@@ -96,13 +95,11 @@ export function CompanyStudio({ categories = [], onNavigate, focusSection }: {
 
   // ── dados assíncronos ──
   const [token, setTokenVal] = useState<string>("");
-  const [tracking, setTrackingVal] = useState<TrackingConfig>({ metaPixelId: "", metaCapiToken: "", dominioAutorizado: "", metaTestEventCode: "" });
   const [members, setMembers] = useState<CompanyMember[] | null>(null);
   useEffect(() => {
     if (!company) return;
     let active = true;
     void fetchCompanyToken(company.id).then((t) => { if (active) setTokenVal(t); }).catch(() => {});
-    void fetchCompanyTracking(company.id).then((t) => { if (active) setTrackingVal(t); }).catch(() => {});
     void fetchCompanyMembers(company.id).then((m) => { if (active) setMembers(m); }).catch(() => { if (active) setMembers([]); });
     return () => { active = false; };
   }, [company]);
@@ -203,7 +200,7 @@ export function CompanyStudio({ categories = [], onNavigate, focusSection }: {
       {/* ── Seções ── */}
       <IdentidadeSection company={company} canEdit={isOwner} open={open.has("identidade")} onToggle={toggle} />
       <ConexaoSection company={company} canEdit={isOwner} token={token} onToken={setTokenVal} open={open.has("conexao")} onToggle={toggle} />
-      <TrackingSection company={company} canEdit={canWrite} tracking={tracking} onTracking={setTrackingVal} open={open.has("tracking")} onToggle={toggle} />
+      <TrackingSection company={company} canEdit={canWrite} open={open.has("tracking")} onToggle={toggle} />
       <ContasSection company={company} canEdit={isOwner} suggestions={suggestions} open={open.has("contas")} onToggle={toggle} />
       <FiltrosSection filters={enabledFilters} onNavigate={onNavigate} open={open.has("filtros")} onToggle={toggle} />
       <HistoricoSection company={company} canEdit={isOwner} customTabs={customTabs} totalTabs={totalHistoryTabs} open={open.has("historico")} onToggle={toggle} />
@@ -280,13 +277,12 @@ function ConexaoSection({ company, canEdit, token, onToken, open, onToggle }: {
 
 // ─── Tracking Pixel (Server-Side) ─────────────────────────────────────────────
 
-function TrackingSection({ company, canEdit, tracking, onTracking, open, onToggle }: {
-  company: Company; canEdit: boolean; tracking: TrackingConfig; onTracking: (t: TrackingConfig) => void; open: boolean; onToggle: (id: SectionId) => void;
+function TrackingSection({ company, canEdit, open, onToggle }: {
+  company: Company; canEdit: boolean; open: boolean; onToggle: (id: SectionId) => void;
 }) {
-  const metaConfigured = Boolean(tracking.metaPixelId.trim());
   return (
-    <Section id="tracking" icon={Radar} title="Tracking Pixel" summary={metaConfigured ? "Pixel ativo + envio pra Meta" : "Pixel ativo (sem Meta CAPI)"} status="ok" open={open} onToggle={onToggle}>
-      <TrackingConfigPanel company={company} canEdit={canEdit} tracking={tracking} onTracking={onTracking} />
+    <Section id="tracking" icon={Radar} title="Tracking Pixel" summary="1 pixel por landing page/produto" status="ok" open={open} onToggle={onToggle}>
+      <TrackingConfigPanel company={company} canEdit={canEdit} />
     </Section>
   );
 }

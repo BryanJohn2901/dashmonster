@@ -24,6 +24,7 @@ const OPTIONAL_COLUMN_GROUPS: string[][] = [
   ["page_title", "extra_fields"], // migration 033
   ["country", "country_region", "city"], // migration 034
   ["event_id"], // migration 036
+  ["pixel_id"], // migration 037
 ];
 
 async function insertEvent(db: ReturnType<typeof supabaseAdmin>, fullRow: Record<string, unknown>) {
@@ -42,24 +43,96 @@ async function insertEvent(db: ReturnType<typeof supabaseAdmin>, fullRow: Record
   return result;
 }
 
-// company.meta_test_event_code (migration 036) pode ainda não existir no
-// banco — mesmo problema de janela deploy-antes-da-migration dos outros
-// campos opcionais, mas pro lado do SELECT: tenta com a coluna nova, cai
-// pra sem ela se o Postgres reclamar que não existe (não pode derrubar
-// TODO evento por causa de 1 coluna opcional faltando).
-async function selectCompany(db: ReturnType<typeof supabaseAdmin>, slug: string) {
-  const FULL = "id, meta_pixel_id, meta_capi_token, dominio_autorizado, meta_test_event_code";
-  const FALLBACK = "id, meta_pixel_id, meta_capi_token, dominio_autorizado";
-  const full = await db.from("companies").select(FULL).eq("slug", slug).single();
+interface ResolvedPixel {
+  companyId: string;
+  /** null = migration 037 ainda não rodou (config lida das colunas legadas de `companies`) ou a empresa ainda não criou nenhum pixel. */
+  pixelId: string | null;
+  meta_pixel_id: string | null;
+  meta_capi_token: string | null;
+  dominio_autorizado: string | null;
+  meta_test_event_code: string | null;
+}
+
+// Antes da migration 037, a config de tracking era 4 colunas direto em
+// `companies` (1 pixel por empresa). Mesma resiliência de sempre: se a coluna
+// meta_test_event_code (036) ainda não existir, cai pra sem ela.
+async function selectLegacyCompanyConfig(db: ReturnType<typeof supabaseAdmin>, companyId: string) {
+  const FULL = "meta_pixel_id, meta_capi_token, dominio_autorizado, meta_test_event_code";
+  const FALLBACK = "meta_pixel_id, meta_capi_token, dominio_autorizado";
+  const full = await db.from("companies").select(FULL).eq("id", companyId).single();
   if (full.error?.message?.includes("meta_test_event_code")) {
-    const fallback = await db.from("companies").select(FALLBACK).eq("slug", slug).single();
-    return { ...fallback, data: fallback.data ? { ...fallback.data, meta_test_event_code: null } : null };
+    const fallback = await db.from("companies").select(FALLBACK).eq("id", companyId).single();
+    return fallback.data ? { ...fallback.data, meta_test_event_code: null } : null;
   }
-  return full;
+  return full.data ?? null;
+}
+
+// Resolve a empresa (por slug) e qual pixel de tracking usar: o `pixel_slug`
+// do payload (cada landing page tem o seu, migration 037) ou o pixel marcado
+// `is_default` da empresa quando o snippet é o antigo (`Tracker.init(empresa)`,
+// sem 2º argumento). Se a tabela `tracking_pixels` ainda não existir (deploy
+// antes da migration manual), cai pras 4 colunas legadas de `companies` — não
+// pode quebrar a captura de NINGUÉM por causa de uma migration pendente.
+async function resolveCompanyAndPixel(
+  db: ReturnType<typeof supabaseAdmin>,
+  companySlug: string,
+  pixelSlug: string | undefined,
+): Promise<{ resolved: ResolvedPixel | null; companyNotFound: boolean }> {
+  const companyRes = await db.from("companies").select("id").eq("slug", companySlug).single();
+  if (companyRes.error || !companyRes.data) {
+    return { resolved: null, companyNotFound: true };
+  }
+  const companyId = companyRes.data.id as string;
+
+  let pixelQuery = db
+    .from("tracking_pixels")
+    .select("id, meta_pixel_id, meta_capi_token, dominio_autorizado, meta_test_event_code")
+    .eq("company_id", companyId);
+  pixelQuery = pixelSlug ? pixelQuery.eq("slug", pixelSlug) : pixelQuery.eq("is_default", true);
+  const pixelRes = await pixelQuery.maybeSingle();
+
+  if (pixelRes.error?.message?.includes("tracking_pixels")) {
+    console.warn("[tracking] tabela tracking_pixels ausente (migration 037 pendente), usando config legada de companies");
+    const legacy = await selectLegacyCompanyConfig(db, companyId);
+    return {
+      companyNotFound: false,
+      resolved: {
+        companyId,
+        pixelId: null,
+        meta_pixel_id: legacy?.meta_pixel_id ?? null,
+        meta_capi_token: legacy?.meta_capi_token ?? null,
+        dominio_autorizado: legacy?.dominio_autorizado ?? null,
+        meta_test_event_code: legacy?.meta_test_event_code ?? null,
+      },
+    };
+  }
+
+  if (!pixelRes.data) {
+    // pixel_slug não bateu com nenhum pixel, ou a empresa nunca criou um —
+    // não é erro: evento é capturado sem CAPI e sem restrição de domínio.
+    return {
+      companyNotFound: false,
+      resolved: { companyId, pixelId: null, meta_pixel_id: null, meta_capi_token: null, dominio_autorizado: null, meta_test_event_code: null },
+    };
+  }
+
+  return {
+    companyNotFound: false,
+    resolved: {
+      companyId,
+      pixelId: pixelRes.data.id as string,
+      meta_pixel_id: pixelRes.data.meta_pixel_id ?? null,
+      meta_capi_token: pixelRes.data.meta_capi_token ?? null,
+      dominio_autorizado: pixelRes.data.dominio_autorizado ?? null,
+      meta_test_event_code: pixelRes.data.meta_test_event_code ?? null,
+    },
+  };
 }
 
 interface TrackEventPayload {
   client_id: string;
+  /** Slug do pixel (migration 037, cada landing page pode ter o seu) — omitido = usa o pixel `is_default` da empresa. */
+  pixel_slug?: string;
   event_name: string;
   event_url: string;
   /** document.title no momento do evento — pra exibir o nome real da página no dashboard. */
@@ -126,9 +199,9 @@ export async function POST(request: NextRequest) {
 
   const db = supabaseAdmin();
 
-  const { data: company, error: companyError } = await selectCompany(db, payload.client_id);
+  const { resolved, companyNotFound } = await resolveCompanyAndPixel(db, payload.client_id, payload.pixel_slug);
 
-  if (companyError || !company) {
+  if (companyNotFound || !resolved) {
     return NextResponse.json({ error: "Cliente não encontrado." }, { status: 404, headers });
   }
 
@@ -138,10 +211,10 @@ export async function POST(request: NextRequest) {
   // Origin ausente (alguns navegadores em modo privado omitem) é soft-fail:
   // logamos e seguimos, em vez de derrubar o tracking silenciosamente.
   const requestHostname = hostnameOf(origin) ?? hostnameOf(request.headers.get("referer"));
-  if (company.dominio_autorizado) {
-    if (requestHostname && requestHostname !== company.dominio_autorizado) {
+  if (resolved.dominio_autorizado) {
+    if (requestHostname && requestHostname !== resolved.dominio_autorizado) {
       console.warn(
-        `[tracking] origem rejeitada para ${payload.client_id}: ${requestHostname} != ${company.dominio_autorizado}`,
+        `[tracking] origem rejeitada para ${payload.client_id}: ${requestHostname} != ${resolved.dominio_autorizado}`,
       );
       return NextResponse.json({ error: "Domínio não autorizado." }, { status: 403, headers });
     }
@@ -172,10 +245,10 @@ export async function POST(request: NextRequest) {
   // Captura funciona independente da Meta: events_log grava sempre que o
   // domínio bate, mesmo sem meta_pixel_id/meta_capi_token configurados.
   // Repasse pra Meta CAPI é best-effort, abaixo, só quando ambos existem.
-  const metaConfigured = Boolean(company.meta_pixel_id && company.meta_capi_token);
+  const metaConfigured = Boolean(resolved.meta_pixel_id && resolved.meta_capi_token);
 
   const baseRow = {
-    company_id: company.id,
+    company_id: resolved.companyId,
     event_name: payload.event_name,
     fingerprint_id: fingerprintId,
     event_url: payload.event_url,
@@ -193,6 +266,7 @@ export async function POST(request: NextRequest) {
     country_region: geo.countryRegion ?? null,
     city: geo.city ?? null,
     event_id: payload.event_id?.trim() || null,
+    pixel_id: resolved.pixelId,
   });
 
   if (insertError || !inserted) {
@@ -248,10 +322,10 @@ export async function POST(request: NextRequest) {
       ],
       // Só presente durante teste manual (Events Manager → Eventos de teste);
       // por design da própria Meta, deve ser removido depois de validar.
-      ...(company.meta_test_event_code ? { test_event_code: company.meta_test_event_code } : {}),
+      ...(resolved.meta_test_event_code ? { test_event_code: resolved.meta_test_event_code } : {}),
     };
 
-    const capiUrl = `https://graph.facebook.com/${META_API_VERSION}/${company.meta_pixel_id}/events?access_token=${company.meta_capi_token}`;
+    const capiUrl = `https://graph.facebook.com/${META_API_VERSION}/${resolved.meta_pixel_id}/events?access_token=${resolved.meta_capi_token}`;
     const capiRes = await fetch(capiUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

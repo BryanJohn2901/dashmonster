@@ -5,15 +5,34 @@ function sha256(value: string) {
   return createHash("sha256").update(value.trim().toLowerCase()).digest("hex");
 }
 
-const mockSingle = jest.fn();
-const mockSelect = jest.fn(() => ({ eq: () => ({ single: mockSingle }) }));
+// companies: usado tanto pro lookup do id (sempre, 1ª chamada) quanto pro
+// fallback de config legada (só quando tracking_pixels não existe, 2ª
+// chamada) — mesma fila de mockResolvedValueOnce, a ordem das chamadas
+// no código é sempre a mesma então a ordem dos mocks também é.
+const mockCompanySingle = jest.fn();
+const mockCompanySelect = jest.fn(() => ({ eq: () => ({ single: mockCompanySingle }) }));
+
+// tracking_pixels: query encadeada com .eq() chamado mais de uma vez
+// (company_id + slug/is_default) antes do .maybeSingle() terminal.
+const mockPixelMaybeSingle = jest.fn();
+function makePixelQuery() {
+  const query: { eq: jest.Mock; maybeSingle: () => unknown } = {
+    eq: jest.fn(),
+    maybeSingle: () => mockPixelMaybeSingle(),
+  };
+  query.eq.mockImplementation(() => query);
+  return query;
+}
+const mockPixelSelect = jest.fn(() => makePixelQuery());
+
 const mockInsertSelect = jest.fn(() => ({ single: jest.fn(() => Promise.resolve({ data: { id: "evt-1" }, error: null })) }));
 const mockInsert: jest.Mock = jest.fn(() => ({ select: mockInsertSelect }));
 const mockEq = jest.fn(() => Promise.resolve({ data: null, error: null }));
 const mockUpdate = jest.fn(() => ({ eq: mockEq }));
 
 const mockFrom = jest.fn((table: string) => {
-  if (table === "companies") return { select: mockSelect };
+  if (table === "companies") return { select: mockCompanySelect };
+  if (table === "tracking_pixels") return { select: mockPixelSelect };
   if (table === "events_log") return { insert: mockInsert, update: mockUpdate };
   throw new Error(`tabela inesperada: ${table}`);
 });
@@ -32,12 +51,25 @@ function buildRequest(body: unknown, headers: Record<string, string> = {}) {
   });
 }
 
-const COMPANY_OK = {
-  id: "company-1",
+const COMPANY_ID_OK = { id: "company-1" };
+const PIXEL_OK = {
+  id: "pixel-1",
   meta_pixel_id: "PIXEL_123",
   meta_capi_token: "TOKEN_ABC",
   dominio_autorizado: "localhost",
+  meta_test_event_code: null as string | null,
 };
+
+function mockHappyPath(pixelOverrides: Partial<typeof PIXEL_OK> = {}) {
+  mockCompanySingle.mockResolvedValueOnce({ data: COMPANY_ID_OK, error: null });
+  mockPixelMaybeSingle.mockResolvedValueOnce({ data: { ...PIXEL_OK, ...pixelOverrides }, error: null });
+}
+
+function lastPixelEqCalls() {
+  const results = mockPixelSelect.mock.results;
+  const query = results[results.length - 1]?.value as { eq: jest.Mock };
+  return query.eq.mock.calls;
+}
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -57,13 +89,14 @@ describe("POST /api/tracking/track-event", () => {
   });
 
   it("404 quando empresa não existe", async () => {
-    mockSingle.mockResolvedValueOnce({ data: null, error: { message: "not found" } });
+    mockCompanySingle.mockResolvedValueOnce({ data: null, error: { message: "not found" } });
     const res = await POST(buildRequest({ client_id: "ghost", event_name: "Lead", event_url: "http://x" }));
     expect(res.status).toBe(404);
   });
 
-  it("200 + grava events_log sem chamar Meta CAPI quando empresa não tem pixel configurado", async () => {
-    mockSingle.mockResolvedValueOnce({ data: { id: "c1", meta_pixel_id: null, meta_capi_token: null, dominio_autorizado: null }, error: null });
+  it("200 + grava events_log sem chamar Meta CAPI quando a empresa não tem nenhum pixel configurado", async () => {
+    mockCompanySingle.mockResolvedValueOnce({ data: { id: "c1" }, error: null });
+    mockPixelMaybeSingle.mockResolvedValueOnce({ data: null, error: null });
     const res = await POST(buildRequest({ client_id: "sem-config", event_name: "Lead", event_url: "http://x" }));
 
     expect(res.status).toBe(200);
@@ -72,8 +105,8 @@ describe("POST /api/tracking/track-event", () => {
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 
-  it("403 quando domínio não bate com dominio_autorizado", async () => {
-    mockSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+  it("403 quando domínio não bate com dominio_autorizado do pixel", async () => {
+    mockHappyPath();
     const res = await POST(
       buildRequest(
         { client_id: "acme", event_name: "Lead", event_url: "http://evil.com" },
@@ -85,7 +118,7 @@ describe("POST /api/tracking/track-event", () => {
   });
 
   it("200 + grava events_log + chama Meta CAPI quando tudo certo", async () => {
-    mockSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockHappyPath();
     const res = await POST(
       buildRequest({
         client_id: "acme",
@@ -101,6 +134,7 @@ describe("POST /api/tracking/track-event", () => {
     expect(mockInsert).toHaveBeenCalledWith(
       expect.objectContaining({
         company_id: "company-1",
+        pixel_id: "pixel-1",
         event_name: "Lead",
         event_url: "http://localhost:3000/pagina",
         user_data: { em: "hash-email", ph: "hash-tel" },
@@ -118,7 +152,7 @@ describe("POST /api/tracking/track-event", () => {
   });
 
   it("retorna 200 ao pixel mesmo se a chamada à Meta CAPI falhar", async () => {
-    mockSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockHappyPath();
     global.fetch = jest.fn(() => Promise.reject(new Error("rede fora"))) as unknown as typeof fetch;
 
     const res = await POST(buildRequest({ client_id: "acme", event_name: "Lead", event_url: "http://localhost:3000/" }));
@@ -128,7 +162,7 @@ describe("POST /api/tracking/track-event", () => {
   });
 
   it("usa user_id do cookie persistente como fingerprint_id quando enviado", async () => {
-    mockSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockHappyPath();
     await POST(
       buildRequest({
         client_id: "acme",
@@ -144,7 +178,7 @@ describe("POST /api/tracking/track-event", () => {
   });
 
   it("cai pro hash de IP+UA quando não vem user_id (fallback)", async () => {
-    mockSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockHappyPath();
     await POST(buildRequest({ client_id: "acme", event_name: "PageView", event_url: "http://localhost:3000/" }));
 
     expect(mockInsert).toHaveBeenCalledWith(
@@ -153,7 +187,7 @@ describe("POST /api/tracking/track-event", () => {
   });
 
   it("grava page_title e extra_fields do formulário", async () => {
-    mockSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockHappyPath();
     await POST(
       buildRequest({
         client_id: "acme",
@@ -173,7 +207,7 @@ describe("POST /api/tracking/track-event", () => {
   });
 
   it("regrava sem page_title/extra_fields se a migration 033 ainda não rodou no banco", async () => {
-    mockSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockHappyPath();
     mockInsert
       .mockImplementationOnce(() => ({
         select: () => ({
@@ -195,7 +229,7 @@ describe("POST /api/tracking/track-event", () => {
   });
 
   it("regrava sem country/country_region/city se a migration 034 ainda não rodou no banco", async () => {
-    mockSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockHappyPath();
     mockInsert
       .mockImplementationOnce(() => ({
         select: () => ({
@@ -217,8 +251,27 @@ describe("POST /api/tracking/track-event", () => {
     expect(mockInsert.mock.calls[1][0]).not.toHaveProperty("city");
   });
 
+  it("regrava sem pixel_id se a migration 037 ainda não rodou no banco (events_log)", async () => {
+    mockHappyPath();
+    mockInsert
+      .mockImplementationOnce(() => ({
+        select: () => ({
+          single: () => Promise.resolve({ data: null, error: { message: "column events_log.pixel_id does not exist" } }),
+        }),
+      }))
+      .mockImplementationOnce(() => ({
+        select: () => ({ single: () => Promise.resolve({ data: { id: "evt-9" }, error: null }) }),
+      }));
+
+    const res = await POST(buildRequest({ client_id: "acme", event_name: "PageView", event_url: "http://localhost:3000/" }));
+
+    expect(res.status).toBe(200);
+    expect(mockInsert).toHaveBeenCalledTimes(2);
+    expect(mockInsert.mock.calls[1][0]).not.toHaveProperty("pixel_id");
+  });
+
   it("manda event_id e fbp/fbc pra Meta CAPI e grava event_id em events_log", async () => {
-    mockSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockHappyPath();
     await POST(
       buildRequest({
         client_id: "acme",
@@ -239,7 +292,7 @@ describe("POST /api/tracking/track-event", () => {
   });
 
   it("manda fn/ln (pass-through, já hasheados pelo pixel) pra Meta CAPI", async () => {
-    mockSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockHappyPath();
     await POST(
       buildRequest({
         client_id: "acme",
@@ -255,7 +308,7 @@ describe("POST /api/tracking/track-event", () => {
   });
 
   it("hasheia país/estado/cidade/CEP (geo-IP da Vercel) e external_id (user_id) pra Meta CAPI", async () => {
-    mockSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockHappyPath();
     const req = new NextRequest("http://localhost:3000/api/tracking/track-event", {
       method: "POST",
       headers: {
@@ -284,36 +337,59 @@ describe("POST /api/tracking/track-event", () => {
     expect(sentBody.data[0].user_data.external_id).toBe(sha256("uuid-persistente-123"));
   });
 
-  it("inclui test_event_code no payload da CAPI quando a empresa tem código de teste", async () => {
-    mockSingle.mockResolvedValueOnce({ data: { ...COMPANY_OK, meta_test_event_code: "TEST123" }, error: null });
+  it("inclui test_event_code no payload da CAPI quando o pixel tem código de teste", async () => {
+    mockHappyPath({ meta_test_event_code: "TEST123" });
     await POST(buildRequest({ client_id: "acme", event_name: "PageView", event_url: "http://localhost:3000/" }));
 
     const sentBody = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
     expect(sentBody.test_event_code).toBe("TEST123");
   });
 
-  it("não inclui test_event_code quando a empresa não tem código de teste", async () => {
-    mockSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+  it("não inclui test_event_code quando o pixel não tem código de teste", async () => {
+    mockHappyPath();
     await POST(buildRequest({ client_id: "acme", event_name: "PageView", event_url: "http://localhost:3000/" }));
 
     const sentBody = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
     expect(sentBody.test_event_code).toBeUndefined();
   });
 
-  it("cai pro select sem meta_test_event_code se a coluna ainda não existir (migration 036 pendente)", async () => {
-    mockSingle
-      .mockResolvedValueOnce({ data: null, error: { message: "column companies.meta_test_event_code does not exist" } })
-      .mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+  it("resolve o pixel pelo pixel_slug do payload (não o is_default)", async () => {
+    mockHappyPath();
+    await POST(
+      buildRequest({ client_id: "acme", pixel_slug: "landing-x", event_name: "PageView", event_url: "http://localhost:3000/" }),
+    );
+
+    const calls = lastPixelEqCalls();
+    expect(calls).toEqual(expect.arrayContaining([["slug", "landing-x"]]));
+    expect(calls.some((c) => c[0] === "is_default")).toBe(false);
+  });
+
+  it("usa o pixel is_default quando o payload não manda pixel_slug (snippet antigo)", async () => {
+    mockHappyPath();
+    await POST(buildRequest({ client_id: "acme", event_name: "PageView", event_url: "http://localhost:3000/" }));
+
+    const calls = lastPixelEqCalls();
+    expect(calls).toEqual(expect.arrayContaining([["is_default", true]]));
+  });
+
+  it("cai pra config legada de companies se a tabela tracking_pixels ainda não existir (migration 037 pendente)", async () => {
+    mockCompanySingle
+      .mockResolvedValueOnce({ data: COMPANY_ID_OK, error: null })
+      .mockResolvedValueOnce({
+        data: { meta_pixel_id: "LEGACY_PIXEL", meta_capi_token: "LEGACY_TOKEN", dominio_autorizado: null, meta_test_event_code: null },
+        error: null,
+      });
+    mockPixelMaybeSingle.mockResolvedValueOnce({ data: null, error: { message: 'relation "public.tracking_pixels" does not exist' } });
 
     const res = await POST(buildRequest({ client_id: "acme", event_name: "PageView", event_url: "http://localhost:3000/" }));
 
     expect(res.status).toBe(200);
-    expect(mockSingle).toHaveBeenCalledTimes(2);
-    expect(mockInsert).toHaveBeenCalledWith(expect.objectContaining({ company_id: "company-1" }));
+    expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining("LEGACY_PIXEL"), expect.anything());
+    expect(mockInsert).toHaveBeenCalledWith(expect.objectContaining({ pixel_id: null }));
   });
 
   it("segue mesmo sem Origin/Referer (soft-fail)", async () => {
-    mockSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockHappyPath();
     const req = new NextRequest("http://localhost:3000/api/tracking/track-event", {
       method: "POST",
       headers: { "content-type": "application/json" },

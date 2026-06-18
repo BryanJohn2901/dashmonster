@@ -292,68 +292,101 @@ export async function setCompanyToken(companyId: string, token: string): Promise
   if (error) throw new Error(error.message);
 }
 
-export interface TrackingConfig {
+// ─── Tracking pixels (1 empresa pode ter N, ex.: 1 por landing page) ──────────
+// Migration 037 — antes disso a empresa tinha só 1 config (4 colunas direto em
+// `companies`, hoje deprecadas). `slug` é opaco e estável (entra no snippet,
+// nunca muda com o rename do `name`); `isDefault` é o pixel que um snippet
+// antigo (`Tracker.init(empresa)`, sem o 2º argumento) usa.
+export interface TrackingPixel {
+  id: string;
+  slug: string;
+  name: string;
   metaPixelId: string;
   metaCapiToken: string;
   dominioAutorizado: string;
   /** Código de "Eventos de teste" do Events Manager — opcional, só pra validar dedup Pixel+CAPI. Remover depois do teste. */
   metaTestEventCode: string;
+  isDefault: boolean;
 }
 
-/** Lê a config do tracking pixel (meta_pixel_id, meta_capi_token, dominio_autorizado, meta_test_event_code) de uma empresa. */
-export async function fetchCompanyTracking(companyId: string): Promise<TrackingConfig> {
-  const empty: TrackingConfig = { metaPixelId: "", metaCapiToken: "", dominioAutorizado: "", metaTestEventCode: "" };
-  if (!supabaseClient) return empty;
-  let { data, error } = await supabaseClient
-    .from("companies")
-    .select("meta_pixel_id, meta_capi_token, dominio_autorizado, meta_test_event_code")
-    .eq("id", companyId)
-    .maybeSingle();
-  // meta_test_event_code (migration 036) pode ainda não existir no banco —
-  // tenta sem ela em vez de devolver tudo vazio (perderia pixelId/token já salvos na tela).
-  if (error?.message?.includes("meta_test_event_code")) {
-    ({ data, error } = await supabaseClient
-      .from("companies")
-      .select("meta_pixel_id, meta_capi_token, dominio_autorizado")
-      .eq("id", companyId)
-      .maybeSingle());
-  }
-  if (error || !data) return empty;
+const TRACKING_PIXELS_SELECT = "id, slug, name, meta_pixel_id, meta_capi_token, dominio_autorizado, meta_test_event_code, is_default";
+
+function rowToTrackingPixel(row: Record<string, unknown>): TrackingPixel {
   return {
-    metaPixelId: (data.meta_pixel_id as string) ?? "",
-    metaCapiToken: (data.meta_capi_token as string) ?? "",
-    dominioAutorizado: (data.dominio_autorizado as string) ?? "",
-    metaTestEventCode: ((data as { meta_test_event_code?: string }).meta_test_event_code) ?? "",
+    id: row.id as string,
+    slug: row.slug as string,
+    name: row.name as string,
+    metaPixelId: (row.meta_pixel_id as string) ?? "",
+    metaCapiToken: (row.meta_capi_token as string) ?? "",
+    dominioAutorizado: (row.dominio_autorizado as string) ?? "",
+    metaTestEventCode: (row.meta_test_event_code as string) ?? "",
+    isDefault: Boolean(row.is_default),
   };
 }
 
-/** Grava a config do tracking pixel de uma empresa (RLS: owner OU manager, migration 035 — trigger restringe manager só a essas 4 colunas). String vazia limpa o campo. */
-export async function setCompanyTracking(companyId: string, config: TrackingConfig): Promise<void> {
+function randomSlug(): string {
+  return Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6);
+}
+
+/** Lista os pixels de tracking de uma empresa (mais antigo primeiro — o "Pixel principal" migrado vem primeiro). */
+export async function fetchTrackingPixels(companyId: string): Promise<TrackingPixel[]> {
+  if (!supabaseClient) return [];
+  const { data, error } = await supabaseClient
+    .from("tracking_pixels")
+    .select(TRACKING_PIXELS_SELECT)
+    .eq("company_id", companyId)
+    .order("created_at", { ascending: true });
+  if (error || !data) return [];
+  return data.map(rowToTrackingPixel);
+}
+
+/** Cria um pixel novo (RLS: owner OU manager). Se for o 1º da empresa, já nasce padrão. */
+export async function createTrackingPixel(
+  companyId: string,
+  input: { name: string; isFirst: boolean },
+): Promise<TrackingPixel> {
+  if (!supabaseClient) throw new Error("Supabase não configurado.");
+  const { data, error } = await supabaseClient
+    .from("tracking_pixels")
+    .insert({ company_id: companyId, slug: randomSlug(), name: input.name.trim() || "Novo pixel", is_default: input.isFirst })
+    .select(TRACKING_PIXELS_SELECT)
+    .single();
+  if (error || !data) throw new Error(error?.message ?? "Erro ao criar pixel.");
+  return rowToTrackingPixel(data);
+}
+
+/** Atualiza nome/credenciais de um pixel (RLS: owner OU manager). String vazia limpa o campo. */
+export async function updateTrackingPixel(
+  pixelId: string,
+  patch: { name: string; metaPixelId: string; metaCapiToken: string; dominioAutorizado: string; metaTestEventCode: string },
+): Promise<void> {
   if (!supabaseClient) throw new Error("Supabase não configurado.");
   const { error } = await supabaseClient
-    .from("companies")
+    .from("tracking_pixels")
     .update({
-      meta_pixel_id: config.metaPixelId.trim() || null,
-      meta_capi_token: config.metaCapiToken.trim() || null,
-      dominio_autorizado: config.dominioAutorizado.trim() || null,
-      meta_test_event_code: config.metaTestEventCode.trim() || null,
+      name: patch.name.trim() || "Pixel sem nome",
+      meta_pixel_id: patch.metaPixelId.trim() || null,
+      meta_capi_token: patch.metaCapiToken.trim() || null,
+      dominio_autorizado: patch.dominioAutorizado.trim() || null,
+      meta_test_event_code: patch.metaTestEventCode.trim() || null,
     })
-    .eq("id", companyId);
-  if (error?.message?.includes("meta_test_event_code")) {
-    if (config.metaTestEventCode.trim()) {
-      throw new Error("Código de teste ainda não disponível — rode a migration 036 no Supabase antes de usar esse campo.");
-    }
-    const retry = await supabaseClient
-      .from("companies")
-      .update({
-        meta_pixel_id: config.metaPixelId.trim() || null,
-        meta_capi_token: config.metaCapiToken.trim() || null,
-        dominio_autorizado: config.dominioAutorizado.trim() || null,
-      })
-      .eq("id", companyId);
-    if (retry.error) throw new Error(retry.error.message);
-    return;
-  }
+    .eq("id", pixelId);
+  if (error) throw new Error(error.message);
+}
+
+/** Marca um pixel como padrão (snippet sem 2º argumento) e desmarca os outros da mesma empresa. */
+export async function setDefaultTrackingPixel(companyId: string, pixelId: string): Promise<void> {
+  if (!supabaseClient) throw new Error("Supabase não configurado.");
+  const { error: clearError } = await supabaseClient.from("tracking_pixels").update({ is_default: false }).eq("company_id", companyId);
+  if (clearError) throw new Error(clearError.message);
+  const { error } = await supabaseClient.from("tracking_pixels").update({ is_default: true }).eq("id", pixelId);
+  if (error) throw new Error(error.message);
+}
+
+/** Remove um pixel (RLS: owner OU manager). Não deixa remover o único pixel restante da empresa. */
+export async function deleteTrackingPixel(pixelId: string): Promise<void> {
+  if (!supabaseClient) throw new Error("Supabase não configurado.");
+  const { error } = await supabaseClient.from("tracking_pixels").delete().eq("id", pixelId);
   if (error) throw new Error(error.message);
 }
 

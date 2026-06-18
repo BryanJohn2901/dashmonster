@@ -12,6 +12,9 @@ function buildPixelScript(apiBase: string): string {
   var COOKIE_NAME = "_dm_uid";
   var COOKIE_DAYS = 400; // máximo aceito pelo Chrome pra cookies de 1ª parte
   var inFlightForms = new WeakSet();
+  // Qual pixel da empresa usar (migration 037, 1 por landing page/produto) —
+  // omitido em Tracker.init() = usa o pixel "is_default" da empresa.
+  var currentPixelSlug = null;
 
   // ─── Meta Pixel (fbq) no navegador, pareado por event_id com a CAPI ────────
   // Carregamos o fbq da própria Meta (não um 2º script — é o mesmo de sempre)
@@ -51,7 +54,9 @@ function buildPixelScript(apiBase: string): string {
   }
 
   function initMetaConfig(clientId) {
-    fetch(CONFIG_URL + "?client_id=" + encodeURIComponent(clientId))
+    var url = CONFIG_URL + "?client_id=" + encodeURIComponent(clientId);
+    if (currentPixelSlug) url += "&pixel_slug=" + encodeURIComponent(currentPixelSlug);
+    fetch(url)
       .then(function (r) { return r.json(); })
       .then(function (cfg) { onConfigResolved(cfg && cfg.metaPixelId); })
       .catch(function () { onConfigResolved(null); });
@@ -186,6 +191,7 @@ function buildPixelScript(apiBase: string): string {
     var body = Object.assign(
       {
         client_id: clientId,
+        pixel_slug: currentPixelSlug || undefined,
         event_name: eventName,
         event_url: window.location.href,
         page_title: document.title || undefined,
@@ -294,7 +300,10 @@ function buildPixelScript(apiBase: string): string {
   }
 
   window.Tracker = {
-    init: function (clientId) {
+    // pixelSlug é opcional — cada landing page pode ter o seu pixel
+    // (Estúdio > Tracking > Configuração); sem ele, usa o pixel padrão da empresa.
+    init: function (clientId, pixelSlug) {
+      currentPixelSlug = pixelSlug || null;
       safe(function () { initMetaConfig(clientId); });
       safe(function () { trackPageView(clientId); });
       safe(function () { attachFormListener(clientId); });
