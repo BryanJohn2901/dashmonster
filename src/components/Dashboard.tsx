@@ -63,7 +63,6 @@ import { AnaliseEmpty } from "@/components/empty/AnaliseEmpty";
 import { CriativosEmpty } from "@/components/empty/CriativosEmpty";
 import { PixelFunnelSection } from "@/components/PixelFunnelSection";
 import { MyAccount } from "@/components/MyAccount";
-import type { SectionId as StudioSectionId } from "@/components/CompanyStudio";
 import { toast } from "@/hooks/useToast";
 import { exportDashboardCsv } from "@/utils/exportCsv";
 import { useManualMetrics } from "@/hooks/useManualMetrics";
@@ -1918,7 +1917,6 @@ export function Dashboard({
   const histLabels = activeCompany?.settings?.[HISTORY_TAB_LABELS_KEY] as Record<string, string> | undefined;
   const customHistTabs = readCustomHistoryTabs(activeCompany?.settings);
   const [myAccountTab, setMyAccountTab]     = useState<MyAccountTabId>("profile");
-  const [focusStudioSection, setFocusStudioSection] = useState<StudioSectionId | null>(null);
   const {
     dateFrom, dateTo,
     setDateFrom: setDateFromPersist,
@@ -3802,15 +3800,7 @@ export function Dashboard({
 
           {mainTab === "leads" && <LeadsView />}
 
-          {mainTab === "tracking" && (
-            <TrackingEventsView
-              onConfigure={() => {
-                setMainTab("myaccount");
-                setMyAccountTab("company");
-                setFocusStudioSection("tracking");
-              }}
-            />
-          )}
+          {mainTab === "tracking" && <TrackingEventsView />}
 
           {mainTab === "products"  && <ProductBase />}
           {mainTab === "profiles" && (
@@ -3838,7 +3828,6 @@ export function Dashboard({
               onClearData={onClearData}
               activeTab={myAccountTab}
               onTabChange={setMyAccountTab}
-              focusStudioSection={focusStudioSection}
             />
           )}
 

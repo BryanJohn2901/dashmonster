@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
-import { Search, RefreshCw, Calendar, Radar, X, Mail, Phone, MapPin, User } from "lucide-react";
+import { Search, RefreshCw, Calendar, Radar, X, Mail, Phone, MapPin, User, Settings, ChevronDown } from "lucide-react";
 import { supabaseClient } from "@/lib/supabase";
-import { useCompany } from "@/hooks/useCompany";
+import { useCompany, fetchCompanyTracking, type TrackingConfig } from "@/hooks/useCompany";
+import { TrackingConfigPanel } from "@/components/TrackingConfigPanel";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -26,7 +27,7 @@ interface TrackingEvent {
   created_at: string;
 }
 
-interface TrackingConfig {
+interface TrackingBannerConfig {
   meta_pixel_id: string | null;
   dominio_autorizado: string | null;
 }
@@ -371,10 +372,12 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function TrackingEventsView({ onConfigure }: { onConfigure?: () => void } = {}) {
-  const { companyId } = useCompany();
+const EMPTY_TRACKING_CONFIG: TrackingConfig = { metaPixelId: "", metaCapiToken: "", dominioAutorizado: "" };
+
+export function TrackingEventsView() {
+  const { company, companyId, isOwner } = useCompany();
   const [events, setEvents] = useState<TrackingEvent[]>([]);
-  const [config, setConfig] = useState<TrackingConfig | null>(null);
+  const [config, setConfig] = useState<TrackingBannerConfig | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -383,6 +386,17 @@ export function TrackingEventsView({ onConfigure }: { onConfigure?: () => void }
 
   const [dateFrom, setDateFrom] = useState(() => new Date(Date.now() - 30 * 86400_000).toISOString().split("T")[0]);
   const [dateTo, setDateTo] = useState(() => new Date().toISOString().split("T")[0]);
+
+  // Config completa do pixel (Pixel ID/Token CAPI/domínio) — carregada à parte
+  // do `config` acima (que só tem os 2 campos do banner "Meta não configurada").
+  const [trackingConfig, setTrackingConfig] = useState<TrackingConfig>(EMPTY_TRACKING_CONFIG);
+  const [configOpen, setConfigOpen] = useState(false);
+  useEffect(() => {
+    if (!company) return;
+    let active = true;
+    void fetchCompanyTracking(company.id).then((t) => { if (active) setTrackingConfig(t); }).catch(() => {});
+    return () => { active = false; };
+  }, [company]);
 
   const fetchEvents = useCallback(async () => {
     if (!supabaseClient) {
@@ -437,7 +451,7 @@ export function TrackingEventsView({ onConfigure }: { onConfigure?: () => void }
       setEvents((eventsRes.data as TrackingEvent[]) ?? []);
     }
     if (!configRes.error) {
-      setConfig(configRes.data as TrackingConfig);
+      setConfig(configRes.data as TrackingBannerConfig);
     }
 
     setLoading(false);
@@ -490,17 +504,40 @@ export function TrackingEventsView({ onConfigure }: { onConfigure?: () => void }
             Pixel Server-Side · {filteredVisitors.length} visitante{filteredVisitors.length !== 1 ? "s" : ""} · {events.length} evento{events.length !== 1 ? "s" : ""}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={fetchEvents}
-          disabled={loading}
-          className="flex-shrink-0 flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-opacity hover:opacity-70 disabled:opacity-40"
-          style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}
-        >
-          <RefreshCw size={11} className={loading ? "animate-spin" : ""} />
-          Atualizar
-        </button>
+        <div className="flex flex-shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setConfigOpen((v) => !v)}
+            aria-expanded={configOpen}
+            className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-opacity hover:opacity-70"
+            style={{
+              borderColor: configOpen ? "var(--dm-primary)" : "var(--dm-border-default)",
+              color: configOpen ? "var(--dm-primary)" : "var(--dm-text-secondary)",
+            }}
+          >
+            <Settings size={11} />
+            Configuração
+            <ChevronDown size={12} className="transition-transform duration-200" style={{ transform: configOpen ? "rotate(180deg)" : "rotate(0deg)" }} />
+          </button>
+          <button
+            type="button"
+            onClick={fetchEvents}
+            disabled={loading}
+            className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-opacity hover:opacity-70 disabled:opacity-40"
+            style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}
+          >
+            <RefreshCw size={11} className={loading ? "animate-spin" : ""} />
+            Atualizar
+          </button>
+        </div>
       </div>
+
+      {/* Config do pixel — instalação, domínio autorizado e Meta CAPI (opcional) */}
+      {configOpen && company && (
+        <div className="mb-5 rounded-2xl border p-4" style={{ borderColor: "var(--dm-primary)", backgroundColor: "var(--dm-bg-surface)" }}>
+          <TrackingConfigPanel company={company} canEdit={isOwner} tracking={trackingConfig} onTracking={setTrackingConfig} />
+        </div>
+      )}
 
       {/* Date + Search row */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -554,16 +591,14 @@ export function TrackingEventsView({ onConfigure }: { onConfigure?: () => void }
           style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)" }}
         >
           <span>Eventos sendo capturados normalmente. Envio pra Meta Conversions API está desligado (Pixel ID/Token não configurados).</span>
-          {onConfigure && (
-            <button
-              type="button"
-              onClick={onConfigure}
-              className="flex-shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-bold transition-opacity hover:opacity-80"
-              style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-primary)" }}
-            >
-              Configurar Meta →
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => setConfigOpen(true)}
+            className="flex-shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-bold transition-opacity hover:opacity-80"
+            style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-primary)" }}
+          >
+            Configurar Meta →
+          </button>
         </div>
       )}
 
