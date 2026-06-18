@@ -336,3 +336,16 @@ Pedido: "estamos enviando tudo conforme eles pedem? Cite tudo que estamos envian
 Pesquisei a normalização oficial no template GTM da própria Meta (`facebookincubator/ConversionsAPI-Tag-for-GoogleTagManager`) antes de implementar, em vez de adivinhar — trim+lowercase pra tudo, exceto telefone (só dígitos).
 
 **`user_data` completo hoje**: `em`, `ph`, `fn`, `ln`, `country`, `st`, `ct`, `zp`, `external_id` (hasheados) + `fbp`, `fbc`, `client_ip_address`, `client_user_agent` (crus, não são PII) + `event_id` (chave de dedup, fora do `user_data`).
+
+## 20. "Event enhancement" — reaproveita dados do Lead em todos os eventos seguintes ✅ feito
+
+Pedido: "tem um hackzinho que toda vez que capturamos os dados do lead, enviamos novamente quando ele faz outros eventos que não seja no formulário, pra aumentar a nota de atribuição na Meta e otimizar mais a campanha". Pesquisei antes de implementar — é uma técnica real e documentada, ferramentas de CAPI gateway (Stape, no GTM oficial da Meta) chamam isso de **"Event Enhancement"**/"Customer Information cache": depois que você captura email/telefone/nome num Lead, guarda (hasheado) e anexa automaticamente em todo evento seguinte do mesmo visitante — não só no próprio Lead.
+
+**`pixel.js`**: cookie novo `_dm_lead` (400 dias, mesmo padrão do `_dm_uid`) guarda só os **hashes** de `em`/`ph`/`fn`/`ln` (nunca o valor cru — bom pra privacidade também, já que não precisa manter PII em claro no browser por mais tempo do que o necessário pra montar o request).
+- `mergeLeadCache(userData)` é chamado no fim do handler de Lead, depois de já ter os hashes da submissão — atualiza o cookie (merge, não substitui, então um Lead posterior com campo novo soma ao que já tinha).
+- `send()` agora monta o `user_data` de **todo** evento como `Object.assign({}, getLeadCache(), extra.user_data || {})` — o cache vira a base, o que o evento atual já tiver sobrescreve. Na prática: um `PageView` disparado depois do Lead já leva `em`/`ph`/`fn`/`ln` junto, mesmo sem ter passado por nenhum formulário naquela página.
+- Bônus: quando o cache muda, re-chama `fbq('init', pixelId, cache)` — atualiza o Advanced Matching do **navegador** também (a Meta aceita valor já hasheado nesse parâmetro), não só da CAPI.
+
+Antes dessa mudança, eventos fora do Lead (ex.: `PageView`) já mandavam `country`/`st`/`ct`/`zp`/`external_id`/`fbp`/`fbc`/IP/UA (8 identificadores, geo-IP + Meta cookies são sempre conhecidos), mas nunca `em`/`ph`/`fn`/`ln`. Depois de um Lead converter, esses mesmos eventos passam a levar até 12 identificadores — segundo a própria Meta, EMQ "ótimo" começa em 8+ identificadores por evento, então isso empurra todo evento pós-conversão pro topo da faixa.
+
+Outras boas práticas já cobertas nas seções 16/18/19 (não repetir aqui, só lembrar que fazem parte do mesmo pacote de "EMQ alto em todo evento"): dedup por `event_id` compartilhado Pixel+CAPI, `fbp`/`fbc` reais (nunca inventados), `event_time` sempre em tempo real (sem batching), `action_source: "website"` consistente, normalização oficial (trim+lowercase, telefone só dígitos) antes de hashear.

@@ -21,9 +21,10 @@ function buildPixelScript(apiBase: string): string {
   // Conversions API (server) como 1 evento só, em vez de contar em dobro.
   var configResolved = false;
   var hasMetaPixel = false;
+  var currentMetaPixelId = null;
   var pendingFbqCalls = [];
 
-  function loadFbq(pixelId) {
+  function loadFbq(pixelId, advancedMatching) {
     if (!window.fbq) {
       /* eslint-disable */
       !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
@@ -33,7 +34,7 @@ function buildPixelScript(apiBase: string): string {
       document,'script','https://connect.facebook.net/en_US/fbevents.js');
       /* eslint-enable */
     }
-    window.fbq("init", pixelId);
+    window.fbq("init", pixelId, advancedMatching || {});
   }
 
   function fireFbqTrack(eventName, eventId) {
@@ -59,8 +60,9 @@ function buildPixelScript(apiBase: string): string {
   function onConfigResolved(metaPixelId) {
     configResolved = true;
     hasMetaPixel = Boolean(metaPixelId);
+    currentMetaPixelId = metaPixelId || null;
     if (hasMetaPixel) {
-      safe(function () { loadFbq(metaPixelId); });
+      safe(function () { loadFbq(metaPixelId, getLeadCache()); });
       for (var i = 0; i < pendingFbqCalls.length; i++) {
         (function (call) {
           safe(function () { fireFbqTrack(call.eventName, call.eventId); });
@@ -121,6 +123,45 @@ function buildPixelScript(apiBase: string): string {
     return fbc;
   }
 
+  // ─── "Event enhancement" — reaproveita em/ph/fn/ln de um Lead anterior ─────
+  // em TODOS os eventos seguintes do mesmo visitante (não só no próprio Lead).
+  // Sobe o Event Match Quality de PageView/etc também, ajuda a Meta a otimizar
+  // a campanha com mais sinal. Guarda só os HASHES (nunca o valor cru) — mesma
+  // técnica que ferramentas de CAPI gateway (ex.: Stape) chamam de "Event
+  // Enhancement"/"Customer Information cache".
+  var LEAD_CACHE_COOKIE = "_dm_lead";
+
+  function getLeadCache() {
+    var raw = readCookie(LEAD_CACHE_COOKIE);
+    if (!raw) return {};
+    try {
+      var parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch (err) {
+      return {};
+    }
+  }
+
+  function mergeLeadCache(newData) {
+    var current = getLeadCache();
+    var changed = false;
+    for (var k in newData) {
+      if (newData[k] && newData[k] !== current[k]) {
+        current[k] = newData[k];
+        changed = true;
+      }
+    }
+    if (changed) {
+      writeCookie(LEAD_CACHE_COOKIE, JSON.stringify(current), COOKIE_DAYS);
+      // Atualiza o Advanced Matching do fbq pros próximos eventos de browser
+      // também usarem o que acabou de ser capturado (não só os eventos CAPI).
+      if (hasMetaPixel && currentMetaPixelId) {
+        safe(function () { loadFbq(currentMetaPixelId, current); });
+      }
+    }
+    return current;
+  }
+
   async function sha256Hex(value) {
     if (!window.crypto || !window.crypto.subtle) return undefined;
     var data = new TextEncoder().encode(String(value).trim().toLowerCase());
@@ -139,6 +180,9 @@ function buildPixelScript(apiBase: string): string {
 
   function send(clientId, eventName, extra) {
     var eventId = randomId();
+    // Enriquece com o que já sabemos desse visitante de um Lead anterior —
+    // o user_data do evento atual (se houver) tem prioridade sobre o cache.
+    var enrichedUserData = Object.assign({}, getLeadCache(), (extra && extra.user_data) || {});
     var body = Object.assign(
       {
         client_id: clientId,
@@ -150,7 +194,8 @@ function buildPixelScript(apiBase: string): string {
         fbp: getFbp() || undefined,
         fbc: getFbc() || undefined,
       },
-      extra
+      extra,
+      { user_data: enrichedUserData }
     );
     queueFbqTrack(eventName, eventId);
     return fetch(TRACK_URL, {
@@ -238,6 +283,7 @@ function buildPixelScript(apiBase: string): string {
             fieldCount++;
           }
           if (Object.keys(fields).length > 0) pii.fields = fields;
+          mergeLeadCache(userData);
           await send(clientId, "Lead", { user_data: userData, pii: pii });
           clearTimeout(fallback);
           release();
