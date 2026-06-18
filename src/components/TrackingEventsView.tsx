@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
-import { Search, RefreshCw, Calendar, Radar, X, Mail, Phone, MapPin, User, Settings, ChevronDown } from "lucide-react";
+import { Search, RefreshCw, Calendar, Radar, X, Mail, Phone, MapPin, User, Settings, ChevronDown, ShoppingBag, CreditCard, Hash } from "lucide-react";
 import { supabaseClient } from "@/lib/supabase";
 import { useCompany } from "@/hooks/useCompany";
 import { TrackingConfigPanel } from "@/components/TrackingConfigPanel";
+import { EduzzConfigPanel } from "@/components/EduzzConfigPanel";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -18,6 +19,7 @@ interface TrackingEvent {
   user_data: { em?: string; ph?: string } | null;
   lead_email: string | null;
   lead_phone: string | null;
+  lead_name: string | null;
   extra_fields: Record<string, string> | null;
   country: string | null;
   country_region: string | null;
@@ -34,6 +36,12 @@ interface TrackingEvent {
   utm_ad_id: string | null;
   capi_status: "pending" | "sent" | "failed" | "skipped";
   capi_error: string | null;
+  // Venda (Eduzz e futuras plataformas) — ver src/app/api/eduzz/CLAUDE.md.
+  value: number | null;
+  currency: string | null;
+  external_transaction_id: string | null;
+  source: string | null; // "pixel" (default) | "eduzz"
+  payment_method: string | null;
   created_at: string;
 }
 
@@ -50,6 +58,9 @@ interface Visitor {
   lastPageTitle: string | null;
   lastUtm: Record<string, string>;
   lastLocation: { country: string | null; countryRegion: string | null; city: string | null };
+  isCustomer: boolean;
+  totalRevenue: number;
+  purchaseCount: number;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -97,9 +108,10 @@ const UTM_KEYS = [
 ];
 
 const EVENTS_SELECT =
-  "id, event_name, fingerprint_id, event_url, page_title, user_data, lead_email, lead_phone, extra_fields, country, country_region, city, event_id, " +
-  "utm_source, utm_medium, utm_campaign, utm_content, utm_term, utm_placement, utm_campaign_id, utm_adset_id, utm_ad_id, capi_status, capi_error, created_at";
-// Sem as colunas das migrations 033/034/036/038 — usado se alguma delas ainda não rodou
+  "id, event_name, fingerprint_id, event_url, page_title, user_data, lead_email, lead_phone, lead_name, extra_fields, country, country_region, city, event_id, " +
+  "utm_source, utm_medium, utm_campaign, utm_content, utm_term, utm_placement, utm_campaign_id, utm_adset_id, utm_ad_id, " +
+  "value, currency, external_transaction_id, source, payment_method, capi_status, capi_error, created_at";
+// Sem as colunas das migrations 033/034/036/038/039/040 — usado se alguma delas ainda não rodou
 // no banco, pra não derrubar a tela enquanto ela não é aplicada manualmente no Supabase.
 const EVENTS_SELECT_FALLBACK = "id, event_name, fingerprint_id, event_url, user_data, lead_email, lead_phone, capi_status, capi_error, created_at";
 
@@ -200,6 +212,30 @@ function urlPath(url: string | null): string {
   }
 }
 
+function formatMoney(value: number | null, currency: string | null): string {
+  if (value == null) return "—";
+  try {
+    return new Intl.NumberFormat("pt-BR", { style: "currency", currency: currency || "BRL" }).format(value);
+  } catch {
+    return `${currency ?? "BRL"} ${value.toFixed(2)}`;
+  }
+}
+
+// Valores que o formato moderno da Eduzz manda (enum fixo) — formato antigo
+// manda string livre, por isso o fallback é só mostrar o valor cru.
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  bankslip: "Boleto",
+  pix: "Pix",
+  creditCard: "Cartão de crédito",
+  combinedPayment: "Pagamento combinado",
+  installmentBankslip: "Boleto parcelado",
+  unknown: "Desconhecido",
+};
+function paymentMethodLabel(method: string | null): string | null {
+  if (!method) return null;
+  return PAYMENT_METHOD_LABELS[method] ?? method;
+}
+
 // Builders de formulário (Elementor, WP Forms etc.) costumam nomear o input
 // com notação de array — ex.: "form_fields[name]", "data[telefone]" — extrai
 // só o nome legível de dentro dos colchetes e formata como rótulo.
@@ -221,7 +257,12 @@ function groupByVisitor(events: TrackingEvent[]): Visitor[] {
   const visitors: Visitor[] = [];
   for (const [fingerprintId, list] of map) {
     const sorted = [...list].sort((a, b) => b.created_at.localeCompare(a.created_at));
-    const leadEvent = sorted.find((e) => e.lead_email || e.lead_phone);
+    // event_name === "Lead" especificamente — Purchase (venda Eduzz) também
+    // grava lead_email/lead_phone (mesmo comprador), mas não é um cadastro de
+    // formulário, não deve aparecer como "Lead" nem entrar no seletor de
+    // "Dados capturados" do drawer (ver VisitorDrawer).
+    const leadEvent = sorted.find((e) => e.event_name === "Lead");
+    const purchaseEvents = sorted.filter((e) => e.event_name === "Purchase");
     visitors.push({
       fingerprintId,
       events: sorted,
@@ -235,6 +276,9 @@ function groupByVisitor(events: TrackingEvent[]): Visitor[] {
       lastPageTitle: sorted[0].page_title,
       lastUtm: resolveUtm(sorted[0]),
       lastLocation: { country: sorted[0].country, countryRegion: sorted[0].country_region, city: sorted[0].city },
+      isCustomer: purchaseEvents.length > 0,
+      totalRevenue: purchaseEvents.reduce((sum, e) => sum + (e.value ?? 0), 0),
+      purchaseCount: purchaseEvents.length,
     });
   }
 
@@ -265,7 +309,11 @@ function Chip({ label, active, onClick }: { label: string; active: boolean; onCl
 function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => void }) {
   // events vem ordenado do mais recente pro mais antigo (groupByVisitor) — o
   // primeiro lead da lista é o cadastro mais recente, é o default exibido.
-  const leadEvents = visitor.events.filter((e) => e.lead_email || e.lead_phone);
+  // Só event_name === "Lead" — Purchase (venda Eduzz) também grava
+  // lead_email/lead_phone do mesmo comprador, mas tem seu próprio resumo
+  // (purchaseEvents abaixo), não entra nesse seletor de cadastro de formulário.
+  const leadEvents = visitor.events.filter((e) => e.event_name === "Lead");
+  const purchaseEvents = visitor.events.filter((e) => e.event_name === "Purchase");
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const selectedLead = leadEvents.find((e) => e.id === selectedLeadId) ?? leadEvents[0] ?? null;
 
@@ -323,6 +371,31 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
             </div>
           )}
 
+          {purchaseEvents.length > 0 && (
+            <div className="mb-5 rounded-xl border p-3" style={{ borderColor: EVENT_COLORS.Purchase.text, background: "rgba(245,158,11,0.06)" }}>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider" style={{ color: EVENT_COLORS.Purchase.text }}>
+                  <ShoppingBag size={12} /> {purchaseEvents.length > 1 ? `${purchaseEvents.length} compras` : "Compra"}
+                </p>
+                <span className="text-sm font-bold tabular-nums" style={{ color: EVENT_COLORS.Purchase.text }}>
+                  {formatMoney(visitor.totalRevenue, purchaseEvents[0]?.currency)}
+                </span>
+              </div>
+              {purchaseEvents.map((p) => (
+                <div key={p.id} className="mb-1.5 flex flex-wrap items-center gap-1.5 text-xs last:mb-0" style={{ color: "var(--dm-text-primary)" }}>
+                  <span className="font-semibold">{formatMoney(p.value, p.currency)}</span>
+                  {p.extra_fields?.produto && <span style={{ color: "var(--dm-text-tertiary)" }}>· {p.extra_fields.produto}</span>}
+                  {paymentMethodLabel(p.payment_method) && (
+                    <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                      <CreditCard size={10} /> {paymentMethodLabel(p.payment_method)}
+                    </span>
+                  )}
+                  <span className="text-[10px] tabular-nums" style={{ color: "var(--dm-text-tertiary)" }}>{fmt(p.created_at)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
           <p className="mb-3 text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
             Jornada · {timeline.length} evento{timeline.length !== 1 ? "s" : ""}
           </p>
@@ -332,7 +405,7 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
               const evColor = EVENT_COLORS[event.event_name] ?? { bg: "rgba(100,100,100,0.10)", text: "var(--dm-text-tertiary)" };
               const utm = resolveUtm(event);
               const utmEntries = Object.entries(utm);
-              const isLeadEvent = Boolean(event.lead_email || event.lead_phone);
+              const isLeadEvent = event.event_name === "Lead";
               const isSelected = isLeadEvent && event.id === selectedLead?.id;
               return (
                 <div
@@ -380,6 +453,30 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
                       ))}
                     </div>
                   )}
+                  {event.event_name === "Purchase" && (
+                    <div className="mt-1.5 rounded-lg border p-2" style={{ borderColor: EVENT_COLORS.Purchase.text, background: "rgba(245,158,11,0.06)" }}>
+                      <p className="text-sm font-bold" style={{ color: EVENT_COLORS.Purchase.text }}>{formatMoney(event.value, event.currency)}</p>
+                      {event.extra_fields?.produto && (
+                        <p className="mt-0.5 text-[11px]" style={{ color: "var(--dm-text-primary)" }}>{event.extra_fields.produto}</p>
+                      )}
+                      <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                        {event.lead_name && <span className="flex items-center gap-1"><User size={10} /> {event.lead_name}</span>}
+                        {event.lead_email && <span className="flex items-center gap-1"><Mail size={10} /> {event.lead_email}</span>}
+                        {event.lead_phone && <span className="flex items-center gap-1"><Phone size={10} /> {event.lead_phone}</span>}
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                        {paymentMethodLabel(event.payment_method) && (
+                          <span className="flex items-center gap-1"><CreditCard size={10} /> {paymentMethodLabel(event.payment_method)}</span>
+                        )}
+                        {event.external_transaction_id && (
+                          <span className="flex items-center gap-1 font-mono"><Hash size={10} /> {event.external_transaction_id}</span>
+                        )}
+                        {event.source && event.source !== "pixel" && (
+                          <span className="rounded-full px-1.5 py-0.5 font-semibold" style={{ background: "rgba(100,116,139,0.12)" }}>via {event.source}</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
                   <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                     <span
                       className="inline-block rounded-full px-2 py-0.5 text-[9px] font-semibold"
@@ -422,6 +519,7 @@ export function TrackingEventsView() {
   const [dateTo, setDateTo] = useState(() => new Date().toISOString().split("T")[0]);
 
   const [configOpen, setConfigOpen] = useState(false);
+  const [configTab, setConfigTab] = useState<"pixel" | "eduzz">("pixel");
 
   const fetchEvents = useCallback(async () => {
     if (!supabaseClient) {
@@ -459,9 +557,10 @@ export function TrackingEventsView() {
     const missingNewColumn = [
       "page_title", "extra_fields", "country", "country_region", "city", "event_id",
       "utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "utm_placement", "utm_campaign_id", "utm_adset_id", "utm_ad_id",
+      "lead_name", "value", "currency", "external_transaction_id", "source", "payment_method",
     ].some((col) => eventsRes.error?.message?.includes(col));
     if (missingNewColumn) {
-      // Migration 033/034/038 ainda não rodou no Supabase — busca sem as colunas novas em vez de quebrar a tela.
+      // Migration 033/034/038/039/040 ainda não rodou no Supabase — busca sem as colunas novas em vez de quebrar a tela.
       const retry = await supabaseClient
         .from("events_log")
         .select(EVENTS_SELECT_FALLBACK)
@@ -559,10 +658,30 @@ export function TrackingEventsView() {
         </div>
       </div>
 
-      {/* Config do pixel — instalação, domínio autorizado e Meta CAPI (opcional) */}
+      {/* Config — pixel próprio (instalação/Meta CAPI) e venda externa (Eduzz) que vira Purchase */}
       {configOpen && company && (
         <div className="mb-5 rounded-2xl border p-4" style={{ borderColor: "var(--dm-primary)", backgroundColor: "var(--dm-bg-surface)" }}>
-          <TrackingConfigPanel company={company} canEdit={canWrite} />
+          <div className="mb-4 flex gap-1 rounded-xl border p-0.5" style={{ borderColor: "var(--dm-border-default)" }}>
+            {([
+              ["pixel", "Pixel (Meta Ads)"],
+              ["eduzz", "Vendas (Eduzz)"],
+            ] as ["pixel" | "eduzz", string][]).map(([tab, label]) => (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => setConfigTab(tab)}
+                className="h-9 flex-1 rounded-lg text-xs font-bold transition"
+                style={configTab === tab ? { background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)", color: "#fff" } : { color: "var(--dm-text-tertiary)" }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {configTab === "pixel" ? (
+            <TrackingConfigPanel company={company} canEdit={canWrite} />
+          ) : (
+            <EduzzConfigPanel company={company} canEdit={canWrite} />
+          )}
         </div>
       )}
 
@@ -667,7 +786,7 @@ export function TrackingEventsView() {
           <table className="w-full min-w-[680px] text-xs">
             <thead>
               <tr style={{ borderBottom: "1px solid var(--dm-border-default)", background: "var(--dm-bg-elevated)" }}>
-                {["Visitante", "Última ação", "Eventos", "Origem / UTM", "Local", "Lead"].map((h) => (
+                {["Visitante", "Última ação", "Eventos", "Origem / UTM", "Local", "Conversão"].map((h) => (
                   <th key={h} className="px-4 py-2.5 text-left font-semibold" style={{ color: "var(--dm-text-tertiary)" }}>
                     {h}
                   </th>
@@ -715,13 +834,19 @@ export function TrackingEventsView() {
                       {formatLocation(visitor.lastLocation) || <span style={{ color: "var(--dm-text-tertiary)" }}>—</span>}
                     </td>
                     <td className="px-4 py-2.5">
-                      {visitor.isLead ? (
-                        <span className="rounded-full px-2 py-0.5 text-[9px] font-semibold whitespace-nowrap" style={{ background: EVENT_COLORS.Lead.bg, color: EVENT_COLORS.Lead.text }}>
-                          ✓ converteu
-                        </span>
-                      ) : (
-                        <span style={{ color: "var(--dm-text-tertiary)" }}>—</span>
-                      )}
+                      <div className="flex flex-wrap items-center gap-1">
+                        {visitor.isLead && (
+                          <span className="rounded-full px-2 py-0.5 text-[9px] font-semibold whitespace-nowrap" style={{ background: EVENT_COLORS.Lead.bg, color: EVENT_COLORS.Lead.text }}>
+                            ✓ converteu
+                          </span>
+                        )}
+                        {visitor.isCustomer && (
+                          <span className="rounded-full px-2 py-0.5 text-[9px] font-semibold whitespace-nowrap" style={{ background: EVENT_COLORS.Purchase.bg, color: EVENT_COLORS.Purchase.text }}>
+                            💰 {formatMoney(visitor.totalRevenue, visitor.events.find((e) => e.event_name === "Purchase")?.currency ?? null)}
+                          </span>
+                        )}
+                        {!visitor.isLead && !visitor.isCustomer && <span style={{ color: "var(--dm-text-tertiary)" }}>—</span>}
+                      </div>
                     </td>
                   </tr>
                 );

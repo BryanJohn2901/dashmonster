@@ -279,6 +279,10 @@ async function recordSale(db: SupabaseClient, companyId: string, sale: SaleEvent
     lead_email: sale.email,
     lead_phone: sale.phone,
     lead_name: sale.name,
+    // Mesmo campo que humanizeFieldKey()/extra_fields já usa pro Lead — o
+    // dashboard (TrackingEventsView) exibe "produto" como rótulo bonito no
+    // card da Purchase, sem precisar de coluna nova só pra isso.
+    extra_fields: { produto: sale.productName },
     capi_status: metaConfigured ? "pending" : "skipped",
     country,
     country_region: countryRegion,
