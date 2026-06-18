@@ -2,32 +2,10 @@ import { createHash } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { geolocation } from "@vercel/functions";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-
-const META_API_VERSION = "v19.0";
-
-// Normalização oficial da Meta antes de hashear (trim + lowercase — mesma regra
-// usada no template GTM oficial da Meta pra em/fn/ln/ct/st/zp/country): nunca
-// mexer nisso sem checar a doc, hash diferente = perde o match na Meta.
-function hashLower(value: string | undefined | null): string | undefined {
-  const normalized = value?.trim().toLowerCase();
-  if (!normalized) return undefined;
-  return createHash("sha256").update(normalized).digest("hex");
-}
-
-// Colunas adicionadas em migrations recentes, agrupadas por migration —
-// como o deploy do código (git push) é automático mas a migration é rodada
-// manualmente no Supabase, sempre existe uma janela onde o código já espera
-// uma coluna que o banco ainda não tem. Em vez de perder o evento, insertEvent
-// detecta a coluna ausente pela mensagem de erro do Postgres e regrava sem o
-// grupo inteiro daquela migration, tentando de novo.
-const OPTIONAL_COLUMN_GROUPS: string[][] = [
-  ["page_title", "extra_fields"], // migration 033
-  ["country", "country_region", "city"], // migration 034
-  ["event_id"], // migration 036
-  ["pixel_id"], // migration 037
-  ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "utm_placement", "utm_campaign_id", "utm_adset_id", "utm_ad_id"], // migration 038
-  ["lead_name", "postal_code", "latitude", "longitude", "device_type"], // migration 039
-];
+import { hashLower } from "@/lib/metaHash";
+import { insertEventsLogRow } from "@/lib/eventsLogInsert";
+import { sendMetaCapiEvent } from "@/lib/metaCapi";
+import { type ResolvedPixel, selectLegacyCompanyConfig } from "@/lib/resolvePixel";
 
 // Classifica o User-Agent (já chega em toda request) em 3 baldes pra relatório
 // futuro de "performance por dispositivo" — guarda só a categoria, não o UA
@@ -93,45 +71,9 @@ function parseUtmColumns(eventUrl: string): Record<string, string | null> {
   return out;
 }
 
-async function insertEvent(db: ReturnType<typeof supabaseAdmin>, fullRow: Record<string, unknown>) {
-  const candidate = { ...fullRow };
-  let result = await db.from("events_log").insert(candidate).select("id").single();
-
-  for (const group of OPTIONAL_COLUMN_GROUPS) {
-    if (!result.error) break;
-    const missing = group.some((col) => col in candidate && result.error?.message?.includes(col));
-    if (!missing) continue;
-    console.warn(`[tracking] colunas ${group.join("/")} ausentes (migration pendente), gravando sem elas`);
-    for (const col of group) delete candidate[col];
-    result = await db.from("events_log").insert(candidate).select("id").single();
-  }
-
-  return result;
-}
-
-interface ResolvedPixel {
-  companyId: string;
-  /** null = migration 037 ainda não rodou (config lida das colunas legadas de `companies`) ou a empresa ainda não criou nenhum pixel. */
-  pixelId: string | null;
-  meta_pixel_id: string | null;
-  meta_capi_token: string | null;
-  dominio_autorizado: string | null;
-  meta_test_event_code: string | null;
-}
-
-// Antes da migration 037, a config de tracking era 4 colunas direto em
-// `companies` (1 pixel por empresa). Mesma resiliência de sempre: se a coluna
-// meta_test_event_code (036) ainda não existir, cai pra sem ela.
-async function selectLegacyCompanyConfig(db: ReturnType<typeof supabaseAdmin>, companyId: string) {
-  const FULL = "meta_pixel_id, meta_capi_token, dominio_autorizado, meta_test_event_code";
-  const FALLBACK = "meta_pixel_id, meta_capi_token, dominio_autorizado";
-  const full = await db.from("companies").select(FULL).eq("id", companyId).single();
-  if (full.error?.message?.includes("meta_test_event_code")) {
-    const fallback = await db.from("companies").select(FALLBACK).eq("id", companyId).single();
-    return fallback.data ? { ...fallback.data, meta_test_event_code: null } : null;
-  }
-  return full.data ?? null;
-}
+// ResolvedPixel/selectLegacyCompanyConfig agora vivem em @/lib/resolvePixel —
+// compartilhados com eduzz/webhook/route.ts, que resolve o pixel pelo id
+// (pixel da visita correlacionada) ou pelo padrão da empresa, em vez de por slug.
 
 // Resolve a empresa (por slug) e qual pixel de tracking usar: o `pixel_slug`
 // do payload (cada landing page tem o seu, migration 037) ou o pixel marcado
@@ -324,7 +266,7 @@ export async function POST(request: NextRequest) {
     capi_status: metaConfigured ? "pending" : "skipped",
   };
 
-  const { data: inserted, error: insertError } = await insertEvent(db, {
+  const { data: inserted, error: insertError } = await insertEventsLogRow(db, {
     ...baseRow,
     page_title: payload.page_title?.trim() || null,
     extra_fields: payload.pii?.fields ?? {},
@@ -339,6 +281,12 @@ export async function POST(request: NextRequest) {
     latitude: geo.latitude ?? null,
     longitude: geo.longitude ?? null,
     device_type: classifyDevice(userAgent),
+    // fbp/fbc já eram repassados pra Meta CAPI (abaixo) mas nunca ficavam
+    // salvos — migration 040. Persistir é o que permite uma venda da Eduzz,
+    // quando correlacionada por email/telefone a esta visita, reaproveitar
+    // o cookie de clique em vez de mandar a Purchase sem nenhum sinal de clique.
+    fbp: payload.fbp?.trim() || null,
+    fbc: payload.fbc?.trim() || null,
   });
 
   if (insertError || !inserted) {
@@ -350,78 +298,48 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ received: true }, { status: 200, headers });
   }
 
-  // Falha na CAPI nunca pode virar 500 pro pixel — o form do cliente não
-  // pode travar esperando a Meta responder. Pixel sempre recebe 200 rápido.
-  try {
-    const capiPayload = {
-      data: [
-        {
-          event_name: payload.event_name,
-          event_time: Math.floor(Date.now() / 1000),
-          // Mesmo event_id que o pixel manda pro fbq('track', ..., {eventID})
-          // no navegador — sem isso a Meta não consegue deduplicar Pixel+CAPI
-          // e cada conversão conta em dobro (1x via browser, 1x via server).
-          event_id: payload.event_id || undefined,
-          action_source: "website",
-          event_source_url: payload.event_url,
-          user_data: {
-            // em/ph/fn/ln já chegam hasheados do pixel.js (mesma normalização
-            // trim+lowercase, ver sha256Hex no pixel.js) — servidor só repassa.
-            em: payload.user_data?.em,
-            ph: payload.user_data?.ph,
-            fn: payload.user_data?.fn,
-            ln: payload.user_data?.ln,
-            client_ip_address: ip,
-            client_user_agent: userAgent,
-            // fbp/fbc NÃO são hasheados (são identificadores de clique/browser,
-            // não PII) — manda como string crua, é o que a Meta espera.
-            fbp: payload.fbp || undefined,
-            fbc: payload.fbc || undefined,
-            // País/estado/cidade vêm do geo-IP da Vercel (geo, calculado acima)
-            // — únicos campos hasheados no servidor, porque só o servidor sabe
-            // a localização (o browser não manda isso). zp (CEP) também vem
-            // de graça do geo-IP quando a Vercel resolve.
-            country: hashLower(geo.country),
-            st: hashLower(geo.countryRegion),
-            ct: hashLower(geo.city),
-            zp: hashLower(geo.postalCode),
-            // external_id: hash do _dm_uid persistente — não é PII, mas a Meta
-            // recomenda mandar hasheado por consistência com os outros campos.
-            external_id: hashLower(payload.user_id),
-          },
-          custom_data: payload.custom_data ?? {},
-        },
-      ],
-      // Só presente durante teste manual (Events Manager → Eventos de teste);
-      // por design da própria Meta, deve ser removido depois de validar.
-      ...(resolved.meta_test_event_code ? { test_event_code: resolved.meta_test_event_code } : {}),
-    };
-
-    const capiUrl = `https://graph.facebook.com/${META_API_VERSION}/${resolved.meta_pixel_id}/events?access_token=${resolved.meta_capi_token}`;
-    const capiRes = await fetch(capiUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(capiPayload),
-    });
-    const capiJson = (await capiRes.json()) as { error?: { message?: string } };
-
-    await db
-      .from("events_log")
-      .update(
-        capiRes.ok && !capiJson.error
-          ? { capi_status: "sent" }
-          : { capi_status: "failed", capi_error: capiJson.error?.message ?? `HTTP ${capiRes.status}` },
-      )
-      .eq("id", inserted.id);
-  } catch (err) {
-    await db
-      .from("events_log")
-      .update({
-        capi_status: "failed",
-        capi_error: err instanceof Error ? err.message : "Erro desconhecido",
-      })
-      .eq("id", inserted.id);
-  }
+  await sendMetaCapiEvent(db, {
+    metaPixelId: resolved.meta_pixel_id!,
+    metaCapiToken: resolved.meta_capi_token!,
+    testEventCode: resolved.meta_test_event_code,
+    eventLogId: inserted.id,
+    eventData: {
+      event_name: payload.event_name,
+      event_time: Math.floor(Date.now() / 1000),
+      // Mesmo event_id que o pixel manda pro fbq('track', ..., {eventID})
+      // no navegador — sem isso a Meta não consegue deduplicar Pixel+CAPI
+      // e cada conversão conta em dobro (1x via browser, 1x via server).
+      event_id: payload.event_id || undefined,
+      action_source: "website",
+      event_source_url: payload.event_url,
+      user_data: {
+        // em/ph/fn/ln já chegam hasheados do pixel.js (mesma normalização
+        // trim+lowercase, ver sha256Hex no pixel.js) — servidor só repassa.
+        em: payload.user_data?.em,
+        ph: payload.user_data?.ph,
+        fn: payload.user_data?.fn,
+        ln: payload.user_data?.ln,
+        client_ip_address: ip,
+        client_user_agent: userAgent,
+        // fbp/fbc NÃO são hasheados (são identificadores de clique/browser,
+        // não PII) — manda como string crua, é o que a Meta espera.
+        fbp: payload.fbp || undefined,
+        fbc: payload.fbc || undefined,
+        // País/estado/cidade vêm do geo-IP da Vercel (geo, calculado acima)
+        // — únicos campos hasheados no servidor, porque só o servidor sabe
+        // a localização (o browser não manda isso). zp (CEP) também vem
+        // de graça do geo-IP quando a Vercel resolve.
+        country: hashLower(geo.country),
+        st: hashLower(geo.countryRegion),
+        ct: hashLower(geo.city),
+        zp: hashLower(geo.postalCode),
+        // external_id: hash do _dm_uid persistente — não é PII, mas a Meta
+        // recomenda mandar hasheado por consistência com os outros campos.
+        external_id: hashLower(payload.user_id),
+      },
+      custom_data: payload.custom_data ?? {},
+    },
+  });
 
   return NextResponse.json({ received: true }, { status: 200, headers });
 }

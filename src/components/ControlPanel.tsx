@@ -2138,12 +2138,15 @@ export function TabIntegrations({ onSyncNow }: { onSyncNow?: () => void }) {
 
 const EDUZZ_WEBHOOK_SECRET_KEY = "eduzz_webhook_secret";
 
+type EduzzWebhookKind = "legacy" | "modern";
+
 function AdditionalSourcesSection() {
   const { company } = useCompany();
   const settings = company?.settings ?? {};
 
   const [sheetUrl, setSheetUrl] = useState(() => String(settings[LEADS_SHEET_URL_KEY] ?? ""));
   const [eduzzSecret, setEduzzSecret] = useState(() => String(settings[EDUZZ_WEBHOOK_SECRET_KEY] ?? ""));
+  const [eduzzKind, setEduzzKind] = useState<EduzzWebhookKind>("modern");
   const [savingSheet, setSavingSheet] = useState(false);
   const [sheetMsg, setSheetMsg] = useState("");
   const [savedSecret, setSavedSecret] = useState(false);
@@ -2238,7 +2241,7 @@ function AdditionalSourcesSection() {
           </div>
           <div>
             <p className="text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>Vendas Eduzz</p>
-            <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>Webhook em tempo real (myeduzz → Notificações)</p>
+            <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>Webhook em tempo real · vira receita no dashboard e Purchase pra Meta Ads</p>
           </div>
         </div>
 
@@ -2272,8 +2275,42 @@ function AdditionalSourcesSection() {
             {savedSecret ? <CheckCircle2 size={11} /> : <Save size={11} />}
             {savedSecret ? "Salvo!" : "Salvar segredo"}
           </button>
+
+          {/* A URL acima funciona pros 2 jeitos de cadastrar na Eduzz — só a
+              tela de cadastro do lado da Eduzz muda. O moderno (Órbita) manda
+              telefone do comprador também, então gera Purchase com mais
+              qualidade de match na Meta; o antigo (MyEduzz) só manda email. */}
+          <div className="flex gap-1 rounded-lg border p-0.5" style={{ borderColor: "var(--dm-border-default)" }}>
+            {([
+              ["modern", "Órbita (novo)"],
+              ["legacy", "MyEduzz (antigo)"],
+            ] as [EduzzWebhookKind, string][]).map(([kind, label]) => (
+              <button key={kind} type="button" onClick={() => setEduzzKind(kind)}
+                className="h-7 flex-1 rounded-md text-[11px] font-semibold transition"
+                style={
+                  eduzzKind === kind
+                    ? { backgroundColor: "var(--dm-brand-500)", color: "#fff" }
+                    : { color: "var(--dm-text-tertiary)" }
+                }>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {eduzzKind === "modern" ? (
+            <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+              Cadastre na Eduzz em <strong style={{ color: "var(--dm-text-secondary)" }}>Órbita → Webhooks</strong>, evento{" "}
+              <strong style={{ color: "var(--dm-text-secondary)" }}>&quot;Fatura paga&quot;</strong>, colando a URL acima. Manda email e
+              telefone do comprador — gera evento de compra pra Meta Ads com Match Quality melhor. Recomendado.
+            </p>
+          ) : (
+            <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+              Cadastre na Eduzz em <strong style={{ color: "var(--dm-text-secondary)" }}>MyEduzz → Ferramentas → Notificações</strong>,
+              colando a URL acima. Só manda email do comprador (sem telefone) — funciona, mas com Match Quality menor na Meta.
+            </p>
+          )}
           <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
-            Cole a URL acima no Eduzz. Só vendas <strong>pagas</strong> entram no dashboard como receita.
+            Só vendas <strong>pagas</strong> entram no dashboard como receita.
           </p>
         </div>
       </section>
