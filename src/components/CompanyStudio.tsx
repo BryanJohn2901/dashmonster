@@ -82,7 +82,7 @@ export function CompanyStudio({ categories = [], onNavigate, focusSection }: {
   /** Abre + rola até essa seção ao montar/mudar (ex: vindo de "Configurar agora" na aba Tracking). */
   focusSection?: SectionId | null;
 }) {
-  const { company, role, isOwner, loading, migrationMissing, memberships, switchCompany, isSuperAdmin } = useCompany();
+  const { company, role, isOwner, canWrite, loading, migrationMissing, memberships, switchCompany, isSuperAdmin } = useCompany();
   const [open, setOpen] = useState<Set<SectionId>>(new Set(["conexao", "contas"]));
   const toggle = (id: SectionId) => setOpen((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
@@ -203,7 +203,7 @@ export function CompanyStudio({ categories = [], onNavigate, focusSection }: {
       {/* ── Seções ── */}
       <IdentidadeSection company={company} canEdit={isOwner} open={open.has("identidade")} onToggle={toggle} />
       <ConexaoSection company={company} canEdit={isOwner} token={token} onToken={setTokenVal} open={open.has("conexao")} onToggle={toggle} />
-      <TrackingSection company={company} canEdit={isOwner} tracking={tracking} onTracking={setTrackingVal} open={open.has("tracking")} onToggle={toggle} />
+      <TrackingSection company={company} canEdit={canWrite} tracking={tracking} onTracking={setTrackingVal} open={open.has("tracking")} onToggle={toggle} />
       <ContasSection company={company} canEdit={isOwner} suggestions={suggestions} open={open.has("contas")} onToggle={toggle} />
       <FiltrosSection filters={enabledFilters} onNavigate={onNavigate} open={open.has("filtros")} onToggle={toggle} />
       <HistoricoSection company={company} canEdit={isOwner} customTabs={customTabs} totalTabs={totalHistoryTabs} open={open.has("historico")} onToggle={toggle} />

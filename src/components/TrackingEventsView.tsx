@@ -375,7 +375,7 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
 const EMPTY_TRACKING_CONFIG: TrackingConfig = { metaPixelId: "", metaCapiToken: "", dominioAutorizado: "" };
 
 export function TrackingEventsView() {
-  const { company, companyId, isOwner } = useCompany();
+  const { company, companyId, canWrite } = useCompany();
   const [events, setEvents] = useState<TrackingEvent[]>([]);
   const [config, setConfig] = useState<TrackingBannerConfig | null>(null);
   const [loading, setLoading] = useState(false);
@@ -535,7 +535,7 @@ export function TrackingEventsView() {
       {/* Config do pixel — instalação, domínio autorizado e Meta CAPI (opcional) */}
       {configOpen && company && (
         <div className="mb-5 rounded-2xl border p-4" style={{ borderColor: "var(--dm-primary)", backgroundColor: "var(--dm-bg-surface)" }}>
-          <TrackingConfigPanel company={company} canEdit={isOwner} tracking={trackingConfig} onTracking={setTrackingConfig} />
+          <TrackingConfigPanel company={company} canEdit={canWrite} tracking={trackingConfig} onTracking={setTrackingConfig} />
         </div>
       )}
 

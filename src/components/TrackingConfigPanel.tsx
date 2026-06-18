@@ -60,7 +60,7 @@ export function TrackingConfigPanel({ company, canEdit, tracking, onTracking }: 
     <div className="space-y-3">
       {!canEdit && (
         <p className="rounded-lg border px-3 py-2 text-[11px] font-semibold" style={{ borderColor: "#F4A60D", background: "rgba(244,166,13,0.08)", color: "#F4A60D" }}>
-          Somente o dono da empresa pode editar essas configurações — os campos abaixo estão travados pro seu papel atual.
+          Somente o dono ou o gestor de tráfego da empresa podem editar essas configurações — os campos abaixo estão travados pro seu papel atual.
         </p>
       )}
       <p className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>

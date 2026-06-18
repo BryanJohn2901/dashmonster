@@ -280,3 +280,13 @@ Pedido: capturar País/Estado/Cidade em todo evento, "lógica inteligente, moder
 **`track-event/route.ts`**: `geolocation(request)` lido uma vez por request, gravado junto no insert. Entra no novo grupo `["country", "country_region", "city"]` de `OPTIONAL_COLUMN_GROUPS` — mesma resiliência da seção 15 se a 034 ainda não tiver rodado.
 
 **`TrackingEventsView.tsx`**: nova coluna "Local" na tabela (1 por visitante, última localização conhecida) e linha de localização em cada evento da jornada no drawer. `flagEmoji()` calcula a bandeira a partir do código ISO no client (sem guardar emoji no banco) e `formatLocation()` monta "🇧🇷 São Paulo, SP · BR".
+
+## 17. Config do pixel direto na aba Tracking + Gestor de tráfego pode editar ✅ feito
+
+Pedido 1: "quero que essa tela/configurações esteja na página tracking" — o formulário de config (antes só em Estúdio da Empresa) virou um componente compartilhado, `TrackingConfigPanel` (`src/components/TrackingConfigPanel.tsx`), usado tanto lá quanto num painel colapsável "Configuração" direto na aba Tracking (botão no header, e o aviso "Meta não configurada" agora abre esse painel local em vez de navegar pra outra aba). Limpou a navegação cruzada `focusStudioSection` que ficou morta depois disso (estava em `Dashboard.tsx`/`MyAccount.tsx`).
+
+Pedido 2: usuário reportou campos travados sem explicação — `canEdit` era `isOwner` (só dono), sem nenhum aviso visual do motivo. Adicionei um aviso quando `!canEdit`. Veio então o pedido seguinte: "quero que o Gestor de tráfego também consiga editar".
+
+**Migration `035_tracking_manager_write.sql`**: a policy de UPDATE em `companies` (`companies_owner_update`, de `021_companies_multi_tenant.sql`) era owner-only pra **toda** a tabela — não dava pra abrir só as 3 colunas de tracking pra manager sem reescrever a RLS. Solução: policy passa a aceitar `can_write_company` (owner OU manager), e um trigger `BEFORE UPDATE` (`check_companies_update_scope`) restringe manager a só alterar `meta_pixel_id`/`meta_capi_token`/`dominio_autorizado` — qualquer outra coluna alterada por um manager aborta a transação. **Whitelist proposital** (lista o que manager *pode* mexer, não o que não pode): colunas novas de migrations futuras ficam owner-only por padrão, sem precisar lembrar de atualizar este trigger toda vez que `companies` ganhar uma coluna nova.
+
+`canEdit` nos dois lugares (`CompanyStudio.tsx`'s `TrackingSection`, `TrackingEventsView.tsx`) passou de `isOwner` pra `canWrite` (owner ou manager) — só pra essa seção, as outras (Identidade, Equipe etc.) continuam `isOwner`-only.

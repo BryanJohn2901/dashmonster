@@ -315,7 +315,7 @@ export async function fetchCompanyTracking(companyId: string): Promise<TrackingC
   };
 }
 
-/** Grava a config do tracking pixel de uma empresa (RLS: owner). String vazia limpa o campo. */
+/** Grava a config do tracking pixel de uma empresa (RLS: owner OU manager, migration 035 — trigger restringe manager só a essas 3 colunas). String vazia limpa o campo. */
 export async function setCompanyTracking(companyId: string, config: TrackingConfig): Promise<void> {
   if (!supabaseClient) throw new Error("Supabase não configurado.");
   const { error } = await supabaseClient
