@@ -20,16 +20,16 @@
   e veja os eventos chegando como "1 evento de 2 fontes" (Navegador + Servidor) já deduplicados.</p>
 
   <form action="https://example.com/obrigado" method="get">
-    <label>Nome
+    <label>Nome (campo "nome" — vira fn+ln separados no user_data)
       <input type="text" name="nome" value="Visitante Teste" required />
     </label>
     <label>Email
       <input type="email" name="email" value="teste@exemplo.com" required />
     </label>
-    <label>Telefone
-      <input type="tel" name="phone" value="11999999999" required />
+    <label>Telefone (com máscara — testa normalização antes do hash)
+      <input type="tel" name="phone" value="(11) 99999-9999" required />
     </label>
-    <label>Cidade
+    <label>Cidade (campo livre — não vai pra Meta, só país/estado/cidade do geo-IP vão)
       <input type="text" name="cidade" value="São Paulo" />
     </label>
     <button type="submit">Enviar (Lead)</button>

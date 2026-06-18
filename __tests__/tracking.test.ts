@@ -1,4 +1,9 @@
+import { createHash } from "crypto";
 import { NextRequest } from "next/server";
+
+function sha256(value: string) {
+  return createHash("sha256").update(value.trim().toLowerCase()).digest("hex");
+}
 
 const mockSingle = jest.fn();
 const mockSelect = jest.fn(() => ({ eq: () => ({ single: mockSingle }) }));
@@ -231,6 +236,52 @@ describe("POST /api/tracking/track-event", () => {
     expect(sentBody.data[0].event_id).toBe("evt-uuid-123");
     expect(sentBody.data[0].user_data.fbp).toBe("fb.1.123.456");
     expect(sentBody.data[0].user_data.fbc).toBe("fb.1.123.fbclid-abc");
+  });
+
+  it("manda fn/ln (pass-through, já hasheados pelo pixel) pra Meta CAPI", async () => {
+    mockSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    await POST(
+      buildRequest({
+        client_id: "acme",
+        event_name: "Lead",
+        event_url: "http://localhost:3000/",
+        user_data: { fn: "hash-first-name", ln: "hash-last-name" },
+      }),
+    );
+
+    const sentBody = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+    expect(sentBody.data[0].user_data.fn).toBe("hash-first-name");
+    expect(sentBody.data[0].user_data.ln).toBe("hash-last-name");
+  });
+
+  it("hasheia país/estado/cidade/CEP (geo-IP da Vercel) e external_id (user_id) pra Meta CAPI", async () => {
+    mockSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    const req = new NextRequest("http://localhost:3000/api/tracking/track-event", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: "http://localhost:3000",
+        "x-vercel-ip-country": "BR",
+        "x-vercel-ip-country-region": "SP",
+        "x-vercel-ip-city": "S%C3%A3o%20Paulo",
+        "x-vercel-ip-postal-code": "01310-100",
+      },
+      body: JSON.stringify({
+        client_id: "acme",
+        event_name: "PageView",
+        event_url: "http://localhost:3000/",
+        user_id: "uuid-persistente-123",
+      }),
+    });
+
+    await POST(req);
+
+    const sentBody = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+    expect(sentBody.data[0].user_data.country).toBe(sha256("BR"));
+    expect(sentBody.data[0].user_data.st).toBe(sha256("SP"));
+    expect(sentBody.data[0].user_data.ct).toBe(sha256("São Paulo"));
+    expect(sentBody.data[0].user_data.zp).toBe(sha256("01310-100"));
+    expect(sentBody.data[0].user_data.external_id).toBe(sha256("uuid-persistente-123"));
   });
 
   it("inclui test_event_code no payload da CAPI quando a empresa tem código de teste", async () => {

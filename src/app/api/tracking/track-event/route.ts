@@ -5,6 +5,15 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 const META_API_VERSION = "v19.0";
 
+// Normalização oficial da Meta antes de hashear (trim + lowercase — mesma regra
+// usada no template GTM oficial da Meta pra em/fn/ln/ct/st/zp/country): nunca
+// mexer nisso sem checar a doc, hash diferente = perde o match na Meta.
+function hashLower(value: string | undefined | null): string | undefined {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) return undefined;
+  return createHash("sha256").update(normalized).digest("hex");
+}
+
 // Colunas adicionadas em migrations recentes, agrupadas por migration —
 // como o deploy do código (git push) é automático mas a migration é rodada
 // manualmente no Supabase, sempre existe uma janela onde o código já espera
@@ -62,7 +71,8 @@ interface TrackEventPayload {
   /** Cookies _fbp/_fbc da Meta (não hasheados) — texto puro pro user_data da CAPI, melhora o Event Match Quality. */
   fbp?: string;
   fbc?: string;
-  user_data?: { em?: string; ph?: string };
+  /** em/ph/fn/ln já chegam hasheados (SHA-256) do pixel.js — servidor só repassa. */
+  user_data?: { em?: string; ph?: string; fn?: string; ln?: string };
   /** Email/telefone/demais campos em texto puro (não hasheados) — só pra exibição no dashboard, NUNCA repassados à Meta. */
   pii?: { email?: string; phone?: string; fields?: Record<string, string> };
   custom_data?: Record<string, unknown>;
@@ -209,14 +219,29 @@ export async function POST(request: NextRequest) {
           action_source: "website",
           event_source_url: payload.event_url,
           user_data: {
+            // em/ph/fn/ln já chegam hasheados do pixel.js (mesma normalização
+            // trim+lowercase, ver sha256Hex no pixel.js) — servidor só repassa.
             em: payload.user_data?.em,
             ph: payload.user_data?.ph,
+            fn: payload.user_data?.fn,
+            ln: payload.user_data?.ln,
             client_ip_address: ip,
             client_user_agent: userAgent,
             // fbp/fbc NÃO são hasheados (são identificadores de clique/browser,
             // não PII) — manda como string crua, é o que a Meta espera.
             fbp: payload.fbp || undefined,
             fbc: payload.fbc || undefined,
+            // País/estado/cidade vêm do geo-IP da Vercel (geo, calculado acima)
+            // — únicos campos hasheados no servidor, porque só o servidor sabe
+            // a localização (o browser não manda isso). zp (CEP) também vem
+            // de graça do geo-IP quando a Vercel resolve.
+            country: hashLower(geo.country),
+            st: hashLower(geo.countryRegion),
+            ct: hashLower(geo.city),
+            zp: hashLower(geo.postalCode),
+            // external_id: hash do _dm_uid persistente — não é PII, mas a Meta
+            // recomenda mandar hasheado por consistência com os outros campos.
+            external_id: hashLower(payload.user_id),
           },
           custom_data: payload.custom_data ?? {},
         },

@@ -322,3 +322,17 @@ Pedido: "quero fazer um evento teste, entro na página testo os eventos e vejo s
 **`TrackingEventsView.tsx`**: cada evento na jornada do drawer agora mostra o `event_id` (8 primeiros chars) ao lado do status CAPI, pra cross-check manual contra o Diagnóstico da Meta. Status CAPI passou a aparecer em todo evento (antes só aparecia em Lead, mas PageView também é mandado pra CAPI quando configurado).
 
 **Fluxo de teste pro usuário**: Events Manager → Eventos de teste → copiar código → colar em Configuração (aba Tracking) → salvar → navegar na própria página de teste → ver "1 evento de 2 fontes" (Navegador + Servidor) aparecendo em tempo real, já deduplicado.
+
+## 19. Inventário completo do user_data — fn/ln, geo, external_id, normalização de telefone ✅ feito
+
+Pedido: "estamos enviando tudo conforme eles pedem? Cite tudo que estamos enviando" — auditoria do que ia pra Meta CAPI. Antes da seção 18 já mandávamos `em`/`ph`/`fbp`/`fbc`/`client_ip_address`/`client_user_agent`. Faltava: `fn`/`ln` (nome), `country`/`st`/`ct`/`zp` (já capturávamos via geo-IP pro nosso dashboard, mas não repassávamos pra Meta) e `external_id`.
+
+**`pixel.js`**: `attachFormListener` agora detecta campos de nome por `name`/`id` (`first_name`/`fname`/`nome`, `last_name`/`lname`/`sobrenome`) ou `autocomplete` (`given-name`/`family-name`/`name`) — um campo único "nome completo" é separado no primeiro espaço em `fn`+`ln`. Não substitui a captura genérica em `extra_fields` (dashboard continua mostrando o nome em texto puro), só *adiciona* o hash pro `user_data`.
+
+**Bug encontrado e corrigido na mesma auditoria**: telefone só passava por `sha256Hex` (trim+lowercase) sem normalização própria — um telefone com máscara tipo `(11) 99999-9999` gerava um hash que a Meta não reconhece (ela espera só dígitos, com DDI, sem `+`/`-`/espaço/parênteses). Adicionado `normalizePhone()` antes do hash.
+
+**`track-event/route.ts`**: novo helper `hashLower()` (trim+lowercase+SHA-256, mesma normalização do template GTM oficial da Meta) usado pra hashear `country`/`st`/`ct`/`zp` a partir do `geo` (geo-IP da Vercel, mesmo que já alimenta `events_log.country/country_region/city` desde a seção 16) e `external_id` a partir do `_dm_uid` persistente. `fn`/`ln` chegam já hasheados do pixel, servidor só repassa (mesmo padrão de `em`/`ph`).
+
+Pesquisei a normalização oficial no template GTM da própria Meta (`facebookincubator/ConversionsAPI-Tag-for-GoogleTagManager`) antes de implementar, em vez de adivinhar — trim+lowercase pra tudo, exceto telefone (só dígitos).
+
+**`user_data` completo hoje**: `em`, `ph`, `fn`, `ln`, `country`, `st`, `ct`, `zp`, `external_id` (hasheados) + `fbp`, `fbc`, `client_ip_address`, `client_user_agent` (crus, não são PII) + `event_id` (chave de dedup, fora do `user_data`).

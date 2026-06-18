@@ -130,6 +130,13 @@ function buildPixelScript(apiBase: string): string {
       .join("");
   }
 
+  // Telefone tem normalização própria na Meta: só dígitos (com DDI), sem
+  // +/-/espaços/parênteses — um número mascarado tipo "(11) 99999-9999"
+  // teria hash diferente do que a Meta espera se só fizesse trim+lowercase.
+  function normalizePhone(value) {
+    return String(value).replace(/[^\d]/g, "");
+  }
+
   function send(clientId, eventName, extra) {
     var eventId = randomId();
     var body = Object.assign(
@@ -157,6 +164,13 @@ function buildPixelScript(apiBase: string): string {
   function trackPageView(clientId) {
     void send(clientId, "PageView", {});
   }
+
+  // Detecta campos de nome por name/id ou autocomplete — pra hashear fn/ln
+  // pro user_data da CAPI (a Meta usa nome como chave de match também, junto
+  // com email/telefone). Não impede a captura genérica em "fields" (dashboard).
+  var FIRST_NAME_RE = /^(first[-_ ]?name|fname|nome)$/i;
+  var LAST_NAME_RE = /^(last[-_ ]?name|lname|sobrenome|apelido)$/i;
+  var FULL_NAME_RE = /^(name|full[-_ ]?name|nome[-_ ]?completo)$/i;
 
   function attachFormListener(clientId) {
     document.addEventListener(
@@ -196,10 +210,27 @@ function buildPixelScript(apiBase: string): string {
               continue;
             }
             if (type === "tel") {
-              var phHash = await sha256Hex(el.value);
+              var phHash = await sha256Hex(normalizePhone(el.value));
               pii.phone = el.value.trim();
               if (phHash) userData.ph = phHash;
               continue;
+            }
+
+            var autocomplete = (el.autocomplete || "").toLowerCase();
+            if (!userData.fn && (FIRST_NAME_RE.test(key) || autocomplete === "given-name")) {
+              var fnHash = await sha256Hex(el.value);
+              if (fnHash) userData.fn = fnHash;
+            } else if (!userData.ln && (LAST_NAME_RE.test(key) || autocomplete === "family-name")) {
+              var lnHash = await sha256Hex(el.value);
+              if (lnHash) userData.ln = lnHash;
+            } else if (!userData.fn && !userData.ln && (FULL_NAME_RE.test(key) || autocomplete === "name")) {
+              var nameParts = el.value.trim().split(/\s+/);
+              var fnFullHash = await sha256Hex(nameParts[0]);
+              if (fnFullHash) userData.fn = fnFullHash;
+              if (nameParts.length > 1) {
+                var lnFullHash = await sha256Hex(nameParts.slice(1).join(" "));
+                if (lnFullHash) userData.ln = lnFullHash;
+              }
             }
 
             if (fieldCount >= 25) continue; // limite de segurança contra forms gigantes
