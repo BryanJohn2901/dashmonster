@@ -42,6 +42,8 @@ interface TrackingEvent {
   external_transaction_id: string | null;
   source: string | null; // "pixel" (default) | "eduzz"
   payment_method: string | null;
+  /** Total de parcelas (ex.: boleto em 3x) — null pra cartão (operadora decide, invisível pra plataforma) e pagamento à vista. */
+  installments: number | null;
   created_at: string;
 }
 
@@ -110,8 +112,8 @@ const UTM_KEYS = [
 const EVENTS_SELECT =
   "id, event_name, fingerprint_id, event_url, page_title, user_data, lead_email, lead_phone, lead_name, extra_fields, country, country_region, city, event_id, " +
   "utm_source, utm_medium, utm_campaign, utm_content, utm_term, utm_placement, utm_campaign_id, utm_adset_id, utm_ad_id, " +
-  "value, currency, external_transaction_id, source, payment_method, capi_status, capi_error, created_at";
-// Sem as colunas das migrations 033/034/036/038/039/040 — usado se alguma delas ainda não rodou
+  "value, currency, external_transaction_id, source, payment_method, installments, capi_status, capi_error, created_at";
+// Sem as colunas das migrations 033/034/036/038/039/040/043 — usado se alguma delas ainda não rodou
 // no banco, pra não derrubar a tela enquanto ela não é aplicada manualmente no Supabase.
 const EVENTS_SELECT_FALLBACK = "id, event_name, fingerprint_id, event_url, user_data, lead_email, lead_phone, capi_status, capi_error, created_at";
 
@@ -231,9 +233,13 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   installmentBankslip: "Boleto parcelado",
   unknown: "Desconhecido",
 };
-function paymentMethodLabel(method: string | null): string | null {
+// "Boleto · 3x" quando souber o número de parcelas (só boleto parcelado da
+// Eduzz manda isso — parcelamento de cartão é da operadora, invisível pra
+// plataforma, por isso installments fica null nesse caso e mostra só o método).
+function paymentMethodLabel(method: string | null, installments: number | null = null): string | null {
   if (!method) return null;
-  return PAYMENT_METHOD_LABELS[method] ?? method;
+  const label = PAYMENT_METHOD_LABELS[method] ?? method;
+  return installments && installments > 1 ? `${label} · ${installments}x` : label;
 }
 
 // Builders de formulário (Elementor, WP Forms etc.) costumam nomear o input
@@ -385,9 +391,9 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
                 <div key={p.id} className="mb-1.5 flex flex-wrap items-center gap-1.5 text-xs last:mb-0" style={{ color: "var(--dm-text-primary)" }}>
                   <span className="font-semibold">{formatMoney(p.value, p.currency)}</span>
                   {p.extra_fields?.produto && <span style={{ color: "var(--dm-text-tertiary)" }}>· {p.extra_fields.produto}</span>}
-                  {paymentMethodLabel(p.payment_method) && (
+                  {paymentMethodLabel(p.payment_method, p.installments) && (
                     <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
-                      <CreditCard size={10} /> {paymentMethodLabel(p.payment_method)}
+                      <CreditCard size={10} /> {paymentMethodLabel(p.payment_method, p.installments)}
                     </span>
                   )}
                   <span className="text-[10px] tabular-nums" style={{ color: "var(--dm-text-tertiary)" }}>{fmt(p.created_at)}</span>
@@ -465,8 +471,8 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
                         {event.lead_phone && <span className="flex items-center gap-1"><Phone size={10} /> {event.lead_phone}</span>}
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
-                        {paymentMethodLabel(event.payment_method) && (
-                          <span className="flex items-center gap-1"><CreditCard size={10} /> {paymentMethodLabel(event.payment_method)}</span>
+                        {paymentMethodLabel(event.payment_method, event.installments) && (
+                          <span className="flex items-center gap-1"><CreditCard size={10} /> {paymentMethodLabel(event.payment_method, event.installments)}</span>
                         )}
                         {event.external_transaction_id && (
                           <span className="flex items-center gap-1 font-mono"><Hash size={10} /> {event.external_transaction_id}</span>
@@ -557,7 +563,7 @@ export function TrackingEventsView() {
     const missingNewColumn = [
       "page_title", "extra_fields", "country", "country_region", "city", "event_id",
       "utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "utm_placement", "utm_campaign_id", "utm_adset_id", "utm_ad_id",
-      "lead_name", "value", "currency", "external_transaction_id", "source", "payment_method",
+      "lead_name", "value", "currency", "external_transaction_id", "source", "payment_method", "installments",
     ].some((col) => eventsRes.error?.message?.includes(col));
     if (missingNewColumn) {
       // Migration 033/034/038/039/040 ainda não rodou no Supabase — busca sem as colunas novas em vez de quebrar a tela.

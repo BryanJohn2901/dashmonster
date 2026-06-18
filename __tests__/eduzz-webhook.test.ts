@@ -292,4 +292,63 @@ describe("POST /api/eduzz/webhook", () => {
     const sentBody = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
     expect(sentBody.data[0].event_source_url).toBeUndefined();
   });
+
+  it("ignora parcela > 1 de boleto parcelado (venda já contada na parcela 1)", async () => {
+    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+
+    const payload = { ...MODERN_PAYLOAD, data: { ...MODERN_PAYLOAD.data, bankSlipInstallment: { installmentNumber: 2, totalInstallments: 3 } } };
+    const res = await POST(buildRequest(payload));
+    const json = await res.json();
+
+    expect(json.ignored).toContain("parcela 2");
+    expect(mockMetricsUpsert).not.toHaveBeenCalled();
+    expect(mockInsert).not.toHaveBeenCalled();
+  });
+
+  it("1ª parcela de boleto parcelado processa normal e grava o total de parcelas (pra exibir 'Boleto · 3x')", async () => {
+    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockNotYetProcessed();
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por email
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por telefone
+    mockPixelMaybeSingle.mockResolvedValueOnce({ data: PIXEL_OK, error: null });
+
+    const payload = {
+      ...MODERN_PAYLOAD,
+      data: { ...MODERN_PAYLOAD.data, paymentMethod: "installmentBankslip", bankSlipInstallment: { installmentNumber: 1, totalInstallments: 3 } },
+    };
+    await POST(buildRequest(payload));
+
+    expect(mockInsert).toHaveBeenCalledWith(expect.objectContaining({ installments: 3, payment_method: "installmentBankslip" }));
+  });
+
+  it("assinatura recorrente: 1ª cobrança processa normal e usa o valor cheio (price, não paid)", async () => {
+    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // shouldSkipRecurring: 1ª vez, sem renovação anterior
+    mockNotYetProcessed();
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por email
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por telefone
+    mockPixelMaybeSingle.mockResolvedValueOnce({ data: PIXEL_OK, error: null });
+
+    const payload = {
+      ...MODERN_PAYLOAD,
+      data: { ...MODERN_PAYLOAD.data, price: { value: 970, currency: "BRL" }, contract: { id: "sub-1" } },
+    };
+    const res = await POST(buildRequest(payload));
+    expect(res.status).toBe(200);
+
+    expect(mockInsert).toHaveBeenCalledWith(expect.objectContaining({ value: 970, recurrence_key: "sub-1" }));
+  });
+
+  it("assinatura recorrente: renovação (mesmo recurrence_key já visto) é ignorada", async () => {
+    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: { id: "evt-primeira-cobranca" }, error: null }); // já existe esse recurrence_key
+
+    const payload = { ...MODERN_PAYLOAD, data: { ...MODERN_PAYLOAD.data, contract: { id: "sub-1" } } };
+    const res = await POST(buildRequest(payload));
+    const json = await res.json();
+
+    expect(json.ignored).toContain("renovação");
+    expect(mockMetricsUpsert).not.toHaveBeenCalled();
+    expect(mockInsert).not.toHaveBeenCalled();
+  });
 });

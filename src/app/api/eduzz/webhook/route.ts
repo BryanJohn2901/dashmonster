@@ -109,6 +109,12 @@ interface SaleEvent {
   paymentMethod: string | null;
   utm: { source: string | null; medium: string | null; campaign: string | null; content: string | null; term: string | null };
   address: { city: string | null; state: string | null; country: string | null; zip: string | null };
+  /** ID de assinatura/contrato recorrente, se houver — repete em toda renovação da mesma assinatura. Genérico (não exclusivo da Eduzz) pra outras plataformas reaproveitarem o mesmo campo no futuro. */
+  recurrenceKey: string | null;
+  /** Número da parcela (boleto parcelado) — 1 = primeira parcela/venda nova, >1 = continuação de uma venda já contada. */
+  installmentNumber: number | null;
+  /** Total de parcelas (ex.: boleto em 3x) — só pra exibição, a Eduzz não manda isso pra cartão (parcelamento de cartão é da operadora, invisível pra plataforma). */
+  installments: number | null;
 }
 
 function parseLegacyPayload(body: RawPayload): SaleEvent | { ignored: string } {
@@ -138,6 +144,11 @@ function parseLegacyPayload(body: RawPayload): SaleEvent | { ignored: string } {
       term: null, // formato antigo não manda utm_term
     },
     address: { city: null, state: null, country: null, zip: null },
+    // Postback antigo não manda contrato/parcela — sem suporte a detecção de
+    // recorrência/parcelamento nesse formato (limitação documentada no CLAUDE.md).
+    recurrenceKey: null,
+    installmentNumber: null,
+    installments: null,
   };
 }
 
@@ -154,6 +165,10 @@ interface EduzzModernPayload {
     items?: { name?: string }[];
     paymentMethod?: string;
     paidAt?: string;
+    /** Presente quando o produto é uma assinatura/contrato recorrente — `id` repete em toda renovação. */
+    contract?: { id?: string; isUnlimitedInstallments?: boolean };
+    /** Presente quando o pagamento é boleto parcelado — cada parcela paga manda seu próprio invoice_paid. */
+    bankSlipInstallment?: { installmentNumber?: number; totalInstallments?: number };
   };
 }
 
@@ -164,13 +179,16 @@ function isModernPayload(body: RawPayload): boolean {
 function parseModernPayload(body: EduzzModernPayload): SaleEvent | { ignored: string } {
   if (body.event !== "myeduzz.invoice_paid") return { ignored: `event=${body.event ?? "desconhecido"}` };
   const data = body.data ?? {};
-  const value = toNumber(data.paid?.value ?? data.price?.value);
+  // price = valor CHEIO do item (o que o usuário quer ver) vs paid = valor
+  // efetivamente pago NESSA fatura — divergem em boleto parcelado (paid é só
+  // a parcela) e às vezes em desconto/parcial. Sempre usar price primeiro.
+  const value = toNumber(data.price?.value ?? data.paid?.value);
   if (value <= 0) return { ignored: "sem valor" };
 
   return {
     transactionId: data.transaction?.id || data.transaction?.key || `modern-${Date.now()}`,
     value,
-    currency: data.paid?.currency || data.price?.currency || "BRL",
+    currency: data.price?.currency || data.paid?.currency || "BRL",
     productName: data.items?.[0]?.name?.trim() || "Eduzz",
     date: toDate(data.paidAt),
     paidAtIso: data.paidAt ?? null,
@@ -192,6 +210,9 @@ function parseModernPayload(body: EduzzModernPayload): SaleEvent | { ignored: st
       country: data.buyer?.address?.country ?? null,
       zip: data.buyer?.address?.zipCode ?? null,
     },
+    recurrenceKey: data.contract?.id ?? null,
+    installmentNumber: data.bankSlipInstallment?.installmentNumber ?? null,
+    installments: data.bankSlipInstallment?.totalInstallments ?? null,
   };
 }
 
@@ -291,6 +312,7 @@ async function recordSale(db: SupabaseClient, companyId: string, sale: SaleEvent
     postal_code: postalCode,
     event_id: sale.transactionId,
     pixel_id: resolvedPixel.pixelId,
+    recurrence_key: sale.recurrenceKey,
     utm_source: sale.utm.source,
     utm_medium: sale.utm.medium,
     utm_campaign: sale.utm.campaign,
@@ -301,6 +323,7 @@ async function recordSale(db: SupabaseClient, companyId: string, sale: SaleEvent
     external_transaction_id: sale.transactionId,
     source: EDUZZ_SOURCE,
     payment_method: sale.paymentMethod,
+    installments: sale.installments,
     fbp,
     fbc,
   });
@@ -353,6 +376,31 @@ async function recordSale(db: SupabaseClient, companyId: string, sale: SaleEvent
       },
     },
   });
+}
+
+// ─── Recorrência/parcelamento ──────────────────────────────────────────────────
+
+// Só processa a PRIMEIRA cobrança de uma venda — pedido explícito: "valor
+// cheio do produto, sem chegar fatura de renovação todo mês". Genérico (não
+// fala de Eduzz especificamente) pra outras plataformas reaproveitarem com
+// seus próprios campos de assinatura/parcela mapeados pra SaleEvent.
+async function shouldSkipRecurring(db: SupabaseClient, companyId: string, sale: SaleEvent): Promise<string | null> {
+  if (sale.installmentNumber && sale.installmentNumber > 1) {
+    return `parcela ${sale.installmentNumber} (já contamos a venda na parcela 1)`;
+  }
+  if (sale.recurrenceKey) {
+    const { data, error } = await db
+      .from("events_log")
+      .select("id")
+      .eq("company_id", companyId)
+      .eq("recurrence_key", sale.recurrenceKey)
+      .limit(1)
+      .maybeSingle();
+    // Erro de coluna ausente (migration 042 pendente) não bloqueia — sem essa
+    // checagem, renovação é tratada como venda nova (mesmo risco de sempre).
+    if (!error && data) return "renovação de assinatura (já contamos a 1ª cobrança)";
+  }
+  return null;
 }
 
 // ─── Idempotência ──────────────────────────────────────────────────────────────
@@ -413,6 +461,11 @@ export async function POST(request: NextRequest) {
   const sale = isModernPayload(body) ? parseModernPayload(body as EduzzModernPayload) : parseLegacyPayload(body);
   if ("ignored" in sale) {
     return NextResponse.json({ received: true, ignored: sale.ignored });
+  }
+
+  const recurringSkipReason = await shouldSkipRecurring(db, companyId, sale);
+  if (recurringSkipReason) {
+    return NextResponse.json({ received: true, ignored: recurringSkipReason });
   }
 
   if (await alreadyProcessed(db, companyId, sale.transactionId)) {
