@@ -212,6 +212,55 @@ describe("POST /api/tracking/track-event", () => {
     expect(mockInsert.mock.calls[1][0]).not.toHaveProperty("city");
   });
 
+  it("manda event_id e fbp/fbc pra Meta CAPI e grava event_id em events_log", async () => {
+    mockSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    await POST(
+      buildRequest({
+        client_id: "acme",
+        event_name: "PageView",
+        event_url: "http://localhost:3000/",
+        event_id: "evt-uuid-123",
+        fbp: "fb.1.123.456",
+        fbc: "fb.1.123.fbclid-abc",
+      }),
+    );
+
+    expect(mockInsert).toHaveBeenCalledWith(expect.objectContaining({ event_id: "evt-uuid-123" }));
+
+    const sentBody = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+    expect(sentBody.data[0].event_id).toBe("evt-uuid-123");
+    expect(sentBody.data[0].user_data.fbp).toBe("fb.1.123.456");
+    expect(sentBody.data[0].user_data.fbc).toBe("fb.1.123.fbclid-abc");
+  });
+
+  it("inclui test_event_code no payload da CAPI quando a empresa tem código de teste", async () => {
+    mockSingle.mockResolvedValueOnce({ data: { ...COMPANY_OK, meta_test_event_code: "TEST123" }, error: null });
+    await POST(buildRequest({ client_id: "acme", event_name: "PageView", event_url: "http://localhost:3000/" }));
+
+    const sentBody = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+    expect(sentBody.test_event_code).toBe("TEST123");
+  });
+
+  it("não inclui test_event_code quando a empresa não tem código de teste", async () => {
+    mockSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    await POST(buildRequest({ client_id: "acme", event_name: "PageView", event_url: "http://localhost:3000/" }));
+
+    const sentBody = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+    expect(sentBody.test_event_code).toBeUndefined();
+  });
+
+  it("cai pro select sem meta_test_event_code se a coluna ainda não existir (migration 036 pendente)", async () => {
+    mockSingle
+      .mockResolvedValueOnce({ data: null, error: { message: "column companies.meta_test_event_code does not exist" } })
+      .mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+
+    const res = await POST(buildRequest({ client_id: "acme", event_name: "PageView", event_url: "http://localhost:3000/" }));
+
+    expect(res.status).toBe(200);
+    expect(mockSingle).toHaveBeenCalledTimes(2);
+    expect(mockInsert).toHaveBeenCalledWith(expect.objectContaining({ company_id: "company-1" }));
+  });
+
   it("segue mesmo sem Origin/Referer (soft-fail)", async () => {
     mockSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
     const req = new NextRequest("http://localhost:3000/api/tracking/track-event", {

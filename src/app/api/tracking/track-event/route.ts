@@ -14,6 +14,7 @@ const META_API_VERSION = "v19.0";
 const OPTIONAL_COLUMN_GROUPS: string[][] = [
   ["page_title", "extra_fields"], // migration 033
   ["country", "country_region", "city"], // migration 034
+  ["event_id"], // migration 036
 ];
 
 async function insertEvent(db: ReturnType<typeof supabaseAdmin>, fullRow: Record<string, unknown>) {
@@ -32,6 +33,22 @@ async function insertEvent(db: ReturnType<typeof supabaseAdmin>, fullRow: Record
   return result;
 }
 
+// company.meta_test_event_code (migration 036) pode ainda não existir no
+// banco — mesmo problema de janela deploy-antes-da-migration dos outros
+// campos opcionais, mas pro lado do SELECT: tenta com a coluna nova, cai
+// pra sem ela se o Postgres reclamar que não existe (não pode derrubar
+// TODO evento por causa de 1 coluna opcional faltando).
+async function selectCompany(db: ReturnType<typeof supabaseAdmin>, slug: string) {
+  const FULL = "id, meta_pixel_id, meta_capi_token, dominio_autorizado, meta_test_event_code";
+  const FALLBACK = "id, meta_pixel_id, meta_capi_token, dominio_autorizado";
+  const full = await db.from("companies").select(FULL).eq("slug", slug).single();
+  if (full.error?.message?.includes("meta_test_event_code")) {
+    const fallback = await db.from("companies").select(FALLBACK).eq("slug", slug).single();
+    return { ...fallback, data: fallback.data ? { ...fallback.data, meta_test_event_code: null } : null };
+  }
+  return full;
+}
+
 interface TrackEventPayload {
   client_id: string;
   event_name: string;
@@ -40,6 +57,11 @@ interface TrackEventPayload {
   page_title?: string;
   /** ID persistente gerado pelo pixel.js e gravado em cookie 1ª parte (`_dm_uid`). */
   user_id?: string;
+  /** UUID gerado por evento no pixel.js — manda o mesmo valor no fbq('track', ..., {eventID}) do navegador, é a chave de deduplicação Pixel+CAPI da Meta. */
+  event_id?: string;
+  /** Cookies _fbp/_fbc da Meta (não hasheados) — texto puro pro user_data da CAPI, melhora o Event Match Quality. */
+  fbp?: string;
+  fbc?: string;
   user_data?: { em?: string; ph?: string };
   /** Email/telefone/demais campos em texto puro (não hasheados) — só pra exibição no dashboard, NUNCA repassados à Meta. */
   pii?: { email?: string; phone?: string; fields?: Record<string, string> };
@@ -94,11 +116,7 @@ export async function POST(request: NextRequest) {
 
   const db = supabaseAdmin();
 
-  const { data: company, error: companyError } = await db
-    .from("companies")
-    .select("id, meta_pixel_id, meta_capi_token, dominio_autorizado")
-    .eq("slug", payload.client_id)
-    .single();
+  const { data: company, error: companyError } = await selectCompany(db, payload.client_id);
 
   if (companyError || !company) {
     return NextResponse.json({ error: "Cliente não encontrado." }, { status: 404, headers });
@@ -164,6 +182,7 @@ export async function POST(request: NextRequest) {
     country: geo.country ?? null,
     country_region: geo.countryRegion ?? null,
     city: geo.city ?? null,
+    event_id: payload.event_id?.trim() || null,
   });
 
   if (insertError || !inserted) {
@@ -183,6 +202,10 @@ export async function POST(request: NextRequest) {
         {
           event_name: payload.event_name,
           event_time: Math.floor(Date.now() / 1000),
+          // Mesmo event_id que o pixel manda pro fbq('track', ..., {eventID})
+          // no navegador — sem isso a Meta não consegue deduplicar Pixel+CAPI
+          // e cada conversão conta em dobro (1x via browser, 1x via server).
+          event_id: payload.event_id || undefined,
           action_source: "website",
           event_source_url: payload.event_url,
           user_data: {
@@ -190,10 +213,17 @@ export async function POST(request: NextRequest) {
             ph: payload.user_data?.ph,
             client_ip_address: ip,
             client_user_agent: userAgent,
+            // fbp/fbc NÃO são hasheados (são identificadores de clique/browser,
+            // não PII) — manda como string crua, é o que a Meta espera.
+            fbp: payload.fbp || undefined,
+            fbc: payload.fbc || undefined,
           },
           custom_data: payload.custom_data ?? {},
         },
       ],
+      // Só presente durante teste manual (Events Manager → Eventos de teste);
+      // por design da própria Meta, deve ser removido depois de validar.
+      ...(company.meta_test_event_code ? { test_event_code: company.meta_test_event_code } : {}),
     };
 
     const capiUrl = `https://graph.facebook.com/${META_API_VERSION}/${company.meta_pixel_id}/events?access_token=${company.meta_capi_token}`;

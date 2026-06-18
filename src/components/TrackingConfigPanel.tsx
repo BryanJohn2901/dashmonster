@@ -23,6 +23,7 @@ export function TrackingConfigPanel({ company, canEdit, tracking, onTracking }: 
   const [pixelId, setPixelId] = useState(tracking.metaPixelId);
   const [capiToken, setCapiToken] = useState(tracking.metaCapiToken);
   const [dominio, setDominio] = useState(tracking.dominioAutorizado);
+  const [testEventCode, setTestEventCode] = useState(tracking.metaTestEventCode);
   const [saving, setSaving] = useState(false);
   const [revealToken, setRevealToken] = useState(false);
   useEffect(() => {
@@ -30,9 +31,14 @@ export function TrackingConfigPanel({ company, canEdit, tracking, onTracking }: 
     setPixelId(tracking.metaPixelId);
     setCapiToken(tracking.metaCapiToken);
     setDominio(tracking.dominioAutorizado);
+    setTestEventCode(tracking.metaTestEventCode);
   }, [tracking]);
 
-  const dirty = pixelId !== tracking.metaPixelId || capiToken !== tracking.metaCapiToken || dominio !== tracking.dominioAutorizado;
+  const dirty =
+    pixelId !== tracking.metaPixelId ||
+    capiToken !== tracking.metaCapiToken ||
+    dominio !== tracking.dominioAutorizado ||
+    testEventCode !== tracking.metaTestEventCode;
   const slug = company.slug;
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const snippet = `<script src="${origin}/api/tracking/pixel.js"></script>\n<script>Tracker.init("${slug}");</script>`;
@@ -41,7 +47,12 @@ export function TrackingConfigPanel({ company, canEdit, tracking, onTracking }: 
   const save = async () => {
     setSaving(true);
     try {
-      const next: TrackingConfig = { metaPixelId: pixelId.trim(), metaCapiToken: capiToken.trim(), dominioAutorizado: dominio.trim() };
+      const next: TrackingConfig = {
+        metaPixelId: pixelId.trim(),
+        metaCapiToken: capiToken.trim(),
+        dominioAutorizado: dominio.trim(),
+        metaTestEventCode: testEventCode.trim(),
+      };
       await setCompanyTracking(company.id, next);
       onTracking(next);
       toast.success("Tracking pixel configurado!");
@@ -64,9 +75,10 @@ export function TrackingConfigPanel({ company, canEdit, tracking, onTracking }: 
         </p>
       )}
       <p className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
-        Pixel server-side próprio (form submit, clique WhatsApp, dataLayer) — captura e mostra na aba{" "}
+        Pixel próprio (PageView automático + Lead no submit de formulário) — captura e mostra na aba{" "}
         <strong style={{ color: "var(--dm-text-secondary)" }}>Tracking</strong> mesmo sem nenhuma credencial da Meta abaixo.
-        O envio pra Meta Conversions API é opcional, só acontece se Pixel ID e Token CAPI estiverem preenchidos.
+        Com Pixel ID preenchido, o script também carrega o Pixel da Meta no navegador (fbq) e envia o mesmo evento pela
+        Conversions API — os dois lados usam o mesmo <code>event_id</code>, então a Meta deduplica automaticamente em vez de contar 2x.
       </p>
       <div className="rounded-xl border" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)" }}>
         <div className="flex items-center justify-between border-b px-3 py-1.5" style={{ borderColor: "var(--dm-border-default)" }}>
@@ -110,6 +122,14 @@ export function TrackingConfigPanel({ company, canEdit, tracking, onTracking }: 
           )}
         </div>
         <span className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>Diferente do token de gestão de anúncios da Conexão Meta — gere em Events Manager → Configurações → Conversions API.</span>
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Código de teste (opcional — só durante validação)</span>
+        <input value={testEventCode} disabled={!canEdit} onChange={(e) => setTestEventCode(e.target.value)} placeholder="TEST12345" className={`${inputCls} h-10 font-mono disabled:opacity-60`} style={inputStyle} />
+        <span className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+          Cole o código da aba <strong style={{ color: "var(--dm-text-secondary)" }}>Eventos de teste</strong> do Events Manager pra ver os eventos chegando
+          em tempo real (Navegador + Servidor, deduplicados). Apague depois de validar — a própria Meta recomenda não deixar isso ligado em produção.
+        </span>
       </label>
       {canEdit && (
         <button type="button" onClick={() => void save()} disabled={saving || !dirty} className={`h-11 w-full ${btnPrimary}`} style={btnPrimaryStyle}>

@@ -96,7 +96,7 @@ export function CompanyStudio({ categories = [], onNavigate, focusSection }: {
 
   // ── dados assíncronos ──
   const [token, setTokenVal] = useState<string>("");
-  const [tracking, setTrackingVal] = useState<TrackingConfig>({ metaPixelId: "", metaCapiToken: "", dominioAutorizado: "" });
+  const [tracking, setTrackingVal] = useState<TrackingConfig>({ metaPixelId: "", metaCapiToken: "", dominioAutorizado: "", metaTestEventCode: "" });
   const [members, setMembers] = useState<CompanyMember[] | null>(null);
   useEffect(() => {
     if (!company) return;

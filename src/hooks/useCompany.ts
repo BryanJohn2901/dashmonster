@@ -296,26 +296,38 @@ export interface TrackingConfig {
   metaPixelId: string;
   metaCapiToken: string;
   dominioAutorizado: string;
+  /** Código de "Eventos de teste" do Events Manager — opcional, só pra validar dedup Pixel+CAPI. Remover depois do teste. */
+  metaTestEventCode: string;
 }
 
-/** Lê a config do tracking pixel (meta_pixel_id, meta_capi_token, dominio_autorizado) de uma empresa. */
+/** Lê a config do tracking pixel (meta_pixel_id, meta_capi_token, dominio_autorizado, meta_test_event_code) de uma empresa. */
 export async function fetchCompanyTracking(companyId: string): Promise<TrackingConfig> {
-  const empty: TrackingConfig = { metaPixelId: "", metaCapiToken: "", dominioAutorizado: "" };
+  const empty: TrackingConfig = { metaPixelId: "", metaCapiToken: "", dominioAutorizado: "", metaTestEventCode: "" };
   if (!supabaseClient) return empty;
-  const { data, error } = await supabaseClient
+  let { data, error } = await supabaseClient
     .from("companies")
-    .select("meta_pixel_id, meta_capi_token, dominio_autorizado")
+    .select("meta_pixel_id, meta_capi_token, dominio_autorizado, meta_test_event_code")
     .eq("id", companyId)
     .maybeSingle();
+  // meta_test_event_code (migration 036) pode ainda não existir no banco —
+  // tenta sem ela em vez de devolver tudo vazio (perderia pixelId/token já salvos na tela).
+  if (error?.message?.includes("meta_test_event_code")) {
+    ({ data, error } = await supabaseClient
+      .from("companies")
+      .select("meta_pixel_id, meta_capi_token, dominio_autorizado")
+      .eq("id", companyId)
+      .maybeSingle());
+  }
   if (error || !data) return empty;
   return {
     metaPixelId: (data.meta_pixel_id as string) ?? "",
     metaCapiToken: (data.meta_capi_token as string) ?? "",
     dominioAutorizado: (data.dominio_autorizado as string) ?? "",
+    metaTestEventCode: ((data as { meta_test_event_code?: string }).meta_test_event_code) ?? "",
   };
 }
 
-/** Grava a config do tracking pixel de uma empresa (RLS: owner OU manager, migration 035 — trigger restringe manager só a essas 3 colunas). String vazia limpa o campo. */
+/** Grava a config do tracking pixel de uma empresa (RLS: owner OU manager, migration 035 — trigger restringe manager só a essas 4 colunas). String vazia limpa o campo. */
 export async function setCompanyTracking(companyId: string, config: TrackingConfig): Promise<void> {
   if (!supabaseClient) throw new Error("Supabase não configurado.");
   const { error } = await supabaseClient
@@ -324,8 +336,24 @@ export async function setCompanyTracking(companyId: string, config: TrackingConf
       meta_pixel_id: config.metaPixelId.trim() || null,
       meta_capi_token: config.metaCapiToken.trim() || null,
       dominio_autorizado: config.dominioAutorizado.trim() || null,
+      meta_test_event_code: config.metaTestEventCode.trim() || null,
     })
     .eq("id", companyId);
+  if (error?.message?.includes("meta_test_event_code")) {
+    if (config.metaTestEventCode.trim()) {
+      throw new Error("Código de teste ainda não disponível — rode a migration 036 no Supabase antes de usar esse campo.");
+    }
+    const retry = await supabaseClient
+      .from("companies")
+      .update({
+        meta_pixel_id: config.metaPixelId.trim() || null,
+        meta_capi_token: config.metaCapiToken.trim() || null,
+        dominio_autorizado: config.dominioAutorizado.trim() || null,
+      })
+      .eq("id", companyId);
+    if (retry.error) throw new Error(retry.error.message);
+    return;
+  }
   if (error) throw new Error(error.message);
 }
 

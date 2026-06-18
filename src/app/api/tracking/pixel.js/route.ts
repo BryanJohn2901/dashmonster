@@ -8,9 +8,67 @@ function buildPixelScript(apiBase: string): string {
   "use strict";
 
   var TRACK_URL = ${JSON.stringify(`${apiBase}/api/tracking/track-event`)};
+  var CONFIG_URL = ${JSON.stringify(`${apiBase}/api/tracking/config`)};
   var COOKIE_NAME = "_dm_uid";
   var COOKIE_DAYS = 400; // máximo aceito pelo Chrome pra cookies de 1ª parte
   var inFlightForms = new WeakSet();
+
+  // ─── Meta Pixel (fbq) no navegador, pareado por event_id com a CAPI ────────
+  // Carregamos o fbq da própria Meta (não um 2º script — é o mesmo de sempre)
+  // só quando a empresa tem meta_pixel_id configurado. Cada evento manda o
+  // MESMO event_id pro fbq('track', ..., {eventID}) e pro nosso /track-event,
+  // que repassa pra CAPI — é assim que a Meta deduplica Pixel (browser) +
+  // Conversions API (server) como 1 evento só, em vez de contar em dobro.
+  var configResolved = false;
+  var hasMetaPixel = false;
+  var pendingFbqCalls = [];
+
+  function loadFbq(pixelId) {
+    if (!window.fbq) {
+      /* eslint-disable */
+      !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+      n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
+      n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
+      t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,
+      document,'script','https://connect.facebook.net/en_US/fbevents.js');
+      /* eslint-enable */
+    }
+    window.fbq("init", pixelId);
+  }
+
+  function fireFbqTrack(eventName, eventId) {
+    if (!window.fbq) return;
+    window.fbq("track", eventName, {}, { eventID: eventId });
+  }
+
+  function queueFbqTrack(eventName, eventId) {
+    if (configResolved) {
+      if (hasMetaPixel) safe(function () { fireFbqTrack(eventName, eventId); });
+      return;
+    }
+    pendingFbqCalls.push({ eventName: eventName, eventId: eventId });
+  }
+
+  function initMetaConfig(clientId) {
+    fetch(CONFIG_URL + "?client_id=" + encodeURIComponent(clientId))
+      .then(function (r) { return r.json(); })
+      .then(function (cfg) { onConfigResolved(cfg && cfg.metaPixelId); })
+      .catch(function () { onConfigResolved(null); });
+  }
+
+  function onConfigResolved(metaPixelId) {
+    configResolved = true;
+    hasMetaPixel = Boolean(metaPixelId);
+    if (hasMetaPixel) {
+      safe(function () { loadFbq(metaPixelId); });
+      for (var i = 0; i < pendingFbqCalls.length; i++) {
+        (function (call) {
+          safe(function () { fireFbqTrack(call.eventName, call.eventId); });
+        })(pendingFbqCalls[i]);
+      }
+    }
+    pendingFbqCalls = [];
+  }
 
   function safe(fn) {
     try { fn(); } catch (err) { console.error("[Tracker]", err); }
@@ -45,6 +103,24 @@ function buildPixelScript(apiBase: string): string {
     return id;
   }
 
+  // ─── fbp/fbc — identificadores de browser/clique da própria Meta ───────────
+  // _fbp é criado pelo fbq (se carregado); _fbc só existe se o visitante
+  // clicou um anúncio (?fbclid=...) — não inventar fbc sem fbclid/cookie real,
+  // isso pioraria o Event Match Quality em vez de melhorar.
+  function getFbp() {
+    return readCookie("_fbp");
+  }
+
+  function getFbc() {
+    var existing = readCookie("_fbc");
+    if (existing) return existing;
+    var match = window.location.search.match(/[?&]fbclid=([^&]+)/);
+    if (!match) return null;
+    var fbc = "fb.1." + Date.now() + "." + match[1];
+    writeCookie("_fbc", fbc, COOKIE_DAYS);
+    return fbc;
+  }
+
   async function sha256Hex(value) {
     if (!window.crypto || !window.crypto.subtle) return undefined;
     var data = new TextEncoder().encode(String(value).trim().toLowerCase());
@@ -55,6 +131,7 @@ function buildPixelScript(apiBase: string): string {
   }
 
   function send(clientId, eventName, extra) {
+    var eventId = randomId();
     var body = Object.assign(
       {
         client_id: clientId,
@@ -62,9 +139,13 @@ function buildPixelScript(apiBase: string): string {
         event_url: window.location.href,
         page_title: document.title || undefined,
         user_id: getUserId(),
+        event_id: eventId,
+        fbp: getFbp() || undefined,
+        fbc: getFbc() || undefined,
       },
       extra
     );
+    queueFbqTrack(eventName, eventId);
     return fetch(TRACK_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -137,6 +218,7 @@ function buildPixelScript(apiBase: string): string {
 
   window.Tracker = {
     init: function (clientId) {
+      safe(function () { initMetaConfig(clientId); });
       safe(function () { trackPageView(clientId); });
       safe(function () { attachFormListener(clientId); });
     },

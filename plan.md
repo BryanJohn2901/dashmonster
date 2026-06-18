@@ -290,3 +290,35 @@ Pedido 2: usuário reportou campos travados sem explicação — `canEdit` era `
 **Migration `035_tracking_manager_write.sql`**: a policy de UPDATE em `companies` (`companies_owner_update`, de `021_companies_multi_tenant.sql`) era owner-only pra **toda** a tabela — não dava pra abrir só as 3 colunas de tracking pra manager sem reescrever a RLS. Solução: policy passa a aceitar `can_write_company` (owner OU manager), e um trigger `BEFORE UPDATE` (`check_companies_update_scope`) restringe manager a só alterar `meta_pixel_id`/`meta_capi_token`/`dominio_autorizado` — qualquer outra coluna alterada por um manager aborta a transação. **Whitelist proposital** (lista o que manager *pode* mexer, não o que não pode): colunas novas de migrations futuras ficam owner-only por padrão, sem precisar lembrar de atualizar este trigger toda vez que `companies` ganhar uma coluna nova.
 
 `canEdit` nos dois lugares (`CompanyStudio.tsx`'s `TrackingSection`, `TrackingEventsView.tsx`) passou de `isOwner` pra `canWrite` (owner ou manager) — só pra essa seção, as outras (Identidade, Equipe etc.) continuam `isOwner`-only.
+
+## 18. Deduplicação Pixel + Conversions API, qualidade de evento à la Meta ✅ feito
+
+Pedido: "quero fazer um evento teste, entro na página testo os eventos e vejo se estão chegando pra Meta Ads via web e server e sendo desduplicados da maneira certa. Leia tudo sobre as boas práticas que a Meta pede". Pesquisei a documentação oficial da Meta (`developers.facebook.com`) e best practices de 2026 antes de implementar — ver fontes na resposta original. Decisão confirmada com o usuário antes de mexer: o site dele só tem o nosso `pixel.js`, **nenhum** Meta Pixel manual instalado em paralelo — então o próprio `pixel.js` passou a carregar o fbq da Meta no navegador também (não um 2º script separado pro cliente colar).
+
+**O que a Meta exige pra deduplicar Pixel (browser) + CAPI (server) como 1 evento**:
+- Mesmo `event_name` E mesmo `event_id` nos dois lados (string idêntica, sem variar formatação/caixa).
+- `event_id` deve ser único por evento (nunca reusar pra ações diferentes).
+- `fbp`/`fbc` (cookies 1ª parte da Meta) no `user_data` da CAPI melhoram muito o Event Match Quality — mas nunca inventar `fbc` sem um `fbclid` real.
+- `test_event_code` (campo top-level no payload da CAPI, ao lado de `data`) é como validar tudo isso em tempo real na aba "Eventos de teste" do Events Manager — e deve ser removido depois do teste (orientação da própria Meta).
+
+**Migration `036_tracking_capi_quality.sql`**: `companies.meta_test_event_code` (TEXT) + `events_log.event_id` (TEXT) + adiciona `meta_test_event_code` na whitelist do trigger de manager (seção 17).
+
+**`src/app/api/tracking/config/route.ts`** (novo, GET, CORS aberto, sem auth) — endpoint público que devolve só `{ metaPixelId }` dado um `client_id` (slug). Nunca devolve token/domínio/código de teste. É assim que `pixel.js` descobre em runtime se a empresa tem Pixel ID configurado, sem expor nada sensível (Pixel IDs já são públicos em qualquer site que usa Meta Pixel).
+
+**`pixel.js`** — mudanças:
+- `send()` agora gera um `event_id` (UUID) por evento, manda pro `/track-event` E pro `fbq('track', eventName, {}, {eventID})` — mesmo ID nos dois lados, é a chave da dedup.
+- `Tracker.init()` chama `initMetaConfig(clientId)` (fetch assíncrono em `/api/tracking/config`); se a empresa tem `metaPixelId`, carrega o snippet oficial do fbq (`loadFbq()`, o mesmo código-padrão que qualquer site com Meta Pixel já tem) e dá `fbq('init', pixelId)`.
+- Como o fetch de config é assíncrono mas o PageView dispara imediato no load, eventos disparados antes do config resolver ficam numa fila (`pendingFbqCalls`) e são repassados pro fbq assim que ele carrega — sem isso, o PageView (o evento de maior valor pra medir landing page) perderia o lado "browser" da dedup.
+- `getFbp()`/`getFbc()` leem os cookies `_fbp`/`_fbc` da própria Meta; `getFbc()` reconstrói a partir de `?fbclid=` na URL se o cookie ainda não existir (formato `fb.1.<timestamp>.<fbclid>`), salva o cookie pra persistir.
+
+**`track-event/route.ts`** — mudanças:
+- Aceita `event_id`/`fbp`/`fbc` no payload, repassa pro `capiPayload.data[].event_id`/`user_data.fbp`/`user_data.fbc` (fbp/fbc não são hasheados, vão como string crua — não são PII).
+- Inclui `test_event_code` top-level no payload da CAPI quando `company.meta_test_event_code` está preenchido.
+- `selectCompany()` (novo helper) aplica a mesma resiliência de migration-pendente do `insertEvent()` — se a coluna `meta_test_event_code` ainda não existir no banco, cai pro select sem ela em vez de derrubar TODO evento daquela empresa.
+- `event_id` também é gravado em `events_log` (grupo novo em `OPTIONAL_COLUMN_GROUPS`) — só pra dar visibilidade no nosso dashboard, não tem nenhuma lógica de dedup do nosso lado (a dedup é 100% feita pela Meta).
+
+**`TrackingConfigPanel.tsx`**: novo campo "Código de teste (opcional)" — cola o código da aba Eventos de teste do Events Manager, salva em `meta_test_event_code`, com aviso pra apagar depois de validar.
+
+**`TrackingEventsView.tsx`**: cada evento na jornada do drawer agora mostra o `event_id` (8 primeiros chars) ao lado do status CAPI, pra cross-check manual contra o Diagnóstico da Meta. Status CAPI passou a aparecer em todo evento (antes só aparecia em Lead, mas PageView também é mandado pra CAPI quando configurado).
+
+**Fluxo de teste pro usuário**: Events Manager → Eventos de teste → copiar código → colar em Configuração (aba Tracking) → salvar → navegar na própria página de teste → ver "1 evento de 2 fontes" (Navegador + Servidor) aparecendo em tempo real, já deduplicado.

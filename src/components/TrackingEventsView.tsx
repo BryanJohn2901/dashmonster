@@ -22,6 +22,7 @@ interface TrackingEvent {
   country: string | null;
   country_region: string | null;
   city: string | null;
+  event_id: string | null;
   capi_status: "pending" | "sent" | "failed" | "skipped";
   capi_error: string | null;
   created_at: string;
@@ -81,10 +82,9 @@ const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
 
 const UTM_KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"];
 
-const EVENTS_SELECT = "id, event_name, fingerprint_id, event_url, page_title, user_data, lead_email, lead_phone, extra_fields, country, country_region, city, capi_status, capi_error, created_at";
-// Sem page_title/extra_fields/country/country_region/city (migrations 033/034) — usado se
-// alguma das duas ainda não rodou no banco, pra não derrubar a tela enquanto ela não é
-// aplicada manualmente no Supabase.
+const EVENTS_SELECT = "id, event_name, fingerprint_id, event_url, page_title, user_data, lead_email, lead_phone, extra_fields, country, country_region, city, event_id, capi_status, capi_error, created_at";
+// Sem as colunas das migrations 033/034/036 — usado se alguma delas ainda não rodou
+// no banco, pra não derrubar a tela enquanto ela não é aplicada manualmente no Supabase.
 const EVENTS_SELECT_FALLBACK = "id, event_name, fingerprint_id, event_url, user_data, lead_email, lead_phone, capi_status, capi_error, created_at";
 
 // Bandeira a partir do código ISO (ex.: "BR" -> 🇧🇷) — calculada no client,
@@ -350,15 +350,20 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
                       ))}
                     </div>
                   )}
-                  {event.event_name === "Lead" && (
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                     <span
-                      className="mt-1.5 inline-block rounded-full px-2 py-0.5 text-[9px] font-semibold"
+                      className="inline-block rounded-full px-2 py-0.5 text-[9px] font-semibold"
                       style={{ background: STATUS_COLORS[event.capi_status].bg, color: STATUS_COLORS[event.capi_status].text }}
                       title={event.capi_error ?? undefined}
                     >
                       {STATUS_LABELS[event.capi_status]}
                     </span>
-                  )}
+                    {event.event_id && (
+                      <span className="font-mono text-[9px]" style={{ color: "var(--dm-text-tertiary)" }} title="event_id — usado pra deduplicar Pixel (navegador) + Conversions API (servidor) na Meta">
+                        event_id: {event.event_id.slice(0, 8)}…
+                      </span>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -372,7 +377,7 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-const EMPTY_TRACKING_CONFIG: TrackingConfig = { metaPixelId: "", metaCapiToken: "", dominioAutorizado: "" };
+const EMPTY_TRACKING_CONFIG: TrackingConfig = { metaPixelId: "", metaCapiToken: "", dominioAutorizado: "", metaTestEventCode: "" };
 
 export function TrackingEventsView() {
   const { company, companyId, canWrite } = useCompany();
@@ -427,7 +432,7 @@ export function TrackingEventsView() {
         .single(),
     ]);
 
-    const missingNewColumn = ["page_title", "extra_fields", "country", "country_region", "city"].some((col) =>
+    const missingNewColumn = ["page_title", "extra_fields", "country", "country_region", "city", "event_id"].some((col) =>
       eventsRes.error?.message?.includes(col),
     );
     if (missingNewColumn) {
