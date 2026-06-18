@@ -244,6 +244,8 @@ function buildPixelScript(apiBase: string): string {
           var userData = {};
           var pii = {};
           var fields = {};
+          var nameFirstRaw = "";
+          var nameLastRaw = "";
           var skipTypes = { submit: 1, button: 1, hidden: 1, password: 1, file: 1, reset: 1, image: 1 };
           var fieldCount = 0;
           var formEls = form.querySelectorAll("input, select, textarea");
@@ -271,16 +273,20 @@ function buildPixelScript(apiBase: string): string {
             if (!userData.fn && (FIRST_NAME_RE.test(key) || autocomplete === "given-name")) {
               var fnHash = await sha256Hex(el.value);
               if (fnHash) userData.fn = fnHash;
+              nameFirstRaw = el.value.trim();
             } else if (!userData.ln && (LAST_NAME_RE.test(key) || autocomplete === "family-name")) {
               var lnHash = await sha256Hex(el.value);
               if (lnHash) userData.ln = lnHash;
+              nameLastRaw = el.value.trim();
             } else if (!userData.fn && !userData.ln && (FULL_NAME_RE.test(key) || autocomplete === "name")) {
               var nameParts = el.value.trim().split(/\s+/);
               var fnFullHash = await sha256Hex(nameParts[0]);
               if (fnFullHash) userData.fn = fnFullHash;
+              nameFirstRaw = nameParts[0];
               if (nameParts.length > 1) {
                 var lnFullHash = await sha256Hex(nameParts.slice(1).join(" "));
                 if (lnFullHash) userData.ln = lnFullHash;
+                nameLastRaw = nameParts.slice(1).join(" ");
               }
             }
 
@@ -289,6 +295,11 @@ function buildPixelScript(apiBase: string): string {
             fieldCount++;
           }
           if (Object.keys(fields).length > 0) pii.fields = fields;
+          // Nome em texto puro, fora do JSONB de extra_fields — mesmo padrão de
+          // pii.email/pii.phone, pra virar coluna própria (lead_name) e dar pra
+          // usar em relatório/exportação sem precisar abrir o JSON.
+          var nameRaw = (nameFirstRaw + " " + nameLastRaw).trim();
+          if (nameRaw) pii.name = nameRaw;
           mergeLeadCache(userData);
           await send(clientId, "Lead", { user_data: userData, pii: pii });
           clearTimeout(fallback);

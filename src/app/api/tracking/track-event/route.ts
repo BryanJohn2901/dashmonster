@@ -25,7 +25,73 @@ const OPTIONAL_COLUMN_GROUPS: string[][] = [
   ["country", "country_region", "city"], // migration 034
   ["event_id"], // migration 036
   ["pixel_id"], // migration 037
+  ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "utm_placement", "utm_campaign_id", "utm_adset_id", "utm_ad_id"], // migration 038
+  ["lead_name", "postal_code", "latitude", "longitude", "device_type"], // migration 039
 ];
+
+// Classifica o User-Agent (já chega em toda request) em 3 baldes pra relatório
+// futuro de "performance por dispositivo" — guarda só a categoria, não o UA
+// crú inteiro, que teria muito mais variação do que um relatório precisa.
+function classifyDevice(userAgent: string): "mobile" | "tablet" | "desktop" {
+  const ua = userAgent.toLowerCase();
+  if (/ipad|tablet(?!.*mobile)/.test(ua)) return "tablet";
+  if (/mobi|android|iphone/.test(ua)) return "mobile";
+  return "desktop";
+}
+
+// IDs (campaign_id/adset_id/ad_id) reaproveitam a mesma estrutura que a Meta
+// Marketing API usa pra campaign/adset/ad — guardar a ID (não só o nome) é o
+// que permite, num relatório futuro, JOIN com custo/ROAS por campanha/anúncio
+// puxado da API da Meta, já que nome de campanha pode repetir e ID nunca repete.
+const UTM_COLUMNS: Record<string, string> = {
+  utm_source: "utm_source",
+  utm_medium: "utm_medium",
+  utm_campaign: "utm_campaign",
+  utm_content: "utm_content",
+  utm_term: "utm_term",
+  utm_placement: "utm_placement",
+  utm_campaign_id: "utm_campaign_id",
+  utm_adset_id: "utm_adset_id",
+  utm_ad_id: "utm_ad_id",
+};
+
+// Anúncios (ex.: Meta) costumam montar a UTM a partir de um placeholder
+// ({{ad.name}} etc.) que já vem URL-encoded — somado ao encoding normal da
+// query string, o valor chega com 2 camadas (%2520, %252F, "+" literal...).
+// Decodifica em loop até estabilizar (mesma lógica de decodeUtmValue() em
+// TrackingEventsView.tsx — se mudar uma, mudar a outra).
+function decodeUtmValue(raw: string): string {
+  let value = raw;
+  for (let i = 0; i < 4; i++) {
+    if (!/%[0-9A-Fa-f]{2}/.test(value) && !value.includes("+")) break;
+    try {
+      const decoded = decodeURIComponent(value.replace(/\+/g, " "));
+      if (decoded === value) break;
+      value = decoded;
+    } catch {
+      break;
+    }
+  }
+  return value;
+}
+
+// Extrai as UTMs da event_url uma única vez, na captura — fica gravado em
+// coluna pra qualquer relatório futuro agregar/filtrar em SQL, em vez de
+// reprocessar a URL toda hora (era o que o dashboard fazia antes, só no client).
+function parseUtmColumns(eventUrl: string): Record<string, string | null> {
+  const out: Record<string, string | null> = {};
+  for (const col of Object.values(UTM_COLUMNS)) out[col] = null;
+  try {
+    const u = new URL(eventUrl);
+    for (const [param, col] of Object.entries(UTM_COLUMNS)) {
+      const v = u.searchParams.get(param);
+      if (v) out[col] = decodeUtmValue(v);
+    }
+  } catch {
+    // event_url inválida — segue com tudo null, não derruba a captura.
+  }
+  return out;
+}
 
 async function insertEvent(db: ReturnType<typeof supabaseAdmin>, fullRow: Record<string, unknown>) {
   const candidate = { ...fullRow };
@@ -146,8 +212,8 @@ interface TrackEventPayload {
   fbc?: string;
   /** em/ph/fn/ln já chegam hasheados (SHA-256) do pixel.js — servidor só repassa. */
   user_data?: { em?: string; ph?: string; fn?: string; ln?: string };
-  /** Email/telefone/demais campos em texto puro (não hasheados) — só pra exibição no dashboard, NUNCA repassados à Meta. */
-  pii?: { email?: string; phone?: string; fields?: Record<string, string> };
+  /** Email/telefone/nome/demais campos em texto puro (não hasheados) — só pra exibição/relatório no dashboard, NUNCA repassados à Meta. */
+  pii?: { email?: string; phone?: string; name?: string; fields?: Record<string, string> };
   custom_data?: Record<string, unknown>;
 }
 
@@ -267,6 +333,12 @@ export async function POST(request: NextRequest) {
     city: geo.city ?? null,
     event_id: payload.event_id?.trim() || null,
     pixel_id: resolved.pixelId,
+    ...parseUtmColumns(payload.event_url),
+    lead_name: payload.pii?.name?.trim() || null,
+    postal_code: geo.postalCode ?? null,
+    latitude: geo.latitude ?? null,
+    longitude: geo.longitude ?? null,
+    device_type: classifyDevice(userAgent),
   });
 
   if (insertError || !inserted) {

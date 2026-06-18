@@ -23,6 +23,15 @@ interface TrackingEvent {
   country_region: string | null;
   city: string | null;
   event_id: string | null;
+  utm_source: string | null;
+  utm_medium: string | null;
+  utm_campaign: string | null;
+  utm_content: string | null;
+  utm_term: string | null;
+  utm_placement: string | null;
+  utm_campaign_id: string | null;
+  utm_adset_id: string | null;
+  utm_ad_id: string | null;
   capi_status: "pending" | "sent" | "failed" | "skipped";
   capi_error: string | null;
   created_at: string;
@@ -75,10 +84,22 @@ const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
   skipped: { bg: "rgba(100,116,139,0.12)", text: "var(--dm-text-tertiary)" },
 };
 
-const UTM_KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"];
+const UTM_KEYS = [
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "utm_content",
+  "utm_term",
+  "utm_placement",
+  "utm_campaign_id",
+  "utm_adset_id",
+  "utm_ad_id",
+];
 
-const EVENTS_SELECT = "id, event_name, fingerprint_id, event_url, page_title, user_data, lead_email, lead_phone, extra_fields, country, country_region, city, event_id, capi_status, capi_error, created_at";
-// Sem as colunas das migrations 033/034/036 — usado se alguma delas ainda não rodou
+const EVENTS_SELECT =
+  "id, event_name, fingerprint_id, event_url, page_title, user_data, lead_email, lead_phone, extra_fields, country, country_region, city, event_id, " +
+  "utm_source, utm_medium, utm_campaign, utm_content, utm_term, utm_placement, utm_campaign_id, utm_adset_id, utm_ad_id, capi_status, capi_error, created_at";
+// Sem as colunas das migrations 033/034/036/038 — usado se alguma delas ainda não rodou
 // no banco, pra não derrubar a tela enquanto ela não é aplicada manualmente no Supabase.
 const EVENTS_SELECT_FALLBACK = "id, event_name, fingerprint_id, event_url, user_data, lead_email, lead_phone, capi_status, capi_error, created_at";
 
@@ -137,7 +158,7 @@ function decodeUtmValue(raw: string): string {
   return value;
 }
 
-function parseUtm(url: string | null): Record<string, string> {
+function parseUtmFromUrl(url: string | null): Record<string, string> {
   if (!url) return {};
   try {
     const u = new URL(url);
@@ -150,6 +171,20 @@ function parseUtm(url: string | null): Record<string, string> {
   } catch {
     return {};
   }
+}
+
+// Migration 038 grava a UTM em coluna própria (extraída 1x no servidor, na
+// captura) — usa ela quando existir. Reprocessa a event_url só pra eventos
+// antigos (capturados antes da migration) ou enquanto ela não rodou ainda,
+// mesmo padrão de resiliência das outras migrations desta tela.
+function resolveUtm(event: Pick<TrackingEvent, "event_url" | "utm_source" | "utm_medium" | "utm_campaign" | "utm_content" | "utm_term" | "utm_placement" | "utm_campaign_id" | "utm_adset_id" | "utm_ad_id">): Record<string, string> {
+  const fromUrl = parseUtmFromUrl(event.event_url);
+  const out: Record<string, string> = { ...fromUrl };
+  for (const key of UTM_KEYS) {
+    const stored = event[key as keyof typeof event] as string | null | undefined;
+    if (stored) out[key] = stored;
+  }
+  return out;
 }
 
 // Caminho da página sem os parâmetros utm_* (esses já aparecem como chips à parte).
@@ -198,7 +233,7 @@ function groupByVisitor(events: TrackingEvent[]): Visitor[] {
       leadFields: leadEvent?.extra_fields ?? {},
       lastUrl: sorted[0].event_url,
       lastPageTitle: sorted[0].page_title,
-      lastUtm: parseUtm(sorted[0].event_url),
+      lastUtm: resolveUtm(sorted[0]),
       lastLocation: { country: sorted[0].country, countryRegion: sorted[0].country_region, city: sorted[0].city },
     });
   }
@@ -295,7 +330,7 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
           <div className="relative flex flex-col gap-4 border-l pl-4" style={{ borderColor: "var(--dm-border-default)" }}>
             {timeline.map((event) => {
               const evColor = EVENT_COLORS[event.event_name] ?? { bg: "rgba(100,100,100,0.10)", text: "var(--dm-text-tertiary)" };
-              const utm = parseUtm(event.event_url);
+              const utm = resolveUtm(event);
               const utmEntries = Object.entries(utm);
               const isLeadEvent = Boolean(event.lead_email || event.lead_phone);
               const isSelected = isLeadEvent && event.id === selectedLead?.id;
@@ -421,11 +456,12 @@ export function TrackingEventsView() {
       setAnyMetaConfigured((pixelsRes.data ?? []).some((p) => p.meta_pixel_id));
     }
 
-    const missingNewColumn = ["page_title", "extra_fields", "country", "country_region", "city", "event_id"].some((col) =>
-      eventsRes.error?.message?.includes(col),
-    );
+    const missingNewColumn = [
+      "page_title", "extra_fields", "country", "country_region", "city", "event_id",
+      "utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "utm_placement", "utm_campaign_id", "utm_adset_id", "utm_ad_id",
+    ].some((col) => eventsRes.error?.message?.includes(col));
     if (missingNewColumn) {
-      // Migration 033/034 ainda não rodou no Supabase — busca sem as colunas novas em vez de quebrar a tela.
+      // Migration 033/034/038 ainda não rodou no Supabase — busca sem as colunas novas em vez de quebrar a tela.
       const retry = await supabaseClient
         .from("events_log")
         .select(EVENTS_SELECT_FALLBACK)
@@ -442,7 +478,7 @@ export function TrackingEventsView() {
     } else if (eventsRes.error) {
       setError(eventsRes.error.message);
     } else {
-      setEvents((eventsRes.data as TrackingEvent[]) ?? []);
+      setEvents((eventsRes.data as unknown as TrackingEvent[]) ?? []);
     }
 
     setLoading(false);
