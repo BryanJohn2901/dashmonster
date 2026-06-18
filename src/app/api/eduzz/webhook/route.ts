@@ -301,9 +301,11 @@ async function recordSale(db: SupabaseClient, companyId: string, sale: SaleEvent
     lead_email: sale.email,
     lead_phone: sale.phone,
     lead_name: sale.name,
-    // Mesmo campo que humanizeFieldKey()/extra_fields já usa pro Lead — o
-    // dashboard (TrackingEventsView) exibe "produto" como rótulo bonito no
-    // card da Purchase, sem precisar de coluna nova só pra isso.
+    // product_name (coluna, migration 044) é a fonte de verdade pra relatório
+    // futuro (mesma string que vai em campaign_metrics.campaign_name) — mantém
+    // extra_fields.produto também só pra não quebrar telas/migrations antigas
+    // que ainda leem de lá.
+    product_name: sale.productName,
     extra_fields: { produto: sale.productName },
     capi_status: metaConfigured ? "pending" : "skipped",
     country,
@@ -380,27 +382,128 @@ async function recordSale(db: SupabaseClient, companyId: string, sale: SaleEvent
 
 // ─── Recorrência/parcelamento ──────────────────────────────────────────────────
 
-// Só processa a PRIMEIRA cobrança de uma venda — pedido explícito: "valor
-// cheio do produto, sem chegar fatura de renovação todo mês". Genérico (não
-// fala de Eduzz especificamente) pra outras plataformas reaproveitarem com
-// seus próprios campos de assinatura/parcela mapeados pra SaleEvent.
-async function shouldSkipRecurring(db: SupabaseClient, companyId: string, sale: SaleEvent): Promise<string | null> {
-  if (sale.installmentNumber && sale.installmentNumber > 1) {
-    return `parcela ${sale.installmentNumber} (já contamos a venda na parcela 1)`;
+// Parcela de boleto (>1) é só continuação de um pagamento já contado por
+// completo na parcela 1 — sem revenue novo, sem registro novo, ignora 100%.
+function isInstallmentContinuation(sale: SaleEvent): boolean {
+  return Boolean(sale.installmentNumber && sale.installmentNumber > 1);
+}
+
+// Renovação de assinatura JÁ vista antes (mesmo recurrence_key) — diferente
+// da parcela: é receita nova de verdade (cobrança do mês), só não deve gerar
+// Purchase pra Meta (evita ruído de "venda nova" todo mês — pedido explícito).
+// `recordRenewal()` ainda guarda o valor pra relatório futuro de MRR/LTV.
+async function isKnownRecurrence(db: SupabaseClient, companyId: string, recurrenceKey: string): Promise<boolean> {
+  const { data, error } = await db
+    .from("events_log")
+    .select("id")
+    .eq("company_id", companyId)
+    .eq("recurrence_key", recurrenceKey)
+    .limit(1)
+    .maybeSingle();
+  // Erro de coluna ausente (migration 042 pendente) não bloqueia — sem essa
+  // checagem, renovação é tratada como venda nova (mesmo risco de sempre).
+  return !error && Boolean(data);
+}
+
+// Acumula no dia/produto: lê a linha existente, soma e faz upsert (uma
+// notificação = uma venda OU uma renovação; tanto faz pra esse total).
+async function upsertCampaignMetrics(db: SupabaseClient, companyId: string, sale: SaleEvent): Promise<void> {
+  const { data: existing } = await db
+    .from("campaign_metrics")
+    .select("revenue, conversions")
+    .eq("company_id", companyId)
+    .eq("date", sale.date)
+    .eq("campaign_name", sale.productName)
+    .eq("source", EDUZZ_SOURCE)
+    .maybeSingle();
+
+  const metricsPayload = {
+    company_id: companyId,
+    date: sale.date,
+    campaign_name: sale.productName,
+    investment: 0,
+    clicks: 0,
+    impressions: 0,
+    conversions: Number(existing?.conversions ?? 0) + 1,
+    leads: 0,
+    revenue: Number(existing?.revenue ?? 0) + sale.value,
+    source: EDUZZ_SOURCE,
+  };
+
+  let { error: upsertError } = await db
+    .from("campaign_metrics")
+    .upsert(metricsPayload, { onConflict: "company_id,date,campaign_name,source" });
+
+  // Fallback p/ o unique antigo (migration 024 não aplicada).
+  if (upsertError && /no unique|exclusion constraint/i.test(upsertError.message)) {
+    ({ error: upsertError } = await db
+      .from("campaign_metrics")
+      .upsert(metricsPayload, { onConflict: "date,campaign_name,source" }));
   }
-  if (sale.recurrenceKey) {
-    const { data, error } = await db
-      .from("events_log")
-      .select("id")
-      .eq("company_id", companyId)
-      .eq("recurrence_key", sale.recurrenceKey)
-      .limit(1)
-      .maybeSingle();
-    // Erro de coluna ausente (migration 042 pendente) não bloqueia — sem essa
-    // checagem, renovação é tratada como venda nova (mesmo risco de sempre).
-    if (!error && data) return "renovação de assinatura (já contamos a 1ª cobrança)";
+
+  if (upsertError) {
+    console.error("[eduzz webhook] upsert campaign_metrics:", upsertError.message);
   }
-  return null;
+}
+
+// Renovação de assinatura: NUNCA manda pra Meta (decisão de produto — só a 1ª
+// cobrança é "venda nova" pra fins de otimização de campanha), mas guarda o
+// valor em campaign_metrics (receita recorrente entra no total normal) e um
+// registro em events_log com event_name="Renewal" (não "Purchase" — não entra
+// no isCustomer/timeline de venda do dashboard atual, é só dado pra um
+// relatório futuro de MRR/LTV agrupar por recurrence_key). capi_status fica
+// fixo em "skipped": nem tentamos configurar pixel pra isso.
+async function recordRenewal(db: SupabaseClient, companyId: string, sale: SaleEvent): Promise<void> {
+  await upsertCampaignMetrics(db, companyId, sale);
+  await insertEventsLogRow(db, {
+    company_id: companyId,
+    event_name: "Renewal",
+    fingerprint_id: sale.recurrenceKey || sale.transactionId,
+    user_data: {},
+    lead_email: sale.email,
+    lead_phone: sale.phone,
+    lead_name: sale.name,
+    product_name: sale.productName,
+    capi_status: "skipped",
+    event_id: sale.transactionId,
+    recurrence_key: sale.recurrenceKey,
+    value: sale.value,
+    currency: sale.currency,
+    external_transaction_id: sale.transactionId,
+    source: EDUZZ_SOURCE,
+    payment_method: sale.paymentMethod,
+    installments: sale.installments,
+  });
+}
+
+// ─── Reembolso/chargeback ──────────────────────────────────────────────────────
+
+// Só formato moderno manda esses eventos. Atualiza o status da linha já
+// gravada (pela 1ª cobrança) em vez de criar uma nova — não reverte nada na
+// Meta ainda (escopo combinado: só guardar o dado, pra um relatório futuro de
+// receita líquida poder excluir vendas revertidas). Se não achar a linha
+// (webhook de reembolso chegou sem a gente ter visto o invoice_paid antes,
+// raro), não tem o que atualizar — só confirma recebimento.
+const REVERSAL_EVENTS: Record<string, "refunded" | "chargeback"> = {
+  "myeduzz.invoice_refunded": "refunded",
+  "myeduzz.invoice_chargeback": "chargeback",
+};
+
+async function handleReversal(db: SupabaseClient, companyId: string, body: EduzzModernPayload, status: "refunded" | "chargeback") {
+  const transactionId = body.data?.transaction?.id || body.data?.transaction?.key;
+  if (!transactionId) return NextResponse.json({ received: true, ignored: "sem transaction id" });
+
+  const { error } = await db
+    .from("events_log")
+    .update({ status })
+    .eq("company_id", companyId)
+    .eq("external_transaction_id", transactionId);
+
+  // Coluna ausente (migration 045 pendente) não derruba a resposta — só
+  // significa que essa reversão não fica registrada até a migration rodar.
+  if (error) console.error(`[eduzz webhook] falha ao marcar ${status}:`, error.message);
+
+  return NextResponse.json({ received: true, status });
 }
 
 // ─── Idempotência ──────────────────────────────────────────────────────────────
@@ -458,58 +561,42 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Segredo não corresponde a nenhuma empresa." }, { status: 403 });
   }
 
+  // Reembolso/chargeback: atualiza o status da venda já gravada, não cria
+  // nada novo. Só o formato moderno manda esses eventos.
+  if (isModernPayload(body)) {
+    const modernBody = body as EduzzModernPayload;
+    const reversalStatus = modernBody.event ? REVERSAL_EVENTS[modernBody.event] : undefined;
+    if (reversalStatus) {
+      return handleReversal(db, companyId, modernBody, reversalStatus);
+    }
+  }
+
   const sale = isModernPayload(body) ? parseModernPayload(body as EduzzModernPayload) : parseLegacyPayload(body);
   if ("ignored" in sale) {
     return NextResponse.json({ received: true, ignored: sale.ignored });
   }
 
-  const recurringSkipReason = await shouldSkipRecurring(db, companyId, sale);
-  if (recurringSkipReason) {
-    return NextResponse.json({ received: true, ignored: recurringSkipReason });
+  if (isInstallmentContinuation(sale)) {
+    return NextResponse.json({ received: true, ignored: `parcela ${sale.installmentNumber} (já contamos a venda na parcela 1)` });
   }
 
   if (await alreadyProcessed(db, companyId, sale.transactionId)) {
     return NextResponse.json({ received: true, duplicate: true });
   }
 
-  // Acumula no dia/produto: lê a linha existente, soma e faz upsert
-  // (uma notificação = uma venda; várias vendas do mesmo produto somam).
-  const { data: existing } = await db
-    .from("campaign_metrics")
-    .select("revenue, conversions")
-    .eq("company_id", companyId)
-    .eq("date", sale.date)
-    .eq("campaign_name", sale.productName)
-    .eq("source", EDUZZ_SOURCE)
-    .maybeSingle();
-
-  const metricsPayload = {
-    company_id: companyId,
-    date: sale.date,
-    campaign_name: sale.productName,
-    investment: 0,
-    clicks: 0,
-    impressions: 0,
-    conversions: Number(existing?.conversions ?? 0) + 1,
-    leads: 0,
-    revenue: Number(existing?.revenue ?? 0) + sale.value,
-    source: EDUZZ_SOURCE,
-  };
-
-  let { error: upsertError } = await db
-    .from("campaign_metrics")
-    .upsert(metricsPayload, { onConflict: "company_id,date,campaign_name,source" });
-
-  // Fallback p/ o unique antigo (migration 024 não aplicada).
-  if (upsertError && /no unique|exclusion constraint/i.test(upsertError.message)) {
-    ({ error: upsertError } = await db
-      .from("campaign_metrics")
-      .upsert(metricsPayload, { onConflict: "date,campaign_name,source" }));
+  // Renovação de assinatura: guarda a receita (campaign_metrics + events_log
+  // "Renewal", pra relatório futuro de MRR/LTV) mas NUNCA manda pra Meta —
+  // só a 1ª cobrança é "venda nova" pra fins de otimização de campanha.
+  if (sale.recurrenceKey && (await isKnownRecurrence(db, companyId, sale.recurrenceKey))) {
+    try {
+      await recordRenewal(db, companyId, sale);
+    } catch (err) {
+      console.error("[eduzz webhook] falha ao registrar renovação:", err instanceof Error ? err.message : err);
+    }
+    return NextResponse.json({ received: true, renewal: true, produto: sale.productName, revenue: sale.value });
   }
 
-  if (upsertError) {
-    console.error("[eduzz webhook] upsert campaign_metrics:", upsertError.message);
-  }
+  await upsertCampaignMetrics(db, companyId, sale);
 
   // Purchase em events_log + Meta CAPI nunca pode derrubar a resposta —
   // se a Eduzz não receber 200 rápido, ela reenfileira a notificação.

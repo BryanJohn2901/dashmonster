@@ -36,8 +36,20 @@ const mockEventsLogSelect = jest.fn(() => makeEventsLogQuery());
 
 const mockInsertSelect = jest.fn(() => ({ single: jest.fn(() => Promise.resolve({ data: { id: "evt-1" }, error: null })) }));
 const mockInsert: jest.Mock = jest.fn(() => ({ select: mockInsertSelect }));
-const mockEq = jest.fn(() => Promise.resolve({ data: null, error: null }));
-const mockUpdate = jest.fn(() => ({ eq: mockEq }));
+// .update() encadeia .eq() 1x (sendMetaCapiEvent) ou 2x (handleReversal,
+// company_id + external_transaction_id) — chain thenable: cada .eq() retorna
+// o próprio objeto (suporta N chamadas) e ele mesmo é awaitable no final.
+const mockEq = jest.fn();
+function makeUpdateChain() {
+  const resolved = Promise.resolve({ data: null, error: null });
+  const chain = {
+    eq: (...args: unknown[]) => { mockEq(...args); return chain; },
+    then: resolved.then.bind(resolved),
+    catch: resolved.catch.bind(resolved),
+  };
+  return chain;
+}
+const mockUpdate = jest.fn(() => makeUpdateChain());
 
 // tracking_pixels: mesma forma encadeada de tracking.test.ts.
 const mockPixelMaybeSingle = jest.fn();
@@ -339,16 +351,41 @@ describe("POST /api/eduzz/webhook", () => {
     expect(mockInsert).toHaveBeenCalledWith(expect.objectContaining({ value: 970, recurrence_key: "sub-1" }));
   });
 
-  it("assinatura recorrente: renovação (mesmo recurrence_key já visto) é ignorada", async () => {
+  it("assinatura recorrente: renovação (mesmo recurrence_key já visto) guarda receita mas NÃO manda pra Meta", async () => {
     mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
-    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: { id: "evt-primeira-cobranca" }, error: null }); // já existe esse recurrence_key
+    mockNotYetProcessed(); // alreadyProcessed: essa transação (da renovação) ainda não foi vista
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: { id: "evt-primeira-cobranca" }, error: null }); // isKnownRecurrence: já existe esse recurrence_key
 
     const payload = { ...MODERN_PAYLOAD, data: { ...MODERN_PAYLOAD.data, contract: { id: "sub-1" } } };
     const res = await POST(buildRequest(payload));
     const json = await res.json();
 
-    expect(json.ignored).toContain("renovação");
-    expect(mockMetricsUpsert).not.toHaveBeenCalled();
-    expect(mockInsert).not.toHaveBeenCalled();
+    expect(json.renewal).toBe(true);
+    expect(mockMetricsUpsert).toHaveBeenCalledWith(expect.objectContaining({ campaign_name: "Curso Y", revenue: 297 }), expect.anything());
+    expect(mockInsert).toHaveBeenCalledWith(expect.objectContaining({ event_name: "Renewal", recurrence_key: "sub-1", capi_status: "skipped" }));
+    expect(global.fetch).not.toHaveBeenCalled(); // nunca manda renovação pra Meta
+  });
+
+  it("reembolso (invoice_refunded) marca a venda já gravada como status=refunded", async () => {
+    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+
+    const payload = { event: "myeduzz.invoice_refunded", data: { buyer: {}, transaction: { id: "TX-MODERN-1" } } };
+    const res = await POST(buildRequest(payload));
+    const json = await res.json();
+
+    expect(json.status).toBe("refunded");
+    expect(mockUpdate).toHaveBeenCalledWith({ status: "refunded" });
+    expect(mockEq).toHaveBeenCalledWith("external_transaction_id", "TX-MODERN-1");
+  });
+
+  it("chargeback (invoice_chargeback) marca a venda já gravada como status=chargeback", async () => {
+    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+
+    const payload = { event: "myeduzz.invoice_chargeback", data: { buyer: {}, transaction: { id: "TX-MODERN-1" } } };
+    const res = await POST(buildRequest(payload));
+    const json = await res.json();
+
+    expect(json.status).toBe("chargeback");
+    expect(mockUpdate).toHaveBeenCalledWith({ status: "chargeback" });
   });
 });

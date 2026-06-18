@@ -18,6 +18,7 @@ const OPTIONAL_COLUMN_GROUPS: string[][] = [
   ["value", "currency", "external_transaction_id", "source", "payment_method", "fbp", "fbc"], // migration 040
   ["recurrence_key"], // migration 042
   ["installments"], // migration 043
+  ["product_name"], // migration 044
 ];
 
 export async function insertEventsLogRow(db: SupabaseClient, fullRow: Record<string, unknown>) {

@@ -44,6 +44,8 @@ interface TrackingEvent {
   payment_method: string | null;
   /** Total de parcelas (ex.: boleto em 3x) — null pra cartão (operadora decide, invisível pra plataforma) e pagamento à vista. */
   installments: number | null;
+  /** Mesma string de campaign_metrics.campaign_name — coluna própria (migration 044), não só dentro de extra_fields. */
+  product_name: string | null;
   created_at: string;
 }
 
@@ -112,8 +114,8 @@ const UTM_KEYS = [
 const EVENTS_SELECT =
   "id, event_name, fingerprint_id, event_url, page_title, user_data, lead_email, lead_phone, lead_name, extra_fields, country, country_region, city, event_id, " +
   "utm_source, utm_medium, utm_campaign, utm_content, utm_term, utm_placement, utm_campaign_id, utm_adset_id, utm_ad_id, " +
-  "value, currency, external_transaction_id, source, payment_method, installments, capi_status, capi_error, created_at";
-// Sem as colunas das migrations 033/034/036/038/039/040/043 — usado se alguma delas ainda não rodou
+  "value, currency, external_transaction_id, source, payment_method, installments, product_name, capi_status, capi_error, created_at";
+// Sem as colunas das migrations 033/034/036/038/039/040/043/044 — usado se alguma delas ainda não rodou
 // no banco, pra não derrubar a tela enquanto ela não é aplicada manualmente no Supabase.
 const EVENTS_SELECT_FALLBACK = "id, event_name, fingerprint_id, event_url, user_data, lead_email, lead_phone, capi_status, capi_error, created_at";
 
@@ -390,7 +392,9 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
               {purchaseEvents.map((p) => (
                 <div key={p.id} className="mb-1.5 flex flex-wrap items-center gap-1.5 text-xs last:mb-0" style={{ color: "var(--dm-text-primary)" }}>
                   <span className="font-semibold">{formatMoney(p.value, p.currency)}</span>
-                  {p.extra_fields?.produto && <span style={{ color: "var(--dm-text-tertiary)" }}>· {p.extra_fields.produto}</span>}
+                  {(p.product_name ?? p.extra_fields?.produto) && (
+                    <span style={{ color: "var(--dm-text-tertiary)" }}>· {p.product_name ?? p.extra_fields?.produto}</span>
+                  )}
                   {paymentMethodLabel(p.payment_method, p.installments) && (
                     <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
                       <CreditCard size={10} /> {paymentMethodLabel(p.payment_method, p.installments)}
@@ -462,8 +466,8 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
                   {event.event_name === "Purchase" && (
                     <div className="mt-1.5 rounded-lg border p-2" style={{ borderColor: EVENT_COLORS.Purchase.text, background: "rgba(245,158,11,0.06)" }}>
                       <p className="text-sm font-bold" style={{ color: EVENT_COLORS.Purchase.text }}>{formatMoney(event.value, event.currency)}</p>
-                      {event.extra_fields?.produto && (
-                        <p className="mt-0.5 text-[11px]" style={{ color: "var(--dm-text-primary)" }}>{event.extra_fields.produto}</p>
+                      {(event.product_name ?? event.extra_fields?.produto) && (
+                        <p className="mt-0.5 text-[11px]" style={{ color: "var(--dm-text-primary)" }}>{event.product_name ?? event.extra_fields?.produto}</p>
                       )}
                       <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
                         {event.lead_name && <span className="flex items-center gap-1"><User size={10} /> {event.lead_name}</span>}
@@ -563,7 +567,7 @@ export function TrackingEventsView() {
     const missingNewColumn = [
       "page_title", "extra_fields", "country", "country_region", "city", "event_id",
       "utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "utm_placement", "utm_campaign_id", "utm_adset_id", "utm_ad_id",
-      "lead_name", "value", "currency", "external_transaction_id", "source", "payment_method", "installments",
+      "lead_name", "value", "currency", "external_transaction_id", "source", "payment_method", "installments", "product_name",
     ].some((col) => eventsRes.error?.message?.includes(col));
     if (missingNewColumn) {
       // Migration 033/034/038/039/040 ainda não rodou no Supabase — busca sem as colunas novas em vez de quebrar a tela.
