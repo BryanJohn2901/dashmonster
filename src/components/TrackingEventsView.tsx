@@ -61,6 +61,10 @@ interface Visitor {
   isLead: boolean;
   leadEmail: string | null;
   leadPhone: string | null;
+  // Email/telefone de QUALQUER evento (inclui Purchase sem Lead correlacionado)
+  // — só pra busca, não usado na UI (que mostra leadEmail/leadPhone, Lead-only).
+  anyEmail: string | null;
+  anyPhone: string | null;
   leadFields: Record<string, string>;
   lastUrl: string | null;
   lastPageTitle: string | null;
@@ -283,6 +287,8 @@ function groupByVisitor(events: TrackingEvent[]): Visitor[] {
       isLead: Boolean(leadEvent),
       leadEmail: leadEvent?.lead_email ?? null,
       leadPhone: leadEvent?.lead_phone ?? null,
+      anyEmail: sorted.find((e) => e.lead_email)?.lead_email ?? null,
+      anyPhone: sorted.find((e) => e.lead_phone)?.lead_phone ?? null,
       leadFields: leadEvent?.extra_fields ?? {},
       lastUrl: sorted[0].event_url,
       lastPageTitle: sorted[0].page_title,
@@ -634,8 +640,8 @@ export function TrackingEventsView() {
       return (
         v.fingerprintId.toLowerCase().includes(q) ||
         v.events.some((e) => e.event_url?.toLowerCase().includes(q) || e.page_title?.toLowerCase().includes(q)) ||
-        v.leadEmail?.toLowerCase().includes(q) ||
-        v.leadPhone?.toLowerCase().includes(q) ||
+        v.anyEmail?.toLowerCase().includes(q) ||
+        v.anyPhone?.toLowerCase().includes(q) ||
         false
       );
     }
