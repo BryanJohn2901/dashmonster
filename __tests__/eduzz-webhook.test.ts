@@ -80,37 +80,41 @@ const mockMetricsUpsert = jest.fn(() => Promise.resolve({ error: null }));
 // venda sem produto mapeado e sem visita. Default "sem dado" simula migration
 // ainda não rodada, cai pro comportamento de sempre ('default_pixel') sem
 // precisar mockar em todo teste que não é sobre essa feature.
-// eduzz_product_pixel_map (migration 048/049) — mapeamento explícito
-// produto→pixel. 2 formatos de query no mesmo mock: findMappedPixelId()
-// termina em .maybeSingle() (espera 1 linha ou nada); companyHasProductMapping()
-// só dá await direto no resultado de .limit() (espera um array). Ambos
-// resolvem pelo MESMO valor mockado — por padrão "sem dado nenhum" (`{data: [],
-// error: null}`), que funciona pra qualquer um dos 2 formatos como "sem
-// mapeamento cadastrado" (caminho normal, allowlist nunca liga).
-const mockProductMapResult = jest.fn(
+// eduzz_products (migration 050) — catálogo produto→pixel. 2 formatos de
+// query no mesmo mock: findProductPixelId() termina em .maybeSingle() (espera
+// 1 linha ou nada); companyHasAnyProductPixel() só dá await direto no
+// resultado de .limit() (espera um array). Ambos resolvem pelo MESMO valor
+// mockado — por padrão "sem dado nenhum" (`{data: [], error: null}`), que
+// funciona pra qualquer um dos 2 formatos como "produto sem pixel escolhido"
+// (caminho normal, allowlist nunca liga).
+const mockProductsResult = jest.fn(
   (): Promise<{ data: unknown; error: { message: string } | null }> => Promise.resolve({ data: [], error: null }),
 );
-function makeProductMapQuery() {
+function makeProductsQuery() {
   const query = {
     eq: jest.fn(),
-    in: jest.fn(),
+    not: jest.fn(),
     limit: jest.fn(),
-    maybeSingle: () => mockProductMapResult(),
-    then: (onResolve: (v: unknown) => unknown, onReject?: (e: unknown) => unknown) => mockProductMapResult().then(onResolve, onReject),
+    maybeSingle: () => mockProductsResult(),
+    then: (onResolve: (v: unknown) => unknown, onReject?: (e: unknown) => unknown) => mockProductsResult().then(onResolve, onReject),
   };
   query.eq.mockImplementation(() => query);
-  query.in.mockImplementation(() => query);
+  query.not.mockImplementation(() => query);
   query.limit.mockImplementation(() => query);
   return query;
 }
-const mockProductMapSelect = jest.fn(() => makeProductMapQuery());
+const mockProductsSelect = jest.fn(() => makeProductsQuery());
+// upsertProductCatalog() — sempre dá await direto, sem mais nada encadeado.
+const mockProductsUpsert = jest.fn(() => Promise.resolve({ data: null, error: null }));
+const mockOffersUpsert = jest.fn(() => Promise.resolve({ data: null, error: null }));
 
 const mockFrom = jest.fn((table: string) => {
   if (table === "eduzz_webhook_configs") return { select: mockConfigSelect };
   if (table === "tracking_pixels") return { select: mockPixelSelect };
   if (table === "events_log") return { select: mockEventsLogSelect, insert: mockInsert, update: mockUpdate };
   if (table === "campaign_metrics") return { select: mockMetricsSelect, upsert: mockMetricsUpsert };
-  if (table === "eduzz_product_pixel_map") return { select: mockProductMapSelect };
+  if (table === "eduzz_products") return { select: mockProductsSelect, upsert: mockProductsUpsert };
+  if (table === "eduzz_product_offers") return { upsert: mockOffersUpsert };
   throw new Error(`tabela inesperada: ${table}`);
 });
 
@@ -492,46 +496,52 @@ describe("POST /api/eduzz/webhook", () => {
     expect(mockUpdate).toHaveBeenCalledWith({ status: "chargeback" });
   });
 
-  it("produto mapeado (migration 048/049, por parentId) vence a visita correlacionada", async () => {
+  it("produto com pixel escolhido no catálogo (migration 050, por parentId) vence a visita correlacionada", async () => {
     mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
     mockNotYetProcessed();
-    // resolveVisitMatch acha visita por email, ligada a um pixel — mas o mapeamento explícito tem que vencer essa.
+    // resolveVisitMatch acha visita por email, ligada a um pixel — mas o produto com pixel escolhido no catálogo tem que vencer essa.
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: { fingerprint_id: "fp-1", event_url: "https://x.com", pixel_id: "pixel-DA-VISITA" }, error: null });
-    mockProductMapResult.mockResolvedValueOnce({ data: { pixel_id: "pixel-MAPEADO" }, error: null }); // findMappedPixelId
+    mockProductsResult.mockResolvedValueOnce({ data: { pixel_id: "pixel-MAPEADO" }, error: null }); // findProductPixelId
     mockPixelMaybeSingle.mockResolvedValueOnce({ data: { ...PIXEL_OK, meta_pixel_id: "PIXEL_MAPEADO_999" }, error: null });
 
     const payload = { ...MODERN_PAYLOAD, data: { ...MODERN_PAYLOAD.data, items: [{ name: "Curso Y", parentId: "curso-pai-1" }] } };
     const res = await POST(buildRequest(payload));
     expect(res.status).toBe(200);
 
-    expect(mockProductMapSelect).toHaveBeenCalled();
+    expect(mockProductsSelect).toHaveBeenCalled();
     expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining("PIXEL_MAPEADO_999"), expect.anything());
   });
 
-  it("produto mapeado por productId (não só parentId) também casa", async () => {
+  it("venda com produto novo (parentId + productId) auto-popula o catálogo (eduzz_products + eduzz_product_offers)", async () => {
     mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
     mockNotYetProcessed();
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por email
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por telefone
-    mockProductMapResult.mockResolvedValueOnce({ data: { pixel_id: "pixel-MAPEADO" }, error: null });
-    mockPixelMaybeSingle.mockResolvedValueOnce({ data: { ...PIXEL_OK, meta_pixel_id: "PIXEL_POR_PRODUCTID" }, error: null });
+    mockPixelMaybeSingle.mockResolvedValueOnce({ data: PIXEL_OK, error: null }); // resolveDefaultPixel (produto novo nunca tem pixel escolhido ainda)
 
-    const payload = { ...MODERN_PAYLOAD, data: { ...MODERN_PAYLOAD.data, items: [{ name: "Curso Y", productId: "3048488" }] } };
+    const payload = { ...MODERN_PAYLOAD, data: { ...MODERN_PAYLOAD.data, items: [{ name: "Curso Y", productId: "3048488", parentId: "curso-pai-2" }] } };
     const res = await POST(buildRequest(payload));
     expect(res.status).toBe(200);
 
-    expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining("PIXEL_POR_PRODUCTID"), expect.anything());
+    expect(mockProductsUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({ parent_id: "curso-pai-2", name: "Curso Y" }),
+      expect.objectContaining({ onConflict: "company_id,parent_id", ignoreDuplicates: true }),
+    );
+    expect(mockOffersUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({ parent_id: "curso-pai-2", product_id: "3048488", name: "Curso Y" }),
+      expect.objectContaining({ onConflict: "company_id,product_id" }),
+    );
   });
 
-  it("allowlist: empresa com 1+ produto mapeado ignora venda de produto SEM vínculo, mesmo com visita correlacionada", async () => {
+  it("allowlist: empresa com 1+ produto com pixel escolhido ignora venda de produto SEM vínculo, mesmo com visita correlacionada", async () => {
     mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
     mockNotYetProcessed();
-    // tem visita correlacionada, mas não importa — produto desta venda não tem mapeamento e a empresa já usa a allowlist.
+    // tem visita correlacionada, mas não importa — produto desta venda não tem pixel escolhido e a empresa já usa a allowlist.
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: { fingerprint_id: "fp-1", event_url: "https://x.com", pixel_id: "pixel-DA-VISITA" }, error: null });
-    mockProductMapResult.mockResolvedValueOnce({ data: null, error: null }); // findMappedPixelId: productId desta venda não está mapeado
-    mockProductMapResult.mockResolvedValueOnce({ data: [{ id: "map-1" }], error: null }); // companyHasProductMapping: empresa tem outros produtos mapeados
+    mockProductsResult.mockResolvedValueOnce({ data: null, error: null }); // findProductPixelId: este produto não tem pixel escolhido
+    mockProductsResult.mockResolvedValueOnce({ data: [{ parent_id: "outro-produto" }], error: null }); // companyHasAnyProductPixel: empresa tem outro produto com pixel escolhido
 
-    const payload = { ...MODERN_PAYLOAD, data: { ...MODERN_PAYLOAD.data, items: [{ name: "Curso Z", productId: "id-nao-mapeado" }] } };
+    const payload = { ...MODERN_PAYLOAD, data: { ...MODERN_PAYLOAD.data, items: [{ name: "Curso Z", parentId: "curso-sem-pixel" }] } };
     const res = await POST(buildRequest(payload));
     expect(res.status).toBe(200);
 

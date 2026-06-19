@@ -417,74 +417,74 @@ export async function deleteTrackingPixel(pixelId: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
-// ─── Mapeamento opcional "produto Eduzz → pixel" (migration 048/049) ─────────
-// 100% opt-in: sem NENHUMA linha cadastrada aqui, o webhook da Eduzz continua
-// decidindo o pixel só por visita correlacionada → pixel padrão, exatamente
-// como antes desta feature. A partir da 1ª linha cadastrada, vira allowlist:
-// SÓ os produtos mapeados aqui mandam pra Meta, o resto é ignorado de
-// propósito (ver companyHasProductMapping() em src/app/api/eduzz/CLAUDE.md).
-// `key` aceita tanto productId quanto parentId do item — o webhook testa os 2.
-export interface DetectedEduzzProduct {
-  key: string;
+// ─── Catálogo Eduzz: produto → ofertas, pixel por produto (migration 050) ──
+// Você cria 1 PRODUTO na Eduzz (curso) e dentro dele N OFERTAS (preço/
+// parcelamento diferentes, cada uma com seu próprio productId) — parentId é
+// estável entre todas as ofertas do mesmo produto (confirmado com dado real).
+// O vínculo de pixel é só no PRODUTO — toda oferta dele herda automaticamente,
+// sem configurar oferta por oferta. 100% opt-in: sem NENHUM produto com pixel
+// escolhido, o webhook decide o pixel só por visita correlacionada → pixel
+// padrão, exatamente como antes desta feature. A partir do 1º produto com
+// pixel escolhido, vira allowlist — ver companyHasAnyProductPixel() em
+// src/app/api/eduzz/CLAUDE.md.
+export interface EduzzProductOffer {
+  productId: string;
   label: string;
 }
 
-export interface ProductPixelMapping {
-  id: string;
-  key: string;
-  pixelId: string;
-  label: string;
+export interface EduzzProduct {
+  parentId: string;
+  name: string;
+  pixelId: string | null;
+  offers: EduzzProductOffer[];
 }
 
-/** Produtos já vistos em vendas da Eduzz dessa empresa (por productId ou parentId do item) — pra sugerir no seletor, sem o usuário precisar digitar nenhum ID do zero. Olha as últimas 500 vendas; produto repetido fica só 1x (o nome mais recente). */
-export async function fetchDetectedEduzzProducts(companyId: string): Promise<DetectedEduzzProduct[]> {
+/**
+ * Catálogo completo da empresa: todo produto já visto em venda da Eduzz
+ * (criado automaticamente pelo webhook na 1ª venda, nome provisório = título
+ * da oferta) + suas ofertas conhecidas. 2 queries (produtos + ofertas),
+ * combinadas no client — volume baixo (dezenas de produtos), não precisa de
+ * JOIN no servidor.
+ */
+export async function fetchEduzzCatalog(companyId: string): Promise<EduzzProduct[]> {
   if (!supabaseClient) return [];
-  const { data, error } = await supabaseClient
-    .from("events_log")
-    .select("product_item_id, product_parent_id, product_name")
-    .eq("company_id", companyId)
-    .eq("event_name", "Purchase")
-    .eq("source", "eduzz")
-    .order("created_at", { ascending: false })
-    .limit(500);
-  if (error || !data) return [];
-  const seen = new Map<string, string>();
-  for (const row of data) {
-    const key = (row.product_item_id as string | null) ?? (row.product_parent_id as string | null);
-    if (key && !seen.has(key)) seen.set(key, (row.product_name as string) || key);
+  const [productsRes, offersRes] = await Promise.all([
+    supabaseClient.from("eduzz_products").select("parent_id, name, pixel_id").eq("company_id", companyId),
+    supabaseClient.from("eduzz_product_offers").select("parent_id, product_id, name").eq("company_id", companyId),
+  ]);
+  if (productsRes.error || !productsRes.data) return [];
+  const offersByParent = new Map<string, EduzzProductOffer[]>();
+  for (const row of offersRes.data ?? []) {
+    const parentId = row.parent_id as string;
+    const list = offersByParent.get(parentId) ?? [];
+    list.push({ productId: row.product_id as string, label: (row.name as string) || (row.product_id as string) });
+    offersByParent.set(parentId, list);
   }
-  return [...seen.entries()].map(([key, label]) => ({ key, label }));
-}
-
-/** Mapeamentos já cadastrados pra essa empresa. */
-export async function fetchProductPixelMappings(companyId: string): Promise<ProductPixelMapping[]> {
-  if (!supabaseClient) return [];
-  const { data, error } = await supabaseClient
-    .from("eduzz_product_pixel_map")
-    .select("id, eduzz_product_key, pixel_id, product_label")
-    .eq("company_id", companyId);
-  if (error || !data) return [];
-  return data.map((row) => ({
-    id: row.id as string,
-    key: row.eduzz_product_key as string,
-    pixelId: row.pixel_id as string,
-    label: (row.product_label as string) ?? row.eduzz_product_key as string,
+  return productsRes.data.map((row) => ({
+    parentId: row.parent_id as string,
+    name: row.name as string,
+    pixelId: (row.pixel_id as string) || null,
+    offers: offersByParent.get(row.parent_id as string) ?? [],
   }));
 }
 
-/** Vincula (ou troca o pixel de) um produto — upsert por (empresa, key). `key` é o productId ou parentId que o usuário tiver em mãos. */
-export async function upsertProductPixelMapping(companyId: string, key: string, pixelId: string, label: string): Promise<void> {
+/** Cadastra um produto novo de antemão (antes de qualquer venda chegar) ou renomeia um já existente — upsert por (empresa, parentId). */
+export async function upsertEduzzProduct(companyId: string, parentId: string, name: string): Promise<void> {
   if (!supabaseClient) throw new Error("Supabase não configurado.");
   const { error } = await supabaseClient
-    .from("eduzz_product_pixel_map")
-    .upsert({ company_id: companyId, eduzz_product_key: key, pixel_id: pixelId, product_label: label }, { onConflict: "company_id,eduzz_product_key" });
+    .from("eduzz_products")
+    .upsert({ company_id: companyId, parent_id: parentId, name }, { onConflict: "company_id,parent_id" });
   if (error) throw new Error(error.message);
 }
 
-/** Remove o vínculo. Se ficar 0 produtos mapeados, a empresa sai do modo allowlist e volta a mandar tudo (visita → pixel padrão). */
-export async function deleteProductPixelMapping(mappingId: string): Promise<void> {
+/** Vincula (ou remove, com `pixelId: null`) o pixel de um produto — todas as ofertas dele herdam automaticamente. */
+export async function setEduzzProductPixel(companyId: string, parentId: string, pixelId: string | null): Promise<void> {
   if (!supabaseClient) throw new Error("Supabase não configurado.");
-  const { error } = await supabaseClient.from("eduzz_product_pixel_map").delete().eq("id", mappingId);
+  const { error } = await supabaseClient
+    .from("eduzz_products")
+    .update({ pixel_id: pixelId })
+    .eq("company_id", companyId)
+    .eq("parent_id", parentId);
   if (error) throw new Error(error.message);
 }
 

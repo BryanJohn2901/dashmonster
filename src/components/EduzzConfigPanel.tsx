@@ -5,8 +5,8 @@ import { Loader2, Save, Plus, Trash2, ChevronDown, ChevronRight } from "lucide-r
 import { toast } from "@/hooks/useToast";
 import {
   fetchEduzzWebhookConfigs, createEduzzWebhookConfig, renameEduzzWebhookConfig, deleteEduzzWebhookConfig,
-  fetchTrackingPixels, fetchDetectedEduzzProducts, fetchProductPixelMappings, upsertProductPixelMapping, deleteProductPixelMapping,
-  type Company, type EduzzWebhookConfig, type TrackingPixel, type DetectedEduzzProduct, type ProductPixelMapping,
+  fetchTrackingPixels, fetchEduzzCatalog, upsertEduzzProduct, setEduzzProductPixel,
+  type Company, type EduzzWebhookConfig, type TrackingPixel, type EduzzProduct,
 } from "@/hooks/useCompany";
 
 const BRAND = "#6366C8";
@@ -95,68 +95,48 @@ export function EduzzConfigPanel({ company, canEdit }: { company: Company; canEd
   );
 }
 
-// Seção opcional, recolhida por padrão. Sem NENHUM produto cadastrado aqui,
-// o webhook continua decidindo o pixel só por visita correlacionada → pixel
-// padrão, exatamente como sempre foi. A partir do 1º produto cadastrado, vira
-// allowlist: SÓ os produtos daqui mandam pra Meta, o resto é ignorado de
-// propósito (ver src/app/api/eduzz/CLAUDE.md, "mapeamento opcional produto→pixel").
+// Seção opcional, recolhida por padrão. Sem NENHUM produto com pixel
+// escolhido, o webhook continua decidindo o pixel só por visita
+// correlacionada → pixel padrão, exatamente como sempre foi. A partir do 1º
+// produto com pixel escolhido, vira allowlist: SÓ esses produtos mandam pra
+// Meta, o resto é ignorado de propósito (ver src/app/api/eduzz/CLAUDE.md).
+// Produto é descoberto automaticamente na 1ª venda (nome provisório = título
+// da oferta) — não precisa de nenhum cadastro manual prévio pra aparecer
+// aqui; o formulário "produto novo" é só pra pré-configurar antes de qualquer
+// venda ter chegado.
 function ProductPixelMapSection({ company, canEdit }: { company: Company; canEdit: boolean }) {
   const [open, setOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [ready, setReady] = useState(false);
   const [pixels, setPixels] = useState<TrackingPixel[]>([]);
-  const [detected, setDetected] = useState<DetectedEduzzProduct[]>([]);
-  const [mappings, setMappings] = useState<ProductPixelMapping[]>([]);
+  const [products, setProducts] = useState<EduzzProduct[]>([]);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const [newKey, setNewKey] = useState("");
-  const [newLabel, setNewLabel] = useState("");
+  const [newParentId, setNewParentId] = useState("");
+  const [newName, setNewName] = useState("");
   const [newPixelId, setNewPixelId] = useState("");
   const [adding, setAdding] = useState(false);
 
   useEffect(() => {
     if (!open || loaded) return;
     setLoaded(true);
-    void Promise.all([
-      fetchTrackingPixels(company.id),
-      fetchDetectedEduzzProducts(company.id),
-      fetchProductPixelMappings(company.id),
-    ]).then(([p, prod, maps]) => {
+    void Promise.all([fetchTrackingPixels(company.id), fetchEduzzCatalog(company.id)]).then(([p, catalog]) => {
       setPixels(p);
-      setDetected(prod);
-      setMappings(maps);
+      setProducts(catalog);
       if (p[0]) setNewPixelId((cur) => cur || p[0].id);
       setReady(true);
     });
   }, [open, loaded, company.id]);
 
-  const mappedKeys = new Set(mappings.map((m) => m.key));
-  const suggestions = detected.filter((d) => !mappedKeys.has(d.key));
+  const hasAnyPixelAssigned = products.some((p) => p.pixelId);
 
-  const addMapping = async (key: string, label: string, pixelId: string) => {
-    if (!key.trim() || !pixelId) {
-      toast.error("Preencha o ID do produto e escolha um pixel.");
-      return;
-    }
-    setAdding(true);
+  const changePixel = async (parentId: string, pixelId: string) => {
+    setSavingId(parentId);
     try {
-      await upsertProductPixelMapping(company.id, key.trim(), pixelId, label.trim() || key.trim());
-      setMappings((prev) => [...prev.filter((m) => m.key !== key.trim()), { id: key.trim(), key: key.trim(), pixelId, label: label.trim() || key.trim() }]);
-      setNewKey("");
-      setNewLabel("");
-      toast.success(mappings.length === 0 ? "Produto vinculado — a partir de agora SÓ produtos vinculados mandam pra Meta." : "Produto vinculado.");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erro ao vincular produto.");
-    } finally {
-      setAdding(false);
-    }
-  };
-
-  const changePixel = async (mapping: ProductPixelMapping, pixelId: string) => {
-    setSavingId(mapping.id);
-    try {
-      await upsertProductPixelMapping(company.id, mapping.key, pixelId, mapping.label);
-      setMappings((prev) => prev.map((m) => (m.id === mapping.id ? { ...m, pixelId } : m)));
+      await setEduzzProductPixel(company.id, parentId, pixelId || null);
+      setProducts((prev) => prev.map((p) => (p.parentId === parentId ? { ...p, pixelId: pixelId || null } : p)));
+      toast.success(pixelId && !hasAnyPixelAssigned ? "Pixel vinculado — a partir de agora SÓ produtos vinculados mandam pra Meta." : "Salvo.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro ao salvar.");
     } finally {
@@ -164,16 +144,26 @@ function ProductPixelMapSection({ company, canEdit }: { company: Company; canEdi
     }
   };
 
-  const remove = async (mapping: ProductPixelMapping) => {
-    setSavingId(mapping.id);
+  const addProduct = async () => {
+    if (!newParentId.trim()) {
+      toast.error("Preencha o ID do produto (parentId).");
+      return;
+    }
+    setAdding(true);
     try {
-      await deleteProductPixelMapping(mapping.id);
-      setMappings((prev) => prev.filter((m) => m.id !== mapping.id));
-      toast.success(mappings.length === 1 ? "Removido — sem nenhum produto vinculado, volta a mandar tudo (comportamento padrão)." : "Removido.");
+      await upsertEduzzProduct(company.id, newParentId.trim(), newName.trim() || newParentId.trim());
+      if (newPixelId) await setEduzzProductPixel(company.id, newParentId.trim(), newPixelId);
+      setProducts((prev) => [
+        ...prev.filter((p) => p.parentId !== newParentId.trim()),
+        { parentId: newParentId.trim(), name: newName.trim() || newParentId.trim(), pixelId: newPixelId || null, offers: [] },
+      ]);
+      setNewParentId("");
+      setNewName("");
+      toast.success("Produto cadastrado.");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erro ao remover.");
+      toast.error(e instanceof Error ? e.message : "Erro ao cadastrar produto.");
     } finally {
-      setSavingId(null);
+      setAdding(false);
     }
   };
 
@@ -194,9 +184,10 @@ function ProductPixelMapSection({ company, canEdit }: { company: Company; canEdi
         <div className="space-y-4 border-t px-4 py-4" style={{ borderColor: "var(--dm-border-default)" }}>
           <p className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
             O webhook recebe TODA venda da conta Eduzz, sem filtro por produto. <strong style={{ color: "var(--dm-text-secondary)" }}>Sem
-            vincular nada aqui, manda tudo</strong> (comportamento de sempre). A partir do 1º produto vinculado, vira uma lista —{" "}
+            vincular nenhum pixel abaixo, manda tudo</strong> (comportamento de sempre). A partir do 1º produto vinculado, vira allowlist —{" "}
             <strong style={{ color: "var(--dm-text-secondary)" }}>só os produtos vinculados mandam pra Meta</strong>, o resto é ignorado
-            de propósito (útil se a conta também vende produto fora de campanha nenhuma).
+            de propósito. Cada produto (curso) pode ter várias ofertas (preço/parcelamento) — o pixel é vinculado 1x no produto e vale
+            pra todas as ofertas dele automaticamente.
           </p>
 
           {!ready ? (
@@ -209,56 +200,80 @@ function ProductPixelMapSection({ company, canEdit }: { company: Company; canEdi
             </p>
           ) : (
             <>
-              {mappings.length > 0 && (
+              {products.length === 0 ? (
+                <p className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                  Nenhum produto visto em venda ainda — aparece aqui sozinho assim que a 1ª venda chegar, ou cadastre de antemão abaixo.
+                </p>
+              ) : (
                 <div className="space-y-2">
-                  {mappings.map((m) => (
-                    <div key={m.id} className="flex items-center gap-2">
-                      <div className="flex-1 truncate text-[12px]" title={m.label}>
-                        <span style={{ color: "var(--dm-text-primary)" }}>{m.label}</span>{" "}
-                        <span className="font-mono text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>#{m.key}</span>
+                  {products.map((p) => {
+                    const expanded = expandedId === p.parentId;
+                    return (
+                      <div key={p.parentId} className="rounded-xl border" style={{ borderColor: "var(--dm-border-default)" }}>
+                        <div className="flex items-center gap-2 p-2">
+                          <button
+                            type="button"
+                            onClick={() => setExpandedId(expanded ? null : p.parentId)}
+                            disabled={p.offers.length === 0}
+                            className="flex flex-1 items-center gap-1.5 truncate text-left text-[12px] disabled:cursor-default"
+                            title={p.name}
+                          >
+                            {p.offers.length > 0 && (expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />)}
+                            <span style={{ color: "var(--dm-text-primary)" }}>{p.name}</span>
+                            <span className="font-mono text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>#{p.parentId}</span>
+                            {p.offers.length > 0 && (
+                              <span className="rounded-full px-1.5 py-0.5 text-[9px] font-semibold" style={{ background: "rgba(100,116,139,0.12)", color: "var(--dm-text-tertiary)" }}>
+                                {p.offers.length} oferta{p.offers.length !== 1 ? "s" : ""}
+                              </span>
+                            )}
+                          </button>
+                          <select
+                            value={p.pixelId ?? ""}
+                            disabled={!canEdit || savingId === p.parentId}
+                            onChange={(e) => void changePixel(p.parentId, e.target.value)}
+                            className="h-9 flex-shrink-0 rounded-lg border px-2 text-[11px] disabled:opacity-60"
+                            style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
+                          >
+                            <option value="">— Lógica padrão —</option>
+                            {pixels.map((px) => (
+                              <option key={px.id} value={px.id}>{px.name}</option>
+                            ))}
+                          </select>
+                          {savingId === p.parentId && <Loader2 size={13} className="animate-spin flex-shrink-0" style={{ color: "var(--dm-text-tertiary)" }} />}
+                        </div>
+                        {expanded && p.offers.length > 0 && (
+                          <div className="space-y-1 border-t px-3 py-2" style={{ borderColor: "var(--dm-border-default)" }}>
+                            {p.offers.map((o) => (
+                              <div key={o.productId} className="flex items-center gap-2 truncate text-[11px]" style={{ color: "var(--dm-text-tertiary)" }} title={o.label}>
+                                <span className="truncate">{o.label}</span>
+                                <span className="font-mono text-[10px] flex-shrink-0">#{o.productId}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                      <select
-                        value={m.pixelId}
-                        disabled={!canEdit || savingId === m.id}
-                        onChange={(e) => void changePixel(m, e.target.value)}
-                        className="h-9 rounded-lg border px-2 text-[11px] disabled:opacity-60"
-                        style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
-                      >
-                        {pixels.map((p) => (
-                          <option key={p.id} value={p.id}>{p.name}</option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        onClick={() => void remove(m)}
-                        disabled={!canEdit || savingId === m.id}
-                        className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border transition-opacity hover:opacity-80 disabled:opacity-40"
-                        style={{ borderColor: "var(--dm-border-default)", color: "#ef4444" }}
-                      >
-                        {savingId === m.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-                      </button>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 
               {canEdit && (
                 <div className="space-y-2 border-t pt-3" style={{ borderColor: "var(--dm-border-default)" }}>
                   <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
-                    Vincular produto novo
+                    Cadastrar produto de antemão
                   </span>
                   <div className="flex items-center gap-2">
                     <input
-                      value={newKey}
-                      onChange={(e) => setNewKey(e.target.value)}
-                      placeholder="ID do produto (productId)"
+                      value={newParentId}
+                      onChange={(e) => setNewParentId(e.target.value)}
+                      placeholder="ID do produto (parentId)"
                       className="h-9 w-36 flex-shrink-0 rounded-lg border px-2 font-mono text-[11px]"
                       style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
                     />
                     <input
-                      value={newLabel}
-                      onChange={(e) => setNewLabel(e.target.value)}
-                      placeholder="Nome do produto (opcional, só pra identificar)"
+                      value={newName}
+                      onChange={(e) => setNewName(e.target.value)}
+                      placeholder="Nome do produto (ex: Saúde da Mulher)"
                       className="h-9 flex-1 rounded-lg border px-2 text-[11px]"
                       style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
                     />
@@ -268,14 +283,14 @@ function ProductPixelMapSection({ company, canEdit }: { company: Company; canEdi
                       className="h-9 rounded-lg border px-2 text-[11px]"
                       style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
                     >
-                      {pixels.map((p) => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
+                      {pixels.map((px) => (
+                        <option key={px.id} value={px.id}>{px.name}</option>
                       ))}
                     </select>
                     <button
                       type="button"
-                      onClick={() => void addMapping(newKey, newLabel, newPixelId)}
-                      disabled={adding || !newKey.trim()}
+                      onClick={() => void addProduct()}
+                      disabled={adding || !newParentId.trim()}
                       className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg transition-opacity hover:opacity-90 disabled:opacity-40"
                       style={btnPrimaryStyle}
                     >
@@ -283,32 +298,9 @@ function ProductPixelMapSection({ company, canEdit }: { company: Company; canEdi
                     </button>
                   </div>
                   <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
-                    Cole o <code>productId</code> que aparece no relatório/payload da venda (ex.: <code>3048488</code>) — funciona mesmo
-                    sem nenhuma venda desse produto ter chegado ainda.
+                    Cole o <code>parentId</code> do produto (curso) — cobre todas as ofertas/parcelamentos dele automaticamente, mesmo as
+                    futuras. Já existe um produto na lista acima? Não precisa cadastrar de novo, só escolha o pixel direto nele.
                   </p>
-                </div>
-              )}
-
-              {canEdit && suggestions.length > 0 && (
-                <div className="space-y-1.5 border-t pt-3" style={{ borderColor: "var(--dm-border-default)" }}>
-                  <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
-                    Detectados em vendas recentes (ainda sem vínculo)
-                  </span>
-                  {suggestions.map((s) => (
-                    <div key={s.key} className="flex items-center gap-2">
-                      <span className="flex-1 truncate text-[11px]" style={{ color: "var(--dm-text-secondary)" }} title={s.label}>
-                        {s.label} <span className="font-mono text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>#{s.key}</span>
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => { setNewKey(s.key); setNewLabel(s.label); }}
-                        className="text-[10px] font-bold transition-opacity hover:opacity-70"
-                        style={{ color: BRAND }}
-                      >
-                        Usar
-                      </button>
-                    </div>
-                  ))}
                 </div>
               )}
             </>

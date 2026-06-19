@@ -321,62 +321,75 @@ async function resolveVisitMatch(db: SupabaseClient, companyId: string, sale: Sa
   return null;
 }
 
-// Mapeamento opcional "produto → pixel" (migration 048/049, `eduzz_product_pixel_map`)
-// — só existe se o usuário cadastrar explicitamente. A chave (`eduzz_product_key`)
-// aceita TANTO productId quanto parentId — o usuário cola o que tiver à mão
-// (ex.: o productId que aparece no payload/relatório), sem precisar saber a
-// diferença entre os dois. Testamos contra todos os candidatos da venda:
-// productId de cada item + o parentId do item principal.
-function candidateProductKeys(sale: SaleEvent): string[] {
-  const keys = sale.items.map((i) => i.productId).filter((id): id is string => Boolean(id));
-  if (sale.productParentId) keys.push(sale.productParentId);
-  return [...new Set(keys)];
+// Catálogo Eduzz: produto (parentId, vínculo de pixel mora aqui) → ofertas
+// (productId, 1 por preço/parcelamento do mesmo produto — migration 050).
+// 100% auto-preenchido a cada venda, sem precisar de nenhum cadastro manual
+// pra o produto aparecer na tela de configuração.
+async function upsertProductCatalog(db: SupabaseClient, companyId: string, sale: SaleEvent): Promise<void> {
+  if (!sale.productParentId) return; // postback antigo não manda itens estruturados — sem catálogo possível.
+
+  // Nome provisório = título da oferta (até o usuário renomear) — só na 1ª
+  // vez que esse produto aparece; updates seguintes NUNCA sobrescrevem um
+  // nome que o usuário já possa ter customizado (por isso ignoreDuplicates).
+  await db
+    .from("eduzz_products")
+    .upsert(
+      { company_id: companyId, parent_id: sale.productParentId, name: sale.productName },
+      { onConflict: "company_id,parent_id", ignoreDuplicates: true },
+    );
+
+  const offerId = sale.items[0]?.productId;
+  if (offerId) {
+    // Oferta é só leitura pra UI — sempre seguro atualizar o nome (nunca é
+    // editado manualmente, não tem customização do usuário pra perder).
+    await db
+      .from("eduzz_product_offers")
+      .upsert(
+        { company_id: companyId, parent_id: sale.productParentId, product_id: offerId, name: sale.productName },
+        { onConflict: "company_id,product_id" },
+      );
+  }
 }
 
-async function findMappedPixelId(db: SupabaseClient, companyId: string, sale: SaleEvent): Promise<string | null> {
-  const keys = candidateProductKeys(sale);
-  if (keys.length === 0) return null;
-  const { data, error } = await db
-    .from("eduzz_product_pixel_map")
-    .select("pixel_id")
-    .eq("company_id", companyId)
-    .in("eduzz_product_key", keys)
-    .limit(1)
-    .maybeSingle();
-  // Migration 048/049 pendente ou produto sem mapeamento — cai pro comportamento de sempre.
-  if (error || !data) return null;
+async function findProductPixelId(db: SupabaseClient, companyId: string, parentId: string | null): Promise<string | null> {
+  if (!parentId) return null;
+  const { data, error } = await db.from("eduzz_products").select("pixel_id").eq("company_id", companyId).eq("parent_id", parentId).maybeSingle();
+  // Migration 050 pendente, produto nunca visto, ou visto mas sem pixel escolhido ainda — cai pro comportamento de sempre.
+  if (error || !data?.pixel_id) return null;
   return data.pixel_id as string;
 }
 
-// Empresa tem PELO MENOS 1 produto mapeado? Se sim, vira allowlist: só os
-// produtos cadastrados aqui mandam pra Meta, todo o resto é ignorado de
+// Empresa tem PELO MENOS 1 produto com pixel escolhido? Se sim, vira
+// allowlist: só esses produtos mandam pra Meta, todo o resto é ignorado de
 // propósito (pedido explícito do usuário — "se eu configurar, envia só o
-// que eu configurar"). Sem nenhuma linha cadastrada, esse modo nunca liga,
-// e o comportamento de sempre (visita → pixel padrão) continua intacto.
-async function companyHasProductMapping(db: SupabaseClient, companyId: string): Promise<boolean> {
-  const { data, error } = await db.from("eduzz_product_pixel_map").select("id").eq("company_id", companyId).limit(1);
+// que eu configurar"). Sem nenhum produto com pixel escolhido, esse modo
+// nunca liga, e o comportamento de sempre (visita → pixel padrão) continua intacto.
+async function companyHasAnyProductPixel(db: SupabaseClient, companyId: string): Promise<boolean> {
+  const { data, error } = await db.from("eduzz_products").select("parent_id").eq("company_id", companyId).not("pixel_id", "is", null).limit(1);
   return !error && Boolean(data?.length);
 }
 
 async function recordSale(db: SupabaseClient, companyId: string, sale: SaleEvent) {
   const match = await resolveVisitMatch(db, companyId, sale);
+  await upsertProductCatalog(db, companyId, sale);
 
   const fingerprintId =
     match?.fingerprint_id ||
     sale.trackerCode ||
     createHash("sha256").update(sale.email || sale.phone || sale.transactionId).digest("hex");
 
-  // Resolução do pixel, em ordem: 1) mapeamento explícito do produto (vence
-  // sempre que existir — escolha deliberada do usuário) → 2) allowlist: se a
-  // empresa tem QUALQUER produto mapeado mas este não bateu, ignora de
-  // propósito (nem usa a visita correlacionada — é a regra "só o que eu
-  // configurar") → 3) sem nenhum mapeamento cadastrado na empresa, comportamento
-  // de sempre: pixel da visita correlacionada, senão o pixel padrão.
-  const mappedPixelId = await findMappedPixelId(db, companyId, sale);
+  // Resolução do pixel, em ordem: 1) produto desta venda tem pixel escolhido
+  // no catálogo (vence sempre que existir — escolha deliberada do usuário) →
+  // 2) allowlist: se a empresa tem QUALQUER produto com pixel escolhido mas
+  // este não bateu, ignora de propósito (nem usa a visita correlacionada —
+  // é a regra "só o que eu configurar") → 3) nenhum produto da empresa tem
+  // pixel escolhido ainda, comportamento de sempre: pixel da visita
+  // correlacionada, senão o pixel padrão.
+  const productPixelId = await findProductPixelId(db, companyId, sale.productParentId);
   let resolvedPixel: ResolvedPixel;
-  if (mappedPixelId) {
-    resolvedPixel = await resolvePixelById(db, companyId, mappedPixelId);
-  } else if (await companyHasProductMapping(db, companyId)) {
+  if (productPixelId) {
+    resolvedPixel = await resolvePixelById(db, companyId, productPixelId);
+  } else if (await companyHasAnyProductPixel(db, companyId)) {
     resolvedPixel = { companyId, pixelId: null, meta_pixel_id: null, meta_capi_token: null, dominio_autorizado: null, meta_test_event_code: null };
   } else if (match?.pixel_id) {
     resolvedPixel = await resolvePixelById(db, companyId, match.pixel_id as string);
@@ -415,10 +428,9 @@ async function recordSale(db: SupabaseClient, companyId: string, sale: SaleEvent
     // extra_fields.produto também só pra não quebrar telas/migrations antigas
     // que ainda leem de lá.
     product_name: sale.productName,
-    // Guardado só pra alimentar a lista de "produtos detectados" na tela de
-    // configuração do mapeamento produto→pixel (migration 048) — não tem
-    // nenhum papel na lógica de resolução de pixel desta própria venda (essa
-    // já usa sale.productParentId direto, sem precisar reconsultar o banco).
+    // Itemização da venda, pra relatório futuro (ex.: receita por oferta) —
+    // o catálogo (eduzz_products/eduzz_product_offers, migration 050) é a
+    // fonte de verdade pra UI/resolução de pixel; isso aqui é só o "log" por venda.
     product_parent_id: sale.productParentId,
     product_item_id: sale.items[0]?.productId ?? null,
     extra_fields: { produto: sale.productName },
