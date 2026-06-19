@@ -321,32 +321,41 @@ async function resolveVisitMatch(db: SupabaseClient, companyId: string, sale: Sa
   return null;
 }
 
-// Mapeamento opcional "produto → pixel" (migration 048, `eduzz_product_pixel_map`)
-// — só existe se o usuário cadastrar explicitamente; sem nenhuma linha, esta
-// função sempre devolve null e o comportamento de sempre (visita → padrão)
-// continua intacto. Vence a correlação de visita porque é uma escolha
-// deliberada do usuário ("esse curso é desse pixel"), não um palpite.
-async function findMappedPixelId(db: SupabaseClient, companyId: string, parentId: string): Promise<string | null> {
+// Mapeamento opcional "produto → pixel" (migration 048/049, `eduzz_product_pixel_map`)
+// — só existe se o usuário cadastrar explicitamente. A chave (`eduzz_product_key`)
+// aceita TANTO productId quanto parentId — o usuário cola o que tiver à mão
+// (ex.: o productId que aparece no payload/relatório), sem precisar saber a
+// diferença entre os dois. Testamos contra todos os candidatos da venda:
+// productId de cada item + o parentId do item principal.
+function candidateProductKeys(sale: SaleEvent): string[] {
+  const keys = sale.items.map((i) => i.productId).filter((id): id is string => Boolean(id));
+  if (sale.productParentId) keys.push(sale.productParentId);
+  return [...new Set(keys)];
+}
+
+async function findMappedPixelId(db: SupabaseClient, companyId: string, sale: SaleEvent): Promise<string | null> {
+  const keys = candidateProductKeys(sale);
+  if (keys.length === 0) return null;
   const { data, error } = await db
     .from("eduzz_product_pixel_map")
     .select("pixel_id")
     .eq("company_id", companyId)
-    .eq("eduzz_parent_id", parentId)
+    .in("eduzz_product_key", keys)
+    .limit(1)
     .maybeSingle();
-  // Migration 048 pendente ou produto sem mapeamento — cai pro comportamento de sempre.
+  // Migration 048/049 pendente ou produto sem mapeamento — cai pro comportamento de sempre.
   if (error || !data) return null;
   return data.pixel_id as string;
 }
 
-// Política pra venda sem produto mapeado E sem visita correlacionada —
-// 'default_pixel' (sempre foi assim, default da coluna) ou 'skip' (opt-in,
-// pra empresa que vende produto fora de qualquer funil de anúncio e não
-// quer arriscar contaminar pixel nenhum com esse tipo de venda).
-async function getUnmappedPurchaseAction(db: SupabaseClient, companyId: string): Promise<"default_pixel" | "skip"> {
-  const { data, error } = await db.from("companies").select("eduzz_unmapped_purchase_action").eq("id", companyId).single();
-  // Migration 048 pendente — cai pro comportamento de sempre.
-  if (error || data?.eduzz_unmapped_purchase_action !== "skip") return "default_pixel";
-  return "skip";
+// Empresa tem PELO MENOS 1 produto mapeado? Se sim, vira allowlist: só os
+// produtos cadastrados aqui mandam pra Meta, todo o resto é ignorado de
+// propósito (pedido explícito do usuário — "se eu configurar, envia só o
+// que eu configurar"). Sem nenhuma linha cadastrada, esse modo nunca liga,
+// e o comportamento de sempre (visita → pixel padrão) continua intacto.
+async function companyHasProductMapping(db: SupabaseClient, companyId: string): Promise<boolean> {
+  const { data, error } = await db.from("eduzz_product_pixel_map").select("id").eq("company_id", companyId).limit(1);
+  return !error && Boolean(data?.length);
 }
 
 async function recordSale(db: SupabaseClient, companyId: string, sale: SaleEvent) {
@@ -357,18 +366,20 @@ async function recordSale(db: SupabaseClient, companyId: string, sale: SaleEvent
     sale.trackerCode ||
     createHash("sha256").update(sale.email || sale.phone || sale.transactionId).digest("hex");
 
-  // 3 camadas, em ordem de confiança: 1) mapeamento explícito do produto
-  // (vence sempre que existir — é escolha deliberada do usuário) → 2) pixel
-  // da visita correlacionada (já existia) → 3) política da empresa pra "não
-  // sei de onde veio" (pixel padrão, comportamento de sempre, ou não enviar).
-  const mappedPixelId = sale.productParentId ? await findMappedPixelId(db, companyId, sale.productParentId) : null;
+  // Resolução do pixel, em ordem: 1) mapeamento explícito do produto (vence
+  // sempre que existir — escolha deliberada do usuário) → 2) allowlist: se a
+  // empresa tem QUALQUER produto mapeado mas este não bateu, ignora de
+  // propósito (nem usa a visita correlacionada — é a regra "só o que eu
+  // configurar") → 3) sem nenhum mapeamento cadastrado na empresa, comportamento
+  // de sempre: pixel da visita correlacionada, senão o pixel padrão.
+  const mappedPixelId = await findMappedPixelId(db, companyId, sale);
   let resolvedPixel: ResolvedPixel;
   if (mappedPixelId) {
     resolvedPixel = await resolvePixelById(db, companyId, mappedPixelId);
+  } else if (await companyHasProductMapping(db, companyId)) {
+    resolvedPixel = { companyId, pixelId: null, meta_pixel_id: null, meta_capi_token: null, dominio_autorizado: null, meta_test_event_code: null };
   } else if (match?.pixel_id) {
     resolvedPixel = await resolvePixelById(db, companyId, match.pixel_id as string);
-  } else if ((await getUnmappedPurchaseAction(db, companyId)) === "skip") {
-    resolvedPixel = { companyId, pixelId: null, meta_pixel_id: null, meta_capi_token: null, dominio_autorizado: null, meta_test_event_code: null };
   } else {
     resolvedPixel = await resolveDefaultPixel(db, companyId);
   }
@@ -409,6 +420,7 @@ async function recordSale(db: SupabaseClient, companyId: string, sale: SaleEvent
     // nenhum papel na lógica de resolução de pixel desta própria venda (essa
     // já usa sale.productParentId direto, sem precisar reconsultar o banco).
     product_parent_id: sale.productParentId,
+    product_item_id: sale.items[0]?.productId ?? null,
     extra_fields: { produto: sale.productName },
     capi_status: metaConfigured ? "pending" : "skipped",
     country,
