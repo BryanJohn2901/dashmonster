@@ -227,7 +227,7 @@ describe("POST /api/eduzz/webhook", () => {
     expect(sentBody.data[0].event_id).toBe("TX-MODERN-1");
     expect(sentBody.data[0].action_source).toBe("system_generated");
     expect(sentBody.data[0].user_data.em).toBe(sha256("maria@teste.com"));
-    expect(sentBody.data[0].custom_data).toEqual({ value: 297, currency: "BRL", content_name: "Curso Y", order_id: "TX-MODERN-1" });
+    expect(sentBody.data[0].custom_data).toEqual({ value: 297, currency: "BRL", content_name: "Curso Y", order_id: "TX-MODERN-1", num_items: 1 });
 
     expect(mockUpdate).toHaveBeenCalledWith({ capi_status: "sent" });
   });
@@ -271,6 +271,8 @@ describe("POST /api/eduzz/webhook", () => {
         country_region: "SP",
         city: "São Paulo",
         postal_code: "01310-100",
+        client_ip_address: "200.1.2.3",
+        client_user_agent: "Mozilla/5.0 (visita original)",
       },
       error: null,
     });
@@ -279,14 +281,25 @@ describe("POST /api/eduzz/webhook", () => {
     await POST(buildRequest({ ...MODERN_PAYLOAD, data: { ...MODERN_PAYLOAD.data, tracker: { code1: "dm-uid-visita-1" } } }));
 
     expect(mockInsert).toHaveBeenCalledWith(
-      expect.objectContaining({ fingerprint_id: "dm-uid-visita-1", event_url: "http://site.com/pagina-de-vendas", fbp: "fb.1.111.222", fbc: "fb.1.111.fbclid-x" }),
+      expect.objectContaining({
+        fingerprint_id: "dm-uid-visita-1",
+        event_url: "http://site.com/pagina-de-vendas",
+        fbp: "fb.1.111.222",
+        fbc: "fb.1.111.fbclid-x",
+        client_ip_address: "200.1.2.3",
+        client_user_agent: "Mozilla/5.0 (visita original)",
+      }),
     );
 
     const sentBody = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
     expect(sentBody.data[0].event_source_url).toBe("http://site.com/pagina-de-vendas");
     expect(sentBody.data[0].user_data.fbp).toBe("fb.1.111.222");
     expect(sentBody.data[0].user_data.fbc).toBe("fb.1.111.fbclid-x");
-    expect(sentBody.data[0].user_data.ct).toBe(sha256("São Paulo"));
+    // IP/UA da visita correlacionada reaproveitados na Purchase (crus, sem hash).
+    expect(sentBody.data[0].user_data.client_ip_address).toBe("200.1.2.3");
+    expect(sentBody.data[0].user_data.client_user_agent).toBe("Mozilla/5.0 (visita original)");
+    // ct usa hashNormalized: "São Paulo" -> "saopaulo" (regra da Meta).
+    expect(sentBody.data[0].user_data.ct).toBe(sha256("saopaulo"));
   });
 
   it("sem nenhum match: usa fingerprint sintético (hash do email) e não manda fbp/fbc/event_source_url", async () => {
@@ -359,6 +372,36 @@ describe("POST /api/eduzz/webhook", () => {
         product_name: "Gadget Y",
         value: 50,
         external_transaction_id: "TX-BUMP-1",
+      }),
+    );
+  });
+
+  it("manda content_ids/contents/subscription_id pra Meta quando o payload tem productId e contract", async () => {
+    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockNotYetProcessed();
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // isKnownRecurrence: 1ª cobrança, sem renovação anterior
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por email
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por telefone
+    mockPixelMaybeSingle.mockResolvedValueOnce({ data: PIXEL_OK, error: null });
+
+    const payload = {
+      ...MODERN_PAYLOAD,
+      data: {
+        ...MODERN_PAYLOAD.data,
+        items: [{ productId: "P567", name: "Curso Y", price: { value: 297, currency: "BRL" } }],
+        contract: { id: "sub-1" },
+      },
+    };
+    await POST(buildRequest(payload));
+
+    const sentBody = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+    expect(sentBody.data[0].custom_data).toEqual(
+      expect.objectContaining({
+        content_type: "product",
+        content_ids: ["P567"],
+        contents: [{ id: "P567", quantity: 1, item_price: 297 }],
+        num_items: 1,
+        subscription_id: "sub-1",
       }),
     );
   });

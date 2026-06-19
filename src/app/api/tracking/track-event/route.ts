@@ -2,7 +2,7 @@ import { createHash } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { geolocation } from "@vercel/functions";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { hashLower } from "@/lib/metaHash";
+import { hashLower, hashNormalized } from "@/lib/metaHash";
 import { insertEventsLogRow } from "@/lib/eventsLogInsert";
 import { sendMetaCapiEvent } from "@/lib/metaCapi";
 import { type ResolvedPixel, selectLegacyCompanyConfig } from "@/lib/resolvePixel";
@@ -287,6 +287,11 @@ export async function POST(request: NextRequest) {
     // o cookie de clique em vez de mandar a Purchase sem nenhum sinal de clique.
     fbp: payload.fbp?.trim() || null,
     fbc: payload.fbc?.trim() || null,
+    // IP/UA já iam pra Meta CAPI mas não ficavam salvos (migration 047) —
+    // persistir é o que deixa uma venda da Eduzz correlacionada a esta visita
+    // reaproveitar esses dois sinais fortes de match.
+    client_ip_address: ip !== "unknown" ? ip : null,
+    client_user_agent: userAgent !== "unknown" ? userAgent : null,
   });
 
   if (insertError || !inserted) {
@@ -329,10 +334,12 @@ export async function POST(request: NextRequest) {
         // — únicos campos hasheados no servidor, porque só o servidor sabe
         // a localização (o browser não manda isso). zp (CEP) também vem
         // de graça do geo-IP quando a Vercel resolve.
+        // country fica no hashLower (ISO 2-letter "BR" do geo-IP). ct/st/zp usam
+        // hashNormalized (tira acento/espaço/pontuação) — regra da Meta pra esses.
         country: hashLower(geo.country),
-        st: hashLower(geo.countryRegion),
-        ct: hashLower(geo.city),
-        zp: hashLower(geo.postalCode),
+        st: hashNormalized(geo.countryRegion),
+        ct: hashNormalized(geo.city),
+        zp: hashNormalized(geo.postalCode),
         // external_id: hash do _dm_uid persistente — não é PII, mas a Meta
         // recomenda mandar hasheado por consistência com os outros campos.
         external_id: hashLower(payload.user_id),

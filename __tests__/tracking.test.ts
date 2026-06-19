@@ -332,8 +332,10 @@ describe("POST /api/tracking/track-event", () => {
     const sentBody = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
     expect(sentBody.data[0].user_data.country).toBe(sha256("BR"));
     expect(sentBody.data[0].user_data.st).toBe(sha256("SP"));
-    expect(sentBody.data[0].user_data.ct).toBe(sha256("São Paulo"));
-    expect(sentBody.data[0].user_data.zp).toBe(sha256("01310-100"));
+    // ct/zp usam hashNormalized: acento/espaço/pontuação removidos antes do hash
+    // ("São Paulo" -> "saopaulo", "01310-100" -> "01310100") — regra da Meta.
+    expect(sentBody.data[0].user_data.ct).toBe(sha256("saopaulo"));
+    expect(sentBody.data[0].user_data.zp).toBe(sha256("01310100"));
     expect(sentBody.data[0].user_data.external_id).toBe(sha256("uuid-persistente-123"));
   });
 

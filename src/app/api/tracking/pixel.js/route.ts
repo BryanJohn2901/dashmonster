@@ -169,7 +169,12 @@ function buildPixelScript(apiBase: string): string {
 
   async function sha256Hex(value) {
     if (!window.crypto || !window.crypto.subtle) return undefined;
-    var data = new TextEncoder().encode(String(value).trim().toLowerCase());
+    var normalized = String(value == null ? "" : value).trim().toLowerCase();
+    // NUNCA hashear string vazia: sha256("") = e3b0c442... é um valor válido de
+    // 64 chars que vira identificador-fantasma (não casa com ninguém, derruba o
+    // match e ainda envenena o cache _dm_lead). Campo vazio/sem dígito => sem hash.
+    if (!normalized) return undefined;
+    var data = new TextEncoder().encode(normalized);
     var digest = await window.crypto.subtle.digest("SHA-256", data);
     return Array.prototype.map
       .call(new Uint8Array(digest), function (b) { return b.toString(16).padStart(2, "0"); })
@@ -256,16 +261,22 @@ function buildPixelScript(apiBase: string): string {
             var key = el.name || el.id;
             if (!key || !el.value) continue;
 
+            // em/ph: "primeiro válido vence" (!userData.em/ph) — sem isso um 2º
+            // campo de email/telefone no form sobrescreve o 1º, e um 2º campo
+            // vazio/sem dígito apagava o bom. sha256Hex já devolve undefined pra
+            // vazio, então hash-de-string-vazia nunca mais entra no user_data.
             if (type === "email") {
-              var emHash = await sha256Hex(el.value);
-              pii.email = el.value.trim();
-              if (emHash) userData.em = emHash;
+              if (!userData.em) {
+                var emHash = await sha256Hex(el.value);
+                if (emHash) { userData.em = emHash; if (!pii.email) pii.email = el.value.trim(); }
+              }
               continue;
             }
             if (type === "tel") {
-              var phHash = await sha256Hex(normalizePhone(el.value));
-              pii.phone = el.value.trim();
-              if (phHash) userData.ph = phHash;
+              if (!userData.ph) {
+                var phHash = await sha256Hex(normalizePhone(el.value));
+                if (phHash) { userData.ph = phHash; if (!pii.phone) pii.phone = el.value.trim(); }
+              }
               continue;
             }
 

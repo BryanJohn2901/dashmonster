@@ -1,7 +1,7 @@
 import { createHash } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { hashLower, hashPhone } from "@/lib/metaHash";
+import { hashLower, hashPhone, hashNormalized } from "@/lib/metaHash";
 import { insertEventsLogRow } from "@/lib/eventsLogInsert";
 import { sendMetaCapiEvent } from "@/lib/metaCapi";
 import { resolveDefaultPixel, resolvePixelById } from "@/lib/resolvePixel";
@@ -119,6 +119,8 @@ interface SaleEvent {
   isOrderBump: boolean;
   /** transactionId da venda principal a que esse order bump pertence (data.orderBump.mainSaleId) — null pra venda principal e pro formato antigo (sem suporte). */
   mainSaleTransactionId: string | null;
+  /** Itens da fatura (data.items no formato moderno) — usado pra montar content_ids/contents/num_items na Meta CAPI (recomendado pra otimização de catálogo, não afeta Event Match Quality). Formato antigo não manda itens estruturados, cai pra 1 item sintético com productId null. */
+  items: { productId: string | null; name: string; value: number }[];
 }
 
 function parseLegacyPayload(body: RawPayload): SaleEvent | { ignored: string } {
@@ -156,6 +158,8 @@ function parseLegacyPayload(body: RawPayload): SaleEvent | { ignored: string } {
     // Postback antigo não manda o campo orderBump — sem suporte a essa detecção nesse formato.
     isOrderBump: false,
     mainSaleTransactionId: null,
+    // Nem itens estruturados nem productId — 1 item sintético só com o nome/valor já parseados acima.
+    items: [{ productId: null, name: String(pick(body, "product_name", "product_cod", "produto", "content_title") ?? "Eduzz").trim(), value }],
   };
 }
 
@@ -169,7 +173,7 @@ interface EduzzModernPayload {
     price?: { value?: number; currency?: string };
     paid?: { value?: number; currency?: string };
     transaction?: { id?: string; key?: string };
-    items?: { name?: string }[];
+    items?: { productId?: string; name?: string; price?: { value?: number; currency?: string } }[];
     paymentMethod?: string;
     paidAt?: string;
     /** Presente quando o produto é uma assinatura/contrato recorrente — `id` repete em toda renovação. */
@@ -193,12 +197,13 @@ function parseModernPayload(body: EduzzModernPayload): SaleEvent | { ignored: st
   // a parcela) e às vezes em desconto/parcial. Sempre usar price primeiro.
   const value = toNumber(data.price?.value ?? data.paid?.value);
   if (value <= 0) return { ignored: "sem valor" };
+  const productName = data.items?.[0]?.name?.trim() || "Eduzz";
 
   return {
     transactionId: data.transaction?.id || data.transaction?.key || `modern-${Date.now()}`,
     value,
     currency: data.price?.currency || data.paid?.currency || "BRL",
-    productName: data.items?.[0]?.name?.trim() || "Eduzz",
+    productName,
     date: toDate(data.paidAt),
     paidAtIso: data.paidAt ?? null,
     email: data.buyer?.email?.trim() || null,
@@ -224,6 +229,9 @@ function parseModernPayload(body: EduzzModernPayload): SaleEvent | { ignored: st
     installments: data.bankSlipInstallment?.totalInstallments ?? null,
     isOrderBump: Boolean(data.orderBump?.has && data.orderBump?.isMainSale === false),
     mainSaleTransactionId: data.orderBump?.mainSaleId != null ? String(data.orderBump.mainSaleId) : null,
+    items: data.items?.length
+      ? data.items.map((item) => ({ productId: item.productId ?? null, name: item.name?.trim() || "Eduzz", value: toNumber(item.price?.value) }))
+      : [{ productId: null, name: productName, value }],
   };
 }
 
@@ -237,37 +245,63 @@ function splitName(name: string | null): { fn?: string; ln?: string } {
   return { fn: hashLower(parts[0]), ln: parts.length > 1 ? hashLower(parts.slice(1).join(" ")) : undefined };
 }
 
-async function findMatchByFingerprint(db: SupabaseClient, companyId: string, fingerprintId: string) {
-  const { data } = await db
-    .from("events_log")
-    .select("fingerprint_id, event_url, pixel_id, fbp, fbc, country, country_region, city, postal_code")
-    .eq("company_id", companyId)
-    .eq("fingerprint_id", fingerprintId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  return data ?? null;
+// Colunas adicionadas em migrations diferentes (fbp/fbc=040, client_ip/ua=047)
+// podem não existir ainda no banco — por isso há SELECTs de fallback abaixo.
+// Tipo único pra todas as variantes casarem (campos ausentes ficam undefined).
+interface VisitMatch {
+  fingerprint_id: string | null;
+  event_url: string | null;
+  pixel_id: string | null;
+  fbp?: string | null;
+  fbc?: string | null;
+  country?: string | null;
+  country_region?: string | null;
+  city?: string | null;
+  postal_code?: string | null;
+  client_ip_address?: string | null;
+  client_user_agent?: string | null;
 }
 
-async function findMatchByColumn(db: SupabaseClient, companyId: string, column: "lead_email" | "lead_phone", value: string) {
-  const { data, error } = await db
-    .from("events_log")
-    .select("fingerprint_id, event_url, pixel_id, fbp, fbc, country, country_region, city, postal_code")
-    .eq("company_id", companyId)
-    .ilike(column, value)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (error) return null; // coluna fbp/fbc (migration 040) pode não existir ainda — não trava a venda
-  return data ?? null;
+const MATCH_SELECT_FULL =
+  "fingerprint_id, event_url, pixel_id, fbp, fbc, country, country_region, city, postal_code, client_ip_address, client_user_agent";
+// Progressivamente menor, conforme a migration ainda não rodou.
+const MATCH_SELECT_NO_CLIENT = "fingerprint_id, event_url, pixel_id, fbp, fbc, country, country_region, city, postal_code";
+const MATCH_SELECT_MINIMAL = "fingerprint_id, event_url, pixel_id, country, country_region, city, postal_code";
+
+// Roda a mesma query com SELECTs cada vez menores até uma não reclamar de
+// coluna ausente — não pode travar a venda só porque a migration está pendente.
+async function runMatchQuery(
+  db: SupabaseClient,
+  filter: (q: ReturnType<ReturnType<SupabaseClient["from"]>["select"]>) => unknown,
+): Promise<VisitMatch | null> {
+  for (const select of [MATCH_SELECT_FULL, MATCH_SELECT_NO_CLIENT, MATCH_SELECT_MINIMAL]) {
+    const { data, error } = (await filter(db.from("events_log").select(select))) as {
+      data: VisitMatch | null;
+      error: { message?: string } | null;
+    };
+    if (!error) return data ?? null;
+    const missingColumn = /column .* does not exist|fbp|fbc|client_ip_address|client_user_agent/i.test(error.message ?? "");
+    if (!missingColumn) return null; // erro de verdade (não é coluna ausente) — não insiste
+  }
+  return null;
 }
 
-type VisitMatch = Awaited<ReturnType<typeof findMatchByFingerprint>>;
+async function findMatchByFingerprint(db: SupabaseClient, companyId: string, fingerprintId: string): Promise<VisitMatch | null> {
+  return runMatchQuery(db, (q) =>
+    q.eq("company_id", companyId).eq("fingerprint_id", fingerprintId).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+  );
+}
+
+async function findMatchByColumn(db: SupabaseClient, companyId: string, column: "lead_email" | "lead_phone", value: string): Promise<VisitMatch | null> {
+  return runMatchQuery(db, (q) =>
+    q.eq("company_id", companyId).ilike(column, value).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+  );
+}
 
 // Tenta achar a visita que gerou essa venda, na ordem: tracker code (match
 // exato e direto) → email → telefone. Sem isso, a Purchase vai pra Meta sem
 // fbp/fbc/event_source_url — funciona, mas com Match Quality pior.
-async function resolveVisitMatch(db: SupabaseClient, companyId: string, sale: SaleEvent): Promise<VisitMatch> {
+async function resolveVisitMatch(db: SupabaseClient, companyId: string, sale: SaleEvent): Promise<VisitMatch | null> {
   if (sale.trackerCode) {
     const byTracker = await findMatchByFingerprint(db, companyId, sale.trackerCode);
     if (byTracker) return byTracker;
@@ -302,6 +336,10 @@ async function recordSale(db: SupabaseClient, companyId: string, sale: SaleEvent
   const postalCode = (match?.postal_code as string | null) ?? sale.address.zip;
   const fbp = (match?.fbp as string | null) ?? null;
   const fbc = (match?.fbc as string | null) ?? null;
+  // IP/UA da visita correlacionada (migration 047) — sinais fortes de match
+  // reaproveitados na Purchase. Sem match, ficam null (venda sem navegador).
+  const clientIp = (match?.client_ip_address as string | null) ?? null;
+  const clientUserAgent = (match?.client_user_agent as string | null) ?? null;
 
   const { data: inserted, error: insertError } = await insertEventsLogRow(db, {
     company_id: companyId,
@@ -341,6 +379,8 @@ async function recordSale(db: SupabaseClient, companyId: string, sale: SaleEvent
     main_sale_transaction_id: sale.mainSaleTransactionId,
     fbp,
     fbc,
+    client_ip_address: clientIp,
+    client_user_agent: clientUserAgent,
   });
 
   if (insertError || !inserted) {
@@ -377,10 +417,14 @@ async function recordSale(db: SupabaseClient, companyId: string, sale: SaleEvent
         ...splitName(sale.name),
         fbp: fbp || undefined,
         fbc: fbc || undefined,
+        // IP/UA da visita correlacionada (crus, não hasheados) — só presentes
+        // quando a venda casou com uma visita rastreada; reforçam o match.
+        client_ip_address: clientIp || undefined,
+        client_user_agent: clientUserAgent || undefined,
         country: hashLower(country),
-        st: hashLower(countryRegion),
-        ct: hashLower(city),
-        zp: hashLower(postalCode),
+        st: hashNormalized(countryRegion),
+        ct: hashNormalized(city),
+        zp: hashNormalized(postalCode),
         external_id: hashLower(fingerprintId),
       },
       custom_data: {
@@ -388,9 +432,32 @@ async function recordSale(db: SupabaseClient, companyId: string, sale: SaleEvent
         currency: sale.currency,
         content_name: sale.productName,
         order_id: sale.transactionId,
+        // content_ids/content_type/contents/num_items: recomendados pela Meta
+        // pra Purchase (ajudam otimização de campanha/catálogo), não afetam
+        // Event Match Quality — vêm de data.items, ausentes no formato antigo
+        // (item sintético sem productId, então content_ids fica vazio).
+        ...buildCommerceCustomData(sale.items),
+        // Liga a Purchase à assinatura, pra Meta poder agrupar cobranças
+        // recorrentes da mesma assinatura (só na 1ª cobrança — renovação
+        // nunca chega aqui, recordRenewal() não chama a Meta).
+        subscription_id: sale.recurrenceKey ?? undefined,
       },
     },
   });
+}
+
+// content_ids só inclui itens com productId real (formato antigo não tem) —
+// senão a Meta recebe um array de nulls, pior que não mandar o campo.
+function buildCommerceCustomData(items: SaleEvent["items"]) {
+  const contentIds = items.map((i) => i.productId).filter((id): id is string => Boolean(id));
+  return {
+    content_type: contentIds.length ? "product" : undefined,
+    content_ids: contentIds.length ? contentIds : undefined,
+    contents: contentIds.length
+      ? items.filter((i) => i.productId).map((i) => ({ id: i.productId, quantity: 1, item_price: i.value }))
+      : undefined,
+    num_items: items.length || undefined,
+  };
 }
 
 // ─── Recorrência/parcelamento ──────────────────────────────────────────────────

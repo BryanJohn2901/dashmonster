@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-const META_API_VERSION = "v19.0";
+// v23.0 — a Meta bloqueia versões abaixo de v22.0 desde set/2025 (cada versão
+// tem ~2 anos de vida). Subir junto quando uma nova virar a estável recomendada.
+const META_API_VERSION = "v23.0";
 
 // POST genérico pra Meta Conversions API + atualização de capi_status/capi_error
 // na linha de events_log correspondente — mecânica idêntica entre track-event
