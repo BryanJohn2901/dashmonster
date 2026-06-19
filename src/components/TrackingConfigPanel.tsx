@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Loader2, Save, Plus, Trash2, Star } from "lucide-react";
 import { toast } from "@/hooks/useToast";
 import {
-  fetchTrackingPixels, createTrackingPixel, updateTrackingPixel, deleteTrackingPixel, setDefaultTrackingPixel,
+  fetchTrackingPixels, createTrackingPixel, updateTrackingPixel, deleteTrackingPixel, setDefaultTrackingPixel, verifyMetaToken,
   type Company, type TrackingPixel,
 } from "@/hooks/useCompany";
 
@@ -129,9 +129,29 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
     setSaving(true);
     try {
       const patch = { name: name.trim(), metaPixelId: pixelId.trim(), metaCapiToken: capiToken.trim(), dominioAutorizado: dominio.trim(), metaTestEventCode: testEventCode.trim() };
+
+      // Com Pixel ID + token preenchidos, confere com a Meta se o token autoriza
+      // ESSE pixel antes de salvar — token de outro pixel é aceito pela Meta mas
+      // o evento é descartado (problema silencioso). Bloqueia só em mismatch/token
+      // inválido (certeza); "unknown" (não deu pra verificar) salva mesmo assim.
+      let validated = false;
+      if (patch.metaPixelId && patch.metaCapiToken) {
+        const check = await verifyMetaToken(patch.metaPixelId, patch.metaCapiToken);
+        if (check.status === "mismatch") {
+          const autoriza = check.authorizedIds?.length ? ` Ele autoriza: ${check.authorizedIds.join(", ")}.` : "";
+          toast.error(`Esse token NÃO pertence ao Pixel ${patch.metaPixelId}.${autoriza} Gere o token dentro do pixel certo (Events Manager → Configurações → Conversions API) e tente de novo.`);
+          return;
+        }
+        if (check.status === "invalid") {
+          toast.error("Token inválido ou expirado. Gere um novo no Events Manager → Configurações → Conversions API.");
+          return;
+        }
+        validated = check.status === "match";
+      }
+
       await updateTrackingPixel(pixel.id, patch);
       onSaved({ ...pixel, ...patch, name: patch.name || "Pixel sem nome" });
-      toast.success("Pixel salvo!");
+      toast.success(validated ? "Pixel salvo — token validado com a Meta ✓" : "Pixel salvo!");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro ao salvar.");
     } finally {

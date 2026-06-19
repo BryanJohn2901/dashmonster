@@ -355,6 +355,33 @@ export async function createTrackingPixel(
   return rowToTrackingPixel(data);
 }
 
+export type VerifyTokenStatus = "match" | "mismatch" | "invalid" | "unknown" | "skipped";
+export interface VerifyTokenResult {
+  status: VerifyTokenStatus;
+  authorizedIds?: string[];
+  reason?: string;
+}
+
+/**
+ * Confere com a Meta (via debug_token, no servidor) se o token da Conversions
+ * API realmente autoriza o Pixel ID — chamado antes de salvar pra avisar o
+ * usuário quando o token é de outro pixel (problema silencioso: a Meta aceita
+ * o evento e descarta). "skipped" = faltou pixel ou token (nada a validar);
+ * "unknown" = não deu pra verificar (não bloqueia o save).
+ */
+export async function verifyMetaToken(pixelId: string, token: string): Promise<VerifyTokenResult> {
+  try {
+    const res = await fetch("/api/tracking/verify-token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pixelId, token }),
+    });
+    return (await res.json()) as VerifyTokenResult;
+  } catch {
+    return { status: "unknown", reason: "falha de rede ao validar o token" };
+  }
+}
+
 /** Atualiza nome/credenciais de um pixel (RLS: owner OU manager). String vazia limpa o campo. */
 export async function updateTrackingPixel(
   pixelId: string,
