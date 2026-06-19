@@ -76,11 +76,29 @@ function makeMetricsQuery() {
 const mockMetricsSelect = jest.fn(() => makeMetricsQuery());
 const mockMetricsUpsert = jest.fn(() => Promise.resolve({ error: null }));
 
+// companies.eduzz_unmapped_purchase_action (migration 048) — política pra
+// venda sem produto mapeado e sem visita. Default "sem dado" simula migration
+// ainda não rodada, cai pro comportamento de sempre ('default_pixel') sem
+// precisar mockar em todo teste que não é sobre essa feature.
+const mockCompanySingle = jest.fn((): Promise<{ data: Record<string, unknown> | null; error: { message: string } | null }> =>
+  Promise.resolve({ data: null, error: { message: "column eduzz_unmapped_purchase_action does not exist" } }),
+);
+const mockCompanySelect = jest.fn(() => ({ eq: () => ({ single: mockCompanySingle }) }));
+
+// eduzz_product_pixel_map (migration 048) — mapeamento explícito produto→pixel.
+// Default "sem dado" = produto sem mapeamento cadastrado (caminho normal).
+const mockProductMapMaybeSingle = jest.fn((): Promise<{ data: Record<string, unknown> | null; error: { message: string } | null }> =>
+  Promise.resolve({ data: null, error: null }),
+);
+const mockProductMapSelect = jest.fn(() => ({ eq: () => ({ eq: () => ({ maybeSingle: mockProductMapMaybeSingle }) }) }));
+
 const mockFrom = jest.fn((table: string) => {
   if (table === "eduzz_webhook_configs") return { select: mockConfigSelect };
   if (table === "tracking_pixels") return { select: mockPixelSelect };
   if (table === "events_log") return { select: mockEventsLogSelect, insert: mockInsert, update: mockUpdate };
   if (table === "campaign_metrics") return { select: mockMetricsSelect, upsert: mockMetricsUpsert };
+  if (table === "companies") return { select: mockCompanySelect };
+  if (table === "eduzz_product_pixel_map") return { select: mockProductMapSelect };
   throw new Error(`tabela inesperada: ${table}`);
 });
 
@@ -460,5 +478,36 @@ describe("POST /api/eduzz/webhook", () => {
 
     expect(json.status).toBe("chargeback");
     expect(mockUpdate).toHaveBeenCalledWith({ status: "chargeback" });
+  });
+
+  it("mapeamento produto→pixel (migration 048) vence a visita correlacionada", async () => {
+    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockNotYetProcessed();
+    // resolveVisitMatch acha visita por email, ligada a um pixel — mas o mapeamento explícito tem que vencer essa.
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: { fingerprint_id: "fp-1", event_url: "https://x.com", pixel_id: "pixel-DA-VISITA" }, error: null });
+    mockProductMapMaybeSingle.mockResolvedValueOnce({ data: { pixel_id: "pixel-MAPEADO" }, error: null });
+    mockPixelMaybeSingle.mockResolvedValueOnce({ data: { ...PIXEL_OK, meta_pixel_id: "PIXEL_MAPEADO_999" }, error: null });
+
+    const payload = { ...MODERN_PAYLOAD, data: { ...MODERN_PAYLOAD.data, items: [{ name: "Curso Y", parentId: "curso-pai-1" }] } };
+    const res = await POST(buildRequest(payload));
+    expect(res.status).toBe(200);
+
+    expect(mockProductMapSelect).toHaveBeenCalled();
+    expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining("PIXEL_MAPEADO_999"), expect.anything());
+  });
+
+  it("sem mapeamento e sem visita, política 'skip' (opt-in): grava no nosso banco mas NÃO manda pra Meta", async () => {
+    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockNotYetProcessed();
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por email
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por telefone
+    mockCompanySingle.mockResolvedValueOnce({ data: { eduzz_unmapped_purchase_action: "skip" }, error: null });
+
+    const res = await POST(buildRequest(MODERN_PAYLOAD)); // items sem parentId -> sem mapeamento possível
+    expect(res.status).toBe(200);
+
+    expect(mockInsert).toHaveBeenCalledWith(expect.objectContaining({ capi_status: "skipped", pixel_id: null }));
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(mockPixelSelect).not.toHaveBeenCalled(); // nem chega a resolver pixel padrão
   });
 });

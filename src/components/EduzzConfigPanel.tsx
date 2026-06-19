@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Save, Plus, Trash2 } from "lucide-react";
+import { Loader2, Save, Plus, Trash2, ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "@/hooks/useToast";
 import {
   fetchEduzzWebhookConfigs, createEduzzWebhookConfig, renameEduzzWebhookConfig, deleteEduzzWebhookConfig,
-  type Company, type EduzzWebhookConfig,
+  fetchTrackingPixels, fetchDetectedEduzzProducts, fetchProductPixelMappings, upsertProductPixelMapping, deleteProductPixelMapping,
+  fetchUnmappedPurchaseAction, updateUnmappedPurchaseAction,
+  type Company, type EduzzWebhookConfig, type TrackingPixel, type DetectedEduzzProduct, type ProductPixelMapping, type UnmappedPurchaseAction,
 } from "@/hooks/useCompany";
 
 const BRAND = "#6366C8";
@@ -87,6 +89,171 @@ export function EduzzConfigPanel({ company, canEdit }: { company: Company; canEd
         >
           {creating ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} Nova config
         </button>
+      )}
+
+      <ProductPixelMapSection company={company} canEdit={canEdit} />
+    </div>
+  );
+}
+
+// Seção opcional, recolhida por padrão — só quem realmente precisa (mais de 1
+// pixel + mais de 1 produto/funil na mesma conta Eduzz) abre isso. Sem
+// nenhuma escolha feita aqui, o webhook continua decidindo o pixel só por
+// visita correlacionada → pixel padrão, exatamente como sempre foi (ver
+// src/app/api/eduzz/CLAUDE.md, "mapeamento opcional produto→pixel").
+function ProductPixelMapSection({ company, canEdit }: { company: Company; canEdit: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [pixels, setPixels] = useState<TrackingPixel[]>([]);
+  const [products, setProducts] = useState<DetectedEduzzProduct[]>([]);
+  const [mappings, setMappings] = useState<ProductPixelMapping[]>([]);
+  const [action, setAction] = useState<UnmappedPurchaseAction>("default_pixel");
+  const [savingParentId, setSavingParentId] = useState<string | null>(null);
+  const [savingAction, setSavingAction] = useState(false);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    if (!open || loaded) return;
+    setLoaded(true);
+    void Promise.all([
+      fetchTrackingPixels(company.id),
+      fetchDetectedEduzzProducts(company.id),
+      fetchProductPixelMappings(company.id),
+      fetchUnmappedPurchaseAction(company.id),
+    ]).then(([p, prod, maps, act]) => {
+      setPixels(p);
+      setProducts(prod);
+      setMappings(maps);
+      setAction(act);
+      setReady(true);
+    });
+  }, [open, loaded, company.id]);
+
+  const mappingByParent = new Map(mappings.map((m) => [m.parentId, m]));
+
+  const setMapping = async (parentId: string, label: string, pixelId: string) => {
+    setSavingParentId(parentId);
+    try {
+      if (pixelId) {
+        await upsertProductPixelMapping(company.id, parentId, pixelId, label);
+        setMappings((prev) => [...prev.filter((m) => m.parentId !== parentId), { id: mappingByParent.get(parentId)?.id ?? parentId, parentId, pixelId, label }]);
+      } else {
+        const existing = mappingByParent.get(parentId);
+        if (existing) {
+          await deleteProductPixelMapping(existing.id);
+          setMappings((prev) => prev.filter((m) => m.parentId !== parentId));
+        }
+      }
+      toast.success("Vínculo atualizado.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao salvar vínculo.");
+    } finally {
+      setSavingParentId(null);
+    }
+  };
+
+  const changeAction = async (next: UnmappedPurchaseAction) => {
+    if (next === action) return;
+    setSavingAction(true);
+    try {
+      await updateUnmappedPurchaseAction(company.id, next);
+      setAction(next);
+      toast.success("Política salva.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao salvar.");
+    } finally {
+      setSavingAction(false);
+    }
+  };
+
+  return (
+    <div className="rounded-2xl border" style={{ borderColor: "var(--dm-border-default)" }}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-2 px-4 py-3 text-left text-[12px] font-bold transition-opacity hover:opacity-80"
+        style={{ color: "var(--dm-text-secondary)" }}
+      >
+        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        Avançado: vincular produto a um pixel específico
+        <span className="ml-auto rounded-full px-2 py-0.5 text-[9px] font-semibold" style={{ background: "rgba(100,116,139,0.12)", color: "var(--dm-text-tertiary)" }}>opcional</span>
+      </button>
+
+      {open && (
+        <div className="space-y-4 border-t px-4 py-4" style={{ borderColor: "var(--dm-border-default)" }}>
+          <p className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
+            O webhook recebe TODA venda da conta Eduzz, sem filtro por produto. Se você vende mais de 1 curso/produto com pixels
+            diferentes, vincule aqui qual produto pertence a qual pixel — sem isso, uma venda sem visita rastreada vai sempre pro
+            pixel padrão, mesmo sendo de um produto sem anúncio nenhum rodando.
+          </p>
+
+          {!ready ? (
+            <div className="flex items-center justify-center py-4">
+              <Loader2 size={14} className="animate-spin" style={{ color: "var(--dm-text-tertiary)" }} />
+            </div>
+          ) : pixels.length === 0 ? (
+            <p className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
+              Crie pelo menos 1 pixel na aba Tracking antes de vincular produtos.
+            </p>
+          ) : products.length === 0 ? (
+            <p className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
+              Nenhuma venda da Eduzz com produto identificado ainda — volte aqui depois da 1ª venda chegar pelo webhook moderno.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {products.map((product) => {
+                const current = mappingByParent.get(product.parentId)?.pixelId ?? "";
+                return (
+                  <div key={product.parentId} className="flex items-center gap-2">
+                    <span className="flex-1 truncate text-[12px]" style={{ color: "var(--dm-text-primary)" }} title={product.label}>
+                      {product.label}
+                    </span>
+                    <select
+                      value={current}
+                      disabled={!canEdit || savingParentId === product.parentId}
+                      onChange={(e) => void setMapping(product.parentId, product.label, e.target.value)}
+                      className="h-9 rounded-lg border px-2 text-[11px] disabled:opacity-60"
+                      style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
+                    >
+                      <option value="">— Lógica padrão —</option>
+                      {pixels.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                    {savingParentId === product.parentId && <Loader2 size={13} className="animate-spin flex-shrink-0" style={{ color: "var(--dm-text-tertiary)" }} />}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="space-y-2 border-t pt-3" style={{ borderColor: "var(--dm-border-default)" }}>
+            <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
+              Venda sem produto vinculado acima e sem visita rastreada
+            </span>
+            <div className="flex gap-1 rounded-xl border p-0.5" style={{ borderColor: "var(--dm-border-default)" }}>
+              {([
+                ["default_pixel", "Mandar pro pixel padrão"],
+                ["skip", "Não enviar pra Meta"],
+              ] as [UnmappedPurchaseAction, string][]).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  disabled={!canEdit || savingAction}
+                  onClick={() => void changeAction(value)}
+                  className="h-9 flex-1 rounded-lg text-[11px] font-semibold transition disabled:opacity-60"
+                  style={action === value ? { backgroundColor: BRAND, color: "#fff" } : { color: "var(--dm-text-tertiary)" }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+              &quot;Mandar pro pixel padrão&quot; é o comportamento de sempre — só troque pra &quot;Não enviar&quot; se a conta Eduzz
+              também vende produto fora de qualquer campanha (orgânico, afiliado, outro nicho) e isso estiver poluindo as métricas do pixel.
+            </p>
+          </div>
+        </div>
       )}
     </div>
   );

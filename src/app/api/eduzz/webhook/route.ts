@@ -4,7 +4,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { hashLower, hashPhone, hashNormalized } from "@/lib/metaHash";
 import { insertEventsLogRow } from "@/lib/eventsLogInsert";
 import { sendMetaCapiEvent } from "@/lib/metaCapi";
-import { resolveDefaultPixel, resolvePixelById } from "@/lib/resolvePixel";
+import { resolveDefaultPixel, resolvePixelById, type ResolvedPixel } from "@/lib/resolvePixel";
 
 /**
  * Webhook de vendas Eduzz
@@ -120,7 +120,9 @@ interface SaleEvent {
   /** transactionId da venda principal a que esse order bump pertence (data.orderBump.mainSaleId) — null pra venda principal e pro formato antigo (sem suporte). */
   mainSaleTransactionId: string | null;
   /** Itens da fatura (data.items no formato moderno) — usado pra montar content_ids/contents/num_items na Meta CAPI (recomendado pra otimização de catálogo, não afeta Event Match Quality). Formato antigo não manda itens estruturados, cai pra 1 item sintético com productId null. */
-  items: { productId: string | null; name: string; value: number }[];
+  items: { productId: string | null; parentId: string | null; name: string; value: number }[];
+  /** parentId do item principal (items[0]) — "curso pai", estável entre variantes de oferta/parcelamento do mesmo produto. Usado pro mapeamento opcional produto→pixel (migration 048). null no formato antigo (sem itens estruturados). */
+  productParentId: string | null;
 }
 
 function parseLegacyPayload(body: RawPayload): SaleEvent | { ignored: string } {
@@ -158,8 +160,9 @@ function parseLegacyPayload(body: RawPayload): SaleEvent | { ignored: string } {
     // Postback antigo não manda o campo orderBump — sem suporte a essa detecção nesse formato.
     isOrderBump: false,
     mainSaleTransactionId: null,
-    // Nem itens estruturados nem productId — 1 item sintético só com o nome/valor já parseados acima.
-    items: [{ productId: null, name: String(pick(body, "product_name", "product_cod", "produto", "content_title") ?? "Eduzz").trim(), value }],
+    // Nem itens estruturados nem productId/parentId — 1 item sintético só com o nome/valor já parseados acima.
+    items: [{ productId: null, parentId: null, name: String(pick(body, "product_name", "product_cod", "produto", "content_title") ?? "Eduzz").trim(), value }],
+    productParentId: null,
   };
 }
 
@@ -173,7 +176,7 @@ interface EduzzModernPayload {
     price?: { value?: number; currency?: string };
     paid?: { value?: number; currency?: string };
     transaction?: { id?: string; key?: string };
-    items?: { productId?: string; name?: string; price?: { value?: number; currency?: string } }[];
+    items?: { productId?: string; parentId?: string; name?: string; price?: { value?: number; currency?: string } }[];
     paymentMethod?: string;
     paidAt?: string;
     /** Presente quando o produto é uma assinatura/contrato recorrente — `id` repete em toda renovação. */
@@ -230,8 +233,9 @@ function parseModernPayload(body: EduzzModernPayload): SaleEvent | { ignored: st
     isOrderBump: Boolean(data.orderBump?.has && data.orderBump?.isMainSale === false),
     mainSaleTransactionId: data.orderBump?.mainSaleId != null ? String(data.orderBump.mainSaleId) : null,
     items: data.items?.length
-      ? data.items.map((item) => ({ productId: item.productId ?? null, name: item.name?.trim() || "Eduzz", value: toNumber(item.price?.value) }))
-      : [{ productId: null, name: productName, value }],
+      ? data.items.map((item) => ({ productId: item.productId ?? null, parentId: item.parentId ?? null, name: item.name?.trim() || "Eduzz", value: toNumber(item.price?.value) }))
+      : [{ productId: null, parentId: null, name: productName, value }],
+    productParentId: data.items?.[0]?.parentId ?? null,
   };
 }
 
@@ -317,6 +321,34 @@ async function resolveVisitMatch(db: SupabaseClient, companyId: string, sale: Sa
   return null;
 }
 
+// Mapeamento opcional "produto → pixel" (migration 048, `eduzz_product_pixel_map`)
+// — só existe se o usuário cadastrar explicitamente; sem nenhuma linha, esta
+// função sempre devolve null e o comportamento de sempre (visita → padrão)
+// continua intacto. Vence a correlação de visita porque é uma escolha
+// deliberada do usuário ("esse curso é desse pixel"), não um palpite.
+async function findMappedPixelId(db: SupabaseClient, companyId: string, parentId: string): Promise<string | null> {
+  const { data, error } = await db
+    .from("eduzz_product_pixel_map")
+    .select("pixel_id")
+    .eq("company_id", companyId)
+    .eq("eduzz_parent_id", parentId)
+    .maybeSingle();
+  // Migration 048 pendente ou produto sem mapeamento — cai pro comportamento de sempre.
+  if (error || !data) return null;
+  return data.pixel_id as string;
+}
+
+// Política pra venda sem produto mapeado E sem visita correlacionada —
+// 'default_pixel' (sempre foi assim, default da coluna) ou 'skip' (opt-in,
+// pra empresa que vende produto fora de qualquer funil de anúncio e não
+// quer arriscar contaminar pixel nenhum com esse tipo de venda).
+async function getUnmappedPurchaseAction(db: SupabaseClient, companyId: string): Promise<"default_pixel" | "skip"> {
+  const { data, error } = await db.from("companies").select("eduzz_unmapped_purchase_action").eq("id", companyId).single();
+  // Migration 048 pendente — cai pro comportamento de sempre.
+  if (error || data?.eduzz_unmapped_purchase_action !== "skip") return "default_pixel";
+  return "skip";
+}
+
 async function recordSale(db: SupabaseClient, companyId: string, sale: SaleEvent) {
   const match = await resolveVisitMatch(db, companyId, sale);
 
@@ -325,15 +357,32 @@ async function recordSale(db: SupabaseClient, companyId: string, sale: SaleEvent
     sale.trackerCode ||
     createHash("sha256").update(sale.email || sale.phone || sale.transactionId).digest("hex");
 
-  const resolvedPixel = match?.pixel_id
-    ? await resolvePixelById(db, companyId, match.pixel_id as string)
-    : await resolveDefaultPixel(db, companyId);
+  // 3 camadas, em ordem de confiança: 1) mapeamento explícito do produto
+  // (vence sempre que existir — é escolha deliberada do usuário) → 2) pixel
+  // da visita correlacionada (já existia) → 3) política da empresa pra "não
+  // sei de onde veio" (pixel padrão, comportamento de sempre, ou não enviar).
+  const mappedPixelId = sale.productParentId ? await findMappedPixelId(db, companyId, sale.productParentId) : null;
+  let resolvedPixel: ResolvedPixel;
+  if (mappedPixelId) {
+    resolvedPixel = await resolvePixelById(db, companyId, mappedPixelId);
+  } else if (match?.pixel_id) {
+    resolvedPixel = await resolvePixelById(db, companyId, match.pixel_id as string);
+  } else if ((await getUnmappedPurchaseAction(db, companyId)) === "skip") {
+    resolvedPixel = { companyId, pixelId: null, meta_pixel_id: null, meta_capi_token: null, dominio_autorizado: null, meta_test_event_code: null };
+  } else {
+    resolvedPixel = await resolveDefaultPixel(db, companyId);
+  }
   const metaConfigured = Boolean(resolvedPixel.meta_pixel_id && resolvedPixel.meta_capi_token);
 
-  const country = (match?.country as string | null) ?? sale.address.country;
-  const countryRegion = (match?.country_region as string | null) ?? sale.address.state;
-  const city = (match?.city as string | null) ?? sale.address.city;
-  const postalCode = (match?.postal_code as string | null) ?? sale.address.zip;
+  // Endereço da Eduzz (data.buyer.address) é o endereço real do comprador
+  // nessa compra — mais confiável que o geo-IP da visita (que pode ser de
+  // semanas atrás, rede diferente, ou a Vercel não ter resolvido o IP). Visita
+  // correlacionada só preenche o que a Eduzz não mandou (postback antigo sem
+  // endereço, ou formato moderno com algum campo do address vazio).
+  const country = sale.address.country ?? (match?.country as string | null);
+  const countryRegion = sale.address.state ?? (match?.country_region as string | null);
+  const city = sale.address.city ?? (match?.city as string | null);
+  const postalCode = sale.address.zip ?? (match?.postal_code as string | null);
   const fbp = (match?.fbp as string | null) ?? null;
   const fbc = (match?.fbc as string | null) ?? null;
   // IP/UA da visita correlacionada (migration 047) — sinais fortes de match
@@ -355,6 +404,11 @@ async function recordSale(db: SupabaseClient, companyId: string, sale: SaleEvent
     // extra_fields.produto também só pra não quebrar telas/migrations antigas
     // que ainda leem de lá.
     product_name: sale.productName,
+    // Guardado só pra alimentar a lista de "produtos detectados" na tela de
+    // configuração do mapeamento produto→pixel (migration 048) — não tem
+    // nenhum papel na lógica de resolução de pixel desta própria venda (essa
+    // já usa sale.productParentId direto, sem precisar reconsultar o banco).
+    product_parent_id: sale.productParentId,
     extra_fields: { produto: sale.productName },
     capi_status: metaConfigured ? "pending" : "skipped",
     country,

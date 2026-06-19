@@ -417,6 +417,91 @@ export async function deleteTrackingPixel(pixelId: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+// ─── Mapeamento opcional "produto Eduzz → pixel" (migration 048) ─────────────
+// 100% opt-in: sem nenhuma linha cadastrada aqui, o webhook da Eduzz continua
+// decidindo o pixel só por visita correlacionada → pixel padrão, exatamente
+// como antes desta feature (ver src/app/api/eduzz/CLAUDE.md).
+export interface DetectedEduzzProduct {
+  parentId: string;
+  label: string;
+}
+
+export interface ProductPixelMapping {
+  id: string;
+  parentId: string;
+  pixelId: string;
+  label: string;
+}
+
+/** Produtos (curso "pai") já vistos em vendas da Eduzz dessa empresa — pra popular o seletor, sem o usuário precisar digitar nenhum ID. Olha as últimas 500 vendas; produto repetido fica só 1x (o nome mais recente). */
+export async function fetchDetectedEduzzProducts(companyId: string): Promise<DetectedEduzzProduct[]> {
+  if (!supabaseClient) return [];
+  const { data, error } = await supabaseClient
+    .from("events_log")
+    .select("product_parent_id, product_name")
+    .eq("company_id", companyId)
+    .eq("event_name", "Purchase")
+    .eq("source", "eduzz")
+    .not("product_parent_id", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(500);
+  if (error || !data) return [];
+  const seen = new Map<string, string>();
+  for (const row of data) {
+    const parentId = row.product_parent_id as string;
+    if (!seen.has(parentId)) seen.set(parentId, (row.product_name as string) || parentId);
+  }
+  return [...seen.entries()].map(([parentId, label]) => ({ parentId, label }));
+}
+
+/** Mapeamentos já cadastrados pra essa empresa. */
+export async function fetchProductPixelMappings(companyId: string): Promise<ProductPixelMapping[]> {
+  if (!supabaseClient) return [];
+  const { data, error } = await supabaseClient
+    .from("eduzz_product_pixel_map")
+    .select("id, eduzz_parent_id, pixel_id, product_label")
+    .eq("company_id", companyId);
+  if (error || !data) return [];
+  return data.map((row) => ({
+    id: row.id as string,
+    parentId: row.eduzz_parent_id as string,
+    pixelId: row.pixel_id as string,
+    label: (row.product_label as string) ?? row.eduzz_parent_id as string,
+  }));
+}
+
+/** Vincula (ou troca o pixel de) um produto — upsert por (empresa, parentId). */
+export async function upsertProductPixelMapping(companyId: string, parentId: string, pixelId: string, label: string): Promise<void> {
+  if (!supabaseClient) throw new Error("Supabase não configurado.");
+  const { error } = await supabaseClient
+    .from("eduzz_product_pixel_map")
+    .upsert({ company_id: companyId, eduzz_parent_id: parentId, pixel_id: pixelId, product_label: label }, { onConflict: "company_id,eduzz_parent_id" });
+  if (error) throw new Error(error.message);
+}
+
+/** Remove o vínculo — produto volta a usar a lógica padrão (visita → pixel padrão/política). */
+export async function deleteProductPixelMapping(mappingId: string): Promise<void> {
+  if (!supabaseClient) throw new Error("Supabase não configurado.");
+  const { error } = await supabaseClient.from("eduzz_product_pixel_map").delete().eq("id", mappingId);
+  if (error) throw new Error(error.message);
+}
+
+export type UnmappedPurchaseAction = "default_pixel" | "skip";
+
+/** Política pra venda sem produto mapeado E sem visita correlacionada. */
+export async function fetchUnmappedPurchaseAction(companyId: string): Promise<UnmappedPurchaseAction> {
+  if (!supabaseClient) return "default_pixel";
+  const { data, error } = await supabaseClient.from("companies").select("eduzz_unmapped_purchase_action").eq("id", companyId).single();
+  if (error || data?.eduzz_unmapped_purchase_action !== "skip") return "default_pixel";
+  return "skip";
+}
+
+export async function updateUnmappedPurchaseAction(companyId: string, action: UnmappedPurchaseAction): Promise<void> {
+  if (!supabaseClient) throw new Error("Supabase não configurado.");
+  const { error } = await supabaseClient.from("companies").update({ eduzz_unmapped_purchase_action: action }).eq("id", companyId);
+  if (error) throw new Error(error.message);
+}
+
 // ─── Webhook de vendas Eduzz (migration 041) ──────────────────────────────────
 
 // Antes disso o segredo vivia em companies.settings (JSONB), escrito via
