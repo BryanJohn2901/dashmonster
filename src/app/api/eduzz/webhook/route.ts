@@ -4,7 +4,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { hashLower, hashPhone, hashNormalized } from "@/lib/metaHash";
 import { insertEventsLogRow } from "@/lib/eventsLogInsert";
 import { sendMetaCapiEvent } from "@/lib/metaCapi";
-import { resolveDefaultPixel, resolvePixelById, type ResolvedPixel } from "@/lib/resolvePixel";
+import { resolvePixelById, type ResolvedPixel } from "@/lib/resolvePixel";
 
 /**
  * Webhook de vendas Eduzz
@@ -354,19 +354,9 @@ async function upsertProductCatalog(db: SupabaseClient, companyId: string, sale:
 async function findProductPixelId(db: SupabaseClient, companyId: string, parentId: string | null): Promise<string | null> {
   if (!parentId) return null;
   const { data, error } = await db.from("eduzz_products").select("pixel_id").eq("company_id", companyId).eq("parent_id", parentId).maybeSingle();
-  // Migration 050 pendente, produto nunca visto, ou visto mas sem pixel escolhido ainda — cai pro comportamento de sempre.
+  // Migration 050 pendente, produto nunca visto, ou visto mas sem pixel escolhido ainda.
   if (error || !data?.pixel_id) return null;
   return data.pixel_id as string;
-}
-
-// Empresa tem PELO MENOS 1 produto com pixel escolhido? Se sim, vira
-// allowlist: só esses produtos mandam pra Meta, todo o resto é ignorado de
-// propósito (pedido explícito do usuário — "se eu configurar, envia só o
-// que eu configurar"). Sem nenhum produto com pixel escolhido, esse modo
-// nunca liga, e o comportamento de sempre (visita → pixel padrão) continua intacto.
-async function companyHasAnyProductPixel(db: SupabaseClient, companyId: string): Promise<boolean> {
-  const { data, error } = await db.from("eduzz_products").select("parent_id").eq("company_id", companyId).not("pixel_id", "is", null).limit(1);
-  return !error && Boolean(data?.length);
 }
 
 async function recordSale(db: SupabaseClient, companyId: string, sale: SaleEvent) {
@@ -378,24 +368,15 @@ async function recordSale(db: SupabaseClient, companyId: string, sale: SaleEvent
     sale.trackerCode ||
     createHash("sha256").update(sale.email || sale.phone || sale.transactionId).digest("hex");
 
-  // Resolução do pixel, em ordem: 1) produto desta venda tem pixel escolhido
-  // no catálogo (vence sempre que existir — escolha deliberada do usuário) →
-  // 2) allowlist: se a empresa tem QUALQUER produto com pixel escolhido mas
-  // este não bateu, ignora de propósito (nem usa a visita correlacionada —
-  // é a regra "só o que eu configurar") → 3) nenhum produto da empresa tem
-  // pixel escolhido ainda, comportamento de sempre: pixel da visita
-  // correlacionada, senão o pixel padrão.
+  // Pixel SEMPRE vem do catálogo (escolha deliberada do usuário, produto →
+  // pixel) — decisão confirmada com o usuário: nenhuma venda manda pra Meta
+  // sem o produto ter um pixel escolhido explicitamente. Não cai mais pra
+  // visita correlacionada nem pro "pixel padrão" da empresa — sem isso, o
+  // dado entrava na Meta meio "no escuro" antes do usuário decidir conscientemente.
   const productPixelId = await findProductPixelId(db, companyId, sale.productParentId);
-  let resolvedPixel: ResolvedPixel;
-  if (productPixelId) {
-    resolvedPixel = await resolvePixelById(db, companyId, productPixelId);
-  } else if (await companyHasAnyProductPixel(db, companyId)) {
-    resolvedPixel = { companyId, pixelId: null, meta_pixel_id: null, meta_capi_token: null, dominio_autorizado: null, meta_test_event_code: null };
-  } else if (match?.pixel_id) {
-    resolvedPixel = await resolvePixelById(db, companyId, match.pixel_id as string);
-  } else {
-    resolvedPixel = await resolveDefaultPixel(db, companyId);
-  }
+  const resolvedPixel: ResolvedPixel = productPixelId
+    ? await resolvePixelById(db, companyId, productPixelId)
+    : { companyId, pixelId: null, meta_pixel_id: null, meta_capi_token: null, dominio_autorizado: null, meta_test_event_code: null };
   const metaConfigured = Boolean(resolvedPixel.meta_pixel_id && resolvedPixel.meta_capi_token);
 
   // Endereço da Eduzz (data.buyer.address) é o endereço real do comprador

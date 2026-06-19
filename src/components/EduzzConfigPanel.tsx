@@ -129,14 +129,12 @@ function ProductPixelMapSection({ company, canEdit }: { company: Company; canEdi
     });
   }, [open, loaded, company.id]);
 
-  const hasAnyPixelAssigned = products.some((p) => p.pixelId);
-
   const changePixel = async (parentId: string, pixelId: string) => {
     setSavingId(parentId);
     try {
       await setEduzzProductPixel(company.id, parentId, pixelId || null);
       setProducts((prev) => prev.map((p) => (p.parentId === parentId ? { ...p, pixelId: pixelId || null } : p)));
-      toast.success(pixelId && !hasAnyPixelAssigned ? "Pixel vinculado — a partir de agora SÓ produtos vinculados mandam pra Meta." : "Salvo.");
+      toast.success(pixelId ? "Pixel vinculado — vendas desse produto já passam a mandar pra Meta." : "Removido — vendas desse produto não mandam mais pra Meta.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro ao salvar.");
     } finally {
@@ -183,11 +181,10 @@ function ProductPixelMapSection({ company, canEdit }: { company: Company; canEdi
       {open && (
         <div className="space-y-4 border-t px-4 py-4" style={{ borderColor: "var(--dm-border-default)" }}>
           <p className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
-            O webhook recebe TODA venda da conta Eduzz, sem filtro por produto. <strong style={{ color: "var(--dm-text-secondary)" }}>Sem
-            vincular nenhum pixel abaixo, manda tudo</strong> (comportamento de sempre). A partir do 1º produto vinculado, vira allowlist —{" "}
-            <strong style={{ color: "var(--dm-text-secondary)" }}>só os produtos vinculados mandam pra Meta</strong>, o resto é ignorado
-            de propósito. Cada produto (curso) pode ter várias ofertas (preço/parcelamento) — o pixel é vinculado 1x no produto e vale
-            pra todas as ofertas dele automaticamente.
+            O webhook recebe TODA venda da conta Eduzz, sem filtro por produto. <strong style={{ color: "var(--dm-text-secondary)" }}>
+            Só manda pra Meta o produto que você vincular a um pixel aqui</strong> — sem vínculo, a venda continua salva no dashboard pra
+            relatório, mas não é enviada. Cada produto (curso) pode ter várias ofertas (preço/parcelamento) — o pixel é vinculado 1x no
+            produto e vale pra todas as ofertas dele automaticamente.
           </p>
 
           {!ready ? (
@@ -234,7 +231,7 @@ function ProductPixelMapSection({ company, canEdit }: { company: Company; canEdi
                             className="h-9 flex-shrink-0 rounded-lg border px-2 text-[11px] disabled:opacity-60"
                             style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
                           >
-                            <option value="">— Lógica padrão —</option>
+                            <option value="">— Não está sendo enviado —</option>
                             {pixels.map((px) => (
                               <option key={px.id} value={px.id}>{px.name}</option>
                             ))}

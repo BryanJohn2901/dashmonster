@@ -148,6 +148,15 @@ function mockNotYetProcessed() {
   mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // idempotência: não existe ainda
 }
 
+// Nenhuma venda manda pra Meta sem o produto ter um pixel escolhido no
+// catálogo (eduzz_products) — decisão explícita, não cai mais pra visita
+// correlacionada nem pro pixel padrão da empresa. Testes "felizes" (que
+// esperam Meta chamada) precisam disso ANTES do mock de tracking_pixels
+// (mockPixelMaybeSingle), na mesma ordem que findProductPixelId() roda.
+function mockProductPixelConfigured(pixelId = "pixel-1") {
+  mockProductsResult.mockResolvedValueOnce({ data: { pixel_id: pixelId }, error: null });
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
   mockMetricsMaybeSingle.mockResolvedValue({ data: null, error: null });
@@ -175,7 +184,10 @@ const MODERN_PAYLOAD = {
     tracker: { code1: null },
     paid: { value: 297, currency: "BRL" },
     transaction: { id: "TX-MODERN-1" },
-    items: [{ name: "Curso Y" }],
+    // parentId presente por padrão — produto precisa de pixel escolhido no
+    // catálogo pra mandar pra Meta (decisão: nenhuma venda manda sem
+    // configuração explícita, nem por visita correlacionada nem por padrão).
+    items: [{ name: "Curso Y", parentId: "curso-padrao" }],
     paymentMethod: "creditCard",
     paidAt: "2026-06-18T12:00:00Z",
   },
@@ -209,7 +221,7 @@ describe("POST /api/eduzz/webhook", () => {
     mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
     mockNotYetProcessed();
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // resolveVisitMatch: sem match por email (sem telefone no payload antigo)
-    mockPixelMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem pixel default -> sem Meta
+    // formato antigo nunca manda parentId -> findProductPixelId nem consulta o banco, sem Meta.
 
     const res = await POST(buildRequest(LEGACY_PAYLOAD));
     expect(res.status).toBe(200);
@@ -234,6 +246,7 @@ describe("POST /api/eduzz/webhook", () => {
     // resolveVisitMatch: sem tracker code -> tenta email (sem match) -> tenta telefone (sem match).
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null });
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null });
+    mockProductPixelConfigured();
     mockPixelMaybeSingle.mockResolvedValueOnce({ data: PIXEL_OK, error: null });
 
     const res = await POST(buildRequest(MODERN_PAYLOAD));
@@ -266,17 +279,18 @@ describe("POST /api/eduzz/webhook", () => {
     expect(mockUpdate).toHaveBeenCalledWith({ capi_status: "sent" });
   });
 
-  it("não chama a Meta quando a empresa não tem pixel configurado (mas grava o evento)", async () => {
+  it("não chama a Meta quando o produto não tem pixel escolhido no catálogo (mas grava o evento)", async () => {
     mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
     mockNotYetProcessed();
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por email
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por telefone
-    mockPixelMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem pixel default
+    // produto sem pixel escolhido (default da fila: sem dado) — nem resolve tracking_pixels.
 
     await POST(buildRequest(MODERN_PAYLOAD));
 
-    expect(mockInsert).toHaveBeenCalledWith(expect.objectContaining({ capi_status: "skipped" }));
+    expect(mockInsert).toHaveBeenCalledWith(expect.objectContaining({ capi_status: "skipped", pixel_id: null }));
     expect(global.fetch).not.toHaveBeenCalled();
+    expect(mockPixelSelect).not.toHaveBeenCalled();
   });
 
   it("idempotência: não reprocessa a mesma transação 2x (retry da Eduzz)", async () => {
@@ -310,6 +324,7 @@ describe("POST /api/eduzz/webhook", () => {
       },
       error: null,
     });
+    mockProductPixelConfigured();
     mockPixelMaybeSingle.mockResolvedValueOnce({ data: PIXEL_OK, error: null });
 
     await POST(buildRequest({ ...MODERN_PAYLOAD, data: { ...MODERN_PAYLOAD.data, tracker: { code1: "dm-uid-visita-1" } } }));
@@ -341,6 +356,7 @@ describe("POST /api/eduzz/webhook", () => {
     mockNotYetProcessed();
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por email
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por telefone
+    mockProductPixelConfigured();
     mockPixelMaybeSingle.mockResolvedValueOnce({ data: PIXEL_OK, error: null });
 
     await POST(buildRequest(MODERN_PAYLOAD));
@@ -369,7 +385,7 @@ describe("POST /api/eduzz/webhook", () => {
     mockNotYetProcessed();
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por email
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por telefone
-    mockPixelMaybeSingle.mockResolvedValueOnce({ data: PIXEL_OK, error: null });
+    // produto sem pixel escolhido — teste só verifica os campos gravados, não o envio à Meta.
 
     const payload = {
       ...MODERN_PAYLOAD,
@@ -385,7 +401,7 @@ describe("POST /api/eduzz/webhook", () => {
     mockNotYetProcessed();
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por email
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por telefone
-    mockPixelMaybeSingle.mockResolvedValueOnce({ data: PIXEL_OK, error: null });
+    // produto sem pixel escolhido — teste só verifica os campos gravados, não o envio à Meta.
 
     const payload = {
       ...MODERN_PAYLOAD,
@@ -416,13 +432,14 @@ describe("POST /api/eduzz/webhook", () => {
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // isKnownRecurrence: 1ª cobrança, sem renovação anterior
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por email
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por telefone
+    mockProductPixelConfigured();
     mockPixelMaybeSingle.mockResolvedValueOnce({ data: PIXEL_OK, error: null });
 
     const payload = {
       ...MODERN_PAYLOAD,
       data: {
         ...MODERN_PAYLOAD.data,
-        items: [{ productId: "P567", name: "Curso Y", price: { value: 297, currency: "BRL" } }],
+        items: [{ productId: "P567", parentId: "curso-padrao", name: "Curso Y", price: { value: 297, currency: "BRL" } }],
         contract: { id: "sub-1" },
       },
     };
@@ -446,7 +463,7 @@ describe("POST /api/eduzz/webhook", () => {
     mockNotYetProcessed();
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por email
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por telefone
-    mockPixelMaybeSingle.mockResolvedValueOnce({ data: PIXEL_OK, error: null });
+    // produto sem pixel escolhido — teste só verifica os campos gravados, não o envio à Meta.
 
     const payload = {
       ...MODERN_PAYLOAD,
@@ -517,7 +534,7 @@ describe("POST /api/eduzz/webhook", () => {
     mockNotYetProcessed();
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por email
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por telefone
-    mockPixelMaybeSingle.mockResolvedValueOnce({ data: PIXEL_OK, error: null }); // resolveDefaultPixel (produto novo nunca tem pixel escolhido ainda)
+    // produto novo nunca tem pixel escolhido ainda — não manda pra Meta, só popula o catálogo.
 
     const payload = { ...MODERN_PAYLOAD, data: { ...MODERN_PAYLOAD.data, items: [{ name: "Curso Y", productId: "3048488", parentId: "curso-pai-2" }] } };
     const res = await POST(buildRequest(payload));
@@ -531,15 +548,15 @@ describe("POST /api/eduzz/webhook", () => {
       expect.objectContaining({ parent_id: "curso-pai-2", product_id: "3048488", name: "Curso Y" }),
       expect.objectContaining({ onConflict: "company_id,product_id" }),
     );
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  it("allowlist: empresa com 1+ produto com pixel escolhido ignora venda de produto SEM vínculo, mesmo com visita correlacionada", async () => {
+  it("produto sem pixel escolhido nunca manda pra Meta, mesmo com visita correlacionada (decisão: só envia o que for configurado)", async () => {
     mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
     mockNotYetProcessed();
-    // tem visita correlacionada, mas não importa — produto desta venda não tem pixel escolhido e a empresa já usa a allowlist.
+    // tem visita correlacionada (pixel-DA-VISITA) — mas não importa mais, pixel só vem do catálogo agora.
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: { fingerprint_id: "fp-1", event_url: "https://x.com", pixel_id: "pixel-DA-VISITA" }, error: null });
-    mockProductsResult.mockResolvedValueOnce({ data: null, error: null }); // findProductPixelId: este produto não tem pixel escolhido
-    mockProductsResult.mockResolvedValueOnce({ data: [{ parent_id: "outro-produto" }], error: null }); // companyHasAnyProductPixel: empresa tem outro produto com pixel escolhido
+    // findProductPixelId: produto sem pixel escolhido (default da fila: sem dado).
 
     const payload = { ...MODERN_PAYLOAD, data: { ...MODERN_PAYLOAD.data, items: [{ name: "Curso Z", parentId: "curso-sem-pixel" }] } };
     const res = await POST(buildRequest(payload));
@@ -547,19 +564,18 @@ describe("POST /api/eduzz/webhook", () => {
 
     expect(mockInsert).toHaveBeenCalledWith(expect.objectContaining({ capi_status: "skipped", pixel_id: null }));
     expect(global.fetch).not.toHaveBeenCalled();
-    expect(mockPixelSelect).not.toHaveBeenCalled(); // nem chega a resolver pixel da visita nem o padrão
+    expect(mockPixelSelect).not.toHaveBeenCalled(); // nem chega a resolver pixel nenhum (nem da visita, nem padrão)
   });
 
-  it("sem nenhum produto mapeado na empresa: comportamento de sempre (visita → pixel padrão), allowlist nunca liga", async () => {
+  it("formato antigo (sem parentId) nunca manda pra Meta — sem item estruturado não tem como configurar produto nenhum", async () => {
     mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
     mockNotYetProcessed();
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por email
-    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por telefone
-    mockPixelMaybeSingle.mockResolvedValueOnce({ data: PIXEL_OK, error: null }); // resolveDefaultPixel
 
-    const res = await POST(buildRequest(MODERN_PAYLOAD)); // items sem productId/parentId -> sem candidato algum
+    const res = await POST(buildRequest(LEGACY_PAYLOAD));
     expect(res.status).toBe(200);
 
-    expect(global.fetch).toHaveBeenCalled();
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(mockPixelSelect).not.toHaveBeenCalled();
   });
 });
