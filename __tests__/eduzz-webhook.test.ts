@@ -589,8 +589,7 @@ describe("POST /api/eduzz/webhook", () => {
         contract: {
           id: "sub-psl-1",
           isUnlimitedInstallments: true,
-          payment: { totalOfInstallments: 12 },
-          recurrence: { isFinite: true, price: { value: 299, currency: "BRL" } },
+          recurrence: { isFinite: true, price: { value: 299, currency: "BRL" }, charges: { current: 1, total: 12 } },
         },
       },
     };
@@ -620,7 +619,7 @@ describe("POST /api/eduzz/webhook", () => {
 
     const payload = {
       event: "myeduzz.contract_updated",
-      data: { reason: "upgrade", contract: { id: "sub-psl-1", payment: { totalOfInstallments: 10 }, recurrence: { isFinite: true, price: { value: 350 } } } },
+      data: { reason: "upgrade", contract: { id: "sub-psl-1", recurrence: { isFinite: true, price: { value: 350 }, charges: { current: 1, total: 10 } } } },
     };
     await POST(buildRequest(payload));
 
@@ -637,7 +636,7 @@ describe("POST /api/eduzz/webhook", () => {
 
     const payload = {
       event: "myeduzz.contract_created",
-      data: { contract: { id: "sub-late", payment: { totalOfInstallments: 12 }, recurrence: { isFinite: true, price: { value: 10 } } } },
+      data: { contract: { id: "sub-late", recurrence: { isFinite: true, price: { value: 10 }, charges: { current: 1, total: 12 } } } },
     };
     await POST(buildRequest(payload));
 

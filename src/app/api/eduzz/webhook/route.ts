@@ -232,11 +232,12 @@ interface EduzzContractPayload {
       id?: string;
       /** "sem limite" é sobre o LIMITE DO CARTÃO do comprador (não precisa do valor cheio disponível na 1ª cobrança) — não sobre a duração do contrato. O nº de parcelas é finito mesmo com isso true (confirmado na doc de ajuda da Eduzz). */
       isUnlimitedInstallments?: boolean;
-      payment?: { totalOfInstallments?: number };
       recurrence?: {
-        /** true = contrato tem fim definido (PSL ou prazo fixo) — dá pra multiplicar price × totalOfInstallments. false = assinatura aberta (cancela quando quiser), sem total fixo. */
+        /** true = contrato tem fim definido (PSL ou prazo fixo) — dá pra multiplicar price × charges.total. false = assinatura aberta (cancela quando quiser), sem total fixo. */
         isFinite?: boolean;
         price?: { value?: number; currency?: string };
+        /** nº de cobranças recorrentes — current = cobrança atual (1-based), total = total contratado. NÃO confundir com `contract.payment.installments` (forma de pagamento da cobrança em si, ex.: pix à vista = 1). */
+        charges?: { current?: number; total?: number };
       };
     };
   };
@@ -248,7 +249,7 @@ async function upsertContractInfo(db: SupabaseClient, companyId: string, body: E
   const contract = body.data?.contract;
   if (!contract?.id) return;
 
-  const total = contract.payment?.totalOfInstallments ?? null;
+  const total = contract.recurrence?.charges?.total ?? null;
   const isFinite = contract.recurrence?.isFinite ?? null;
 
   const { error } = await db.from("eduzz_contracts").upsert(

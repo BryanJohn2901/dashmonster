@@ -611,6 +611,7 @@ export function TrackingEventsView() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [eventFilter, setEventFilter] = useState<string | null>(null);
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState<string | null>(null);
   const [selectedVisitor, setSelectedVisitor] = useState<Visitor | null>(null);
 
   const [dateFrom, setDateFrom] = useState(() => new Date(Date.now() - 30 * 86400_000).toISOString().split("T")[0]);
@@ -693,6 +694,7 @@ export function TrackingEventsView() {
 
   const filteredVisitors = visitors.filter((v) => {
     if (eventFilter && !v.events.some((e) => e.event_name === eventFilter)) return false;
+    if (eventFilter === "Purchase" && paymentMethodFilter && !v.events.some((e) => e.event_name === "Purchase" && e.payment_method === paymentMethodFilter)) return false;
     if (search) {
       const q = search.toLowerCase();
       return (
@@ -707,6 +709,10 @@ export function TrackingEventsView() {
   });
 
   const eventTypes = [...new Set(events.map((e) => e.event_name))];
+  // Formas de pagamento das vendas (Purchase) realmente vistas no período — só
+  // mostra o chip pra filtrar quando o usuário já está olhando "Compra" (filtro
+  // secundário, igual ao padrão de eventTypes acima).
+  const paymentMethods = [...new Set(events.filter((e) => e.event_name === "Purchase" && e.payment_method).map((e) => e.payment_method as string))];
   // Captura funciona sem Meta — isso é só um lembrete de que o envio CAPI está desligado, não um erro.
   const metaNotConfigured = !loading && !error && !anyMetaConfigured;
 
@@ -817,13 +823,31 @@ export function TrackingEventsView() {
 
       {/* Filter chips */}
       {eventTypes.length > 0 && (
-        <div className="mb-4 flex flex-wrap gap-1.5">
+        <div className="mb-2 flex flex-wrap gap-1.5">
           {eventTypes.map((ev) => (
             <Chip
               key={ev}
               label={EVENT_LABELS[ev] ?? ev}
               active={eventFilter === ev}
-              onClick={() => setEventFilter(eventFilter === ev ? null : ev)}
+              onClick={() => {
+                setEventFilter(eventFilter === ev ? null : ev);
+                setPaymentMethodFilter(null);
+              }}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Forma de pagamento — só aparece com o filtro "Compra" ativo */}
+      {eventFilter === "Purchase" && paymentMethods.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-1.5">
+          <CreditCard size={11} className="flex-shrink-0" style={{ color: "var(--dm-text-tertiary)" }} />
+          {paymentMethods.map((method) => (
+            <Chip
+              key={method}
+              label={PAYMENT_METHOD_LABELS[method] ?? method}
+              active={paymentMethodFilter === method}
+              onClick={() => setPaymentMethodFilter(paymentMethodFilter === method ? null : method)}
             />
           ))}
         </div>
