@@ -251,19 +251,26 @@ async function upsertContractInfo(db: SupabaseClient, companyId: string, body: E
 
   const total = contract.recurrence?.charges?.total ?? null;
   const isFinite = contract.recurrence?.isFinite ?? null;
+  const current = contract.recurrence?.charges?.current ?? null;
 
-  const { error } = await db.from("eduzz_contracts").upsert(
-    {
-      company_id: companyId,
-      contract_id: contract.id,
-      total_installments: total,
-      is_finite: isFinite,
-      is_unlimited_installments: contract.isUnlimitedInstallments ?? null,
-      charge_value: contract.recurrence?.price?.value ?? null,
-      currency: contract.recurrence?.price?.currency ?? null,
-    },
-    { onConflict: "company_id,contract_id" },
-  );
+  const contractRow: Record<string, unknown> = {
+    company_id: companyId,
+    contract_id: contract.id,
+    total_installments: total,
+    is_finite: isFinite,
+    is_unlimited_installments: contract.isUnlimitedInstallments ?? null,
+    charge_value: contract.recurrence?.price?.value ?? null,
+    currency: contract.recurrence?.price?.currency ?? null,
+    current_charge: current,
+  };
+  let { error } = await db.from("eduzz_contracts").upsert(contractRow, { onConflict: "company_id,contract_id" });
+  // migration 055 (current_charge) pode ainda não ter rodado no Supabase —
+  // mesmo padrão de resiliência de insertEventsLogRow: regrava sem a coluna
+  // nova em vez de perder a ficha inteira do contrato.
+  if (error?.message?.includes("current_charge")) {
+    delete contractRow.current_charge;
+    ({ error } = await db.from("eduzz_contracts").upsert(contractRow, { onConflict: "company_id,contract_id" }));
+  }
   if (error) console.error("[eduzz webhook] falha ao gravar eduzz_contracts:", error.message);
 
   // Resolve a RACE: a Eduzz não garante ordem de entrega, então o invoice_paid
@@ -272,7 +279,6 @@ async function upsertContractInfo(db: SupabaseClient, companyId: string, body: E
   // do contrato) e installments null. Agora que a ficha chegou, corrige
   // retroativamente as linhas dessa assinatura. (Não reenvia pra Meta — o
   // evento da 1ª cobrança já foi; corrige só dashboard/relatório.)
-  const current = contract.recurrence?.charges?.current ?? null;
   await backfillContractValues(db, companyId, contract.id, total, isFinite, current);
 }
 
@@ -345,27 +351,47 @@ async function backfillContractValues(
   }
 }
 
-// Consultada em recordSale() pra saber o valor CHEIO de uma venda recorrente
-// (assinatura/PSL) — só multiplica quando o contrato tem fim definido E nº de
-// parcelas conhecido; senão (assinatura aberta, ou contract_created/updated
-// nunca recebido pra esse contrato) devolve null e o chamador usa o valor da
-// cobrança normal, sem inventar total nenhum.
-async function findContractTotalInstallments(db: SupabaseClient, companyId: string, contractId: string): Promise<number | null> {
-  const { data, error } = await db
+// Consultada em recordSale()/recordRenewal() pra saber o valor CHEIO (total de
+// parcelas) e a cobrança ATUAL ("current_charge", migration 055) de uma venda
+// recorrente (assinatura/PSL). `total` só vem quando o contrato tem fim
+// definido E nº de parcelas conhecido; `current` vem direto do último
+// contract_created/updated processado (mais confiável que contar linhas — ver
+// `current_charge` abaixo). Sem ficha pra esse contractId ainda (ou coluna
+// migration 055 não rodada), devolve os 2 null — chamador cai pro
+// comportamento de sempre (valor da cobrança normal / contar linhas).
+async function findContractInfo(db: SupabaseClient, companyId: string, contractId: string): Promise<{ total: number | null; current: number | null }> {
+  let { data, error } = await db
     .from("eduzz_contracts")
-    .select("total_installments, is_finite")
+    .select("total_installments, is_finite, current_charge")
     .eq("company_id", companyId)
     .eq("contract_id", contractId)
     .maybeSingle();
-  if (error || !data?.is_finite || !data?.total_installments) return null;
-  return data.total_installments as number;
+  // migration 055 (current_charge) pode ainda não ter rodado — sem isso, o
+  // SELECT inteiro falha e a gente perdia até o `total` (que já funcionava
+  // antes dessa coluna existir). Regrava sem ela em vez de regredir.
+  if (error?.message?.includes("current_charge")) {
+    ({ data, error } = await db
+      .from("eduzz_contracts")
+      .select("total_installments, is_finite")
+      .eq("company_id", companyId)
+      .eq("contract_id", contractId)
+      .maybeSingle());
+  }
+  if (error || !data) return { total: null, current: null };
+  return {
+    total: data.is_finite && data.total_installments ? (data.total_installments as number) : null,
+    current: (data as { current_charge?: number | null }).current_charge ?? null,
+  };
 }
 
-// Consultada em recordRenewal() pra numerar a cobrança atual ("essa é a nº 3
-// de 12") — conta quantas linhas (Purchase + Renewal) já existem com esse
-// recurrence_key e soma 1 pra essa que está sendo gravada agora. Sem migration
-// 042 (recurrence_key) rodada, o erro vira `data: null` e devolve 0 — mesma
-// resiliência de sempre, não trava a venda.
+// Fallback de countRecurrenceCharges() — conta quantas linhas (Purchase +
+// Renewal) já existem com esse recurrence_key e soma 1, pra numerar a cobrança
+// atual quando a ficha do contrato ainda não tem `current_charge` conhecido
+// (contract_created/updated nunca chegou, ou chegou só DEPOIS dessa venda).
+// Subestima se alguma cobrança anterior nunca chegou como webhook — por isso
+// `findContractInfo().current` é preferido quando disponível (ver recordRenewal).
+// Sem migration 042 (recurrence_key) rodada, o erro vira `data: null` e devolve
+// 0 — mesma resiliência de sempre, não trava a venda.
 async function countRecurrenceCharges(db: SupabaseClient, companyId: string, recurrenceKey: string): Promise<number> {
   const { data, error } = await db.from("events_log").select("id").eq("company_id", companyId).eq("recurrence_key", recurrenceKey);
   if (error || !data) return 0;
@@ -614,7 +640,8 @@ async function recordSale(db: SupabaseClient, companyId: string, sale: SaleEvent
   // tocar na receita mensal que já está certa. Sem contrato conhecido (não
   // recorrente, ou contract_created/updated nunca chegou pra esse contractId),
   // cai pro valor normal — comportamento de sempre, sem inventar total.
-  const contractTotalInstallments = sale.recurrenceKey ? await findContractTotalInstallments(db, companyId, sale.recurrenceKey) : null;
+  const contractInfo = sale.recurrenceKey ? await findContractInfo(db, companyId, sale.recurrenceKey) : { total: null, current: null };
+  const contractTotalInstallments = contractInfo.total;
   const displayValue = contractTotalInstallments ? sale.value * contractTotalInstallments : sale.value;
 
   const { data: inserted, error: insertError } = await insertEventsLogRow(db, {
@@ -666,7 +693,11 @@ async function recordSale(db: SupabaseClient, companyId: string, sale: SaleEvent
     // juntar tudo (`external_transaction_id = X OR main_sale_transaction_id =
     // X OR recurrence_key = X`) e ordenar por `installment_number` sem
     // tratamento especial pra parcela 1.
-    installment_number: sale.installmentNumber ?? (sale.recurrenceKey ? 1 : null),
+    // `contractInfo.current` (ficha do contrato, migration 055) é preferido ao
+    // "sempre 1": se essa é a 1ª venda que CAPTURAMOS desse contrato mas a
+    // Eduzz já está na cobrança 13 (cobranças anteriores nunca chegaram como
+    // webhook — caso real visto em produção), o nº certo é 13, não 1.
+    installment_number: sale.installmentNumber ?? contractInfo.current ?? (sale.recurrenceKey ? 1 : null),
     // Valor SÓ dessa parcela/cobrança (migration 054) — diferente de `value`
     // (acima) quando a venda é parcelada: `value` já é o total multiplicado,
     // `invoiceValue` é cru, sem multiplicar nada (pra boleto, o que essa 1ª
@@ -861,12 +892,16 @@ async function recordRenewal(db: SupabaseClient, companyId: string, sale: SaleEv
 
   // Mesma ficha do contrato que recordSale() consulta (total de parcelas, se
   // conhecido) — aqui só pra exibição, não muda o valor (renovação sempre usa
-  // sale.value, o valor real dessa cobrança). chargeNumber conta quantas
-  // linhas (Purchase + Renewal) já existem pra essa assinatura e soma 1 — "essa
-  // é a cobrança nº X" — a 1ª cobrança nunca passa por aqui (sempre nº 1, por
-  // definição de "ainda não é renovação conhecida").
-  const contractTotalInstallments = sale.recurrenceKey ? await findContractTotalInstallments(db, companyId, sale.recurrenceKey) : null;
-  const chargeNumber = sale.recurrenceKey ? (await countRecurrenceCharges(db, companyId, sale.recurrenceKey)) + 1 : null;
+  // sale.value, o valor real dessa cobrança). chargeNumber prefere
+  // `contractInfo.current` (ficha atualizada pela Eduzz via contract_updated —
+  // não depende de termos capturado TODAS as cobranças anteriores); só cai pro
+  // count de linhas já gravadas quando a ficha ainda não tem `current_charge`
+  // conhecido (contract_created/updated nunca recebido pra esse contrato).
+  const contractInfo = sale.recurrenceKey ? await findContractInfo(db, companyId, sale.recurrenceKey) : { total: null, current: null };
+  const contractTotalInstallments = contractInfo.total;
+  const chargeNumber = sale.recurrenceKey
+    ? contractInfo.current ?? (await countRecurrenceCharges(db, companyId, sale.recurrenceKey)) + 1
+    : null;
 
   const { error } = await insertEventsLogRow(db, {
     company_id: companyId,

@@ -125,7 +125,7 @@ const mockOffersUpsert = jest.fn(() => Promise.resolve({ data: null, error: null
 // = comportamento de sempre, sem multiplicar nada (mesma ideia do default dos
 // outros mocks "sem dado" desta suite).
 const mockContractMaybeSingle = jest.fn(
-  (): Promise<{ data: { total_installments: number; is_finite: boolean } | null; error: { message: string } | null }> =>
+  (): Promise<{ data: { total_installments: number; is_finite: boolean; current_charge?: number } | null; error: { message: string } | null }> =>
     Promise.resolve({ data: null, error: null }),
 );
 function makeContractQuery() {
@@ -580,6 +580,26 @@ describe("POST /api/eduzz/webhook", () => {
     );
   });
 
+  it("renovação prefere current_charge da ficha (mais confiável) em vez de contar linhas já gravadas, quando a ficha já conhece a cobrança atual", async () => {
+    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockNotYetProcessed();
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: { id: "evt-primeira-cobranca" }, error: null }); // isKnownRecurrence
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por email
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por telefone
+    // ficha já sabe que essa é a cobrança 9 — mesmo que só exista 1 linha
+    // gravada no banco (cobranças 2-8 nunca chegaram como webhook).
+    mockContractMaybeSingle.mockResolvedValueOnce({ data: { total_installments: 18, is_finite: true, current_charge: 9 }, error: null });
+
+    const payload = { ...MODERN_PAYLOAD, data: { ...MODERN_PAYLOAD.data, paid: { value: 10, currency: "BRL" }, contract: { id: "sub-gap-1" } } };
+    await POST(buildRequest(payload));
+
+    // 9, não 2 (que seria o resultado de countRecurrenceCharges()+1 com só 1 linha gravada).
+    expect(mockInsert).toHaveBeenCalledWith(
+      expect.objectContaining({ event_name: "Renewal", recurrence_key: "sub-gap-1", installment_number: 9, installments: 18 }),
+    );
+    expect(mockEventsLogCount).not.toHaveBeenCalled(); // nem precisou contar linhas — ficha já tinha a resposta
+  });
+
   it("contract_created guarda a ficha do contrato (nº de parcelas, fim definido) em eduzz_contracts, sem tratar como venda", async () => {
     mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
 
@@ -762,6 +782,25 @@ describe("POST /api/eduzz/webhook", () => {
     // a otimizar campanha pelo valor real do negócio, não só a 1ª cobrança).
     const sentBody = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
     expect(sentBody.data[0].custom_data.value).toBe(120);
+  });
+
+  it("1ª venda CAPTURADA de um contrato já em andamento usa current_charge da ficha em vez de assumir cobrança 1 (cobranças anteriores nunca chegaram como webhook)", async () => {
+    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // isKnownRecurrence: nenhuma linha gravada ainda pra esse recurrence_key
+    mockNotYetProcessed();
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por email
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por telefone
+    mockProductPixelConfigured();
+    mockPixelMaybeSingle.mockResolvedValueOnce({ data: PIXEL_OK, error: null });
+    // ficha do contrato (migration 055): 25 parcelas, já na cobrança 13.
+    mockContractMaybeSingle.mockResolvedValueOnce({ data: { total_installments: 25, is_finite: true, current_charge: 13 }, error: null });
+
+    const payload = { ...MODERN_PAYLOAD, data: { ...MODERN_PAYLOAD.data, paid: { value: 189, currency: "BRL" }, contract: { id: "sub-13-de-25" } } };
+    await POST(buildRequest(payload));
+
+    expect(mockInsert).toHaveBeenCalledWith(
+      expect.objectContaining({ recurrence_key: "sub-13-de-25", installments: 25, installment_number: 13 }),
+    );
   });
 
   it("PSL sem ficha conhecida (contract_created não recebido ainda): usa o valor da cobrança, sem adivinhar total", async () => {
