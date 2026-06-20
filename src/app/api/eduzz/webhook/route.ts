@@ -335,6 +335,10 @@ async function backfillContractValues(
   // do contract_updated é a verdade da Eduzz nesse instante; corrige só a linha
   // mais recente (as anteriores já refletem a numeração real de quando foram
   // gravadas, não deve reescrever histórico).
+  // SÓ AUMENTA, nunca rebaixa: a Eduzz não garante ordem entre
+  // contract_updated e invoice_paid, então esse `current` pode ser de um
+  // contract_updated ATRASADO (de uma cobrança anterior) chegando depois de já
+  // termos gravado (via Math.max em recordRenewal) um número mais avançado.
   if (current && current >= 1) {
     const latestRes = await db
       .from("events_log")
@@ -345,7 +349,7 @@ async function backfillContractValues(
       .limit(1)
       .maybeSingle();
     const latest = latestRes?.data as { id: string; installment_number: number | null } | null | undefined;
-    if (latest && latest.installment_number !== current) {
+    if (latest && (latest.installment_number ?? 0) < current) {
       await db.from("events_log").update({ installment_number: current }).eq("id", latest.id);
     }
   }
@@ -892,15 +896,17 @@ async function recordRenewal(db: SupabaseClient, companyId: string, sale: SaleEv
 
   // Mesma ficha do contrato que recordSale() consulta (total de parcelas, se
   // conhecido) — aqui só pra exibição, não muda o valor (renovação sempre usa
-  // sale.value, o valor real dessa cobrança). chargeNumber prefere
-  // `contractInfo.current` (ficha atualizada pela Eduzz via contract_updated —
-  // não depende de termos capturado TODAS as cobranças anteriores); só cai pro
-  // count de linhas já gravadas quando a ficha ainda não tem `current_charge`
-  // conhecido (contract_created/updated nunca recebido pra esse contrato).
+  // sale.value, o valor real dessa cobrança). chargeNumber usa o MAIOR entre
+  // `contractInfo.current` (ficha) e a contagem de linhas+1: a Eduzz NÃO
+  // garante ordem entre contract_updated e invoice_paid da MESMA cobrança —
+  // se o contract_updated dessa cobrança ainda não chegou, a ficha pode estar
+  // mostrando o nº da cobrança ANTERIOR (atrasada), e nesse caso a contagem de
+  // linhas (que captura toda cobrança sem gap) já está mais avançada que a
+  // ficha. Math.max cobre os 2 sentidos do race sem nunca subestimar.
   const contractInfo = sale.recurrenceKey ? await findContractInfo(db, companyId, sale.recurrenceKey) : { total: null, current: null };
   const contractTotalInstallments = contractInfo.total;
   const chargeNumber = sale.recurrenceKey
-    ? contractInfo.current ?? (await countRecurrenceCharges(db, companyId, sale.recurrenceKey)) + 1
+    ? Math.max(contractInfo.current ?? 0, (await countRecurrenceCharges(db, companyId, sale.recurrenceKey)) + 1)
     : null;
 
   const { error } = await insertEventsLogRow(db, {

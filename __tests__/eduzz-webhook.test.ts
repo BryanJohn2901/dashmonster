@@ -580,24 +580,45 @@ describe("POST /api/eduzz/webhook", () => {
     );
   });
 
-  it("renovação prefere current_charge da ficha (mais confiável) em vez de contar linhas já gravadas, quando a ficha já conhece a cobrança atual", async () => {
+  it("renovação usa current_charge da ficha quando ele é MAIOR que a contagem de linhas (cobranças anteriores nunca chegaram como webhook)", async () => {
     mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
     mockNotYetProcessed();
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: { id: "evt-primeira-cobranca" }, error: null }); // isKnownRecurrence
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por email
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por telefone
     // ficha já sabe que essa é a cobrança 9 — mesmo que só exista 1 linha
-    // gravada no banco (cobranças 2-8 nunca chegaram como webhook).
+    // gravada no banco (cobranças 2-8 nunca chegaram como webhook), contagem
+    // (0 linhas existentes além da 1ª +1 = 1) ficaria bem atrás da ficha.
     mockContractMaybeSingle.mockResolvedValueOnce({ data: { total_installments: 18, is_finite: true, current_charge: 9 }, error: null });
 
     const payload = { ...MODERN_PAYLOAD, data: { ...MODERN_PAYLOAD.data, paid: { value: 10, currency: "BRL" }, contract: { id: "sub-gap-1" } } };
     await POST(buildRequest(payload));
 
-    // 9, não 2 (que seria o resultado de countRecurrenceCharges()+1 com só 1 linha gravada).
+    // Math.max(9, 0+1) = 9, não 1.
     expect(mockInsert).toHaveBeenCalledWith(
       expect.objectContaining({ event_name: "Renewal", recurrence_key: "sub-gap-1", installment_number: 9, installments: 18 }),
     );
-    expect(mockEventsLogCount).not.toHaveBeenCalled(); // nem precisou contar linhas — ficha já tinha a resposta
+  });
+
+  it("renovação usa a contagem de linhas quando ela é MAIOR que current_charge da ficha (contract_updated dessa cobrança ainda não chegou — ficha atrasada)", async () => {
+    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockNotYetProcessed();
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: { id: "evt-primeira-cobranca" }, error: null }); // isKnownRecurrence
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por email
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por telefone
+    // ficha ainda mostra a cobrança 4 (contract_updated dessa cobrança nova
+    // ainda não chegou), mas já temos 4 linhas gravadas pra esse contrato ->
+    // essa é a 5ª, mais avançada que a ficha.
+    mockContractMaybeSingle.mockResolvedValueOnce({ data: { total_installments: 18, is_finite: true, current_charge: 4 }, error: null });
+    mockEventsLogCount.mockResolvedValueOnce({ data: [{ id: "1" }, { id: "2" }, { id: "3" }, { id: "4" }], error: null });
+
+    const payload = { ...MODERN_PAYLOAD, data: { ...MODERN_PAYLOAD.data, paid: { value: 10, currency: "BRL" }, contract: { id: "sub-ahead-1" } } };
+    await POST(buildRequest(payload));
+
+    // Math.max(4, 4+1) = 5, não 4.
+    expect(mockInsert).toHaveBeenCalledWith(
+      expect.objectContaining({ event_name: "Renewal", recurrence_key: "sub-ahead-1", installment_number: 5, installments: 18 }),
+    );
   });
 
   it("contract_created guarda a ficha do contrato (nº de parcelas, fim definido) em eduzz_contracts, sem tratar como venda", async () => {
@@ -687,6 +708,23 @@ describe("POST /api/eduzz/webhook", () => {
     const payload = {
       event: "myeduzz.contract_updated",
       data: { contract: { id: "sub-8-de-18", recurrence: { isFinite: true, price: { value: 189 }, charges: { current: 8, total: 18 } } } },
+    };
+    await POST(buildRequest(payload));
+
+    expect(mockUpdate).not.toHaveBeenCalledWith({ installment_number: 8 });
+  });
+
+  it("contract_updated NÃO rebaixa installment_number quando chega ATRASADO (current menor que o já gravado)", async () => {
+    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // purchaseRes: sem Purchase pra recalcular valor
+    // linha mais recente já está na cobrança 9 (gravada via Math.max em
+    // recordRenewal, com a contagem de linhas mais avançada que a ficha na
+    // época) — esse contract_updated atrasado ainda é da cobrança 8.
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: { id: "evt-9", installment_number: 9 }, error: null });
+
+    const payload = {
+      event: "myeduzz.contract_updated",
+      data: { contract: { id: "sub-late-update", recurrence: { isFinite: true, price: { value: 189 }, charges: { current: 8, total: 18 } } } },
     };
     await POST(buildRequest(payload));
 
