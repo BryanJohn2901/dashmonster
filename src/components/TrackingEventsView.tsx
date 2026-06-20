@@ -37,18 +37,25 @@ interface TrackingEvent {
   capi_status: "pending" | "sent" | "failed" | "skipped";
   capi_error: string | null;
   // Venda (Eduzz e futuras plataformas) — ver src/app/api/eduzz/CLAUDE.md.
+  /** Valor CHEIO — pra Purchase de venda parcelada já vem multiplicado (boleto: parcela × total; assinatura/PSL: cobrança × nº de parcelas do contrato). Pra Renewal/Installment é igual a `installment_value` (nunca multiplicam nada). */
   value: number | null;
   currency: string | null;
   external_transaction_id: string | null;
   source: string | null; // "pixel" (default) | "eduzz"
   payment_method: string | null;
-  /** Total de parcelas (ex.: boleto em 3x) — null pra cartão (operadora decide, invisível pra plataforma) e pagamento à vista. */
+  /** Total de parcelas/cobranças (boleto em 3x OU contrato de assinatura/PSL com nº fixo) — null pra cartão à vista (operadora decide parcelamento, invisível pra plataforma) e assinatura sem ficha de contrato conhecida ainda. */
   installments: number | null;
+  /** Qual parcela/cobrança esse registro representa (1, 2, 3...) — migration 053. Parcela 1 do boleto e 1ª cobrança da assinatura sempre valem 1. */
+  installment_number: number | null;
+  /** Valor só DESSA parcela/cobrança específica (migration 054) — diferente de `value` só quando for a Purchase (parcela 1/1ª cobrança) de uma venda parcelada; nas outras linhas é igual a `value`. */
+  installment_value: number | null;
+  /** Id da assinatura/contrato recorrente (migration 042) — presente = é assinatura/PSL, não parcelamento de boleto. */
+  recurrence_key: string | null;
   /** Mesma string de campaign_metrics.campaign_name — coluna própria (migration 044), não só dentro de extra_fields. */
   product_name: string | null;
   /** true quando essa Purchase é um order bump (produto extra do checkout Eduzz), não a venda principal — migration 046. */
   is_order_bump: boolean | null;
-  /** external_transaction_id da venda principal a que esse order bump pertence — null pra venda principal. */
+  /** external_transaction_id da venda principal a que esse order bump/parcela pertence — null pra venda principal. */
   main_sale_transaction_id: string | null;
   created_at: string;
 }
@@ -83,6 +90,11 @@ const EVENT_LABELS: Record<string, string> = {
   Purchase: "Compra",
   PageView: "Visualização",
   AddToCart: "Carrinho",
+  // Renewal = cobrança recorrente de assinatura/PSL já conhecida; Installment
+  // = parcela > 1 de boleto parcelado. Os 2 são dinheiro de verdade (entram
+  // em campaign_metrics), só não são "venda nova" pra Meta — ver CLAUDE.md.
+  Renewal: "Renovação",
+  Installment: "Parcela",
 };
 
 const EVENT_COLORS: Record<string, { bg: string; text: string }> = {
@@ -91,6 +103,8 @@ const EVENT_COLORS: Record<string, { bg: string; text: string }> = {
   Purchase: { bg: "rgba(245,158,11,0.12)", text: "#d97706" },
   PageView: { bg: "rgba(100,116,139,0.12)", text: "#475569" },
   AddToCart: { bg: "rgba(139,92,246,0.12)", text: "#7c3aed" },
+  Renewal: { bg: "rgba(245,158,11,0.12)", text: "#d97706" },
+  Installment: { bg: "rgba(245,158,11,0.12)", text: "#d97706" },
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -122,7 +136,7 @@ const UTM_KEYS = [
 const EVENTS_SELECT =
   "id, event_name, fingerprint_id, event_url, page_title, user_data, lead_email, lead_phone, lead_name, extra_fields, country, country_region, city, event_id, " +
   "utm_source, utm_medium, utm_campaign, utm_content, utm_term, utm_placement, utm_campaign_id, utm_adset_id, utm_ad_id, " +
-  "value, currency, external_transaction_id, source, payment_method, installments, product_name, is_order_bump, main_sale_transaction_id, capi_status, capi_error, created_at";
+  "value, currency, external_transaction_id, source, payment_method, installments, installment_number, installment_value, recurrence_key, product_name, is_order_bump, main_sale_transaction_id, capi_status, capi_error, created_at";
 // Sem as colunas das migrations 033/034/036/038/039/040/043/044 — usado se alguma delas ainda não rodou
 // no banco, pra não derrubar a tela enquanto ela não é aplicada manualmente no Supabase.
 const EVENTS_SELECT_FALLBACK = "id, event_name, fingerprint_id, event_url, user_data, lead_email, lead_phone, capi_status, capi_error, created_at";
@@ -243,13 +257,26 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   installmentBankslip: "Boleto parcelado",
   unknown: "Desconhecido",
 };
-// "Boleto · 3x" quando souber o número de parcelas (só boleto parcelado da
-// Eduzz manda isso — parcelamento de cartão é da operadora, invisível pra
+// "Boleto parcelado · 3x" quando souber o número de parcelas (só boleto
+// parcelado e assinatura/PSL com ficha de contrato conhecida mandam isso —
+// parcelamento de cartão "normal" é decidido pela operadora, invisível pra
 // plataforma, por isso installments fica null nesse caso e mostra só o método).
-function paymentMethodLabel(method: string | null, installments: number | null = null): string | null {
+// `isRecurring` (recurrence_key presente) marca explicitamente "Assinatura"
+// quando o método em si não deixa isso claro (ex.: "Cartão de crédito" sozinho
+// não diz se é parcelamento normal ou uma assinatura/PSL por trás).
+function paymentMethodLabel(method: string | null, installments: number | null = null, isRecurring = false): string | null {
   if (!method) return null;
   const label = PAYMENT_METHOD_LABELS[method] ?? method;
-  return installments && installments > 1 ? `${label} · ${installments}x` : label;
+  const tagged = isRecurring && method !== "installmentBankslip" ? `${label} · Assinatura` : label;
+  return installments && installments > 1 ? `${tagged} · ${installments}x` : tagged;
+}
+
+// "Parcela 1 de 3" / "Cobrança 2 de 12" — progresso dentro do parcelamento,
+// separado do método de pagamento (esse já mostra o "3x"/"12x" total, isso
+// aqui mostra EM QUAL parcela/cobrança essa linha específica está).
+function installmentProgressLabel(installmentNumber: number | null, installments: number | null, isRecurring: boolean): string | null {
+  if (!installmentNumber || !installments || installments <= 1) return null;
+  return `${isRecurring ? "Cobrança" : "Parcela"} ${installmentNumber} de ${installments}`;
 }
 
 // Builders de formulário (Elementor, WP Forms etc.) costumam nomear o input
@@ -402,6 +429,11 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
               {purchaseEvents.map((p) => (
                 <div key={p.id} className="mb-1.5 flex flex-wrap items-center gap-1.5 text-xs last:mb-0" style={{ color: "var(--dm-text-primary)" }}>
                   <span className="font-semibold">{formatMoney(p.value, p.currency)}</span>
+                  {p.installment_value != null && p.installment_value !== p.value && (
+                    <span className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }} title="Valor pago só nessa parcela/cobrança — o de cima é o valor cheio da venda">
+                      (parcela: {formatMoney(p.installment_value, p.currency)})
+                    </span>
+                  )}
                   {(p.product_name ?? p.extra_fields?.produto) && (
                     <span style={{ color: "var(--dm-text-tertiary)" }}>· {p.product_name ?? p.extra_fields?.produto}</span>
                   )}
@@ -414,9 +446,14 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
                       order bump
                     </span>
                   )}
-                  {paymentMethodLabel(p.payment_method, p.installments) && (
+                  {paymentMethodLabel(p.payment_method, p.installments, Boolean(p.recurrence_key)) && (
                     <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
-                      <CreditCard size={10} /> {paymentMethodLabel(p.payment_method, p.installments)}
+                      <CreditCard size={10} /> {paymentMethodLabel(p.payment_method, p.installments, Boolean(p.recurrence_key))}
+                    </span>
+                  )}
+                  {installmentProgressLabel(p.installment_number, p.installments, Boolean(p.recurrence_key)) && (
+                    <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                      <Hash size={10} /> {installmentProgressLabel(p.installment_number, p.installments, Boolean(p.recurrence_key))}
                     </span>
                   )}
                   <span className="text-[10px] tabular-nums" style={{ color: "var(--dm-text-tertiary)" }}>{fmt(p.created_at)}</span>
@@ -482,10 +519,24 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
                       ))}
                     </div>
                   )}
-                  {event.event_name === "Purchase" && (
+                  {(event.event_name === "Purchase" || event.event_name === "Renewal" || event.event_name === "Installment") && (
                     <div className="mt-1.5 rounded-lg border p-2" style={{ borderColor: EVENT_COLORS.Purchase.text, background: "rgba(245,158,11,0.06)" }}>
                       <div className="flex items-center gap-1.5">
                         <p className="text-sm font-bold" style={{ color: EVENT_COLORS.Purchase.text }}>{formatMoney(event.value, event.currency)}</p>
+                        {event.installment_value != null && event.installment_value !== event.value && (
+                          <span className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }} title="Valor pago só nessa parcela/cobrança — o de cima é o valor cheio da venda">
+                            (parcela: {formatMoney(event.installment_value, event.currency)})
+                          </span>
+                        )}
+                        {event.event_name !== "Purchase" && (
+                          <span
+                            className="rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
+                            style={{ background: "rgba(245,158,11,0.12)", color: "#d97706" }}
+                            title={event.main_sale_transaction_id ? `Venda principal #${event.main_sale_transaction_id}` : undefined}
+                          >
+                            {event.event_name === "Renewal" ? "cobrança recorrente" : "parcela"}
+                          </span>
+                        )}
                         {event.is_order_bump && (
                           <span
                             className="rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
@@ -505,8 +556,15 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
                         {event.lead_phone && <span className="flex items-center gap-1"><Phone size={10} /> {event.lead_phone}</span>}
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
-                        {paymentMethodLabel(event.payment_method, event.installments) && (
-                          <span className="flex items-center gap-1"><CreditCard size={10} /> {paymentMethodLabel(event.payment_method, event.installments)}</span>
+                        {paymentMethodLabel(event.payment_method, event.installments, Boolean(event.recurrence_key)) && (
+                          <span className="flex items-center gap-1">
+                            <CreditCard size={10} /> {paymentMethodLabel(event.payment_method, event.installments, Boolean(event.recurrence_key))}
+                          </span>
+                        )}
+                        {installmentProgressLabel(event.installment_number, event.installments, Boolean(event.recurrence_key)) && (
+                          <span className="flex items-center gap-1">
+                            <Hash size={10} /> {installmentProgressLabel(event.installment_number, event.installments, Boolean(event.recurrence_key))}
+                          </span>
                         )}
                         {event.external_transaction_id && (
                           <span className="flex items-center gap-1 font-mono"><Hash size={10} /> {event.external_transaction_id}</span>
@@ -597,7 +655,7 @@ export function TrackingEventsView() {
     const missingNewColumn = [
       "page_title", "extra_fields", "country", "country_region", "city", "event_id",
       "utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "utm_placement", "utm_campaign_id", "utm_adset_id", "utm_ad_id",
-      "lead_name", "value", "currency", "external_transaction_id", "source", "payment_method", "installments", "product_name",
+      "lead_name", "value", "currency", "external_transaction_id", "source", "payment_method", "installments", "installment_number", "installment_value", "recurrence_key", "product_name",
       "is_order_bump", "main_sale_transaction_id",
     ].some((col) => eventsRes.error?.message?.includes(col));
     if (missingNewColumn) {

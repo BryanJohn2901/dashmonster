@@ -25,6 +25,7 @@ const OPTIONAL_COLUMN_GROUPS: string[][] = [
   ["product_item_id"], // migration 049
   ["total_installments_raw", "contract_unlimited_installments"], // migration 051
   ["installment_number"], // migration 053
+  ["installment_value"], // migration 054
 ];
 
 export async function insertEventsLogRow(db: SupabaseClient, fullRow: Record<string, unknown>) {

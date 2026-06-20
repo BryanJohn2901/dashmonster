@@ -261,6 +261,17 @@ async function findContractTotalInstallments(db: SupabaseClient, companyId: stri
   return data.total_installments as number;
 }
 
+// Consultada em recordRenewal() pra numerar a cobrança atual ("essa é a nº 3
+// de 12") — conta quantas linhas (Purchase + Renewal) já existem com esse
+// recurrence_key e soma 1 pra essa que está sendo gravada agora. Sem migration
+// 042 (recurrence_key) rodada, o erro vira `data: null` e devolve 0 — mesma
+// resiliência de sempre, não trava a venda.
+async function countRecurrenceCharges(db: SupabaseClient, companyId: string, recurrenceKey: string): Promise<number> {
+  const { data, error } = await db.from("events_log").select("id").eq("company_id", companyId).eq("recurrence_key", recurrenceKey);
+  if (error || !data) return 0;
+  return (data as unknown[]).length;
+}
+
 function isModernPayload(body: RawPayload): boolean {
   return typeof body.event === "string" && typeof body.data === "object" && body.data !== null && "buyer" in (body.data as object);
 }
@@ -445,14 +456,24 @@ async function findProductPixelId(db: SupabaseClient, companyId: string, parentI
   return data.pixel_id as string;
 }
 
+// Mesma fórmula usada nas 3 "famílias" de venda (Purchase/Renewal/Installment)
+// — é o que decide em qual "visitante" do histórico essa linha aparece
+// agrupada. Usar `sale.email`/`sale.phone` (não o transactionId sozinho) é o
+// que garante que renovação/parcela da MESMA pessoa caia no MESMO histórico
+// que a 1ª compra, mesmo com transactionId diferente em cada notificação.
+function computeFingerprintId(match: VisitMatch | null, sale: SaleEvent): string {
+  return (
+    match?.fingerprint_id ||
+    sale.trackerCode ||
+    createHash("sha256").update(sale.email || sale.phone || sale.transactionId).digest("hex")
+  );
+}
+
 async function recordSale(db: SupabaseClient, companyId: string, sale: SaleEvent) {
   const match = await resolveVisitMatch(db, companyId, sale);
   await upsertProductCatalog(db, companyId, sale);
 
-  const fingerprintId =
-    match?.fingerprint_id ||
-    sale.trackerCode ||
-    createHash("sha256").update(sale.email || sale.phone || sale.transactionId).digest("hex");
+  const fingerprintId = computeFingerprintId(match, sale);
 
   // Pixel SEMPRE vem do catálogo (escolha deliberada do usuário, produto →
   // pixel) — decisão confirmada com o usuário: nenhuma venda manda pra Meta
@@ -531,13 +552,24 @@ async function recordSale(db: SupabaseClient, companyId: string, sale: SaleEvent
     external_transaction_id: sale.transactionId,
     source: EDUZZ_SOURCE,
     payment_method: sale.paymentMethod,
-    installments: sale.installments,
-    // Parcela 1 do boleto parcelado também grava `installment_number` (=1),
-    // pra simetria com as linhas "Installment" das parcelas seguintes — um
-    // dashboard futuro pode juntar as 2 (`external_transaction_id = X OR
-    // main_sale_transaction_id = X`) e ordenar por `installment_number` sem
+    // Total de parcelas pra EXIBIÇÃO: vem de `sale.installments` (boleto
+    // parcelado, bankSlipInstallment) OU da ficha do contrato (assinatura/PSL,
+    // `contractTotalInstallments` já calculado acima pro displayValue) — os 2
+    // nunca coexistem na mesma venda, então não tem ambiguidade em usar um só campo.
+    installments: sale.installments ?? contractTotalInstallments,
+    // Parcela 1 (boleto OU 1ª cobrança de assinatura) também grava
+    // `installment_number` (=1), pra simetria com as linhas "Installment"/
+    // "Renewal" das parcelas/cobranças seguintes — um dashboard futuro pode
+    // juntar tudo (`external_transaction_id = X OR main_sale_transaction_id =
+    // X OR recurrence_key = X`) e ordenar por `installment_number` sem
     // tratamento especial pra parcela 1.
-    installment_number: sale.installmentNumber,
+    installment_number: sale.installmentNumber ?? (sale.recurrenceKey ? 1 : null),
+    // Valor SÓ dessa parcela/cobrança (migration 054) — diferente de `value`
+    // (acima) quando a venda é parcelada: `value` já é o total multiplicado,
+    // `invoiceValue` é cru, sem multiplicar nada (pra boleto, o que essa 1ª
+    // parcela realmente cobrou; pra assinatura sem multiplicação nenhuma
+    // acontecendo em `sale.value`, os 2 acabam iguais).
+    installment_value: sale.invoiceValue,
     is_order_bump: sale.isOrderBump,
     main_sale_transaction_id: sale.mainSaleTransactionId,
     fbp,
@@ -706,10 +738,28 @@ async function upsertCampaignMetrics(db: SupabaseClient, companyId: string, sale
 // fixo em "skipped": nem tentamos configurar pixel pra isso.
 async function recordRenewal(db: SupabaseClient, companyId: string, sale: SaleEvent): Promise<void> {
   await upsertCampaignMetrics(db, companyId, sale);
+
+  // Mesma correlação de visita que recordSale() faz — sem isso, o fingerprint
+  // calculado aqui (antes: sale.recurrenceKey || transactionId) não batia com
+  // o fingerprint da 1ª cobrança, e a renovação aparecia como um "visitante"
+  // separado no histórico em vez de cair junto com o resto das compras da
+  // mesma pessoa.
+  const match = await resolveVisitMatch(db, companyId, sale);
+  const fingerprintId = computeFingerprintId(match, sale);
+
+  // Mesma ficha do contrato que recordSale() consulta (total de parcelas, se
+  // conhecido) — aqui só pra exibição, não muda o valor (renovação sempre usa
+  // sale.value, o valor real dessa cobrança). chargeNumber conta quantas
+  // linhas (Purchase + Renewal) já existem pra essa assinatura e soma 1 — "essa
+  // é a cobrança nº X" — a 1ª cobrança nunca passa por aqui (sempre nº 1, por
+  // definição de "ainda não é renovação conhecida").
+  const contractTotalInstallments = sale.recurrenceKey ? await findContractTotalInstallments(db, companyId, sale.recurrenceKey) : null;
+  const chargeNumber = sale.recurrenceKey ? (await countRecurrenceCharges(db, companyId, sale.recurrenceKey)) + 1 : null;
+
   await insertEventsLogRow(db, {
     company_id: companyId,
     event_name: "Renewal",
-    fingerprint_id: sale.recurrenceKey || sale.transactionId,
+    fingerprint_id: fingerprintId,
     user_data: {},
     lead_email: sale.email,
     lead_phone: sale.phone,
@@ -723,7 +773,13 @@ async function recordRenewal(db: SupabaseClient, companyId: string, sale: SaleEv
     external_transaction_id: sale.transactionId,
     source: EDUZZ_SOURCE,
     payment_method: sale.paymentMethod,
-    installments: sale.installments,
+    installments: sale.installments ?? contractTotalInstallments,
+    installment_number: chargeNumber,
+    // Renovação nunca multiplica nada — `value` já É o valor dessa cobrança,
+    // igual a `installment_value` (mantido só pra simetria de leitura no
+    // dashboard: sempre ler `installment_value` pra "valor dessa parcela",
+    // independente do event_name).
+    installment_value: sale.value,
     total_installments_raw: sale.totalInstallmentsRaw,
     contract_unlimited_installments: sale.contractUnlimitedInstallments,
   });
@@ -750,10 +806,16 @@ function installmentTransactionId(sale: SaleEvent): string {
 // valor DESSA parcela), não o total — quem quiser o total consulta a linha
 // Purchase da parcela 1 via `main_sale_transaction_id`.
 async function recordInstallment(db: SupabaseClient, companyId: string, sale: SaleEvent): Promise<void> {
+  // Mesma correlação/fingerprint de recordSale() — mesmo motivo do
+  // recordRenewal() acima: sem isso, a parcela 2/3 aparecia como um
+  // "visitante" separado em vez de cair no histórico da mesma pessoa.
+  const match = await resolveVisitMatch(db, companyId, sale);
+  const fingerprintId = computeFingerprintId(match, sale);
+
   await insertEventsLogRow(db, {
     company_id: companyId,
     event_name: "Installment",
-    fingerprint_id: sale.recurrenceKey || sale.transactionId,
+    fingerprint_id: fingerprintId,
     user_data: {},
     lead_email: sale.email,
     lead_phone: sale.phone,
@@ -766,6 +828,9 @@ async function recordInstallment(db: SupabaseClient, companyId: string, sale: Sa
     installment_number: sale.installmentNumber,
     installments: sale.installments,
     value: sale.invoiceValue,
+    // Parcela > 1 também nunca multiplica nada — `value` já É o valor dessa
+    // parcela, igual a `installment_value` (mesma simetria do recordRenewal).
+    installment_value: sale.invoiceValue,
     currency: sale.currency,
     source: EDUZZ_SOURCE,
     payment_method: sale.paymentMethod,
