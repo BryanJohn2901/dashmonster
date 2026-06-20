@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
-import { Search, RefreshCw, Calendar, Radar, X, Mail, Phone, MapPin, User, Settings, ChevronDown, ShoppingBag, CreditCard, Hash } from "lucide-react";
+import { Search, RefreshCw, Calendar, Radar, X, Mail, Phone, MapPin, User, Settings, ChevronDown, ShoppingBag, CreditCard, Hash, Smartphone, Monitor, Tablet } from "lucide-react";
 import { supabaseClient } from "@/lib/supabase";
 import { useCompany } from "@/hooks/useCompany";
 import { TrackingConfigPanel } from "@/components/TrackingConfigPanel";
@@ -57,6 +57,8 @@ interface TrackingEvent {
   is_order_bump: boolean | null;
   /** external_transaction_id da venda principal a que esse order bump/parcela pertence — null pra venda principal. */
   main_sale_transaction_id: string | null;
+  /** User-Agent crú do navegador (migration 047) — só eventos de pixel mandam isso direto (venda Eduzz só tem se a visita foi correlacionada). Usado pra extrair OS/modelo (ver `parseUserAgent`), nunca exibido crú (string enorme, pouco legível). */
+  client_user_agent: string | null;
   created_at: string;
 }
 
@@ -136,7 +138,7 @@ const UTM_KEYS = [
 const EVENTS_SELECT =
   "id, event_name, fingerprint_id, event_url, page_title, user_data, lead_email, lead_phone, lead_name, extra_fields, country, country_region, city, event_id, " +
   "utm_source, utm_medium, utm_campaign, utm_content, utm_term, utm_placement, utm_campaign_id, utm_adset_id, utm_ad_id, " +
-  "value, currency, external_transaction_id, source, payment_method, installments, installment_number, installment_value, recurrence_key, product_name, is_order_bump, main_sale_transaction_id, capi_status, capi_error, created_at";
+  "value, currency, external_transaction_id, source, payment_method, installments, installment_number, installment_value, recurrence_key, product_name, is_order_bump, main_sale_transaction_id, client_user_agent, capi_status, capi_error, created_at";
 // Sem as colunas das migrations 033/034/036/038/039/040/043/044 — usado se alguma delas ainda não rodou
 // no banco, pra não derrubar a tela enquanto ela não é aplicada manualmente no Supabase.
 const EVENTS_SELECT_FALLBACK = "id, event_name, fingerprint_id, event_url, user_data, lead_email, lead_phone, capi_status, capi_error, created_at";
@@ -277,6 +279,44 @@ function paymentMethodLabel(method: string | null, installments: number | null =
 function installmentProgressLabel(installmentNumber: number | null, installments: number | null, isRecurring: boolean): string | null {
   if (!installmentNumber || !installments || installments <= 1) return null;
   return `${isRecurring ? "Cobrança" : "Parcela"} ${installmentNumber} de ${installments}`;
+}
+
+// Extrai OS (+ versão) e, quando disponível, modelo do aparelho a partir do
+// User-Agent crú — só client-side, não guarda nada novo no banco (o UA já
+// está salvo, isso é só apresentação). iPhone/iPad NUNCA expõem modelo no UA
+// (Apple esconde por design, só "iPhone"/"iPad" genérico) — Android costuma
+// vir com o modelo (ex.: "SM-G991B"). iPadOS 13+ por padrão finge ser
+// Macintosh/desktop Safari ("Solicitar site para desktop" ligado por padrão)
+// — nesse caso não tem como diferenciar de um Mac real só pelo UA.
+function parseUserAgent(ua: string | null): { device: "mobile" | "tablet" | "desktop"; label: string } | null {
+  if (!ua) return null;
+
+  let m = ua.match(/iPad.*?OS (\d+)[_.](\d+)/);
+  if (m) return { device: "tablet", label: `iPad · iPadOS ${m[1]}.${m[2]}` };
+
+  m = ua.match(/iPhone.*?OS (\d+)[_.](\d+)/);
+  if (m) return { device: "mobile", label: `iPhone · iOS ${m[1]}.${m[2]}` };
+
+  m = ua.match(/Android (\d+(?:\.\d+)?)(?:;\s*([^;)]+))?/);
+  if (m) {
+    const model = m[2]?.trim().replace(/\s*Build.*$/i, "");
+    const device = /tablet/i.test(ua) ? "tablet" : "mobile";
+    return { device, label: model && model.length > 0 && model.length < 40 ? `Android ${m[1]} · ${model}` : `Android ${m[1]}` };
+  }
+
+  m = ua.match(/Windows NT (\d+\.\d+)/);
+  if (m) {
+    const WINDOWS_VERSIONS: Record<string, string> = { "10.0": "Windows 10/11", "6.3": "Windows 8.1", "6.2": "Windows 8", "6.1": "Windows 7" };
+    return { device: "desktop", label: WINDOWS_VERSIONS[m[1]] ?? `Windows NT ${m[1]}` };
+  }
+
+  m = ua.match(/Mac OS X (\d+)[_.](\d+)/);
+  if (m) return { device: "desktop", label: `macOS ${m[1]}.${m[2]}` };
+
+  if (/CrOS/.test(ua)) return { device: "desktop", label: "Chrome OS" };
+  if (/Linux/.test(ua)) return { device: "desktop", label: "Linux" };
+
+  return null;
 }
 
 // Builders de formulário (Elementor, WP Forms etc.) costumam nomear o input
@@ -473,6 +513,8 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
               const utmEntries = Object.entries(utm);
               const isLeadEvent = event.event_name === "Lead";
               const isSelected = isLeadEvent && event.id === selectedLead?.id;
+              const device = parseUserAgent(event.client_user_agent);
+              const DeviceIcon = device?.device === "mobile" ? Smartphone : device?.device === "tablet" ? Tablet : Monitor;
               return (
                 <div
                   key={event.id}
@@ -508,6 +550,11 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
                   {formatLocation({ country: event.country, countryRegion: event.country_region, city: event.city }) && (
                     <p className="mt-0.5 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
                       {formatLocation({ country: event.country, countryRegion: event.country_region, city: event.city })}
+                    </p>
+                  )}
+                  {device && (
+                    <p className="mt-0.5 flex items-center gap-1 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                      <DeviceIcon size={10} /> {device.label}
                     </p>
                   )}
                   {utmEntries.length > 0 && (
@@ -657,7 +704,7 @@ export function TrackingEventsView() {
       "page_title", "extra_fields", "country", "country_region", "city", "event_id",
       "utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "utm_placement", "utm_campaign_id", "utm_adset_id", "utm_ad_id",
       "lead_name", "value", "currency", "external_transaction_id", "source", "payment_method", "installments", "installment_number", "installment_value", "recurrence_key", "product_name",
-      "is_order_bump", "main_sale_transaction_id",
+      "is_order_bump", "main_sale_transaction_id", "client_user_agent",
     ].some((col) => eventsRes.error?.message?.includes(col));
     if (missingNewColumn) {
       // Migration 033/034/038/039/040 ainda não rodou no Supabase — busca sem as colunas novas em vez de quebrar a tela.
