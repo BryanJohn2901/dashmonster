@@ -645,6 +645,34 @@ describe("POST /api/eduzz/webhook", () => {
     expect(mockUpdate).toHaveBeenCalledWith({ value: 120 });
   });
 
+  it("contract_updated corrige installment_number desatualizado da linha mais recente usando charges.current (renovações perdidas no caminho)", async () => {
+    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem Purchase com value === installment_value (já corrigido antes)
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: { id: "evt-mais-recente", installment_number: 1 }, error: null }); // linha mais recente ainda marcada como cobrança 1
+
+    const payload = {
+      event: "myeduzz.contract_updated",
+      data: { contract: { id: "sub-8-de-18", recurrence: { isFinite: true, price: { value: 189 }, charges: { current: 8, total: 18 } } } },
+    };
+    await POST(buildRequest(payload));
+
+    expect(mockUpdate).toHaveBeenCalledWith({ installment_number: 8 });
+  });
+
+  it("contract_updated NÃO toca installment_number quando já bate com charges.current", async () => {
+    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null });
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: { id: "evt-ok", installment_number: 8 }, error: null });
+
+    const payload = {
+      event: "myeduzz.contract_updated",
+      data: { contract: { id: "sub-8-de-18", recurrence: { isFinite: true, price: { value: 189 }, charges: { current: 8, total: 18 } } } },
+    };
+    await POST(buildRequest(payload));
+
+    expect(mockUpdate).not.toHaveBeenCalledWith({ installment_number: 8 });
+  });
+
   it("renovação entra como RECEITA mas NÃO conta conversão nova (conversions += 0)", async () => {
     mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
     mockNotYetProcessed();

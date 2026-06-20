@@ -272,7 +272,8 @@ async function upsertContractInfo(db: SupabaseClient, companyId: string, body: E
   // do contrato) e installments null. Agora que a ficha chegou, corrige
   // retroativamente as linhas dessa assinatura. (Não reenvia pra Meta — o
   // evento da 1ª cobrança já foi; corrige só dashboard/relatório.)
-  await backfillContractValues(db, companyId, contract.id, total, isFinite);
+  const current = contract.recurrence?.charges?.current ?? null;
+  await backfillContractValues(db, companyId, contract.id, total, isFinite, current);
 }
 
 // Backfill retroativo das linhas já gravadas de uma assinatura, quando a ficha
@@ -284,6 +285,7 @@ async function backfillContractValues(
   contractId: string,
   total: number | null,
   isFinite: boolean | null,
+  current: number | null,
 ): Promise<void> {
   if (!isFinite || !total || total <= 1) return;
 
@@ -318,6 +320,28 @@ async function backfillContractValues(
       .from("events_log")
       .update({ value: Number(purchase.installment_value) * total })
       .eq("id", purchase.id);
+  }
+
+  // `installment_number` da linha mais recente pode estar DESATUALIZADO: ele é
+  // contado pelas linhas já gravadas (countRecurrenceCharges), mas a Eduzz não
+  // garante entrega de TODAS as cobranças — se uma renovação no meio do caminho
+  // não chegou como webhook, a contagem fica atrasada pra sempre. `charges.current`
+  // do contract_updated é a verdade da Eduzz nesse instante; corrige só a linha
+  // mais recente (as anteriores já refletem a numeração real de quando foram
+  // gravadas, não deve reescrever histórico).
+  if (current && current >= 1) {
+    const latestRes = await db
+      .from("events_log")
+      .select("id, installment_number")
+      .eq("company_id", companyId)
+      .eq("recurrence_key", contractId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const latest = latestRes?.data as { id: string; installment_number: number | null } | null | undefined;
+    if (latest && latest.installment_number !== current) {
+      await db.from("events_log").update({ installment_number: current }).eq("id", latest.id);
+    }
   }
 }
 
