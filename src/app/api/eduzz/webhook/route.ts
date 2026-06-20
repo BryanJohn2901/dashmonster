@@ -97,7 +97,10 @@ const toDate = (v: unknown): string => {
 
 interface SaleEvent {
   transactionId: string;
+  /** Valor CHEIO da venda — em boleto parcelado já vem multiplicado por `installments` (migration 053+052: ver `invoiceValue` abaixo pra valor só dessa fatura/parcela). */
   value: number;
+  /** Valor só DESSA fatura/notificação, sem multiplicar nada — em boleto parcelado é o valor de 1 parcela; nos outros casos é igual a `value` (não há multiplicação). Usado pra gravar parcelas 2+ com o valor certo (não o total). */
+  invoiceValue: number;
   currency: string;
   productName: string;
   date: string; // YYYY-MM-DD, pra campaign_metrics
@@ -123,6 +126,10 @@ interface SaleEvent {
   items: { productId: string | null; parentId: string | null; name: string; value: number }[];
   /** parentId do item principal (items[0]) — "curso pai", estável entre variantes de oferta/parcelamento do mesmo produto. Usado pro mapeamento opcional produto→pixel (migration 048). null no formato antigo (sem itens estruturados). */
   productParentId: string | null;
+  /** data.installments (campo RAIZ, genérico — não é bankSlipInstallment) — "Número de parcelas" segundo a doc da Eduzz, sem mais detalhe sobre a relação com boleto/PSL/cartão. Só captura pra investigar com dado real (migration 051), não usa pra calcular nada ainda — não confundir com `installments` acima (esse é só de boleto parcelado, já usado pra exibição). */
+  totalInstallmentsRaw: number | null;
+  /** data.contract.isUnlimitedInstallments — flag da Eduzz pro modo PSL (parcelamento sem exigir limite cheio do cartão na 1ª parcela; "sem limite" é do CARTÃO, não da duração — o contrato tem nº de parcelas finito mesmo assim). Só captura (migration 051). */
+  contractUnlimitedInstallments: boolean | null;
 }
 
 function parseLegacyPayload(body: RawPayload): SaleEvent | { ignored: string } {
@@ -135,6 +142,7 @@ function parseLegacyPayload(body: RawPayload): SaleEvent | { ignored: string } {
   return {
     transactionId: String(pick(body, "trans_cod", "trans_orderid", "trans_key") ?? `legacy-${Date.now()}`),
     value,
+    invoiceValue: value, // postback antigo não tem boleto parcelado detectável, nunca multiplica
     currency: "BRL", // postback antigo é exclusivo do mercado BR, não manda moeda
     productName: String(pick(body, "product_name", "product_cod", "produto", "content_title") ?? "Eduzz").trim(),
     date: toDate(pick(body, "trans_paiddate", "trans_createdate", "date")),
@@ -163,6 +171,8 @@ function parseLegacyPayload(body: RawPayload): SaleEvent | { ignored: string } {
     // Nem itens estruturados nem productId/parentId — 1 item sintético só com o nome/valor já parseados acima.
     items: [{ productId: null, parentId: null, name: String(pick(body, "product_name", "product_cod", "produto", "content_title") ?? "Eduzz").trim(), value }],
     productParentId: null,
+    totalInstallmentsRaw: null,
+    contractUnlimitedInstallments: null,
   };
 }
 
@@ -179,13 +189,76 @@ interface EduzzModernPayload {
     items?: { productId?: string; parentId?: string; name?: string; price?: { value?: number; currency?: string } }[];
     paymentMethod?: string;
     paidAt?: string;
-    /** Presente quando o produto é uma assinatura/contrato recorrente — `id` repete em toda renovação. */
+    /** Presente quando o produto é uma assinatura/contrato recorrente — `id` repete em toda renovação. NÃO tem campo de nº de parcelas aqui (isso existe só nos webhooks contract_created/contract_updated, schema diferente) — pra invoice_paid, o nº de parcelas geral vem do campo `installments` raiz abaixo. */
     contract?: { id?: string; isUnlimitedInstallments?: boolean };
+    /** Campo raiz, genérico pra QUALQUER forma de pagamento (não é exclusivo de boleto) — "Número de parcelas". Doc da Eduzz não detalha a relação com bankSlipInstallment/PSL, só captura pra investigar com dado real (migration 051). */
+    installments?: number;
     /** Presente quando o pagamento é boleto parcelado — cada parcela paga manda seu próprio invoice_paid. */
     bankSlipInstallment?: { installmentNumber?: number; totalInstallments?: number };
     /** Order bump: o produto extra do checkout chega como notificação invoice_paid própria (próprio transaction.id/price), não dentro do payload da venda principal — `isMainSale: false` identifica essa fatura como o bump, `mainSaleId` referencia o transaction.id da venda principal. */
     orderBump?: { has?: boolean; isMainSale?: boolean; mainSaleId?: number | string | null };
   };
+}
+
+// ─── Eventos de contrato (myeduzz.contract_created/contract_updated) ──────────
+//
+// Schema BEM diferente do invoice_paid: tem `data.customer` (não `data.buyer`),
+// e é o ÚNICO lugar onde vem o nº de parcelas contratadas + se o contrato tem
+// fim definido. "Ficha do contrato" guardada em `eduzz_contracts` (migration
+// 052), consultada depois em cada invoice_paid pelo `contract.id` (=
+// recurrence_key) pra saber quanto multiplicar — ver `findContractInfo()`.
+interface EduzzContractPayload {
+  event?: string;
+  data?: {
+    contract?: {
+      id?: string;
+      /** "sem limite" é sobre o LIMITE DO CARTÃO do comprador (não precisa do valor cheio disponível na 1ª cobrança) — não sobre a duração do contrato. O nº de parcelas é finito mesmo com isso true (confirmado na doc de ajuda da Eduzz). */
+      isUnlimitedInstallments?: boolean;
+      payment?: { totalOfInstallments?: number };
+      recurrence?: {
+        /** true = contrato tem fim definido (PSL ou prazo fixo) — dá pra multiplicar price × totalOfInstallments. false = assinatura aberta (cancela quando quiser), sem total fixo. */
+        isFinite?: boolean;
+        price?: { value?: number; currency?: string };
+      };
+    };
+  };
+}
+
+const CONTRACT_EVENTS = new Set(["myeduzz.contract_created", "myeduzz.contract_updated"]);
+
+async function upsertContractInfo(db: SupabaseClient, companyId: string, body: EduzzContractPayload): Promise<void> {
+  const contract = body.data?.contract;
+  if (!contract?.id) return;
+
+  const { error } = await db.from("eduzz_contracts").upsert(
+    {
+      company_id: companyId,
+      contract_id: contract.id,
+      total_installments: contract.payment?.totalOfInstallments ?? null,
+      is_finite: contract.recurrence?.isFinite ?? null,
+      is_unlimited_installments: contract.isUnlimitedInstallments ?? null,
+      charge_value: contract.recurrence?.price?.value ?? null,
+      currency: contract.recurrence?.price?.currency ?? null,
+    },
+    { onConflict: "company_id,contract_id" },
+  );
+  if (error) console.error("[eduzz webhook] falha ao gravar eduzz_contracts:", error.message);
+}
+
+// Consultada em recordSale() pra saber o valor CHEIO de uma venda recorrente
+// (assinatura/PSL) — só multiplica quando o contrato tem fim definido E nº de
+// parcelas conhecido; senão (assinatura aberta, ou contract_created/updated
+// nunca recebido pra esse contrato) devolve null e o chamador usa o valor da
+// cobrança normal, sem inventar total nenhum.
+async function findContractTotalInstallments(db: SupabaseClient, companyId: string, contractId: string): Promise<number | null> {
+  const { data, error } = await db
+    .from("eduzz_contracts")
+    .select("total_installments, is_finite")
+    .eq("company_id", companyId)
+    .eq("contract_id", contractId)
+    .maybeSingle();
+  if (error || !data?.is_finite || !data?.total_installments) return null;
+  return data.total_installments as number;
 }
 
 function isModernPayload(body: RawPayload): boolean {
@@ -195,16 +268,27 @@ function isModernPayload(body: RawPayload): boolean {
 function parseModernPayload(body: EduzzModernPayload): SaleEvent | { ignored: string } {
   if (body.event !== "myeduzz.invoice_paid") return { ignored: `event=${body.event ?? "desconhecido"}` };
   const data = body.data ?? {};
-  // price = valor CHEIO do item (o que o usuário quer ver) vs paid = valor
-  // efetivamente pago NESSA fatura — divergem em boleto parcelado (paid é só
-  // a parcela) e às vezes em desconto/parcial. Sempre usar price primeiro.
-  const value = toNumber(data.price?.value ?? data.paid?.value);
-  if (value <= 0) return { ignored: "sem valor" };
+  // price/paid: confirmado na doc oficial da Eduzz que os 2 são "valor da
+  // FATURA", não da compra inteira — em boleto parcelado, cada parcela é uma
+  // fatura própria, então os 2 trazem só o valor daquela parcela (engano
+  // anterior: code comment dizia que "price" já era o valor cheio, não é).
+  // Sempre usar price primeiro só porque diverge de paid em caso de
+  // desconto/parcial dentro da MESMA fatura — não resolve parcelamento.
+  const invoiceValue = toNumber(data.price?.value ?? data.paid?.value);
+  if (invoiceValue <= 0) return { ignored: "sem valor" };
+  // Boleto parcelado: cada parcela paga manda seu próprio invoice_paid com o
+  // valor só daquela parcela — multiplica pelo nº de parcelas pra chegar no
+  // valor cheio da compra. Seguro fazer aqui (e não só na parcela 1) porque
+  // parcela > 1 é descartada por isInstallmentContinuation() antes de usar
+  // esse `value` pra qualquer coisa — não tem risco de somar em dobro.
+  const totalInstallments = data.bankSlipInstallment?.totalInstallments;
+  const value = totalInstallments && totalInstallments > 1 ? invoiceValue * totalInstallments : invoiceValue;
   const productName = data.items?.[0]?.name?.trim() || "Eduzz";
 
   return {
     transactionId: data.transaction?.id || data.transaction?.key || `modern-${Date.now()}`,
     value,
+    invoiceValue,
     currency: data.price?.currency || data.paid?.currency || "BRL",
     productName,
     date: toDate(data.paidAt),
@@ -236,6 +320,8 @@ function parseModernPayload(body: EduzzModernPayload): SaleEvent | { ignored: st
       ? data.items.map((item) => ({ productId: item.productId ?? null, parentId: item.parentId ?? null, name: item.name?.trim() || "Eduzz", value: toNumber(item.price?.value) }))
       : [{ productId: null, parentId: null, name: productName, value }],
     productParentId: data.items?.[0]?.parentId ?? null,
+    totalInstallmentsRaw: data.installments ?? null,
+    contractUnlimitedInstallments: data.contract?.isUnlimitedInstallments ?? null,
   };
 }
 
@@ -395,6 +481,18 @@ async function recordSale(db: SupabaseClient, companyId: string, sale: SaleEvent
   const clientIp = (match?.client_ip_address as string | null) ?? null;
   const clientUserAgent = (match?.client_user_agent as string | null) ?? null;
 
+  // Assinatura/PSL: sale.value aqui é só o valor DESSA cobrança (ex.: R$10) —
+  // upsertCampaignMetrics() (chamado em POST() antes de recordSale) já somou
+  // esse valor real na receita mensal, então NÃO reatribuímos sale.value (ia
+  // dobrar a contagem quando as renovações seguintes somarem de novo). Em vez
+  // disso, calcula um valor separado SÓ pra mostrar no card da venda e mandar
+  // pra Meta na 1ª cobrança — "esse contrato vale R$120 (12x de R$10)", sem
+  // tocar na receita mensal que já está certa. Sem contrato conhecido (não
+  // recorrente, ou contract_created/updated nunca chegou pra esse contractId),
+  // cai pro valor normal — comportamento de sempre, sem inventar total.
+  const contractTotalInstallments = sale.recurrenceKey ? await findContractTotalInstallments(db, companyId, sale.recurrenceKey) : null;
+  const displayValue = contractTotalInstallments ? sale.value * contractTotalInstallments : sale.value;
+
   const { data: inserted, error: insertError } = await insertEventsLogRow(db, {
     company_id: companyId,
     event_name: "Purchase",
@@ -428,18 +526,26 @@ async function recordSale(db: SupabaseClient, companyId: string, sale: SaleEvent
     utm_campaign: sale.utm.campaign,
     utm_content: sale.utm.content,
     utm_term: sale.utm.term,
-    value: sale.value,
+    value: displayValue,
     currency: sale.currency,
     external_transaction_id: sale.transactionId,
     source: EDUZZ_SOURCE,
     payment_method: sale.paymentMethod,
     installments: sale.installments,
+    // Parcela 1 do boleto parcelado também grava `installment_number` (=1),
+    // pra simetria com as linhas "Installment" das parcelas seguintes — um
+    // dashboard futuro pode juntar as 2 (`external_transaction_id = X OR
+    // main_sale_transaction_id = X`) e ordenar por `installment_number` sem
+    // tratamento especial pra parcela 1.
+    installment_number: sale.installmentNumber,
     is_order_bump: sale.isOrderBump,
     main_sale_transaction_id: sale.mainSaleTransactionId,
     fbp,
     fbc,
     client_ip_address: clientIp,
     client_user_agent: clientUserAgent,
+    total_installments_raw: sale.totalInstallmentsRaw,
+    contract_unlimited_installments: sale.contractUnlimitedInstallments,
   });
 
   if (insertError || !inserted) {
@@ -487,7 +593,13 @@ async function recordSale(db: SupabaseClient, companyId: string, sale: SaleEvent
         external_id: hashLower(fingerprintId),
       },
       custom_data: {
-        value: sale.value,
+        // Valor CHEIO (já multiplicado pelo nº de parcelas do contrato, quando
+        // conhecido — ver displayValue acima) — decisão explícita: a Meta deve
+        // saber o valor real do negócio na 1ª cobrança, não só a 1ª parcela,
+        // mesmo que isso reporte mais receita do que já entrou de fato nessa
+        // cobrança (ajuda a otimização de campanha a achar compradores de
+        // ticket alto; não afeta campaign_metrics, que mede receita REALIZADA).
+        value: displayValue,
         currency: sale.currency,
         content_name: sale.productName,
         order_id: sale.transactionId,
@@ -612,6 +724,51 @@ async function recordRenewal(db: SupabaseClient, companyId: string, sale: SaleEv
     source: EDUZZ_SOURCE,
     payment_method: sale.paymentMethod,
     installments: sale.installments,
+    total_installments_raw: sale.totalInstallmentsRaw,
+    contract_unlimited_installments: sale.contractUnlimitedInstallments,
+  });
+}
+
+// Cada parcela de boleto parcelado manda seu próprio invoice_paid com o
+// próprio transaction.id — a doc da Eduzz não garante se esse id repete ou
+// não entre parcelas da mesma venda (não documentado), então usamos uma
+// chave SINTÉTICA própria (nunca colide com o id de nenhuma parcela, seja
+// repetido ou não do lado da Eduzz) tanto pra idempotência quanto pra
+// gravar a linha.
+function installmentTransactionId(sale: SaleEvent): string {
+  return `${sale.transactionId}-parcela-${sale.installmentNumber}`;
+}
+
+// Parcela > 1 de boleto parcelado (`isInstallmentContinuation()`) NÃO é venda
+// nova — o valor CHEIO já foi contado por completo na parcela 1 (recordSale,
+// `value` já multiplicado). Mas é dado de pagamento real, útil pra um
+// dashboard futuro de progresso/inadimplência ("3 de 3 parcelas pagas") — por
+// isso grava uma linha própria em vez de ignorar 100% como antes. NUNCA soma
+// em campaign_metrics (já somou o total na parcela 1 — somar aqui de novo
+// dobraria a receita) nem manda pra Meta (não é conversão nova, mesma lógica
+// de recordRenewal() pra assinatura). `value` aqui é `invoiceValue` (só o
+// valor DESSA parcela), não o total — quem quiser o total consulta a linha
+// Purchase da parcela 1 via `main_sale_transaction_id`.
+async function recordInstallment(db: SupabaseClient, companyId: string, sale: SaleEvent): Promise<void> {
+  await insertEventsLogRow(db, {
+    company_id: companyId,
+    event_name: "Installment",
+    fingerprint_id: sale.recurrenceKey || sale.transactionId,
+    user_data: {},
+    lead_email: sale.email,
+    lead_phone: sale.phone,
+    lead_name: sale.name,
+    product_name: sale.productName,
+    capi_status: "skipped",
+    event_id: installmentTransactionId(sale),
+    external_transaction_id: installmentTransactionId(sale),
+    main_sale_transaction_id: sale.transactionId,
+    installment_number: sale.installmentNumber,
+    installments: sale.installments,
+    value: sale.invoiceValue,
+    currency: sale.currency,
+    source: EDUZZ_SOURCE,
+    payment_method: sale.paymentMethod,
   });
 }
 
@@ -710,13 +867,30 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Contrato criado/atualizado: só guarda a "ficha" (nº de parcelas, se tem
+  // fim definido) pra consultar depois em cada invoice_paid dessa assinatura
+  // — não é venda, não passa pelo parse de SaleEvent. Schema próprio (tem
+  // `data.customer`, não `data.buyer`), por isso checa antes de isModernPayload.
+  if (typeof body.event === "string" && CONTRACT_EVENTS.has(body.event)) {
+    await upsertContractInfo(db, companyId, body as EduzzContractPayload);
+    return NextResponse.json({ received: true });
+  }
+
   const sale = isModernPayload(body) ? parseModernPayload(body as EduzzModernPayload) : parseLegacyPayload(body);
   if ("ignored" in sale) {
     return NextResponse.json({ received: true, ignored: sale.ignored });
   }
 
   if (isInstallmentContinuation(sale)) {
-    return NextResponse.json({ received: true, ignored: `parcela ${sale.installmentNumber} (já contamos a venda na parcela 1)` });
+    if (await alreadyProcessed(db, companyId, installmentTransactionId(sale))) {
+      return NextResponse.json({ received: true, duplicate: true });
+    }
+    try {
+      await recordInstallment(db, companyId, sale);
+    } catch (err) {
+      console.error("[eduzz webhook] falha ao registrar parcela:", err instanceof Error ? err.message : err);
+    }
+    return NextResponse.json({ received: true, installment: true, parcela: sale.installmentNumber, totalParcelas: sale.installments });
   }
 
   if (await alreadyProcessed(db, companyId, sale.transactionId)) {

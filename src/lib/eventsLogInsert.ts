@@ -23,6 +23,8 @@ const OPTIONAL_COLUMN_GROUPS: string[][] = [
   ["client_ip_address", "client_user_agent"], // migration 047
   ["product_parent_id"], // migration 048
   ["product_item_id"], // migration 049
+  ["total_installments_raw", "contract_unlimited_installments"], // migration 051
+  ["installment_number"], // migration 053
 ];
 
 export async function insertEventsLogRow(db: SupabaseClient, fullRow: Record<string, unknown>) {
