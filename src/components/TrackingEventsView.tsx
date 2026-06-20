@@ -401,6 +401,8 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
   const purchaseEvents = visitor.events.filter((e) => e.event_name === "Purchase");
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const selectedLead = leadEvents.find((e) => e.id === selectedLeadId) ?? leadEvents[0] ?? null;
+  const selectedLeadDevice = selectedLead ? parseUserAgent(selectedLead.client_user_agent) : null;
+  const SelectedLeadDeviceIcon = selectedLeadDevice?.device === "mobile" ? Smartphone : selectedLeadDevice?.device === "tablet" ? Tablet : Monitor;
 
   if (typeof document === "undefined") return null;
 
@@ -448,6 +450,17 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
                   <span style={{ color: "var(--dm-text-tertiary)" }}>{humanizeFieldKey(key)}:</span> {value}
                 </p>
               ))}
+              {formatLocation({ country: selectedLead.country, countryRegion: selectedLead.country_region, city: selectedLead.city }) && (
+                <p className="mb-1 flex items-center gap-1.5 text-xs" style={{ color: "var(--dm-text-primary)" }}>
+                  <MapPin size={12} style={{ color: "var(--dm-text-tertiary)" }} />
+                  {formatLocation({ country: selectedLead.country, countryRegion: selectedLead.country_region, city: selectedLead.city })}
+                </p>
+              )}
+              {selectedLeadDevice && (
+                <p className="mb-1 flex items-center gap-1.5 text-xs" style={{ color: "var(--dm-text-primary)" }}>
+                  <SelectedLeadDeviceIcon size={12} style={{ color: "var(--dm-text-tertiary)" }} /> {selectedLeadDevice.label}
+                </p>
+              )}
               {leadEvents.length > 1 && (
                 <p className="mt-2 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
                   {leadEvents.length} cadastros deste visitante — clique num evento &quot;Lead&quot; na jornada abaixo pra ver os dados daquele cadastro.
