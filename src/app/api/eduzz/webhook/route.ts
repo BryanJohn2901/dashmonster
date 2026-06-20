@@ -1,10 +1,11 @@
 import { createHash } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { hashLower, hashPhone, hashNormalized } from "@/lib/metaHash";
 import { insertEventsLogRow } from "@/lib/eventsLogInsert";
 import { sendMetaCapiEvent } from "@/lib/metaCapi";
 import { resolvePixelById, type ResolvedPixel } from "@/lib/resolvePixel";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 /**
  * Webhook de vendas Eduzz
@@ -56,11 +57,28 @@ const EDUZZ_SOURCE = "eduzz" as const;
 // Status que contam como venda concretizada (formato antigo).
 const PAID_STATUSES = new Set(["3", "paid", "pago", "aprovada", "approved", "completed"]);
 
-function adminClient(): SupabaseClient | null {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) return null;
-  return createClient(url, key, { auth: { persistSession: false } });
+// Mapa de país → ISO-2 (a Meta espera código de 2 letras hasheado; a Eduzz
+// manda "Brasil"/"Brazil"/"BR"/"US"/null sem padrão). Sem normalizar, o hash
+// de "brazil" não casa com o que a Meta espera (derruba o Event Match Quality)
+// e a bandeira no dashboard quebra (espera ISO-2). Já-ISO-2 passa direto;
+// nome conhecido vira o código; desconhecido vira null (melhor que hash errado).
+const COUNTRY_TO_ISO2: Record<string, string> = {
+  brasil: "BR", brazil: "BR",
+  "estados unidos": "US", "united states": "US", usa: "US", eua: "US",
+  portugal: "PT", argentina: "AR", chile: "CL", colombia: "CO", mexico: "MX",
+  paraguai: "PY", paraguay: "PY", uruguai: "UY", uruguay: "UY", peru: "PE",
+  espanha: "ES", spain: "ES",
+};
+
+function normalizeCountry(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (/^[a-z]{2}$/i.test(trimmed)) return trimmed.toUpperCase();
+  const key = trimmed
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase();
+  return COUNTRY_TO_ISO2[key] ?? null;
 }
 
 // ─── Parsing defensivo do formato antigo (nomes variam por versão) ───────────
@@ -230,12 +248,15 @@ async function upsertContractInfo(db: SupabaseClient, companyId: string, body: E
   const contract = body.data?.contract;
   if (!contract?.id) return;
 
+  const total = contract.payment?.totalOfInstallments ?? null;
+  const isFinite = contract.recurrence?.isFinite ?? null;
+
   const { error } = await db.from("eduzz_contracts").upsert(
     {
       company_id: companyId,
       contract_id: contract.id,
-      total_installments: contract.payment?.totalOfInstallments ?? null,
-      is_finite: contract.recurrence?.isFinite ?? null,
+      total_installments: total,
+      is_finite: isFinite,
       is_unlimited_installments: contract.isUnlimitedInstallments ?? null,
       charge_value: contract.recurrence?.price?.value ?? null,
       currency: contract.recurrence?.price?.currency ?? null,
@@ -243,6 +264,60 @@ async function upsertContractInfo(db: SupabaseClient, companyId: string, body: E
     { onConflict: "company_id,contract_id" },
   );
   if (error) console.error("[eduzz webhook] falha ao gravar eduzz_contracts:", error.message);
+
+  // Resolve a RACE: a Eduzz não garante ordem de entrega, então o invoice_paid
+  // da 1ª cobrança pode chegar ANTES do contract_created/updated. Quando isso
+  // acontece, recordSale() já gravou a Purchase com o valor da cobrança (não o
+  // do contrato) e installments null. Agora que a ficha chegou, corrige
+  // retroativamente as linhas dessa assinatura. (Não reenvia pra Meta — o
+  // evento da 1ª cobrança já foi; corrige só dashboard/relatório.)
+  await backfillContractValues(db, companyId, contract.id, total, isFinite);
+}
+
+// Backfill retroativo das linhas já gravadas de uma assinatura, quando a ficha
+// do contrato (nº de parcelas) só chega depois da 1ª cobrança. Defensivo:
+// tolera coluna/linha ausente, nunca lança (é best-effort de exibição).
+async function backfillContractValues(
+  db: SupabaseClient,
+  companyId: string,
+  contractId: string,
+  total: number | null,
+  isFinite: boolean | null,
+): Promise<void> {
+  if (!isFinite || !total || total <= 1) return;
+
+  // Total de parcelas pra EXIBIÇÃO em todas as linhas da assinatura que ainda
+  // não tinham (gravadas antes da ficha existir).
+  const fillRes = await db
+    .from("events_log")
+    .update({ installments: total })
+    .eq("company_id", companyId)
+    .eq("recurrence_key", contractId)
+    .is("installments", null);
+  if (fillRes.error) {
+    console.error("[eduzz webhook] backfill installments:", fillRes.error.message);
+    return;
+  }
+
+  // A 1ª cobrança (Purchase) deveria mostrar o valor CHEIO do contrato. Se foi
+  // gravada antes da ficha, ficou com o valor da cobrança (value ===
+  // installment_value, ou seja, sem multiplicação). Recalcula só nesse caso —
+  // nunca toca em Renewal (cuja `value` É a receita real daquela cobrança).
+  const purchaseRes = await db
+    .from("events_log")
+    .select("id, value, installment_value")
+    .eq("company_id", companyId)
+    .eq("recurrence_key", contractId)
+    .eq("event_name", "Purchase")
+    .maybeSingle();
+
+  const purchase = purchaseRes?.data as { id: string; value: number; installment_value: number | null } | null | undefined;
+  if (purchase?.installment_value != null && Number(purchase.value) === Number(purchase.installment_value)) {
+    await db
+      .from("events_log")
+      .update({ value: Number(purchase.installment_value) * total })
+      .eq("id", purchase.id);
+  }
 }
 
 // Consultada em recordSale() pra saber o valor CHEIO de uma venda recorrente
@@ -491,7 +566,10 @@ async function recordSale(db: SupabaseClient, companyId: string, sale: SaleEvent
   // semanas atrás, rede diferente, ou a Vercel não ter resolvido o IP). Visita
   // correlacionada só preenche o que a Eduzz não mandou (postback antigo sem
   // endereço, ou formato moderno com algum campo do address vazio).
-  const country = sale.address.country ?? (match?.country as string | null);
+  // País normalizado pra ISO-2 (a Eduzz manda "Brasil"/"Brazil" sem padrão; a
+  // visita já vem ISO-2 do geo-IP da Vercel) — sem isso o hash de country não
+  // casa na Meta e a bandeira do dashboard quebra.
+  const country = normalizeCountry(sale.address.country) ?? (match?.country as string | null);
   const countryRegion = sale.address.state ?? (match?.country_region as string | null);
   const city = sale.address.city ?? (match?.city as string | null);
   const postalCode = sale.address.zip ?? (match?.postal_code as string | null);
@@ -584,6 +662,14 @@ async function recordSale(db: SupabaseClient, companyId: string, sale: SaleEvent
     console.error("[eduzz webhook] falha ao gravar events_log:", insertError?.message);
     return;
   }
+
+  // Receita só é contabilizada DEPOIS da linha de events_log existir — ela é a
+  // âncora de idempotência (`alreadyProcessed`). Se as métricas fossem somadas
+  // antes do insert e o insert falhasse, um retry da Eduzz (alreadyProcessed
+  // ainda false, sem linha) somaria a receita 2x. Insert-primeiro garante que
+  // qualquer retry cai no caminho de duplicado e não conta de novo.
+  await upsertCampaignMetrics(db, companyId, sale);
+
   if (!metaConfigured) return;
 
   const eventTime = sale.paidAtIso ? Math.floor(new Date(sale.paidAtIso).getTime() / 1000) : Math.floor(Date.now() / 1000);
@@ -688,9 +774,12 @@ async function isKnownRecurrence(db: SupabaseClient, companyId: string, recurren
   return !error && Boolean(data);
 }
 
-// Acumula no dia/produto: lê a linha existente, soma e faz upsert (uma
-// notificação = uma venda OU uma renovação; tanto faz pra esse total).
-async function upsertCampaignMetrics(db: SupabaseClient, companyId: string, sale: SaleEvent): Promise<void> {
+// Acumula no dia/produto: lê a linha existente, soma e faz upsert.
+// `countConversion`: venda nova (Purchase) conta como conversão; renovação de
+// assinatura entra como RECEITA mas NÃO como conversão nova (senão o número de
+// conversões infla a cada cobrança recorrente — uma renovação não é uma venda
+// nova pra fins de relatório/otimização).
+async function upsertCampaignMetrics(db: SupabaseClient, companyId: string, sale: SaleEvent, countConversion = true): Promise<void> {
   const { data: existing } = await db
     .from("campaign_metrics")
     .select("revenue, conversions")
@@ -707,7 +796,7 @@ async function upsertCampaignMetrics(db: SupabaseClient, companyId: string, sale
     investment: 0,
     clicks: 0,
     impressions: 0,
-    conversions: Number(existing?.conversions ?? 0) + 1,
+    conversions: Number(existing?.conversions ?? 0) + (countConversion ? 1 : 0),
     leads: 0,
     revenue: Number(existing?.revenue ?? 0) + sale.value,
     source: EDUZZ_SOURCE,
@@ -737,8 +826,6 @@ async function upsertCampaignMetrics(db: SupabaseClient, companyId: string, sale
 // relatório futuro de MRR/LTV agrupar por recurrence_key). capi_status fica
 // fixo em "skipped": nem tentamos configurar pixel pra isso.
 async function recordRenewal(db: SupabaseClient, companyId: string, sale: SaleEvent): Promise<void> {
-  await upsertCampaignMetrics(db, companyId, sale);
-
   // Mesma correlação de visita que recordSale() faz — sem isso, o fingerprint
   // calculado aqui (antes: sale.recurrenceKey || transactionId) não batia com
   // o fingerprint da 1ª cobrança, e a renovação aparecia como um "visitante"
@@ -756,7 +843,7 @@ async function recordRenewal(db: SupabaseClient, companyId: string, sale: SaleEv
   const contractTotalInstallments = sale.recurrenceKey ? await findContractTotalInstallments(db, companyId, sale.recurrenceKey) : null;
   const chargeNumber = sale.recurrenceKey ? (await countRecurrenceCharges(db, companyId, sale.recurrenceKey)) + 1 : null;
 
-  await insertEventsLogRow(db, {
+  const { error } = await insertEventsLogRow(db, {
     company_id: companyId,
     event_name: "Renewal",
     fingerprint_id: fingerprintId,
@@ -783,6 +870,10 @@ async function recordRenewal(db: SupabaseClient, companyId: string, sale: SaleEv
     total_installments_raw: sale.totalInstallmentsRaw,
     contract_unlimited_installments: sale.contractUnlimitedInstallments,
   });
+
+  // Receita só DEPOIS da linha existir (mesma idempotência do recordSale) e
+  // sem contar conversão nova — renovação é receita recorrente, não venda nova.
+  if (!error) await upsertCampaignMetrics(db, companyId, sale, false);
 }
 
 // Cada parcela de boleto parcelado manda seu próprio invoice_paid com o
@@ -897,8 +988,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Payload inválido." }, { status: 400 });
   }
 
-  const db = adminClient();
-  if (!db) {
+  let db: SupabaseClient;
+  try {
+    db = supabaseAdmin();
+  } catch {
     return NextResponse.json({ error: "Servidor sem service_role configurado." }, { status: 500 });
   }
 
@@ -974,10 +1067,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ received: true, renewal: true, produto: sale.productName, revenue: sale.value });
   }
 
-  await upsertCampaignMetrics(db, companyId, sale);
-
   // Purchase em events_log + Meta CAPI nunca pode derrubar a resposta —
   // se a Eduzz não receber 200 rápido, ela reenfileira a notificação.
+  // `recordSale` cuida de events_log → campaign_metrics → Meta, nessa ordem
+  // (insert primeiro pela idempotência — ver comentário lá dentro).
   try {
     await recordSale(db, companyId, sale);
   } catch (err) {

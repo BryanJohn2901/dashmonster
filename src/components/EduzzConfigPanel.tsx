@@ -95,11 +95,11 @@ export function EduzzConfigPanel({ company, canEdit }: { company: Company; canEd
   );
 }
 
-// Seção opcional, recolhida por padrão. Sem NENHUM produto com pixel
-// escolhido, o webhook continua decidindo o pixel só por visita
-// correlacionada → pixel padrão, exatamente como sempre foi. A partir do 1º
-// produto com pixel escolhido, vira allowlist: SÓ esses produtos mandam pra
-// Meta, o resto é ignorado de propósito (ver src/app/api/eduzz/CLAUDE.md).
+// Seção opcional, recolhida por padrão. Regra final (sem fallback): uma venda
+// SÓ vai pra Meta se o produto dela tiver um pixel escolhido aqui — não existe
+// mais o fallback antigo de "visita correlacionada → pixel padrão". Produto sem
+// pixel = venda fica só no dashboard/relatório, nunca é enviada (ver
+// src/app/api/eduzz/CLAUDE.md, "Resolução do pixel — SEM fallback nenhum").
 // Produto é descoberto automaticamente na 1ª venda (nome provisório = título
 // da oferta) — não precisa de nenhum cadastro manual prévio pra aparecer
 // aqui; o formulário "produto novo" é só pra pré-configurar antes de qualquer

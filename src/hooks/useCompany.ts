@@ -422,11 +422,11 @@ export async function deleteTrackingPixel(pixelId: string): Promise<void> {
 // parcelamento diferentes, cada uma com seu próprio productId) — parentId é
 // estável entre todas as ofertas do mesmo produto (confirmado com dado real).
 // O vínculo de pixel é só no PRODUTO — toda oferta dele herda automaticamente,
-// sem configurar oferta por oferta. 100% opt-in: sem NENHUM produto com pixel
-// escolhido, o webhook decide o pixel só por visita correlacionada → pixel
-// padrão, exatamente como antes desta feature. A partir do 1º produto com
-// pixel escolhido, vira allowlist — ver companyHasAnyProductPixel() em
-// src/app/api/eduzz/CLAUDE.md.
+// sem configurar oferta por oferta. 100% opt-in e SEM fallback: uma venda só vai
+// pra Meta se o produto dela tiver um pixel escolhido aqui. Produto sem pixel =
+// venda fica só no dashboard/relatório, nunca é enviada (não cai mais pra visita
+// correlacionada nem pro pixel padrão) — ver findProductPixelId() e a seção
+// "Resolução do pixel — SEM fallback nenhum" em src/app/api/eduzz/CLAUDE.md.
 export interface EduzzProductOffer {
   productId: string;
   label: string;

@@ -43,13 +43,15 @@ const mockEventsLogSelect = jest.fn(() => makeEventsLogQuery());
 const mockInsertSelect = jest.fn(() => ({ single: jest.fn(() => Promise.resolve({ data: { id: "evt-1" }, error: null })) }));
 const mockInsert: jest.Mock = jest.fn(() => ({ select: mockInsertSelect }));
 // .update() encadeia .eq() 1x (sendMetaCapiEvent) ou 2x (handleReversal,
-// company_id + external_transaction_id) — chain thenable: cada .eq() retorna
+// company_id + external_transaction_id), e .is() no backfill de contrato
+// (.eq().eq().is("installments", null)) — chain thenable: cada eq/is retorna
 // o próprio objeto (suporta N chamadas) e ele mesmo é awaitable no final.
 const mockEq = jest.fn();
 function makeUpdateChain() {
   const resolved = Promise.resolve({ data: null, error: null });
   const chain = {
     eq: (...args: unknown[]) => { mockEq(...args); return chain; },
+    is: () => chain,
     then: resolved.then.bind(resolved),
     catch: resolved.catch.bind(resolved),
   };
@@ -70,7 +72,10 @@ function makePixelQuery() {
 const mockPixelSelect = jest.fn(() => makePixelQuery());
 
 // campaign_metrics: select encadeado (4x .eq()) + upsert.
-const mockMetricsMaybeSingle = jest.fn(() => Promise.resolve({ data: null, error: null }));
+const mockMetricsMaybeSingle = jest.fn(
+  (): Promise<{ data: { revenue: number; conversions: number } | null; error: { message: string } | null }> =>
+    Promise.resolve({ data: null, error: null }),
+);
 function makeMetricsQuery() {
   const query: { eq: jest.Mock; maybeSingle: () => unknown } = {
     eq: jest.fn(),
@@ -623,6 +628,81 @@ describe("POST /api/eduzz/webhook", () => {
       expect.objectContaining({ contract_id: "sub-psl-1", total_installments: 10, charge_value: 350 }),
       expect.anything(),
     );
+  });
+
+  it("contract_created backfilla a Purchase quando o invoice_paid chegou ANTES (corrige valor cheio retroativo)", async () => {
+    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    // backfill: acha a Purchase já gravada com o valor da cobrança (10 === installment_value, sem multiplicação).
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: { id: "evt-p", value: 10, installment_value: 10 }, error: null });
+
+    const payload = {
+      event: "myeduzz.contract_created",
+      data: { contract: { id: "sub-late", payment: { totalOfInstallments: 12 }, recurrence: { isFinite: true, price: { value: 10 } } } },
+    };
+    await POST(buildRequest(payload));
+
+    // 1) preenche o total de parcelas nas linhas que estavam sem; 2) recalcula o valor cheio (10 × 12 = 120).
+    expect(mockUpdate).toHaveBeenCalledWith({ installments: 12 });
+    expect(mockUpdate).toHaveBeenCalledWith({ value: 120 });
+  });
+
+  it("renovação entra como RECEITA mas NÃO conta conversão nova (conversions += 0)", async () => {
+    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockNotYetProcessed();
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: { id: "evt-1a" }, error: null }); // isKnownRecurrence
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // match email
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // match telefone
+    mockMetricsMaybeSingle.mockResolvedValueOnce({ data: { revenue: 1000, conversions: 5 }, error: null });
+
+    const payload = { ...MODERN_PAYLOAD, data: { ...MODERN_PAYLOAD.data, contract: { id: "sub-1" } } };
+    await POST(buildRequest(payload));
+
+    // revenue soma (1000 + 297), conversions fica em 5 (renovação não é venda nova).
+    expect(mockMetricsUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({ revenue: 1297, conversions: 5 }),
+      expect.anything(),
+    );
+  });
+
+  it("normaliza country da Eduzz pra ISO-2 antes de gravar/hashear (Brazil -> BR)", async () => {
+    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockNotYetProcessed();
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // match email
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // match telefone
+    mockProductPixelConfigured();
+    mockPixelMaybeSingle.mockResolvedValueOnce({ data: PIXEL_OK, error: null });
+
+    const payload = {
+      ...MODERN_PAYLOAD,
+      data: { ...MODERN_PAYLOAD.data, buyer: { ...MODERN_PAYLOAD.data.buyer, address: { country: "Brazil", state: "PR", city: "Palmas", zipCode: "85555000" } } },
+    };
+    await POST(buildRequest(payload));
+
+    expect(mockInsert).toHaveBeenCalledWith(expect.objectContaining({ country: "BR" }));
+    const sentBody = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+    expect(sentBody.data[0].user_data.country).toBe(sha256("BR")); // hash de "br", não "brazil"
+  });
+
+  it("grava o erro DETALHADO da Meta quando a CAPI rejeita (não só 'Invalid parameter')", async () => {
+    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockNotYetProcessed();
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // match email
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // match telefone
+    mockProductPixelConfigured();
+    mockPixelMaybeSingle.mockResolvedValueOnce({ data: PIXEL_OK, error: null });
+    global.fetch = jest.fn(() => Promise.resolve({
+      ok: false,
+      status: 400,
+      json: () => Promise.resolve({ error: { message: "Invalid parameter", error_user_msg: "O campo country não é válido", error_subcode: 2804003, fbtrace_id: "Abc123" } }),
+    })) as unknown as typeof fetch;
+
+    await POST(buildRequest(MODERN_PAYLOAD));
+
+    const failed = mockUpdate.mock.calls.map((c) => (c as unknown[])[0] as { capi_status?: string; capi_error?: string }).find((u) => u?.capi_status === "failed");
+    expect(failed).toBeTruthy();
+    expect(failed!.capi_error).toContain("O campo country não é válido");
+    expect(failed!.capi_error).toContain("subcode 2804003");
+    expect(failed!.capi_error).toContain("fbtrace Abc123");
   });
 
   it("PSL com ficha conhecida: 1ª cobrança manda valor CHEIO pra Meta/events_log, mas campaign_metrics soma só o valor da cobrança (sem dobrar a receita)", async () => {
