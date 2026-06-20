@@ -3,12 +3,35 @@ import { NextRequest } from "next/server";
 // Servido via route handler (não public/pixel.js estático) pra poder injetar
 // a origem da API em runtime e controlar cache sem passo de build — TTL
 // curto porque o script ainda deve iterar rápido nesta fase MVP.
-function buildPixelScript(apiBase: string): string {
+//
+// MODO PROXY (?via=proxy): pra contornar o cap de 7 dias que o Safari/iOS
+// aplica a QUALQUER cookie gravado via document.cookie (JS) — confirmado via
+// pesquisa, não é bug nosso, é política do WebKit/ITP desde 2019, e nem o
+// próprio Pixel da Meta escapa disso. A única saída real é o cookie nascer
+// via header Set-Cookie de um servidor que o navegador considera "1ª parte"
+// — como nosso backend é domínio DIFERENTE do cliente, isso só é possível se
+// a chamada passar por um proxy reverso hospedado no MESMO domínio da
+// landing page (ver `dm-proxy.php` documentado em CLAUDE.md desta pasta).
+// Quando esse proxy busca o pixel.js, ele manda `?via=proxy` — o backend,
+// vendo isso, gera uma VARIANTE do script com `TRACK_URL`/`CONFIG_URL`
+// apontando pro próprio proxy (caminho fixo `/dm-proxy.php`, ver decisão de
+// nome de arquivo padronizado no CLAUDE.md) em vez do domínio do dashmonster,
+// e com `getUserId()` parando de gravar o cookie via JS (deixa o SERVIDOR,
+// através do proxy, mandar o Set-Cookie — ver `track-event/route.ts`).
+// DECISÃO DE DESIGN: a detecção do modo proxy é decidida AQUI NO SERVIDOR
+// (pelo `?via=proxy` que o PHP manda), nunca por introspecção no navegador
+// (ex.: `document.currentScript`) — isso seria frágil com Google Tag Manager
+// e outras formas de injeção dinâmica de script, comuns no perfil de cliente
+// desta agência.
+function buildPixelScript(apiBase: string, proxyMode: boolean): string {
+  const trackUrl = proxyMode ? "/dm-proxy.php?ep=track" : `${apiBase}/api/tracking/track-event`;
+  const configUrl = proxyMode ? "/dm-proxy.php?ep=config" : `${apiBase}/api/tracking/config`;
   return `(function () {
   "use strict";
 
-  var TRACK_URL = ${JSON.stringify(`${apiBase}/api/tracking/track-event`)};
-  var CONFIG_URL = ${JSON.stringify(`${apiBase}/api/tracking/config`)};
+  var TRACK_URL = ${JSON.stringify(trackUrl)};
+  var CONFIG_URL = ${JSON.stringify(configUrl)};
+  var PROXY_MODE = ${proxyMode ? "true" : "false"};
   var COOKIE_NAME = "_dm_uid";
   var COOKIE_DAYS = 400; // máximo aceito pelo Chrome pra cookies de 1ª parte
   var inFlightForms = new WeakSet();
@@ -103,8 +126,21 @@ function buildPixelScript(apiBase: string): string {
 
   function getUserId() {
     var id = readCookie(COOKIE_NAME);
-    if (!id) {
-      id = randomId();
+    if (!id) id = randomId();
+    // EM MODO PROXY, NUNCA escrever esse cookie via JS — é o servidor (através
+    // do dm-proxy.php) que manda o Set-Cookie na resposta do /track-event. Se
+    // o JS escrevesse aqui TAMBÉM, o Safari reaplicaria o cap de 7 dias nessa
+    // escrita e anularia o proxy inteiro (o cap é por ESCRITA via
+    // document.cookie, não importa a origem/intenção).
+    if (!PROXY_MODE) {
+      // Regrava (mesmo quando o cookie já existia) pra empurrar a validade pra
+      // +400 dias a partir de AGORA — sem isso, o cookie só valeria 400 dias da
+      // 1ª visita e nunca mais. No Safari (modo direto, sem proxy) isso importa
+      // MUITO MAIS: o ITP corta todo cookie escrito via JS pra só 7 dias, mas
+      // reseta esse prazo de 7 dias a cada escrita — então renovar em toda
+      // visita é o que mantém o mesmo histórico desde que o visitante volte
+      // pelo menos 1x por semana (não tem como pedir mais que isso sem o
+      // proxy, nem o pixel da própria Meta consegue).
       writeCookie(COOKIE_NAME, id, COOKIE_DAYS);
     }
     return id;
@@ -337,8 +373,9 @@ function buildPixelScript(apiBase: string): string {
 
 export async function GET(request: NextRequest) {
   const apiBase = process.env.NEXT_PUBLIC_APP_URL ?? request.nextUrl.origin;
+  const proxyMode = request.nextUrl.searchParams.get("via") === "proxy";
 
-  return new Response(buildPixelScript(apiBase), {
+  return new Response(buildPixelScript(apiBase, proxyMode), {
     status: 200,
     headers: {
       "Content-Type": "application/javascript; charset=utf-8",

@@ -177,6 +177,23 @@ describe("POST /api/tracking/track-event", () => {
     );
   });
 
+  it("manda Set-Cookie _dm_uid com o mesmo fingerprint_id, pro proxy 1ª parte (modo proxy do Safari/iOS) reaproveitar", async () => {
+    mockHappyPath();
+    const res = await POST(
+      buildRequest({
+        client_id: "acme",
+        event_name: "PageView",
+        event_url: "http://localhost:3000/",
+        user_id: "uuid-persistente-123",
+      }),
+    );
+
+    const setCookie = res.headers.get("set-cookie");
+    expect(setCookie).toContain("_dm_uid=uuid-persistente-123");
+    expect(setCookie).toContain("Max-Age=34560000");
+    expect(setCookie).toContain("SameSite=Lax");
+  });
+
   it("cai pro hash de IP+UA quando não vem user_id (fallback)", async () => {
     mockHappyPath();
     await POST(buildRequest({ client_id: "acme", event_name: "PageView", event_url: "http://localhost:3000/" }));

@@ -177,6 +177,28 @@ function hostnameOf(value: string | null): string | null {
   }
 }
 
+const COOKIE_MAX_AGE_SECONDS = 400 * 86400; // 400 dias — máximo aceito pelo Chrome pra cookie de 1ª parte, mesmo limite que pixel.js já usa.
+
+// Grava _dm_uid via Set-Cookie do SERVIDOR, em toda resposta de sucesso, além
+// do pixel.js gravar o seu próprio via JS (document.cookie). Os 2 mecanismos
+// coexistem por design, não competem: numa chamada cross-site direta (a
+// maioria dos clientes hoje), o navegador IGNORA este Set-Cookie por completo
+// (cookie de 3ª parte é bloqueado no Safari desde a v13.1) — zero efeito, zero
+// regressão. Só passa a valer quando a chamada chega através de um proxy 1ª
+// parte hospedado no domínio do próprio cliente (ver "modo proxy" em
+// pixel.js/route.ts, `?via=proxy`) — nesse caso o navegador aceita como
+// cookie de 1ª parte, e o Safari NÃO aplica o cap de 7 dias que aplicaria a um
+// cookie gravado via JS (document.cookie sempre sofre esse cap no Safari,
+// não importa o `Max-Age` pedido — só Set-Cookie de servidor 1ª parte escapa
+// disso). Sem `Domain=` explícito de propósito — deixa o navegador inferir o
+// host que respondeu (o do cliente, em modo proxy), nunca o nosso.
+function withTrackingCookie(headers: HeadersInit, fingerprintId: string): HeadersInit {
+  return {
+    ...headers,
+    "Set-Cookie": `_dm_uid=${encodeURIComponent(fingerprintId)}; Max-Age=${COOKIE_MAX_AGE_SECONDS}; Path=/; SameSite=Lax; Secure`,
+  };
+}
+
 export async function OPTIONS(request: NextRequest) {
   return new Response(null, {
     status: 204,
@@ -296,11 +318,11 @@ export async function POST(request: NextRequest) {
 
   if (insertError || !inserted) {
     console.error("[tracking] falha ao gravar events_log:", insertError?.message);
-    return NextResponse.json({ received: true }, { status: 200, headers });
+    return NextResponse.json({ received: true }, { status: 200, headers: withTrackingCookie(headers, fingerprintId) });
   }
 
   if (!metaConfigured) {
-    return NextResponse.json({ received: true }, { status: 200, headers });
+    return NextResponse.json({ received: true }, { status: 200, headers: withTrackingCookie(headers, fingerprintId) });
   }
 
   await sendMetaCapiEvent(db, {
@@ -348,5 +370,5 @@ export async function POST(request: NextRequest) {
     },
   });
 
-  return NextResponse.json({ received: true }, { status: 200, headers });
+  return NextResponse.json({ received: true }, { status: 200, headers: withTrackingCookie(headers, fingerprintId) });
 }

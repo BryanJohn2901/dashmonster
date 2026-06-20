@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Save, Plus, Trash2, Star } from "lucide-react";
+import { Loader2, Save, Plus, Trash2, Star, Download, AlertTriangle } from "lucide-react";
 import { toast } from "@/hooks/useToast";
 import {
   fetchTrackingPixels, createTrackingPixel, updateTrackingPixel, deleteTrackingPixel, setDefaultTrackingPixel, verifyMetaToken,
@@ -112,6 +112,11 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
   const [deleting, setDeleting] = useState(false);
   const [revealToken, setRevealToken] = useState(false);
   const [copied, setCopied] = useState(false);
+  // "direct" = snippet de sempre (domínio do dashmonster direto). "proxy" =
+  // contorna o cap de 7 dias do Safari/iOS em cookie gravado via JS — exige
+  // o cliente subir o dm-proxy.php no PRÓPRIO domínio dele primeiro (botão
+  // de download abaixo). Ver CLAUDE.md desta pasta pro raciocínio completo.
+  const [installMode, setInstallMode] = useState<"direct" | "proxy">("direct");
 
   const dirty =
     name !== pixel.name ||
@@ -123,7 +128,11 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   // pixel.slug é opaco e estável — renomear o pixel (campo "name") nunca muda
   // esse snippet, então uma instalação já feita não quebra.
-  const snippet = `<script src="${origin}/api/tracking/pixel.js"></script>\n<script>Tracker.init("${company.slug}", "${pixel.slug}");</script>`;
+  // Modo proxy: caminho RELATIVO (sem origin), porque o dm-proxy.php mora no
+  // domínio do PRÓPRIO cliente, nunca no dashmonster — ver download abaixo.
+  const directSnippet = `<script src="${origin}/api/tracking/pixel.js"></script>\n<script>Tracker.init("${company.slug}", "${pixel.slug}");</script>`;
+  const proxySnippet = `<script src="/dm-proxy.php?ep=pixel"></script>\n<script>Tracker.init("${company.slug}", "${pixel.slug}");</script>`;
+  const snippet = installMode === "proxy" ? proxySnippet : directSnippet;
 
   const save = async () => {
     setSaving(true);
@@ -217,7 +226,41 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
             {copied ? "Copiado!" : "Copiar"}
           </button>
         </div>
+        <div className="flex gap-1 border-b px-3 py-2" style={{ borderColor: "var(--dm-border-default)" }}>
+          {([["direct", "Instalação direta"], ["proxy", "Com proxy (corrige Safari/iPhone)"]] as ["direct" | "proxy", string][]).map(([mode, label]) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => setInstallMode(mode)}
+              className="rounded-full px-2.5 py-1 text-[10px] font-bold transition-opacity hover:opacity-80"
+              style={installMode === mode ? { background: "rgba(99,102,200,0.12)", color: BRAND } : { color: "var(--dm-text-tertiary)" }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <pre className="overflow-x-auto px-3 py-2.5 font-mono text-[11px] leading-relaxed" style={{ color: "var(--dm-text-secondary)" }}>{snippet}</pre>
+        {installMode === "proxy" && (
+          <div className="border-t px-3 py-2.5" style={{ borderColor: "var(--dm-border-default)" }}>
+            <p className="mb-2 flex items-start gap-1.5 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+              <AlertTriangle size={12} className="mt-0.5 flex-shrink-0" style={{ color: "#F4A60D" }} />
+              O Safari/iPhone corta a validade do cookie de visitante pra 7 dias quando ele é gravado via JavaScript — sem
+              jeito de evitar isso direto do navegador. Esse modo resolve hospedando um arquivo pequeno (PHP) no PRÓPRIO
+              domínio do cliente, que faz o cookie nascer como se fosse do site dele. Baixe abaixo, suba na raiz do site
+              (<code>public_html/</code>) <strong>sem renomear</strong>, e use o snippet acima em <strong>todas</strong> as
+              páginas do domínio — misturar instalação direta e com proxy no mesmo domínio pode fazer o mesmo visitante
+              aparecer como 2 pessoas diferentes no histórico.
+            </p>
+            <a
+              href="/api/tracking/proxy-template"
+              download="dm-proxy.php"
+              className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] font-bold transition-opacity hover:opacity-80"
+              style={{ borderColor: "var(--dm-border-default)", color: BRAND }}
+            >
+              <Download size={11} /> Baixar dm-proxy.php
+            </a>
+          </div>
+        )}
       </div>
 
       <label className="flex flex-col gap-1">
