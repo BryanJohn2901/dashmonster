@@ -1025,8 +1025,10 @@ export function TrackingEventsView() {
             Nenhum evento capturado no período.
           </p>
           <p className="text-[11px] mt-0.5 text-center max-w-sm" style={{ color: "var(--dm-text-tertiary)" }}>
-            Instale o pixel (<code>/api/tracking/pixel.js</code>) nas páginas do cliente e chame{" "}
-            <code>Tracker.init(&quot;slug-da-empresa&quot;)</code>.
+            Suba o <code>dm-proxy.php</code> na raiz do domínio do cliente e cole o snippet (em{" "}
+            <strong>Configuração</strong>) nas páginas — ele chama{" "}
+            <code>Tracker.init(&quot;slug-da-empresa&quot;, &quot;slug-do-pixel&quot;)</code> via{" "}
+            <code>/dm-proxy.php?ep=pixel</code>.
           </p>
         </div>
       )}

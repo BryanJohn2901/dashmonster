@@ -35,6 +35,19 @@ describe("GET /api/tracking/pixel.js", () => {
     expect(await proxied.text()).toContain('via: PROXY_MODE ? "proxy" : "direct"');
   });
 
+  it("monta a URL de config com separador conforme CONFIG_URL já tem query (evita ?ep=config?client_id no proxy → 400)", async () => {
+    const script = await (await GET(buildRequest("?via=proxy"))).text();
+    // O separador é escolhido em runtime (?/&) — sem isso, o proxy receberia 2x "?".
+    expect(script).toContain('CONFIG_URL.indexOf("?")');
+    // E nunca concatena "?client_id" cru de novo.
+    expect(script).not.toContain('CONFIG_URL + "?client_id="');
+  });
+
+  it("getUserId memoiza o id por carga de página (corrige corrida de identidade na 1ª visita em proxy)", async () => {
+    const script = await (await GET(buildRequest("?via=proxy"))).text();
+    expect(script).toContain("cachedUserId");
+  });
+
   it("cache desligado (no-store) nos 2 modos — script ainda itera, não pode cachear versão errada", async () => {
     const direct = await GET(buildRequest());
     const proxied = await GET(buildRequest("?via=proxy"));

@@ -123,11 +123,6 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
   const [deleting, setDeleting] = useState(false);
   const [revealToken, setRevealToken] = useState(false);
   const [copied, setCopied] = useState(false);
-  // "direct" = snippet de sempre (domínio do dashmonster direto). "proxy" =
-  // contorna o cap de 7 dias do Safari/iOS em cookie gravado via JS — exige
-  // o cliente subir o dm-proxy.php no PRÓPRIO domínio dele primeiro (botão
-  // de download abaixo). Ver CLAUDE.md desta pasta pro raciocínio completo.
-  const [installMode, setInstallMode] = useState<"direct" | "proxy">("direct");
   const [testUrl, setTestUrl] = useState("");
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<TestProxyResult | null>(null);
@@ -139,14 +134,11 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
     dominio !== pixel.dominioAutorizado ||
     testEventCode !== pixel.metaTestEventCode;
 
-  const origin = typeof window !== "undefined" ? window.location.origin : "";
   // pixel.slug é opaco e estável — renomear o pixel (campo "name") nunca muda
   // esse snippet, então uma instalação já feita não quebra.
-  // Modo proxy: caminho RELATIVO (sem origin), porque o dm-proxy.php mora no
-  // domínio do PRÓPRIO cliente, nunca no dashmonster — ver download abaixo.
-  const directSnippet = `<script src="${origin}/api/tracking/pixel.js"></script>\n<script>Tracker.init("${company.slug}", "${pixel.slug}");</script>`;
-  const proxySnippet = `<script src="/dm-proxy.php?ep=pixel"></script>\n<script>Tracker.init("${company.slug}", "${pixel.slug}");</script>`;
-  const snippet = installMode === "proxy" ? proxySnippet : directSnippet;
+  // Caminho RELATIVO (sem origin), porque o dm-proxy.php mora no domínio do
+  // PRÓPRIO cliente, nunca no dashmonster — ver download/instruções abaixo.
+  const snippet = `<script src="/dm-proxy.php?ep=pixel"></script>\n<script>Tracker.init("${company.slug}", "${pixel.slug}");</script>`;
 
   const save = async () => {
     setSaving(true);
@@ -263,90 +255,74 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
             {copied ? "Copiado!" : "Copiar"}
           </button>
         </div>
-        <div className="flex gap-1 border-b px-3 py-2" style={{ borderColor: "var(--dm-border-default)" }}>
-          {([["direct", "Instalação direta"], ["proxy", "Com proxy (corrige Safari/iPhone)"]] as ["direct" | "proxy", string][]).map(([mode, label]) => (
-            <button
-              key={mode}
-              type="button"
-              onClick={() => setInstallMode(mode)}
-              className="rounded-full px-2.5 py-1 text-[10px] font-bold transition-opacity hover:opacity-80"
-              style={installMode === mode ? { background: "rgba(99,102,200,0.12)", color: BRAND } : { color: "var(--dm-text-tertiary)" }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
         <pre className="overflow-x-auto px-3 py-2.5 font-mono text-[11px] leading-relaxed" style={{ color: "var(--dm-text-secondary)" }}>{snippet}</pre>
-        {installMode === "proxy" && (
-          <div className="border-t px-3 py-2.5" style={{ borderColor: "var(--dm-border-default)" }}>
-            <div className="mb-2 flex items-start gap-1.5 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
-              <AlertTriangle size={12} className="mt-0.5 flex-shrink-0" style={{ color: "#F4A60D" }} />
-              <p>
-                O Safari/iPhone corta a validade do cookie de visitante pra 7 dias quando ele é gravado via JavaScript — sem
-                jeito de evitar isso direto do navegador. Esse modo resolve hospedando um arquivo pequeno (PHP) no PRÓPRIO
-                domínio do cliente, que faz o cookie nascer como se fosse do site dele. Baixe abaixo, suba na raiz do site
-                (<code>public_html/</code>) <strong>sem renomear</strong>, e use o snippet acima em <strong>todas</strong> as
-                páginas do domínio — misturar instalação direta e com proxy no mesmo domínio pode fazer o mesmo visitante
-                aparecer como 2 pessoas diferentes no histórico.
-              </p>
-            </div>
-            <a
-              href="/api/tracking/proxy-template"
-              download="dm-proxy.php"
-              className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] font-bold transition-opacity hover:opacity-80"
-              style={{ borderColor: "var(--dm-border-default)", color: BRAND }}
-            >
-              <Download size={11} /> Baixar dm-proxy.php
-            </a>
-
-            <div className="mt-3 border-t pt-3" style={{ borderColor: "var(--dm-border-default)" }}>
-              <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
-                Testar instalação (opcional)
-              </span>
-              <div className="flex items-center gap-2">
-                <input
-                  value={testUrl}
-                  onChange={(e) => setTestUrl(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") void runProxyTest(); }}
-                  placeholder="https://meusite.com.br/pagina"
-                  className={`flex-1 ${inputCls} h-9 font-mono text-[11px]`}
-                  style={inputStyle}
-                />
-                <button
-                  type="button"
-                  onClick={() => void runProxyTest()}
-                  disabled={testing || !testUrl.trim()}
-                  className="flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[10px] font-bold transition-opacity hover:opacity-80 disabled:opacity-40"
-                  style={{ borderColor: "var(--dm-border-default)", color: BRAND }}
-                >
-                  {testing ? <Loader2 size={12} className="animate-spin" /> : null} Testar
-                </button>
-              </div>
-
-              {testResult && (
-                <ul className="mt-2 space-y-1 text-[10px]">
-                  {([
-                    ["Script instalado na página", testResult.scriptFound, testResult.pageError],
-                    ["dm-proxy.php no ar e conectado ao backend", testResult.configOk, testResult.configError],
-                    ["Cookie nasce 1ª parte (Set-Cookie)", testResult.cookieOk, testResult.cookieError],
-                  ] as [string, boolean, string | null][]).map(([label, ok, error]) => (
-                    <li key={label} className="flex items-start gap-1.5">
-                      {ok ? (
-                        <CheckCircle2 size={12} className="mt-0.5 flex-shrink-0" style={{ color: "#05CD99" }} />
-                      ) : (
-                        <XCircle size={12} className="mt-0.5 flex-shrink-0" style={{ color: "#F25767" }} />
-                      )}
-                      <span style={{ color: ok ? "var(--dm-text-secondary)" : "#F25767" }}>
-                        {label}
-                        {!ok && error ? ` — ${error}` : ""}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+        <div className="border-t px-3 py-2.5" style={{ borderColor: "var(--dm-border-default)" }}>
+          <div className="mb-2 flex items-start gap-1.5 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+            <AlertTriangle size={12} className="mt-0.5 flex-shrink-0" style={{ color: "#F4A60D" }} />
+            <p>
+              A instalação usa um arquivo pequeno (PHP) hospedado no PRÓPRIO domínio do cliente — é ele que faz o cookie de
+              visitante nascer como 1ª parte e durar 400 dias, inclusive no Safari/iPhone (que corta cookie gravado por
+              JavaScript pra 7 dias). Baixe abaixo, suba na raiz do site (<code>public_html/</code>) <strong>sem renomear</strong>,
+              e use o snippet acima em <strong>todas</strong> as páginas do domínio. O site precisa estar em{" "}
+              <strong>HTTPS</strong>. Para vários domínios, suba 1 cópia em cada um.
+            </p>
           </div>
-        )}
+          <a
+            href="/api/tracking/proxy-template"
+            download="dm-proxy.php"
+            className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] font-bold transition-opacity hover:opacity-80"
+            style={{ borderColor: "var(--dm-border-default)", color: BRAND }}
+          >
+            <Download size={11} /> Baixar dm-proxy.php
+          </a>
+
+          <div className="mt-3 border-t pt-3" style={{ borderColor: "var(--dm-border-default)" }}>
+            <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
+              Testar instalação (opcional)
+            </span>
+            <div className="flex items-center gap-2">
+              <input
+                value={testUrl}
+                onChange={(e) => setTestUrl(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") void runProxyTest(); }}
+                placeholder="https://meusite.com.br/pagina"
+                className={`flex-1 ${inputCls} h-9 font-mono text-[11px]`}
+                style={inputStyle}
+              />
+              <button
+                type="button"
+                onClick={() => void runProxyTest()}
+                disabled={testing || !testUrl.trim()}
+                className="flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[10px] font-bold transition-opacity hover:opacity-80 disabled:opacity-40"
+                style={{ borderColor: "var(--dm-border-default)", color: BRAND }}
+              >
+                {testing ? <Loader2 size={12} className="animate-spin" /> : null} Testar
+              </button>
+            </div>
+
+            {testResult && (
+              <ul className="mt-2 space-y-1 text-[10px]">
+                {([
+                  ["Script instalado na página", testResult.scriptFound, testResult.pageError],
+                  ["dm-proxy.php no ar e conectado ao backend", testResult.configOk, testResult.configError],
+                  ["Cookie nasce 1ª parte (Set-Cookie)", testResult.cookieOk, testResult.cookieError],
+                ] as [string, boolean, string | null][]).map(([label, ok, error]) => (
+                  <li key={label} className="flex items-start gap-1.5">
+                    {ok ? (
+                      <CheckCircle2 size={12} className="mt-0.5 flex-shrink-0" style={{ color: "#05CD99" }} />
+                    ) : (
+                      <XCircle size={12} className="mt-0.5 flex-shrink-0" style={{ color: "#F25767" }} />
+                    )}
+                    <span style={{ color: ok ? "var(--dm-text-secondary)" : "#F25767" }}>
+                      {label}
+                      {!ok && error ? ` — ${error}` : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
       </div>
 
       <label className="flex flex-col gap-1">

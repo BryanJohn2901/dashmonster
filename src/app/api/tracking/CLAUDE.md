@@ -52,12 +52,17 @@
   - `device_type` (`"mobile" | "tablet" | "desktop"`) — classificado 1x no servidor (`classifyDevice()`) a partir do `User-Agent` que já chega em toda request pro fingerprint/CAPI. Guarda só a categoria, não o User-Agent crú inteiro — dá pra comparar conversão por dispositivo num relatório sem guardar um dado mais sensível/variável do que o necessário.
   - Nenhum desses 5 campos é mandado pra Meta CAPI — são só pra uso interno (exibição/relatório/exportação no dashboard).
 - **`client_ip_address`/`client_user_agent` (migration 047)** — IP e User-Agent da request, que JÁ iam pra Meta CAPI em todo evento do navegador mas não ficavam salvos. Agora persistidos (texto puro, mesma postura de PII de `lead_email`/`lead_phone`, só protegido por RLS, nunca expostos no endpoint público `config`). Motivo: uma venda da Eduzz correlacionada por email/telefone a esta visita reaproveita esses dois sinais fortes de match (ver `recordSale()` em `eduzz/webhook/route.ts`) — sem persistir, a Purchase ia sem IP/UA. Entram no `OPTIONAL_COLUMN_GROUPS` normal. Guardados só quando ≠ `"unknown"` (dev local sem proxy).
-- **Cap de 7 dias do Safari/iOS em cookies JS, e o "modo proxy" pra contornar** — confirmado por pesquisa (não é bug nosso): o WebKit/Safari ITP, desde 2019, limita a 7 DIAS de validade qualquer cookie gravado via `document.cookie`, mesmo pedindo mais (nosso `_dm_uid` pede 400). `getUserId()` em `pixel.js/route.ts` mitiga regravando o cookie em TODA chamada (reseta o relógio de 7 dias a cada visita) — funciona enquanto o visitante voltar ao menos 1x/semana, mas não resolve full-stop.
+- **Cap de 7 dias do Safari/iOS em cookies JS, e o "modo proxy" pra contornar** — confirmado por pesquisa (não é bug nosso): o WebKit/Safari ITP, desde 2019, limita a 7 DIAS de validade qualquer cookie gravado via `document.cookie`, mesmo pedindo mais (nosso `_dm_uid` pede 400). `getUserId()` em `pixel.js/route.ts` mitiga regravando o cookie (reseta o relógio de 7 dias a cada visita) — funciona enquanto o visitante voltar ao menos 1x/semana, mas não resolve full-stop.
+  - **O PRODUTO oferece SÓ o modo proxy** (decisão do usuário, 2026-06): a UI (`TrackingConfigPanel.tsx`) mostra só o snippet de proxy (`<script src="/dm-proxy.php?ep=pixel">`), download do PHP e o botão "Testar". O `pixel.js/route.ts` AINDA gera as 2 variantes (decidido por `?via=proxy`) — a variante direta NÃO é código morto: é o fallback quando `?via=proxy` está ausente e o que mantém qualquer instalação direta legada funcionando durante a migração. Não arrancar a variante direta do `pixel.js`.
   - **A única solução real é `Set-Cookie` do SERVIDOR** (não sofre o cap), mas só escapa do cap se vier de um domínio que o Safari considera 1ª parte. Como nosso backend é domínio DIFERENTE do cliente, um `Set-Cookie` direto nosso seria tratado como cookie de TERCEIRO e **bloqueado por completo** (pior que 7 dias) — Safari bloqueia 100% cookie de 3ª parte desde a v13.1. Subdomínio com CNAME pra nossa infra ("CNAME cloaking") é detectado pela Apple desde 2020 e tratado igual a terceiro — também não resolve.
   - **Solução: proxy reverso no MESMO domínio da landing page do cliente** (não subdomínio CNAME — literal mesmo hostname), arquivo `dm-proxy.php` (nome fixo, ver template abaixo) na raiz do site (`public_html/`), repassando a chamada pro nosso backend e devolvendo a resposta como veio (inclusive `Set-Cookie`). Como o navegador só fala com o domínio do cliente, o cookie nasce 1ª parte, sem cap.
   - **`track-event/route.ts` SEMPRE manda `Set-Cookie: _dm_uid=...`** (`withTrackingCookie()`, qualquer resposta de sucesso) — em chamada direta (cross-site, maioria dos clientes hoje), o navegador simplesmente IGNORA esse header (cookie de 3ª parte bloqueado), zero regressão. Só passa a valer quando a chamada chega via `dm-proxy.php`.
   - **`pixel.js/route.ts` gera 2 variantes do script**, decidido pelo parâmetro `?via=proxy` na própria request do `pixel.js` (mandado pelo `dm-proxy.php`, nunca pelo navegador direto): com `via=proxy`, `TRACK_URL`/`CONFIG_URL` apontam pra `/dm-proxy.php?ep=track`/`?ep=config` (caminho fixo, resolvido pelo PRÓPRIO domínio da página) em vez do domínio do dashmonster, e `getUserId()` PARA de chamar `writeCookie()` — só lê o cookie existente. **Decisão de design deliberada**: a detecção de modo proxy é decidida NO SERVIDOR (pelo `?via=proxy`), nunca por introspecção no navegador (ex.: `document.currentScript.src`) — isso quebraria com Google Tag Manager e qualquer injeção dinâmica de script, comuns no perfil de cliente desta agência.
   - **Crítico**: se o JS ainda gravar o cookie em modo proxy (regressão futura), o Safari reaplica o cap de 7 dias na escrita e anula o proxy inteiro — não é opcional, é a peça central do mecanismo.
+  - **`getUserId()` memoiza o id por carga de página** (`cachedUserId`) — em modo proxy o cookie só é escrito pelo SERVIDOR (via `Set-Cookie`), então na 1ª visita, antes do round-trip do 1º evento, cada chamada de `getUserId()` geraria um `randomId()` novo; 2 eventos quase simultâneos (PageView + Lead) iriam com `user_id` diferente → 2 fingerprints pro mesmo visitante. Memoizar trava 1 id por página (o servidor grava ESSE id no cookie 1ª parte; a próxima página lê do cookie). Bug real corrigido (2026-06); não remover a memoização.
+  - **Separador da URL de config (`initMetaConfig`)**: `CONFIG_URL` em modo proxy já tem query (`/dm-proxy.php?ep=config`), em direto não — por isso `initMetaConfig` escolhe `?`/`&` em runtime (`CONFIG_URL.indexOf("?") >= 0 ? "&" : "?"`). Bug real corrigido (2026-06): concatenar `"?client_id="` cru gerava `?ep=config?client_id=...` (2º `?` literal), o PHP parseava `ep="config?client_id=..."` (fora da allowlist) e respondia 400 → o fbq NUNCA carregava em modo proxy (CAPI funcionava, lado browser do Pixel morria). O `test-proxy` montava a URL com `&` (certo), então mascarava o bug. Não voltar a concatenar `?` cru em nenhuma URL de proxy.
+  - **HTTPS é pré-requisito do modo proxy**: o `Set-Cookie` é `Secure`; o navegador ignora cookie `Secure` em conexão HTTP. Sob HTTP a captura ainda funciona, mas a persistência de 400 dias do `_dm_uid` não vale. O `test-proxy` checa o header `Set-Cookie` na resposta, não se o navegador armazenou — então passaria num site HTTP; documentado na UI como requisito.
+  - **`dm-proxy.php` repassa `Cache-Control`** (além de `Content-Type`/`Set-Cookie`) — o `pixel.js` é servido `no-store` enquanto itera; sem repassar, o navegador podia cachear o `/dm-proxy.php?ep=pixel` por heurística e rodar uma versão velha do script depois de um deploy. Mudança no template (2026-06): clientes que já baixaram precisam re-baixar o `dm-proxy.php` pra pegar esse repasse.
   - **Nome de arquivo é fixo (`dm-proxy.php`)** por decisão deliberada — evita qualquer introspecção client-side de URL (`document.currentScript`), que é frágil. Se o cliente precisar de outro nome, o caminho embutido no script (`/dm-proxy.php?ep=...`) tem que ser ajustado nos 2 lugares em `buildPixelScript()`.
   - **Multi-pixel no MESMO domínio**: funciona sem trabalho extra — o proxy é por DOMÍNIO (1 arquivo cobre o domínio inteiro), `pixel_slug` continua resolvido por `Tracker.init(empresa, pixelSlug)` igual sempre, eixo ortogonal ao proxy.
   - **Múltiplos domínios diferentes pra mesma empresa**: cada domínio precisa do PRÓPRIO `dm-proxy.php`, hospedado nesse domínio especificamente — inerente (cookie é por domínio), não é bug. Limitação adjacente conhecida: `tracking_pixels.dominio_autorizado` é string única, não lista — empresa com N domínios pro mesmo produto precisaria de N pixels distintos só pra ter N domínios autorizados, fragmentando dados por pixel. Não resolvido ainda, só documentado.
@@ -67,50 +72,4 @@
     - **`ping: true`** (`TrackEventPayload.ping`, `track-event/route.ts`) passa por TODA a validação normal (resolve empresa/pixel, checa `dominio_autorizado`) e devolve o mesmo `Set-Cookie` de sempre, mas nunca grava `events_log` nem chama a Meta CAPI — existe só pra esse teste não poluir histórico/métricas reais do cliente com um evento falso.
     - **Superfície de SSRF deliberadamente aceita**: `test-proxy/route.ts` faz o SERVIDOR buscar uma URL informada livremente pelo usuário (o site que ele alega ser dele) — `isPrivateOrLoopbackHost()` bloqueia loopback/rede privada/link-local (inclui `169.254.169.254`, IP de metadata de cloud), mas **não resolve DNS rebinding** (domínio público que resolve pra IP privado). Aceito pro escopo de uma ferramenta de diagnóstico interna do painel, não é endpoint de uso geral/público.
   - **`events_log.via` (migration 057, "proxy" | "direct" | null)** — coluna pra exibição na tabela "Eventos de Tracking" (`TrackingEventsView.tsx`), mostrando se aquele evento específico chegou via o `dm-proxy.php` do cliente ou direto. Mandado pelo PRÓPRIO `pixel.js` em todo `send()` (`via: PROXY_MODE ? "proxy" : "direct"` — `PROXY_MODE` já é decidido no servidor, ver acima), não inferido a partir de header HTTP nenhum (mais explícito/confiável que tentar adivinhar pela ausência do `Origin`, que outros proxies/extensões de privacidade também podem remover por motivos não relacionados). `null` em evento gravado antes desta migration, em cliente com `pixel.js` em cache antigo, ou em venda da Eduzz (insere direto em `events_log`, nunca passa por `track-event`).
-  - **Template de referência do `dm-proxy.php`** (vive no domínio do CLIENTE, não neste repo — gerar/entregar manualmente até a Fase 2 de UI existir):
-    ```php
-    <?php
-    // dm-proxy.php — sobe na raiz do site (public_html/), nome FIXO.
-    // Faz o pixel server-side do dashmonster nascer como 1ª parte no Safari/iOS.
-    define('DASHMONSTER_BASE', 'https://SEU-DOMINIO-DASHMONSTER.com/api/tracking'); // hardcoded — NUNCA de input do request (SSRF)
-
-    $ep = $_GET['ep'] ?? '';
-    $paths = ['pixel' => '/pixel.js', 'track' => '/track-event', 'config' => '/config']; // allowlist fechada — nunca concatenar $_GET['ep'] numa URL
-    if (!isset($paths[$ep])) { http_response_code(400); exit; }
-
-    $method = $_SERVER['REQUEST_METHOD'];
-    if ($method !== 'GET' && $method !== 'POST') { http_response_code(405); exit; }
-
-    $qs = $_GET; unset($qs['ep']);
-    if ($ep === 'pixel') $qs['via'] = 'proxy'; // sinaliza pro backend gerar a variante proxy do script
-    $url = DASHMONSTER_BASE . $paths[$ep] . (count($qs) ? '?' . http_build_query($qs) : '');
-
-    $headers = ['Referer: ' . ($_SERVER['HTTP_REFERER'] ?? '')]; // preserva a checagem de dominio_autorizado (senão cai sempre no soft-fail)
-    $body = null;
-    if ($method === 'POST') {
-      $body = file_get_contents('php://input', false, null, 0, 65536); // limite de 64KB — sem isso é vetor de DoS sob a identidade do domínio do cliente
-      $headers[] = 'Content-Type: application/json';
-    }
-
-    $ch = curl_init($url);
-    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_HEADER, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 5); // hosts compartilhados tem max_execution_time baixo — sem isso, lentidão nossa deixa o SITE DO CLIENTE lento
-    if ($body !== null) curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
-
-    $response = curl_exec($ch);
-    $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
-    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-
-    http_response_code($status ?: 502);
-    foreach (explode("\r\n", substr($response, 0, $headerSize)) as $line) {
-      // só repassa Content-Type e Set-Cookie — nunca todos os headers cegamente
-      if (stripos($line, 'content-type:') === 0 || stripos($line, 'set-cookie:') === 0) {
-        header($line, false);
-      }
-    }
-    echo substr($response, $headerSize);
-    ```
+  - **Template do `dm-proxy.php` — fonte de verdade é `proxy-template/route.ts`** (`buildProxyPhp()`), servido como download pela UI (botão "Baixar dm-proxy.php"). Não duplicar o conteúdo do PHP aqui pra não dessincronizar; pra entender/alterar o proxy, ler aquele arquivo. Pontos-chave do PHP: `DASHMONSTER_BASE` hardcoded (anti-SSRF), allowlist fechada de endpoints (`pixel`/`track`/`config`, nunca concatenar `$_GET['ep']` numa URL), `Referer` repassado (preserva a checagem de `dominio_autorizado`), limite de 64KB no body, `CURLOPT_TIMEOUT` curto, e repasse seletivo só de `Content-Type`/`Set-Cookie`/`Cache-Control`.

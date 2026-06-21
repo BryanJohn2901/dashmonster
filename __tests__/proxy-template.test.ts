@@ -19,5 +19,8 @@ describe("GET /api/tracking/proxy-template", () => {
     // hardening básico: timeout curto e limite de tamanho de body.
     expect(php).toContain("CURLOPT_TIMEOUT, 5");
     expect(php).toContain("65536");
+    // repassa Cache-Control (além de Content-Type/Set-Cookie) pro pixel.js
+    // no-store valer através do proxy — senão o navegador podia rodar versão velha.
+    expect(php).toContain("cache-control:");
   });
 });

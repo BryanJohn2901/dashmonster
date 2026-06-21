@@ -14,6 +14,9 @@ function buildProxyPhp(dashmonsterBase: string): string {
   return `<?php
 // dm-proxy.php — sobe na raiz do site (public_html/), nome FIXO.
 // Faz o pixel server-side do dashmonster nascer como 1ª parte no Safari/iOS.
+// PRÉ-REQUISITO: o site precisa estar em HTTPS — o cookie é marcado Secure e o
+// navegador ignora cookie Secure em conexão HTTP (a captura ainda funciona,
+// mas a persistência de 400 dias do _dm_uid só vale sob HTTPS).
 define('DASHMONSTER_BASE', '${dashmonsterBase}/api/tracking'); // hardcoded — NUNCA de input do request (SSRF)
 
 $ep = $_GET['ep'] ?? '';
@@ -49,8 +52,11 @@ curl_close($ch);
 
 http_response_code($status ?: 502);
 foreach (explode("\\r\\n", substr($response, 0, $headerSize)) as $line) {
-  // só repassa Content-Type e Set-Cookie — nunca todos os headers cegamente
-  if (stripos($line, 'content-type:') === 0 || stripos($line, 'set-cookie:') === 0) {
+  // só repassa Content-Type, Set-Cookie e Cache-Control — nunca todos os
+  // headers cegamente. Cache-Control importa pro pixel.js (servido no-store
+  // enquanto itera): sem repassar, o navegador podia cachear via heurística e
+  // rodar uma versão velha do script depois de um deploy.
+  if (stripos($line, 'content-type:') === 0 || stripos($line, 'set-cookie:') === 0 || stripos($line, 'cache-control:') === 0) {
     header($line, false);
   }
 }

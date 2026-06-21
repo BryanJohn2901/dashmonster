@@ -34,6 +34,8 @@ function buildPixelScript(apiBase: string, proxyMode: boolean): string {
   var PROXY_MODE = ${proxyMode ? "true" : "false"};
   var COOKIE_NAME = "_dm_uid";
   var COOKIE_DAYS = 400; // máximo aceito pelo Chrome pra cookies de 1ª parte
+  // Id do visitante memoizado por carga de página — ver getUserId().
+  var cachedUserId = null;
   var inFlightForms = new WeakSet();
   // Qual pixel da empresa usar (migration 037, 1 por landing page/produto) —
   // omitido em Tracker.init() = usa o pixel "is_default" da empresa.
@@ -77,7 +79,13 @@ function buildPixelScript(apiBase: string, proxyMode: boolean): string {
   }
 
   function initMetaConfig(clientId) {
-    var url = CONFIG_URL + "?client_id=" + encodeURIComponent(clientId);
+    // CONFIG_URL em modo proxy já tem query string ("/dm-proxy.php?ep=config"),
+    // em modo direto não (".../api/tracking/config") — escolher o separador
+    // certo, senão o proxy receberia "?ep=config?client_id=..." (2º "?"
+    // literal): o PHP parsearia ep="config?client_id=..." (fora da allowlist)
+    // e responderia 400, e o fbq nunca carregaria em modo proxy.
+    var sep = CONFIG_URL.indexOf("?") >= 0 ? "&" : "?";
+    var url = CONFIG_URL + sep + "client_id=" + encodeURIComponent(clientId);
     if (currentPixelSlug) url += "&pixel_slug=" + encodeURIComponent(currentPixelSlug);
     fetch(url)
       .then(function (r) { return r.json(); })
@@ -125,13 +133,20 @@ function buildPixelScript(apiBase: string, proxyMode: boolean): string {
   }
 
   function getUserId() {
-    var id = readCookie(COOKIE_NAME);
-    if (!id) id = randomId();
-    // EM MODO PROXY, NUNCA escrever esse cookie via JS — é o servidor (através
-    // do dm-proxy.php) que manda o Set-Cookie na resposta do /track-event. Se
-    // o JS escrevesse aqui TAMBÉM, o Safari reaplicaria o cap de 7 dias nessa
-    // escrita e anularia o proxy inteiro (o cap é por ESCRITA via
-    // document.cookie, não importa a origem/intenção).
+    // Memoiza por carga de página: em MODO PROXY o cookie não é gravado via JS
+    // (quem grava é o servidor, via Set-Cookie na resposta do /track-event),
+    // então sem memoização, na 1ª visita — antes da resposta do 1º evento
+    // voltar e o cookie ficar legível — cada chamada geraria um randomId()
+    // NOVO, e 2 eventos quase simultâneos (PageView + Lead) iriam com user_id
+    // diferente, virando 2 fingerprints pro mesmo visitante. Travar 1 id por
+    // página resolve nos 2 modos (o servidor grava ESSE id no cookie 1ª parte;
+    // a próxima página lê do cookie).
+    if (cachedUserId) return cachedUserId;
+    var id = readCookie(COOKIE_NAME) || randomId();
+    // EM MODO PROXY, NUNCA escrever esse cookie via JS — se o JS escrevesse, o
+    // Safari reaplicaria o cap de 7 dias nessa escrita e anularia o proxy
+    // inteiro (o cap é por ESCRITA via document.cookie, não importa a
+    // origem/intenção).
     if (!PROXY_MODE) {
       // Regrava (mesmo quando o cookie já existia) pra empurrar a validade pra
       // +400 dias a partir de AGORA — sem isso, o cookie só valeria 400 dias da
@@ -143,6 +158,7 @@ function buildPixelScript(apiBase: string, proxyMode: boolean): string {
       // proxy, nem o pixel da própria Meta consegue).
       writeCookie(COOKIE_NAME, id, COOKIE_DAYS);
     }
+    cachedUserId = id;
     return id;
   }
 
