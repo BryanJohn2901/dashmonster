@@ -194,6 +194,32 @@ describe("POST /api/tracking/track-event", () => {
     expect(setCookie).toContain("SameSite=Lax");
   });
 
+  it("ping=true (botão Testar do modo proxy): valida domínio e manda Set-Cookie, mas NÃO grava events_log nem chama Meta", async () => {
+    mockHappyPath();
+    const res = await POST(
+      buildRequest({ client_id: "acme", event_name: "ProxyTest", event_url: "http://localhost:3000/", ping: true }),
+    );
+
+    expect(res.status).toBe(200);
+    expect((await res.json()).ping).toBe(true);
+    expect(res.headers.get("set-cookie")).toContain("_dm_uid=");
+    expect(mockInsert).not.toHaveBeenCalled();
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("ping=true ainda é bloqueado por domínio não autorizado (mesma validação de um evento real)", async () => {
+    mockHappyPath();
+    const res = await POST(
+      buildRequest(
+        { client_id: "acme", event_name: "ProxyTest", event_url: "http://outrosite.com/", ping: true },
+        { origin: "http://outrosite.com" },
+      ),
+    );
+
+    expect(res.status).toBe(403);
+    expect(mockInsert).not.toHaveBeenCalled();
+  });
+
   it("cai pro hash de IP+UA quando não vem user_id (fallback)", async () => {
     mockHappyPath();
     await POST(buildRequest({ client_id: "acme", event_name: "PageView", event_url: "http://localhost:3000/" }));

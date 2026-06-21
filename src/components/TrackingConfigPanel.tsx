@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Save, Plus, Trash2, Star, Download, AlertTriangle } from "lucide-react";
+import { Loader2, Save, Plus, Trash2, Star, Download, AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
 import { toast } from "@/hooks/useToast";
 import {
   fetchTrackingPixels, createTrackingPixel, updateTrackingPixel, deleteTrackingPixel, setDefaultTrackingPixel, verifyMetaToken,
@@ -13,6 +13,17 @@ const inputCls = "h-11 rounded-xl border px-3.5 text-[13px] outline-none transit
 const inputStyle = { borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" } as React.CSSProperties;
 const btnPrimary = "flex items-center justify-center gap-1.5 rounded-xl px-4 text-xs font-bold text-white transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-40 disabled:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6366C8] focus-visible:ring-offset-1";
 const btnPrimaryStyle = { background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)" } as React.CSSProperties;
+
+// Resposta de POST /api/tracking/test-proxy (botão "Testar" do modo proxy).
+interface TestProxyResult {
+  scriptFound: boolean;
+  pageError: string | null;
+  configOk: boolean;
+  configError: string | null;
+  cookieOk: boolean;
+  cookieError: string | null;
+  allOk: boolean;
+}
 
 // Lista + CRUD de pixels de tracking (1 empresa pode ter N, ex.: 1 por landing
 // page/produto) — usado tanto no Estúdio da Empresa quanto direto na aba
@@ -117,6 +128,9 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
   // o cliente subir o dm-proxy.php no PRÓPRIO domínio dele primeiro (botão
   // de download abaixo). Ver CLAUDE.md desta pasta pro raciocínio completo.
   const [installMode, setInstallMode] = useState<"direct" | "proxy">("direct");
+  const [testUrl, setTestUrl] = useState("");
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<TestProxyResult | null>(null);
 
   const dirty =
     name !== pixel.name ||
@@ -201,6 +215,29 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
     } catch { toast.error("Não foi possível copiar."); }
   };
 
+  const runProxyTest = async () => {
+    if (!testUrl.trim()) return;
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const res = await fetch("/api/tracking/test-proxy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: testUrl.trim(), companySlug: company.slug, pixelSlug: pixel.slug }),
+      });
+      const json = (await res.json()) as TestProxyResult | { error: string };
+      if (!res.ok || "error" in json) {
+        toast.error("error" in json ? json.error : "Erro ao testar.");
+        return;
+      }
+      setTestResult(json);
+    } catch {
+      toast.error("Não foi possível rodar o teste.");
+    } finally {
+      setTesting(false);
+    }
+  };
+
   return (
     <div className="space-y-3 rounded-2xl border p-4" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)" }}>
       <div className="flex items-center gap-2">
@@ -261,6 +298,53 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
             >
               <Download size={11} /> Baixar dm-proxy.php
             </a>
+
+            <div className="mt-3 border-t pt-3" style={{ borderColor: "var(--dm-border-default)" }}>
+              <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
+                Testar instalação (opcional)
+              </span>
+              <div className="flex items-center gap-2">
+                <input
+                  value={testUrl}
+                  onChange={(e) => setTestUrl(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") void runProxyTest(); }}
+                  placeholder="https://meusite.com.br/pagina"
+                  className={`flex-1 ${inputCls} h-9 font-mono text-[11px]`}
+                  style={inputStyle}
+                />
+                <button
+                  type="button"
+                  onClick={() => void runProxyTest()}
+                  disabled={testing || !testUrl.trim()}
+                  className="flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[10px] font-bold transition-opacity hover:opacity-80 disabled:opacity-40"
+                  style={{ borderColor: "var(--dm-border-default)", color: BRAND }}
+                >
+                  {testing ? <Loader2 size={12} className="animate-spin" /> : null} Testar
+                </button>
+              </div>
+
+              {testResult && (
+                <ul className="mt-2 space-y-1 text-[10px]">
+                  {([
+                    ["Script instalado na página", testResult.scriptFound, testResult.pageError],
+                    ["dm-proxy.php no ar e conectado ao backend", testResult.configOk, testResult.configError],
+                    ["Cookie nasce 1ª parte (Set-Cookie)", testResult.cookieOk, testResult.cookieError],
+                  ] as [string, boolean, string | null][]).map(([label, ok, error]) => (
+                    <li key={label} className="flex items-start gap-1.5">
+                      {ok ? (
+                        <CheckCircle2 size={12} className="mt-0.5 flex-shrink-0" style={{ color: "#05CD99" }} />
+                      ) : (
+                        <XCircle size={12} className="mt-0.5 flex-shrink-0" style={{ color: "#F25767" }} />
+                      )}
+                      <span style={{ color: ok ? "var(--dm-text-secondary)" : "#F25767" }}>
+                        {label}
+                        {!ok && error ? ` — ${error}` : ""}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
         )}
       </div>

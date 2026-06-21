@@ -157,6 +157,8 @@ interface TrackEventPayload {
   /** Email/telefone/nome/demais campos em texto puro (não hasheados) — só pra exibição/relatório no dashboard, NUNCA repassados à Meta. */
   pii?: { email?: string; phone?: string; name?: string; fields?: Record<string, string> };
   custom_data?: Record<string, unknown>;
+  /** Usado só pelo botão "Testar" do modo proxy (test-proxy/route.ts) — confirma que o Set-Cookie chega íntegro pelo domínio do cliente sem gravar nenhum evento de verdade. */
+  ping?: boolean;
 }
 
 function corsHeaders(origin: string | null): HeadersInit {
@@ -251,6 +253,15 @@ export async function POST(request: NextRequest) {
     if (!requestHostname) {
       console.warn(`[tracking] origem ausente para ${payload.client_id}, seguindo mesmo assim (MVP).`);
     }
+  }
+
+  // Ping de diagnóstico (test-proxy/route.ts, botão "Testar" do modo proxy) —
+  // já passou pela MESMA validação de domínio de um evento real (linhas acima),
+  // então prova que o dominio_autorizado bate, mas não grava nada em events_log
+  // nem manda pra Meta. O único propósito é provar que o Set-Cookie abaixo
+  // sobrevive a ida e volta pelo domínio do cliente.
+  if (payload.ping) {
+    return NextResponse.json({ received: true, ping: true }, { status: 200, headers: withTrackingCookie(headers, "dm-proxy-test") });
   }
 
   const ip =
