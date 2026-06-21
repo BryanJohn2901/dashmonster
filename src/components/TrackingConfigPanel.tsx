@@ -242,15 +242,17 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
         <pre className="overflow-x-auto px-3 py-2.5 font-mono text-[11px] leading-relaxed" style={{ color: "var(--dm-text-secondary)" }}>{snippet}</pre>
         {installMode === "proxy" && (
           <div className="border-t px-3 py-2.5" style={{ borderColor: "var(--dm-border-default)" }}>
-            <p className="mb-2 flex items-start gap-1.5 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+            <div className="mb-2 flex items-start gap-1.5 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
               <AlertTriangle size={12} className="mt-0.5 flex-shrink-0" style={{ color: "#F4A60D" }} />
-              O Safari/iPhone corta a validade do cookie de visitante pra 7 dias quando ele é gravado via JavaScript — sem
-              jeito de evitar isso direto do navegador. Esse modo resolve hospedando um arquivo pequeno (PHP) no PRÓPRIO
-              domínio do cliente, que faz o cookie nascer como se fosse do site dele. Baixe abaixo, suba na raiz do site
-              (<code>public_html/</code>) <strong>sem renomear</strong>, e use o snippet acima em <strong>todas</strong> as
-              páginas do domínio — misturar instalação direta e com proxy no mesmo domínio pode fazer o mesmo visitante
-              aparecer como 2 pessoas diferentes no histórico.
-            </p>
+              <p>
+                O Safari/iPhone corta a validade do cookie de visitante pra 7 dias quando ele é gravado via JavaScript — sem
+                jeito de evitar isso direto do navegador. Esse modo resolve hospedando um arquivo pequeno (PHP) no PRÓPRIO
+                domínio do cliente, que faz o cookie nascer como se fosse do site dele. Baixe abaixo, suba na raiz do site
+                (<code>public_html/</code>) <strong>sem renomear</strong>, e use o snippet acima em <strong>todas</strong> as
+                páginas do domínio — misturar instalação direta e com proxy no mesmo domínio pode fazer o mesmo visitante
+                aparecer como 2 pessoas diferentes no histórico.
+              </p>
+            </div>
             <a
               href="/api/tracking/proxy-template"
               download="dm-proxy.php"
