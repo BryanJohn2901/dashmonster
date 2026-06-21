@@ -159,6 +159,8 @@ interface TrackEventPayload {
   custom_data?: Record<string, unknown>;
   /** Usado só pelo botão "Testar" do modo proxy (test-proxy/route.ts) — confirma que o Set-Cookie chega íntegro pelo domínio do cliente sem gravar nenhum evento de verdade. */
   ping?: boolean;
+  /** "proxy" | "direct" — mandado pelo próprio pixel.js (PROXY_MODE, decidido no servidor em pixel.js/route.ts), migration 057. Null em payload antigo/cliente em cache. */
+  via?: string;
 }
 
 function corsHeaders(origin: string | null): HeadersInit {
@@ -314,6 +316,9 @@ export async function POST(request: NextRequest) {
     latitude: geo.latitude ?? null,
     longitude: geo.longitude ?? null,
     device_type: classifyDevice(userAgent),
+    // "proxy"/"direct" (migration 057) — mandado pelo pixel.js, null se vier
+    // de outro valor/ausente (payload velho, cliente em cache).
+    via: payload.via === "proxy" || payload.via === "direct" ? payload.via : null,
     // fbp/fbc já eram repassados pra Meta CAPI (abaixo) mas nunca ficavam
     // salvos — migration 040. Persistir é o que permite uma venda da Eduzz,
     // quando correlacionada por email/telefone a esta visita, reaproveitar

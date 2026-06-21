@@ -59,6 +59,8 @@ interface TrackingEvent {
   main_sale_transaction_id: string | null;
   /** User-Agent crú do navegador (migration 047) — só eventos de pixel mandam isso direto (venda Eduzz só tem se a visita foi correlacionada). Usado pra extrair OS/modelo (ver `parseUserAgent`), nunca exibido crú (string enorme, pouco legível). */
   client_user_agent: string | null;
+  /** "proxy" | "direct" | null — migration 057. Mandado pelo pixel.js (PROXY_MODE, decidido no servidor); null em evento antigo ou venda Eduzz (não passa por aqui). */
+  via: string | null;
   created_at: string;
 }
 
@@ -79,6 +81,10 @@ interface Visitor {
   lastPageTitle: string | null;
   lastUtm: Record<string, string>;
   lastLocation: { country: string | null; countryRegion: string | null; city: string | null };
+  /** UA crú do evento mais recente — null quando essa linha não tem (ex.: venda Eduzz sem visita correlacionada). Usado pras colunas OS/Dispositivo/Browser da tabela (ver parseOS/parseUserAgent/parseBrowser). */
+  lastUserAgent: string | null;
+  /** "proxy" | "direct" | null — do evento mais recente que tiver isso preenchido (mesma lógica de lastUserAgent). */
+  lastVia: string | null;
   isCustomer: boolean;
   totalRevenue: number;
   purchaseCount: number;
@@ -123,6 +129,8 @@ const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
   skipped: { bg: "rgba(100,116,139,0.12)", text: "var(--dm-text-tertiary)" },
 };
 
+const DEVICE_LABELS: Record<"mobile" | "tablet" | "desktop", string> = { mobile: "Celular", tablet: "Tablet", desktop: "Desktop" };
+
 const UTM_KEYS = [
   "utm_source",
   "utm_medium",
@@ -138,7 +146,7 @@ const UTM_KEYS = [
 const EVENTS_SELECT =
   "id, event_name, fingerprint_id, event_url, page_title, user_data, lead_email, lead_phone, lead_name, extra_fields, country, country_region, city, event_id, " +
   "utm_source, utm_medium, utm_campaign, utm_content, utm_term, utm_placement, utm_campaign_id, utm_adset_id, utm_ad_id, " +
-  "value, currency, external_transaction_id, source, payment_method, installments, installment_number, installment_value, recurrence_key, product_name, is_order_bump, main_sale_transaction_id, client_user_agent, capi_status, capi_error, created_at";
+  "value, currency, external_transaction_id, source, payment_method, installments, installment_number, installment_value, recurrence_key, product_name, is_order_bump, main_sale_transaction_id, client_user_agent, via, capi_status, capi_error, created_at";
 // Sem as colunas das migrations 033/034/036/038/039/040/043/044 — usado se alguma delas ainda não rodou
 // no banco, pra não derrubar a tela enquanto ela não é aplicada manualmente no Supabase.
 const EVENTS_SELECT_FALLBACK = "id, event_name, fingerprint_id, event_url, user_data, lead_email, lead_phone, capi_status, capi_error, created_at";
@@ -300,7 +308,11 @@ function parseUserAgent(ua: string | null): { device: "mobile" | "tablet" | "des
   m = ua.match(/Android (\d+(?:\.\d+)?)(?:;\s*([^;)]+))?/);
   if (m) {
     const model = m[2]?.trim().replace(/\s*Build.*$/i, "");
-    const device = /tablet/i.test(ua) ? "tablet" : "mobile";
+    // Convenção do Android: UA de TABLET OMITE o token "Mobile" — não tem
+    // relação com a palavra literal "tablet" aparecer no UA (raramente
+    // aparece). Bug real corrigido: um Galaxy Tab (ex.: "SM-T580") sem
+    // "Mobile" no UA caía sempre em "mobile" por engano antes desse fix.
+    const device = /Mobile/i.test(ua) ? "mobile" : "tablet";
     return { device, label: model && model.length > 0 && model.length < 40 ? `Android ${m[1]} · ${model}` : `Android ${m[1]}` };
   }
 
@@ -316,6 +328,34 @@ function parseUserAgent(ua: string | null): { device: "mobile" | "tablet" | "des
   if (/CrOS/.test(ua)) return { device: "desktop", label: "Chrome OS" };
   if (/Linux/.test(ua)) return { device: "desktop", label: "Linux" };
 
+  return null;
+}
+
+// Versão "crua" do sistema operacional pra coluna própria da tabela (OS), sem
+// misturar modelo de aparelho — diferente de `parseUserAgent` acima, que
+// monta um label combinado (OS + modelo) pra exibição no drawer do visitante.
+function parseOS(ua: string | null): string | null {
+  const parsed = parseUserAgent(ua);
+  if (!parsed) return null;
+  // Remove o "· modelo" do label combinado (só existe pra Android) — sobra só o SO.
+  return parsed.label.split(" · ")[0];
+}
+
+// Navegador a partir do User-Agent — checagem em ordem de especificidade:
+// navegadores in-app (Facebook/Instagram) e baseados em Chromium (Edge, Opera,
+// Samsung Internet) incluem o token "Chrome"/"Safari" no próprio UA, então
+// teriam falso positivo se Chrome/Safari fossem checados primeiro.
+function parseBrowser(ua: string | null): string | null {
+  if (!ua) return null;
+  if (/FBAN|FBAV|FB_IAB/.test(ua)) return "Facebook (in-app)";
+  if (/Instagram/.test(ua)) return "Instagram (in-app)";
+  if (/MicroMessenger/.test(ua)) return "WeChat (in-app)";
+  if (/EdgiOS|EdgA|Edg\//.test(ua)) return "Edge";
+  if (/OPR\/|OPiOS|Opera/.test(ua)) return "Opera";
+  if (/SamsungBrowser/.test(ua)) return "Samsung Internet";
+  if (/CriOS|Chrome\//.test(ua)) return "Chrome";
+  if (/FxiOS|Firefox/.test(ua)) return "Firefox";
+  if (/Safari/.test(ua) && /Version\//.test(ua)) return "Safari";
   return null;
 }
 
@@ -361,6 +401,11 @@ function groupByVisitor(events: TrackingEvent[]): Visitor[] {
       lastPageTitle: sorted[0].page_title,
       lastUtm: resolveUtm(sorted[0]),
       lastLocation: { country: sorted[0].country, countryRegion: sorted[0].country_region, city: sorted[0].city },
+      // Mais recente primeiro (sorted) — pega o 1º evento que TEM UA, não
+      // necessariamente sorted[0] (ex.: a Purchase mais recente pode não ter
+      // UA por não ter casado com nenhuma visita, mas a PageView anterior tem).
+      lastUserAgent: sorted.find((e) => e.client_user_agent)?.client_user_agent ?? null,
+      lastVia: sorted.find((e) => e.via)?.via ?? null,
       isCustomer: purchaseEvents.length > 0,
       totalRevenue: purchaseEvents.reduce((sum, e) => sum + (e.value ?? 0), 0),
       purchaseCount: purchaseEvents.length,
@@ -672,6 +717,7 @@ export function TrackingEventsView() {
   const [search, setSearch] = useState("");
   const [eventFilter, setEventFilter] = useState<string | null>(null);
   const [paymentMethodFilter, setPaymentMethodFilter] = useState<string | null>(null);
+  const [deviceFilter, setDeviceFilter] = useState<"mobile" | "tablet" | "desktop" | null>(null);
   const [selectedVisitor, setSelectedVisitor] = useState<Visitor | null>(null);
 
   const [dateFrom, setDateFrom] = useState(() => new Date(Date.now() - 30 * 86400_000).toISOString().split("T")[0]);
@@ -717,7 +763,7 @@ export function TrackingEventsView() {
       "page_title", "extra_fields", "country", "country_region", "city", "event_id",
       "utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "utm_placement", "utm_campaign_id", "utm_adset_id", "utm_ad_id",
       "lead_name", "value", "currency", "external_transaction_id", "source", "payment_method", "installments", "installment_number", "installment_value", "recurrence_key", "product_name",
-      "is_order_bump", "main_sale_transaction_id", "client_user_agent",
+      "is_order_bump", "main_sale_transaction_id", "client_user_agent", "via",
     ].some((col) => eventsRes.error?.message?.includes(col));
     if (missingNewColumn) {
       // Migration 033/034/038/039/040 ainda não rodou no Supabase — busca sem as colunas novas em vez de quebrar a tela.
@@ -755,13 +801,23 @@ export function TrackingEventsView() {
   const filteredVisitors = visitors.filter((v) => {
     if (eventFilter && !v.events.some((e) => e.event_name === eventFilter)) return false;
     if (eventFilter === "Purchase" && paymentMethodFilter && !v.events.some((e) => e.event_name === "Purchase" && e.payment_method === paymentMethodFilter)) return false;
+    if (deviceFilter && parseUserAgent(v.lastUserAgent)?.device !== deviceFilter) return false;
     if (search) {
       const q = search.toLowerCase();
+      // Inclui OS/navegador/dispositivo (ex.: "iphone", "android", "chrome")
+      // — dá pra filtrar por aparelho sem precisar de um chip novo por valor
+      // possível (OS tem dezenas de combinações de versão).
+      const device = parseUserAgent(v.lastUserAgent);
+      const os = parseOS(v.lastUserAgent);
+      const browser = parseBrowser(v.lastUserAgent);
       return (
         v.fingerprintId.toLowerCase().includes(q) ||
         v.events.some((e) => e.event_url?.toLowerCase().includes(q) || e.page_title?.toLowerCase().includes(q)) ||
         v.anyEmail?.toLowerCase().includes(q) ||
         v.anyPhone?.toLowerCase().includes(q) ||
+        os?.toLowerCase().includes(q) ||
+        browser?.toLowerCase().includes(q) ||
+        (device && DEVICE_LABELS[device.device].toLowerCase().includes(q)) ||
         false
       );
     }
@@ -773,6 +829,9 @@ export function TrackingEventsView() {
   // mostra o chip pra filtrar quando o usuário já está olhando "Compra" (filtro
   // secundário, igual ao padrão de eventTypes acima).
   const paymentMethods = [...new Set(events.filter((e) => e.event_name === "Purchase" && e.payment_method).map((e) => e.payment_method as string))];
+  // Categorias de dispositivo (Celular/Tablet/Desktop) realmente vistas no
+  // período — mesmo padrão de eventTypes/paymentMethods acima.
+  const deviceCategories = [...new Set(visitors.map((v) => parseUserAgent(v.lastUserAgent)?.device).filter((d): d is "mobile" | "tablet" | "desktop" => Boolean(d)))];
   // Captura funciona sem Meta — isso é só um lembrete de que o envio CAPI está desligado, não um erro.
   const metaNotConfigured = !loading && !error && !anyMetaConfigured;
 
@@ -872,7 +931,7 @@ export function TrackingEventsView() {
           <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: "var(--dm-text-tertiary)" }} />
           <input
             type="text"
-            placeholder="URL, e-mail, telefone ou fingerprint..."
+            placeholder="URL, e-mail, telefone, fingerprint, OS ou navegador..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full rounded-lg border pl-7 pr-3 py-1.5 text-xs"
@@ -894,6 +953,15 @@ export function TrackingEventsView() {
                 setPaymentMethodFilter(null);
               }}
             />
+          ))}
+        </div>
+      )}
+
+      {/* Dispositivo (Celular/Tablet/Desktop) — inferido do User-Agent do evento mais recente */}
+      {deviceCategories.length > 1 && (
+        <div className="mb-2 flex flex-wrap gap-1.5">
+          {deviceCategories.map((d) => (
+            <Chip key={d} label={DEVICE_LABELS[d]} active={deviceFilter === d} onClick={() => setDeviceFilter(deviceFilter === d ? null : d)} />
           ))}
         </div>
       )}
@@ -969,7 +1037,7 @@ export function TrackingEventsView() {
           <table className="w-full min-w-[680px] text-xs">
             <thead>
               <tr style={{ borderBottom: "1px solid var(--dm-border-default)", background: "var(--dm-bg-elevated)" }}>
-                {["Visitante", "Última ação", "Eventos", "Origem / UTM", "Local", "Conversão"].map((h) => (
+                {["Visitante", "Última ação", "Eventos", "Origem / UTM", "Local", "OS", "Dispositivo", "Browser", "Via", "Conversão"].map((h) => (
                   <th key={h} className="px-4 py-2.5 text-left font-semibold" style={{ color: "var(--dm-text-tertiary)" }}>
                     {h}
                   </th>
@@ -979,6 +1047,9 @@ export function TrackingEventsView() {
             <tbody>
               {filteredVisitors.map((visitor, i) => {
                 const utmEntries = Object.entries(visitor.lastUtm);
+                const device = parseUserAgent(visitor.lastUserAgent);
+                const os = parseOS(visitor.lastUserAgent);
+                const browser = parseBrowser(visitor.lastUserAgent);
                 return (
                   <tr
                     key={visitor.fingerprintId}
@@ -992,8 +1063,8 @@ export function TrackingEventsView() {
                     <td className="px-4 py-2.5 font-mono text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
                       {visitor.fingerprintId.slice(0, 12)}…
                     </td>
-                    <td className="px-4 py-2.5 tabular-nums whitespace-nowrap" style={{ color: "var(--dm-text-secondary)" }} title={fmt(visitor.lastSeen)}>
-                      {relativeTime(visitor.lastSeen)}
+                    <td className="px-4 py-2.5 tabular-nums whitespace-nowrap" style={{ color: "var(--dm-text-secondary)" }} title={relativeTime(visitor.lastSeen)}>
+                      {fmt(visitor.lastSeen)}
                     </td>
                     <td className="px-4 py-2.5" style={{ color: "var(--dm-text-secondary)" }}>
                       {visitor.events.length}
@@ -1015,6 +1086,26 @@ export function TrackingEventsView() {
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap" style={{ color: "var(--dm-text-secondary)" }}>
                       {formatLocation(visitor.lastLocation) || <span style={{ color: "var(--dm-text-tertiary)" }}>—</span>}
+                    </td>
+                    <td className="px-4 py-2.5 whitespace-nowrap" style={{ color: "var(--dm-text-secondary)" }}>
+                      {os ?? <span style={{ color: "var(--dm-text-tertiary)" }}>—</span>}
+                    </td>
+                    <td className="px-4 py-2.5 whitespace-nowrap" style={{ color: "var(--dm-text-secondary)" }}>
+                      {device ? DEVICE_LABELS[device.device] : <span style={{ color: "var(--dm-text-tertiary)" }}>—</span>}
+                    </td>
+                    <td className="px-4 py-2.5 whitespace-nowrap" style={{ color: "var(--dm-text-secondary)" }}>
+                      {browser ?? <span style={{ color: "var(--dm-text-tertiary)" }}>—</span>}
+                    </td>
+                    <td className="px-4 py-2.5 whitespace-nowrap">
+                      {visitor.lastVia === "proxy" ? (
+                        <span className="rounded-full px-2 py-0.5 text-[9px] font-semibold" style={{ background: "rgba(5,205,153,0.12)", color: "#05CD99" }} title="Cookie 1ª parte via dm-proxy.php — sem o cap de 7 dias do Safari/iOS">
+                          Proxy
+                        </span>
+                      ) : visitor.lastVia === "direct" ? (
+                        <span style={{ color: "var(--dm-text-tertiary)" }}>Direto</span>
+                      ) : (
+                        <span style={{ color: "var(--dm-text-tertiary)" }}>—</span>
+                      )}
                     </td>
                     <td className="px-4 py-2.5">
                       <div className="flex flex-wrap items-center gap-1">

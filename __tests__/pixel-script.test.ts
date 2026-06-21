@@ -27,6 +27,14 @@ describe("GET /api/tracking/pixel.js", () => {
     expect(script).toMatch(/if \(!PROXY_MODE\) \{\s*\n\s*\/\/.*\n(\s*\/\/.*\n)*\s*writeCookie\(COOKIE_NAME, id, COOKIE_DAYS\);/);
   });
 
+  it("manda via:\"proxy\"/\"direct\" em todo evento (migration 057), pro dashboard saber se o cookie nasceu 1ª parte", async () => {
+    const direct = await GET(buildRequest());
+    const proxied = await GET(buildRequest("?via=proxy"));
+
+    expect(await direct.text()).toContain('via: PROXY_MODE ? "proxy" : "direct"');
+    expect(await proxied.text()).toContain('via: PROXY_MODE ? "proxy" : "direct"');
+  });
+
   it("cache desligado (no-store) nos 2 modos — script ainda itera, não pode cachear versão errada", async () => {
     const direct = await GET(buildRequest());
     const proxied = await GET(buildRequest("?via=proxy"));

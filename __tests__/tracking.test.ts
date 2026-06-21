@@ -194,6 +194,16 @@ describe("POST /api/tracking/track-event", () => {
     expect(setCookie).toContain("SameSite=Lax");
   });
 
+  it("grava via=\"proxy\"/\"direct\" mandado pelo pixel.js (migration 057) — null quando ausente (payload velho)", async () => {
+    mockHappyPath();
+    await POST(buildRequest({ client_id: "acme", event_name: "PageView", event_url: "http://localhost:3000/", via: "proxy" }));
+    expect(mockInsert).toHaveBeenCalledWith(expect.objectContaining({ via: "proxy" }));
+
+    mockHappyPath();
+    await POST(buildRequest({ client_id: "acme", event_name: "PageView", event_url: "http://localhost:3000/" }));
+    expect(mockInsert).toHaveBeenCalledWith(expect.objectContaining({ via: null }));
+  });
+
   it("ping=true (botão Testar do modo proxy): valida domínio e manda Set-Cookie, mas NÃO grava events_log nem chama Meta", async () => {
     mockHappyPath();
     const res = await POST(

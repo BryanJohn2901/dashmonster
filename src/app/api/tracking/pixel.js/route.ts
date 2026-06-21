@@ -240,6 +240,7 @@ function buildPixelScript(apiBase: string, proxyMode: boolean): string {
         event_id: eventId,
         fbp: getFbp() || undefined,
         fbc: getFbc() || undefined,
+        via: PROXY_MODE ? "proxy" : "direct",
       },
       extra,
       { user_data: enrichedUserData }
