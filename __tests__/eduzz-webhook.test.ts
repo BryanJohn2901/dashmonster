@@ -127,8 +127,10 @@ const mockOffersUpsert = jest.fn(() => Promise.resolve({ data: null, error: null
 // = comportamento de sempre, sem multiplicar nada (mesma ideia do default dos
 // outros mocks "sem dado" desta suite).
 const mockContractMaybeSingle = jest.fn(
-  (): Promise<{ data: { total_installments: number; is_finite: boolean; current_charge?: number } | null; error: { message: string } | null }> =>
-    Promise.resolve({ data: null, error: null }),
+  (): Promise<{
+    data: { total_installments: number; is_finite: boolean; current_charge?: number; charge_value?: number } | null;
+    error: { message: string } | null;
+  }> => Promise.resolve({ data: null, error: null }),
 );
 // findContractByCustomerAndProduct() (migration 056) é OUTRO formato de query
 // na MESMA tabela: 3x .eq() (company_id, customer_email, product_id) e dá
@@ -726,6 +728,22 @@ describe("POST /api/eduzz/webhook", () => {
     expect(mockUpdate).toHaveBeenCalledWith({ value: 120 });
   });
 
+  it("contract_created backfilla com desconto na 1ª parcela: usa charge_value (preço normal) nas outras parcelas, não installment_value × total", async () => {
+    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    // Purchase já gravada com o valor promocional da 1ª cobrança (98,50), sem multiplicação.
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: { id: "evt-p2", value: 98.5, installment_value: 98.5 }, error: null });
+
+    const payload = {
+      event: "myeduzz.contract_created",
+      data: { contract: { id: "sub-late-desconto", recurrence: { isFinite: true, price: { value: 197 }, charges: { current: 1, total: 19 } } } },
+    };
+    await POST(buildRequest(payload));
+
+    expect(mockUpdate).toHaveBeenCalledWith({ installments: 19 });
+    // 98,50 (1ª, promo) + 18 × 197 (preço normal da ficha) = 3.644,50 — NÃO 98,50 × 19 = 1.871,50.
+    expect(mockUpdate).toHaveBeenCalledWith({ value: 3644.5 });
+  });
+
   it("contract_created cura venda ÓRFÃ (recurrence_key NULL) por email+produto quando a ficha chega DEPOIS do invoice_paid sem contract.id", async () => {
     mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
     // orphanRes: exatamente 1 venda órfã (sem recurrence_key) com esse email+produto.
@@ -908,6 +926,26 @@ describe("POST /api/eduzz/webhook", () => {
     // a otimizar campanha pelo valor real do negócio, não só a 1ª cobrança).
     const sentBody = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
     expect(sentBody.data[0].custom_data.value).toBe(120);
+  });
+
+  it("oferta com desconto SÓ na 1ª parcela: valor cheio usa charge_value (preço normal) nas outras parcelas, não o valor promocional cobrado agora", async () => {
+    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // isKnownRecurrence: 1ª cobrança
+    mockNotYetProcessed();
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por email
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por telefone
+    mockProductPixelConfigured();
+    mockPixelMaybeSingle.mockResolvedValueOnce({ data: PIXEL_OK, error: null });
+    // ficha: 19 parcelas de R$197 (preço normal) — mas essa fatura cobrou só R$98,50 (1ª com 50% off).
+    mockContractMaybeSingle.mockResolvedValueOnce({ data: { total_installments: 19, is_finite: true, current_charge: 1, charge_value: 197 }, error: null });
+
+    const payload = { ...MODERN_PAYLOAD, data: { ...MODERN_PAYLOAD.data, paid: { value: 98.5, currency: "BRL" }, contract: { id: "sub-1a-com-desconto" } } };
+    await POST(buildRequest(payload));
+
+    // Valor cheio real: 98,50 (1ª, promo) + 18 × 197 (preço normal) = 3.644,50 — NÃO 98,50 × 19 = 1.871,50.
+    expect(mockInsert).toHaveBeenCalledWith(
+      expect.objectContaining({ value: 3644.5, recurrence_key: "sub-1a-com-desconto", installments: 19, installment_number: 1, installment_value: 98.5 }),
+    );
   });
 
   it("cura venda recorrente ÓRFÃ (contract: null no invoice_paid, bug real da Eduzz): email+produto acham EXATAMENTE 1 contrato -> vincula e trata como venda da assinatura", async () => {

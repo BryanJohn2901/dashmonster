@@ -265,6 +265,7 @@ async function upsertContractInfo(db: SupabaseClient, companyId: string, body: E
   const total = contract.recurrence?.charges?.total ?? null;
   const isFinite = contract.recurrence?.isFinite ?? null;
   const current = contract.recurrence?.charges?.current ?? null;
+  const chargeValue = contract.recurrence?.price?.value ?? null;
   const customerEmail = body.data?.customer?.email?.trim().toLowerCase() ?? null;
   const productId = body.data?.products?.[0]?.id ?? null;
   const startsAt = contract.recurrence?.startsAt ?? null;
@@ -276,7 +277,7 @@ async function upsertContractInfo(db: SupabaseClient, companyId: string, body: E
     total_installments: total,
     is_finite: isFinite,
     is_unlimited_installments: contract.isUnlimitedInstallments ?? null,
-    charge_value: contract.recurrence?.price?.value ?? null,
+    charge_value: chargeValue,
     currency: contract.recurrence?.price?.currency ?? null,
     current_charge: current,
     customer_email: customerEmail,
@@ -304,7 +305,7 @@ async function upsertContractInfo(db: SupabaseClient, companyId: string, body: E
   // do contrato) e installments null. Agora que a ficha chegou, corrige
   // retroativamente as linhas dessa assinatura. (Não reenvia pra Meta — o
   // evento da 1ª cobrança já foi; corrige só dashboard/relatório.)
-  await backfillContractValues(db, companyId, contract.id, total, isFinite, current, customerEmail, productId, startsAt, finishesAt);
+  await backfillContractValues(db, companyId, contract.id, total, isFinite, current, chargeValue, customerEmail, productId, startsAt, finishesAt);
 }
 
 // Backfill retroativo das linhas já gravadas de uma assinatura, quando a ficha
@@ -317,6 +318,7 @@ async function backfillContractValues(
   total: number | null,
   isFinite: boolean | null,
   current: number | null,
+  chargeValue: number | null,
   customerEmail: string | null,
   productId: string | null,
   startsAt: string | null,
@@ -389,10 +391,15 @@ async function backfillContractValues(
 
   const purchase = purchaseRes?.data as { id: string; value: number; installment_value: number | null } | null | undefined;
   if (purchase?.installment_value != null && Number(purchase.value) === Number(purchase.installment_value)) {
-    await db
-      .from("events_log")
-      .update({ value: Number(purchase.installment_value) * total })
-      .eq("id", purchase.id);
+    // Mesma lógica de recordSale()/displayValue: ofertas com "1ª parcela com
+    // desconto" têm `installment_value` (cobrança real, promocional) diferente
+    // de `chargeValue` (preço normal das demais parcelas, ficha do contrato) —
+    // multiplicar `installment_value × total` direto subestima o valor real do
+    // contrato. Com `chargeValue` conhecido, assume só ESSA cobrança como a
+    // "diferente"; sem ele, cai pro cálculo antigo (aproximação).
+    const correctedValue =
+      chargeValue != null ? Number(purchase.installment_value) + (total - 1) * chargeValue : Number(purchase.installment_value) * total;
+    await db.from("events_log").update({ value: correctedValue }).eq("id", purchase.id);
   }
 
   // `installment_number` da linha mais recente pode estar DESATUALIZADO: ele é
@@ -430,17 +437,22 @@ async function backfillContractValues(
 // `current_charge` abaixo). Sem ficha pra esse contractId ainda (ou coluna
 // migration 055 não rodada), devolve os 2 null — chamador cai pro
 // comportamento de sempre (valor da cobrança normal / contar linhas).
-async function findContractInfo(db: SupabaseClient, companyId: string, contractId: string): Promise<{ total: number | null; current: number | null }> {
+async function findContractInfo(
+  db: SupabaseClient,
+  companyId: string,
+  contractId: string,
+): Promise<{ total: number | null; current: number | null; chargeValue: number | null }> {
   let { data, error } = await db
     .from("eduzz_contracts")
-    .select("total_installments, is_finite, current_charge")
+    .select("total_installments, is_finite, current_charge, charge_value")
     .eq("company_id", companyId)
     .eq("contract_id", contractId)
     .maybeSingle();
-  // migration 055 (current_charge) pode ainda não ter rodado — sem isso, o
-  // SELECT inteiro falha e a gente perdia até o `total` (que já funcionava
-  // antes dessa coluna existir). Regrava sem ela em vez de regredir.
-  if (error?.message?.includes("current_charge")) {
+  // migration 055 (current_charge/charge_value) pode ainda não ter rodado —
+  // sem isso, o SELECT inteiro falha e a gente perdia até o `total` (que já
+  // funcionava antes dessas colunas existirem). Regrava sem elas em vez de
+  // regredir.
+  if (error?.message?.includes("current_charge") || error?.message?.includes("charge_value")) {
     ({ data, error } = await db
       .from("eduzz_contracts")
       .select("total_installments, is_finite")
@@ -448,10 +460,11 @@ async function findContractInfo(db: SupabaseClient, companyId: string, contractI
       .eq("contract_id", contractId)
       .maybeSingle());
   }
-  if (error || !data) return { total: null, current: null };
+  if (error || !data) return { total: null, current: null, chargeValue: null };
   return {
     total: data.is_finite && data.total_installments ? (data.total_installments as number) : null,
     current: (data as { current_charge?: number | null }).current_charge ?? null,
+    chargeValue: (data as { charge_value?: number | null }).charge_value ?? null,
   };
 }
 
@@ -750,9 +763,25 @@ async function recordSale(db: SupabaseClient, companyId: string, sale: SaleEvent
   // tocar na receita mensal que já está certa. Sem contrato conhecido (não
   // recorrente, ou contract_created/updated nunca chegou pra esse contractId),
   // cai pro valor normal — comportamento de sempre, sem inventar total.
-  const contractInfo = sale.recurrenceKey ? await findContractInfo(db, companyId, sale.recurrenceKey) : { total: null, current: null };
+  const contractInfo = sale.recurrenceKey
+    ? await findContractInfo(db, companyId, sale.recurrenceKey)
+    : { total: null, current: null, chargeValue: null };
   const contractTotalInstallments = contractInfo.total;
-  const displayValue = contractTotalInstallments ? sale.value * contractTotalInstallments : sale.value;
+  // Bug real confirmado em produção: ofertas com "1ª parcela com desconto"
+  // (ex.: 50% off só na 1ª) têm `sale.value` (valor cobrado AGORA) diferente
+  // do `charge_value` da ficha (preço normal das demais parcelas) —
+  // `sale.value * total` superestimava ou (mais comum) subestimava muito o
+  // valor real do contrato (ex.: 19x de R$197 com a 1ª a R$98,50: o cálculo
+  // antigo dava R$1.871,50 em vez dos R$3.644,50 reais). Quando a ficha tem
+  // `charge_value` e ele difere do valor cobrado nessa fatura, assume que só
+  // ESSA cobrança é a "diferente" (promoção pontual) e as outras `total - 1`
+  // valem o preço normal; sem `charge_value` conhecido, cai pro cálculo
+  // antigo (aproximação, melhor que nada).
+  const displayValue = !contractTotalInstallments
+    ? sale.value
+    : contractInfo.chargeValue != null
+      ? sale.value + (contractTotalInstallments - 1) * contractInfo.chargeValue
+      : sale.value * contractTotalInstallments;
 
   const { data: inserted, error: insertError } = await insertEventsLogRow(db, {
     company_id: companyId,
@@ -1009,7 +1038,9 @@ async function recordRenewal(db: SupabaseClient, companyId: string, sale: SaleEv
   // mostrando o nº da cobrança ANTERIOR (atrasada), e nesse caso a contagem de
   // linhas (que captura toda cobrança sem gap) já está mais avançada que a
   // ficha. Math.max cobre os 2 sentidos do race sem nunca subestimar.
-  const contractInfo = sale.recurrenceKey ? await findContractInfo(db, companyId, sale.recurrenceKey) : { total: null, current: null };
+  const contractInfo = sale.recurrenceKey
+    ? await findContractInfo(db, companyId, sale.recurrenceKey)
+    : { total: null, current: null, chargeValue: null };
   const contractTotalInstallments = contractInfo.total;
   const chargeNumber = sale.recurrenceKey
     ? Math.max(contractInfo.current ?? 0, (await countRecurrenceCharges(db, companyId, sale.recurrenceKey)) + 1)
