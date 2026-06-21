@@ -228,6 +228,10 @@ interface EduzzModernPayload {
 interface EduzzContractPayload {
   event?: string;
   data?: {
+    /** email do comprador — junto com `products[0].id`, é o que permite achar de volta o contrato certo quando uma venda chega "órfã" (ver `findContractByCustomerAndProduct`). Schema próprio desse evento, não confundir com `data.buyer` do invoice_paid. */
+    customer?: { email?: string };
+    /** produto vendido nesse contrato — `products[0].id` é o mesmo valor de `items[0].productId` no invoice_paid correspondente. */
+    products?: { id?: string }[];
     contract?: {
       id?: string;
       /** "sem limite" é sobre o LIMITE DO CARTÃO do comprador (não precisa do valor cheio disponível na 1ª cobrança) — não sobre a duração do contrato. O nº de parcelas é finito mesmo com isso true (confirmado na doc de ajuda da Eduzz). */
@@ -238,12 +242,21 @@ interface EduzzContractPayload {
         price?: { value?: number; currency?: string };
         /** nº de cobranças recorrentes — current = cobrança atual (1-based), total = total contratado. NÃO confundir com `contract.payment.installments` (forma de pagamento da cobrança em si, ex.: pix à vista = 1). */
         charges?: { current?: number; total?: number };
+        /** janela de vigência do contrato — usada (junto com email+produto) pra desambiguar quando o mesmo comprador reassinou o MESMO produto mais de 1 vez ao longo do tempo (2 contratos diferentes, mesmo email+produto). */
+        startsAt?: string;
+        finishesAt?: string;
       };
     };
   };
 }
 
 const CONTRACT_EVENTS = new Set(["myeduzz.contract_created", "myeduzz.contract_updated"]);
+// Colunas das migrations 055/056 — eduzz_contracts pode ainda não ter
+// recebido a migration mais recente; remove a 1ª que o erro do Postgres
+// mencionar e tenta de novo, até não sobrar nenhuma conhecida (mesmo padrão
+// de OPTIONAL_COLUMN_GROUPS de insertEventsLogRow, só que coluna por coluna
+// em vez de grupo, porque cada uma é independente/de migration própria).
+const OPTIONAL_CONTRACT_COLUMNS = ["current_charge", "customer_email", "product_id", "starts_at", "finishes_at"];
 
 async function upsertContractInfo(db: SupabaseClient, companyId: string, body: EduzzContractPayload): Promise<void> {
   const contract = body.data?.contract;
@@ -252,6 +265,10 @@ async function upsertContractInfo(db: SupabaseClient, companyId: string, body: E
   const total = contract.recurrence?.charges?.total ?? null;
   const isFinite = contract.recurrence?.isFinite ?? null;
   const current = contract.recurrence?.charges?.current ?? null;
+  const customerEmail = body.data?.customer?.email?.trim().toLowerCase() ?? null;
+  const productId = body.data?.products?.[0]?.id ?? null;
+  const startsAt = contract.recurrence?.startsAt ?? null;
+  const finishesAt = contract.recurrence?.finishesAt ?? null;
 
   const contractRow: Record<string, unknown> = {
     company_id: companyId,
@@ -262,13 +279,21 @@ async function upsertContractInfo(db: SupabaseClient, companyId: string, body: E
     charge_value: contract.recurrence?.price?.value ?? null,
     currency: contract.recurrence?.price?.currency ?? null,
     current_charge: current,
+    customer_email: customerEmail,
+    product_id: productId,
+    starts_at: startsAt,
+    finishes_at: finishesAt,
   };
   let { error } = await db.from("eduzz_contracts").upsert(contractRow, { onConflict: "company_id,contract_id" });
-  // migration 055 (current_charge) pode ainda não ter rodado no Supabase —
-  // mesmo padrão de resiliência de insertEventsLogRow: regrava sem a coluna
-  // nova em vez de perder a ficha inteira do contrato.
-  if (error?.message?.includes("current_charge")) {
-    delete contractRow.current_charge;
+  // migrations 055/056 podem ainda não ter rodado no Supabase — mesmo padrão
+  // de resiliência de insertEventsLogRow: regrava sem a(s) coluna(s) nova(s)
+  // em vez de perder a ficha inteira do contrato. Loop porque o Postgres só
+  // reporta 1 coluna ausente por vez — se mais de uma migration estiver
+  // pendente, precisa de mais de 1 retry.
+  while (error) {
+    const missingCol = OPTIONAL_CONTRACT_COLUMNS.find((col) => col in contractRow && error?.message?.includes(col));
+    if (!missingCol) break;
+    delete contractRow[missingCol];
     ({ error } = await db.from("eduzz_contracts").upsert(contractRow, { onConflict: "company_id,contract_id" }));
   }
   if (error) console.error("[eduzz webhook] falha ao gravar eduzz_contracts:", error.message);
@@ -279,7 +304,7 @@ async function upsertContractInfo(db: SupabaseClient, companyId: string, body: E
   // do contrato) e installments null. Agora que a ficha chegou, corrige
   // retroativamente as linhas dessa assinatura. (Não reenvia pra Meta — o
   // evento da 1ª cobrança já foi; corrige só dashboard/relatório.)
-  await backfillContractValues(db, companyId, contract.id, total, isFinite, current);
+  await backfillContractValues(db, companyId, contract.id, total, isFinite, current, customerEmail, productId, startsAt, finishesAt);
 }
 
 // Backfill retroativo das linhas já gravadas de uma assinatura, quando a ficha
@@ -292,7 +317,49 @@ async function backfillContractValues(
   total: number | null,
   isFinite: boolean | null,
   current: number | null,
+  customerEmail: string | null,
+  productId: string | null,
+  startsAt: string | null,
+  finishesAt: string | null,
 ): Promise<void> {
+  // Cura venda ÓRFÃ (recurrence_key NULL) que deveria pertencer a esse
+  // contrato — caso o invoice_paid tenha chegado ANTES da ficha E sem
+  // contract.id (os 2 problemas juntos; se a ficha já existia quando a venda
+  // chegou, quem cura é findContractByCustomerAndProduct() direto no POST).
+  // Roda INDEPENDENTE de total/isFinite — vincular o recurrence_key certo já
+  // vale a pena mesmo sem saber o total ainda; as correções de valor/parcelas
+  // abaixo, depois de vinculado (.eq("recurrence_key", contractId) volta a
+  // achar essa linha), terminam o resto. Só cura quando exatamente 1 órfã
+  // bate email+produto+vigência — nunca adivinha (mesmo critério de sempre).
+  // Deliberado NÃO curar todas de uma vez quando há 2+ órfãs do mesmo
+  // contrato (cobranças seguidas que TODAS chegaram sem contract.id, antes da
+  // ficha existir): `purchaseRes` mais abaixo espera NO MÁXIMO 1 linha
+  // "Purchase" por recurrence_key (`.maybeSingle()`) — curar todas ia exigir
+  // também reclassificar as demais pra "Renewal" em ordem cronológica, risco
+  // de corromper dado pra um caso composto raríssimo. Fica sem curar (estado
+  // atual, sem piorar nada) até alguém revisar manualmente.
+  if (customerEmail && productId) {
+    const orphanRes = await db
+      .from("events_log")
+      .select("id, created_at")
+      .eq("company_id", companyId)
+      .eq("event_name", "Purchase")
+      .is("recurrence_key", null)
+      .ilike("lead_email", customerEmail)
+      .eq("product_item_id", productId);
+    if (!orphanRes.error && orphanRes.data) {
+      const orphanCandidates = (orphanRes.data as { id: string; created_at: string }[]).filter((row) => {
+        const t = new Date(row.created_at).getTime();
+        const startsOk = !startsAt || new Date(startsAt).getTime() <= t;
+        const finishesOk = !finishesAt || new Date(finishesAt).getTime() >= t;
+        return startsOk && finishesOk;
+      });
+      if (orphanCandidates.length === 1) {
+        await db.from("events_log").update({ recurrence_key: contractId }).eq("id", orphanCandidates[0].id);
+      }
+    }
+  }
+
   if (!isFinite || !total || total <= 1) return;
 
   // Total de parcelas pra EXIBIÇÃO em todas as linhas da assinatura que ainda
@@ -386,6 +453,44 @@ async function findContractInfo(db: SupabaseClient, companyId: string, contractI
     total: data.is_finite && data.total_installments ? (data.total_installments as number) : null,
     current: (data as { current_charge?: number | null }).current_charge ?? null,
   };
+}
+
+// "Cura" de venda recorrente que chegou ÓRFÃ — a Eduzz às vezes manda
+// myeduzz.invoice_paid com `contract: null` mesmo pra produto recorrente cujo
+// contrato já existe (confirmado com payload real, bug de dados do lado da
+// Eduzz, não falha de ordem de entrega). Sem recurrence_key a venda nunca é
+// reconhecida como renovação — só como "venda nova" (dobra conversão,
+// renovação vira "1ª compra" pra Meta). Tenta achar o contrato certo por
+// email+produto, mas SÓ aplica quando isso resulta em EXATAMENTE 1 candidato
+// — nunca adivinha. Email sozinho seria ambíguo (mesmo cliente pode ter N
+// assinaturas de produtos diferentes); produto sozinho idem (mesmo produto,
+// N clientes). Quando a ficha tem `starts_at`/`finishes_at` (migration 056),
+// também exige que a data da fatura caia dentro da vigência — desambigua o
+// caso de o mesmo cliente reassinar o MESMO produto em períodos diferentes
+// (2 contratos, mesmo email+produto, vigências que não se sobrepõem).
+async function findContractByCustomerAndProduct(
+  db: SupabaseClient,
+  companyId: string,
+  email: string,
+  productId: string,
+  invoiceDateIso: string,
+): Promise<string | null> {
+  const { data, error } = await db
+    .from("eduzz_contracts")
+    .select("contract_id, starts_at, finishes_at")
+    .eq("company_id", companyId)
+    .eq("customer_email", email.trim().toLowerCase())
+    .eq("product_id", productId);
+  if (error || !data) return null;
+
+  const invoiceTime = new Date(invoiceDateIso).getTime();
+  const candidates = (data as { contract_id: string; starts_at: string | null; finishes_at: string | null }[]).filter((c) => {
+    const startsOk = !c.starts_at || new Date(c.starts_at).getTime() <= invoiceTime;
+    const finishesOk = !c.finishes_at || new Date(c.finishes_at).getTime() >= invoiceTime;
+    return startsOk && finishesOk;
+  });
+
+  return candidates.length === 1 ? candidates[0].contract_id : null;
 }
 
 // Fallback de countRecurrenceCharges() — conta quantas linhas (Purchase +
@@ -636,9 +741,10 @@ async function recordSale(db: SupabaseClient, companyId: string, sale: SaleEvent
   const clientUserAgent = (match?.client_user_agent as string | null) ?? null;
 
   // Assinatura/PSL: sale.value aqui é só o valor DESSA cobrança (ex.: R$10) —
-  // upsertCampaignMetrics() (chamado em POST() antes de recordSale) já somou
-  // esse valor real na receita mensal, então NÃO reatribuímos sale.value (ia
-  // dobrar a contagem quando as renovações seguintes somarem de novo). Em vez
+  // upsertCampaignMetrics() (chamado MAIS ABAIXO, depois do insert em
+  // events_log, por idempotência) soma esse valor real na receita mensal,
+  // então NÃO reatribuímos sale.value (ia dobrar a contagem quando as
+  // renovações seguintes somarem de novo). Em vez
   // disso, calcula um valor separado SÓ pra mostrar no card da venda e mandar
   // pra Meta na 1ª cobrança — "esse contrato vale R$120 (12x de R$10)", sem
   // tocar na receita mensal que já está certa. Sem contrato conhecido (não
@@ -1115,6 +1221,23 @@ export async function POST(request: NextRequest) {
       console.error("[eduzz webhook] falha ao registrar parcela:", err instanceof Error ? err.message : err);
     }
     return NextResponse.json({ received: true, installment: true, parcela: sale.installmentNumber, totalParcelas: sale.installments });
+  }
+
+  // Cura venda recorrente órfã (contract: null no invoice_paid, bug confirmado
+  // do lado da Eduzz) ANTES de decidir Purchase vs Renewal — sem isso, toda
+  // cobrança que chegar assim seria sempre "venda nova", mesmo sendo a 3ª/4ª
+  // renovação de uma assinatura madura. Só cura quando inequívoco (ver
+  // findContractByCustomerAndProduct) — sem candidato certo, segue como hoje.
+  // `!sale.installments` exclui boleto parcelado (mecanismo próprio, já
+  // tratado acima via isInstallmentContinuation/recordInstallment) — sem essa
+  // guarda, uma coincidência rara (mesmo email+produto entre um boleto
+  // parcelado e uma assinatura ativa) poderia vincular um recurrence_key
+  // errado num boleto, fazendo recordSale() multiplicar pelo contrato errado.
+  if (!sale.recurrenceKey && !sale.installments && sale.email && sale.items[0]?.productId) {
+    const healedContractId = await findContractByCustomerAndProduct(
+      db, companyId, sale.email, sale.items[0].productId, sale.paidAtIso ?? sale.date,
+    );
+    if (healedContractId) sale.recurrenceKey = healedContractId;
   }
 
   if (await alreadyProcessed(db, companyId, sale.transactionId)) {

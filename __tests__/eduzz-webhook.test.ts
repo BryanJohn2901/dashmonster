@@ -24,9 +24,10 @@ const mockConfigSelect = jest.fn(() => ({ eq: () => ({ maybeSingle: mockConfigMa
 const mockEventsLogMaybeSingle = jest.fn();
 const mockEventsLogCount = jest.fn((): Promise<{ data: unknown[]; error: { message: string } | null }> => Promise.resolve({ data: [], error: null }));
 function makeEventsLogQuery() {
-  const query: { eq: jest.Mock; ilike: jest.Mock; order: jest.Mock; limit: jest.Mock; maybeSingle: () => unknown; then: (...args: never[]) => unknown } = {
+  const query: { eq: jest.Mock; ilike: jest.Mock; is: jest.Mock; order: jest.Mock; limit: jest.Mock; maybeSingle: () => unknown; then: (...args: never[]) => unknown } = {
     eq: jest.fn(),
     ilike: jest.fn(),
+    is: jest.fn(),
     order: jest.fn(),
     limit: jest.fn(),
     maybeSingle: () => mockEventsLogMaybeSingle(),
@@ -34,6 +35,7 @@ function makeEventsLogQuery() {
   };
   query.eq.mockImplementation(() => query);
   query.ilike.mockImplementation(() => query);
+  query.is.mockImplementation(() => query);
   query.order.mockImplementation(() => query);
   query.limit.mockImplementation(() => query);
   return query;
@@ -128,16 +130,28 @@ const mockContractMaybeSingle = jest.fn(
   (): Promise<{ data: { total_installments: number; is_finite: boolean; current_charge?: number } | null; error: { message: string } | null }> =>
     Promise.resolve({ data: null, error: null }),
 );
+// findContractByCustomerAndProduct() (migration 056) é OUTRO formato de query
+// na MESMA tabela: 3x .eq() (company_id, customer_email, product_id) e dá
+// await DIRETO (espera array), nunca .maybeSingle() — mock próprio, igual o
+// padrão dual de makeProductsQuery, pra não disputar fila com mockContractMaybeSingle.
+const mockContractByEmailProduct = jest.fn(
+  (): Promise<{ data: { contract_id: string; starts_at: string | null; finishes_at: string | null }[]; error: { message: string } | null }> =>
+    Promise.resolve({ data: [], error: null }),
+);
 function makeContractQuery() {
-  const query: { eq: jest.Mock; maybeSingle: () => unknown } = {
+  const query: { eq: jest.Mock; maybeSingle: () => unknown; then: (...args: never[]) => unknown } = {
     eq: jest.fn(),
     maybeSingle: () => mockContractMaybeSingle(),
+    then: (onResolve: (v: unknown) => unknown, onReject?: (e: unknown) => unknown) => mockContractByEmailProduct().then(onResolve, onReject),
   };
   query.eq.mockImplementation(() => query);
   return query;
 }
 const mockContractSelect = jest.fn(() => makeContractQuery());
-const mockContractUpsert = jest.fn(() => Promise.resolve({ data: null, error: null }));
+const mockContractUpsert = jest.fn(
+  (_row: Record<string, unknown>, _opts: unknown): Promise<{ data: null; error: { message: string } | null }> =>
+    Promise.resolve({ data: null, error: null }),
+);
 
 const mockFrom = jest.fn((table: string) => {
   if (table === "eduzz_webhook_configs") return { select: mockConfigSelect };
@@ -655,6 +669,32 @@ describe("POST /api/eduzz/webhook", () => {
     expect(mockInsert).not.toHaveBeenCalled();
   });
 
+  it("upsertContractInfo regrava removendo TODAS as colunas ausentes em sequência (migrations 055+056 ambas pendentes), não só a 1ª", async () => {
+    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockContractUpsert
+      .mockResolvedValueOnce({ data: null, error: { message: 'column "starts_at" of relation "eduzz_contracts" does not exist' } })
+      .mockResolvedValueOnce({ data: null, error: { message: 'column "current_charge" of relation "eduzz_contracts" does not exist' } })
+      .mockResolvedValueOnce({ data: null, error: null });
+
+    const payload = {
+      event: "myeduzz.contract_created",
+      data: {
+        customer: { email: "x@y.com" },
+        products: [{ id: "PROD-1" }],
+        contract: { id: "sub-multi-falta", recurrence: { isFinite: true, price: { value: 50 }, charges: { current: 2, total: 4 }, startsAt: "2026-01-01T00:00:00.000Z" } },
+      },
+    };
+    const res = await POST(buildRequest(payload));
+
+    expect((await res.json()).received).toBe(true);
+    expect(mockContractUpsert).toHaveBeenCalledTimes(3);
+    // última tentativa (a que teve sucesso) não tem mais nem starts_at nem current_charge.
+    const lastCallArgs = mockContractUpsert.mock.calls[2][0] as Record<string, unknown>;
+    expect(lastCallArgs).not.toHaveProperty("starts_at");
+    expect(lastCallArgs).not.toHaveProperty("current_charge");
+    expect(lastCallArgs).toMatchObject({ contract_id: "sub-multi-falta", total_installments: 4 });
+  });
+
   it("contract_updated atualiza a mesma ficha (ex.: cliente fez upgrade, nº de parcelas mudou)", async () => {
     mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
 
@@ -684,6 +724,54 @@ describe("POST /api/eduzz/webhook", () => {
     // 1) preenche o total de parcelas nas linhas que estavam sem; 2) recalcula o valor cheio (10 × 12 = 120).
     expect(mockUpdate).toHaveBeenCalledWith({ installments: 12 });
     expect(mockUpdate).toHaveBeenCalledWith({ value: 120 });
+  });
+
+  it("contract_created cura venda ÓRFÃ (recurrence_key NULL) por email+produto quando a ficha chega DEPOIS do invoice_paid sem contract.id", async () => {
+    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    // orphanRes: exatamente 1 venda órfã (sem recurrence_key) com esse email+produto.
+    mockEventsLogCount.mockResolvedValueOnce({ data: [{ id: "evt-orfa", created_at: "2026-01-01T00:00:00.000Z" }], error: null });
+    // purchaseRes (depois de curada, recurrence_key já bate): valor ainda sem multiplicar.
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: { id: "evt-orfa", value: 100, installment_value: 100 }, error: null });
+
+    const payload = {
+      event: "myeduzz.contract_created",
+      data: {
+        customer: { email: "Julia@Teste.com" },
+        products: [{ id: "PROD-1" }],
+        contract: { id: "ct-orfa-1", recurrence: { isFinite: true, price: { value: 100 }, charges: { current: 1, total: 5 } } },
+      },
+    };
+    await POST(buildRequest(payload));
+
+    // vincula a venda órfã ao contrato certo...
+    expect(mockUpdate).toHaveBeenCalledWith({ recurrence_key: "ct-orfa-1" });
+    // ...e a partir daí o backfill normal (já existente) recalcula o valor cheio (100 × 5 = 500).
+    expect(mockUpdate).toHaveBeenCalledWith({ installments: 5 });
+    expect(mockUpdate).toHaveBeenCalledWith({ value: 500 });
+  });
+
+  it("contract_created NÃO cura venda órfã quando email+produto acham 2+ candidatas (ambíguo)", async () => {
+    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockEventsLogCount.mockResolvedValueOnce({
+      data: [
+        { id: "evt-orfa-1", created_at: "2026-01-01T00:00:00.000Z" },
+        { id: "evt-orfa-2", created_at: "2026-02-01T00:00:00.000Z" },
+      ],
+      error: null,
+    });
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // purchaseRes: nenhuma já vinculada a esse recurrence_key
+
+    const payload = {
+      event: "myeduzz.contract_created",
+      data: {
+        customer: { email: "julia@teste.com" },
+        products: [{ id: "PROD-1" }],
+        contract: { id: "ct-ambiguo-1", recurrence: { isFinite: true, price: { value: 100 }, charges: { current: 1, total: 5 } } },
+      },
+    };
+    await POST(buildRequest(payload));
+
+    expect(mockUpdate).not.toHaveBeenCalledWith({ recurrence_key: "ct-ambiguo-1" });
   });
 
   it("contract_updated corrige installment_number desatualizado da linha mais recente usando charges.current (renovações perdidas no caminho)", async () => {
@@ -820,6 +908,71 @@ describe("POST /api/eduzz/webhook", () => {
     // a otimizar campanha pelo valor real do negócio, não só a 1ª cobrança).
     const sentBody = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
     expect(sentBody.data[0].custom_data.value).toBe(120);
+  });
+
+  it("cura venda recorrente ÓRFÃ (contract: null no invoice_paid, bug real da Eduzz): email+produto acham EXATAMENTE 1 contrato -> vincula e trata como venda da assinatura", async () => {
+    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    // findContractByCustomerAndProduct: 1 candidato único (sem janela de vigência registrada).
+    mockContractByEmailProduct.mockResolvedValueOnce({ data: [{ contract_id: "healed-1", starts_at: null, finishes_at: null }], error: null });
+    mockNotYetProcessed();
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // isKnownRecurrence(healed-1): 1ª cobrança capturada
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por email
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por telefone
+    mockProductPixelConfigured();
+    mockPixelMaybeSingle.mockResolvedValueOnce({ data: PIXEL_OK, error: null });
+    mockContractMaybeSingle.mockResolvedValueOnce({ data: { total_installments: 6, is_finite: true, current_charge: 1 }, error: null });
+
+    const payload = {
+      ...MODERN_PAYLOAD,
+      data: { ...MODERN_PAYLOAD.data, paid: { value: 833.33, currency: "BRL" }, items: [{ name: "Mentoria", parentId: "curso-padrao", productId: "PROD-1" }], contract: null },
+    };
+    await POST(buildRequest(payload));
+
+    expect(mockInsert).toHaveBeenCalledWith(
+      expect.objectContaining({ recurrence_key: "healed-1", value: 833.33 * 6, installments: 6, installment_number: 1 }),
+    );
+  });
+
+  it("NÃO cura venda órfã quando email+produto acham 2 contratos candidatos (ambíguo — nunca adivinha)", async () => {
+    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockContractByEmailProduct.mockResolvedValueOnce({
+      data: [
+        { contract_id: "contrato-antigo", starts_at: null, finishes_at: null },
+        { contract_id: "contrato-novo", starts_at: null, finishes_at: null },
+      ],
+      error: null,
+    });
+    mockNotYetProcessed();
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por email
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por telefone
+
+    const payload = {
+      ...MODERN_PAYLOAD,
+      data: { ...MODERN_PAYLOAD.data, items: [{ name: "Mentoria", parentId: "curso-padrao", productId: "PROD-1" }], contract: null },
+    };
+    await POST(buildRequest(payload));
+
+    expect(mockInsert).toHaveBeenCalledWith(expect.objectContaining({ recurrence_key: null }));
+  });
+
+  it("NÃO cura venda órfã quando a fatura cai FORA da janela de vigência do único candidato (cliente reassinou o mesmo produto em outro período)", async () => {
+    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    // contrato candidato já tinha terminado bem antes da data dessa fatura.
+    mockContractByEmailProduct.mockResolvedValueOnce({
+      data: [{ contract_id: "contrato-velho", starts_at: "2020-01-01T00:00:00.000Z", finishes_at: "2020-06-01T00:00:00.000Z" }],
+      error: null,
+    });
+    mockNotYetProcessed();
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por email
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por telefone
+
+    const payload = {
+      ...MODERN_PAYLOAD,
+      data: { ...MODERN_PAYLOAD.data, items: [{ name: "Mentoria", parentId: "curso-padrao", productId: "PROD-1" }], contract: null, paidAt: "2026-06-20T14:25:05.000Z" },
+    };
+    await POST(buildRequest(payload));
+
+    expect(mockInsert).toHaveBeenCalledWith(expect.objectContaining({ recurrence_key: null }));
   });
 
   it("1ª venda CAPTURADA de um contrato já em andamento usa current_charge da ficha em vez de assumir cobrança 1 (cobranças anteriores nunca chegaram como webhook)", async () => {
