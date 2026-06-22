@@ -108,7 +108,9 @@ function EduzzOAuthSection({ company, canEdit }: { company: Company; canEdit: bo
   const [disconnecting, setDisconnecting] = useState(false);
 
   const load = useCallback(() => {
-    void fetchEduzzOAuthConnection(company.id).then(setConnection);
+    fetchEduzzOAuthConnection(company.id)
+      .then(setConnection)
+      .catch(() => setConnection(null));
   }, [company.id]);
 
   useEffect(() => { load(); }, [load]);
