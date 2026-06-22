@@ -127,9 +127,26 @@ janela de retry da Eduzz. Roda via cron (`vercel.json`, a cada 6h,
   `void syncCompany(...)` arriscava nunca rodar a sync inicial.
 - **Permissão de escrita nas rotas novas via RPC, não RLS direto** — diferente
   do CRUD de `eduzz_webhook_configs` (cliente anon + RLS), as rotas OAuth
-  (`start`/`callback`/`sync-now`) correm no servidor e checam
-  `sb.rpc("can_write_company", { cid })` usando o client autenticado
-  (`@/utils/supabase/server`) — mesma função Postgres `SECURITY DEFINER`
-  que já apoia as policies de RLS, só chamada diretamente porque a escrita
-  real (`eduzz_oauth_connections`, `events_log`, `eduzz_contracts`) usa
-  `supabaseAdmin()` (service role, sem RLS).
+  (`start`/`sync-now`) correm no servidor e checam
+  `sb.rpc("can_write_company", { cid })` — mesma função Postgres
+  `SECURITY DEFINER` que já apoia as policies de RLS, só chamada diretamente
+  porque a escrita real (`eduzz_oauth_connections`, `events_log`,
+  `eduzz_contracts`) usa `supabaseAdmin()` (service role, sem RLS).
+- **Autenticação nas rotas server-side é via token explícito, não cookie** —
+  bug real encontrado em produção: `start`/`sync-now` foram escritas lendo
+  sessão via `cookies()`/`@/utils/supabase/server`, mas o login do app inteiro
+  usa `supabaseClient` puro (`@/lib/supabase`, `@supabase/supabase-js` direto,
+  sessão em **localStorage**) — nunca grava cookie de sessão Supabase. Toda
+  chamada `sb.auth.getUser()` sem argumento sempre vinha vazia, 401
+  "Não autenticado" pra qualquer usuário, sempre. Fix: client manda
+  `Authorization: Bearer <access_token>` (lido de
+  `supabaseClient.auth.getSession()`, helper `authHeader()` em
+  `useCompany.ts`) e a rota valida com `sb.auth.getUser(token)` (aceita o
+  JWT explícito, não depende de cookie/sessão armazenada). `start` virou
+  POST (devolve `{ url }`, o client navega via `window.location.href`) já
+  que uma navegação de página inteira não consegue mandar header
+  `Authorization`. O cookie `eduzz_oauth_state` continua existindo — é CSRF
+  nosso, não sessão Supabase, e o `callback` da Eduzz É uma navegação de
+  página inteira de volta pro domínio, daí o cookie funcionar normalmente ali.
+  **Se uma rota nova precisar saber quem é o usuário logado no servidor,
+  nunca usar `cookies()`/sessão — sempre token explícito como aqui.**

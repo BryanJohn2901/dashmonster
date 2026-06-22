@@ -607,11 +607,34 @@ export async function disconnectEduzzOAuth(companyId: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+/**
+ * Monta o header Authorization a partir da sessão local (o login do app usa
+ * `supabaseClient` puro, sessão em localStorage, não em cookie — por isso as
+ * rotas server-side de OAuth da Eduzz precisam do token explícito, não dá pra
+ * checar sessão via cookie como em `@/utils/supabase/server`).
+ */
+async function authHeader(): Promise<Record<string, string>> {
+  const token = (await supabaseClient?.auth.getSession())?.data.session?.access_token;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+/** Inicia o fluxo OAuth (botão "Conectar conta Eduzz") e devolve a URL de autorização da Eduzz pra navegar. */
+export async function startEduzzOAuth(companyId: string): Promise<string> {
+  const res = await fetch("/api/eduzz/oauth/start", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(await authHeader()) },
+    body: JSON.stringify({ company_id: companyId }),
+  });
+  const json = await res.json().catch(() => null) as { error?: string; url?: string } | null;
+  if (!res.ok || !json?.url) throw new Error(json?.error ?? "Falha ao iniciar conexão com a Eduzz.");
+  return json.url;
+}
+
 /** Dispara uma sincronização sob demanda (botão "Sincronizar agora"). */
 export async function syncEduzzOAuthNow(companyId: string): Promise<EduzzOAuthConnection> {
   const res = await fetch("/api/eduzz/oauth/sync-now", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...(await authHeader()) },
     body: JSON.stringify({ company_id: companyId }),
   });
   const json = await res.json().catch(() => null) as { error?: string; connection?: Record<string, unknown> } | null;

@@ -8,15 +8,24 @@ export const runtime = "nodejs";
 const STATE_COOKIE = "eduzz_oauth_state";
 
 /**
- * GET /api/eduzz/oauth/start?company_id=...
+ * POST /api/eduzz/oauth/start — body { company_id }, header Authorization: Bearer <token>.
  * Confere se o usuário logado pode escrever na empresa (owner/manager, mesma
  * regra de eduzz_webhook_configs), gera state CSRF prefixado pelo company_id
  * (lido de volta no callback, mesmo padrão do state simples do Instagram —
  * aqui precisa carregar o company_id porque o callback da Eduzz não devolve
- * nenhum outro jeito de saber qual empresa iniciou o fluxo) e redireciona.
+ * nenhum outro jeito de saber qual empresa iniciou o fluxo) e devolve a URL
+ * de autorização pro client navegar (`window.location.href`).
+ *
+ * É POST com token explícito, não GET com sessão via cookie: o login do app
+ * usa `supabaseClient` puro (@supabase/supabase-js, sessão em localStorage),
+ * nunca grava cookie de sessão — `cookies()`/`@/utils/supabase/server` aqui
+ * sempre veria "sem usuário". O `state` ainda vai num cookie httpOnly próprio
+ * (não é sessão Supabase, é CSRF nosso) porque o `callback` da Eduzz é, esse
+ * sim, uma navegação de página inteira de volta pro nosso domínio.
  */
-export async function GET(request: NextRequest) {
-  const companyId = request.nextUrl.searchParams.get("company_id");
+export async function POST(request: NextRequest) {
+  const body = await request.json().catch(() => null) as { company_id?: string } | null;
+  const companyId = body?.company_id;
   if (!companyId) {
     return NextResponse.json({ error: "company_id ausente." }, { status: 400 });
   }
@@ -26,8 +35,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "EDUZZ_CLIENT_ID não configurado no servidor." }, { status: 500 });
   }
 
+  const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
+  if (!token) {
+    return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+  }
+
   const sb = await createClient();
-  const { data: auth } = await sb.auth.getUser();
+  const { data: auth } = await sb.auth.getUser(token);
   if (!auth?.user) {
     return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
   }
@@ -53,7 +67,7 @@ export async function GET(request: NextRequest) {
       state,
     });
 
-  const res = NextResponse.redirect(authUrl);
+  const res = NextResponse.json({ url: authUrl });
   res.cookies.set(STATE_COOKIE, state, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",

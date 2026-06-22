@@ -6,7 +6,7 @@ import { toast } from "@/hooks/useToast";
 import {
   fetchEduzzWebhookConfigs, createEduzzWebhookConfig, renameEduzzWebhookConfig, deleteEduzzWebhookConfig,
   fetchTrackingPixels, fetchEduzzCatalog, upsertEduzzProduct, setEduzzProductPixel,
-  fetchEduzzOAuthConnection, disconnectEduzzOAuth, syncEduzzOAuthNow,
+  fetchEduzzOAuthConnection, disconnectEduzzOAuth, syncEduzzOAuthNow, startEduzzOAuth,
   type Company, type EduzzWebhookConfig, type TrackingPixel, type EduzzProduct, type EduzzOAuthConnection,
 } from "@/hooks/useCompany";
 
@@ -135,8 +135,16 @@ function EduzzOAuthSection({ company, canEdit }: { company: Company; canEdit: bo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const connect = () => {
-    window.location.href = `/api/eduzz/oauth/start?company_id=${company.id}`;
+  const [connecting, setConnecting] = useState(false);
+  const connect = async () => {
+    setConnecting(true);
+    try {
+      const url = await startEduzzOAuth(company.id);
+      window.location.href = url;
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao conectar com a Eduzz.");
+      setConnecting(false);
+    }
   };
 
   const syncNow = async () => {
@@ -182,8 +190,8 @@ function EduzzOAuthSection({ company, canEdit }: { company: Company; canEdit: bo
         </div>
       ) : connection === null ? (
         canEdit ? (
-          <button type="button" onClick={connect} className={`h-11 w-full ${btnPrimary}`} style={btnPrimaryStyle}>
-            Conectar conta Eduzz
+          <button type="button" onClick={connect} disabled={connecting} className={`h-11 w-full ${btnPrimary}`} style={btnPrimaryStyle}>
+            {connecting ? <Loader2 size={14} className="animate-spin" /> : "Conectar conta Eduzz"}
           </button>
         ) : (
           <p className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>Nenhuma conta conectada.</p>
