@@ -2908,7 +2908,7 @@ export function Dashboard({
       >
         {sidebarCollapsed ? (
           /* ══════════════ COLLAPSED ══════════════ */
-          <div className="flex flex-1 flex-col items-center py-4 overflow-y-auto">
+          <div className="flex flex-1 flex-col items-center py-4 overflow-y-auto overflow-x-hidden">
             {/* Logo = clicar expande */}
             <button
               type="button"
