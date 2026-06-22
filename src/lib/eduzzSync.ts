@@ -37,6 +37,16 @@ import {
 const FIRST_SYNC_LOOKBACK_DAYS = 90;
 const PAGE_SIZE = 100;
 
+// Processamento sequencial item-a-item facilmente passa de 60s (maxDuration
+// no Hobby da Vercel) numa janela de 90 dias com volume real — a function é
+// matada no meio, sem rodar o update final de status, e a conexão fica
+// presa em "syncing" pra sempre. Por isso syncCompany() processa em janelas
+// de CHUNK_DAYS e checa TIME_BUDGET_MS depois de cada janela: se passou do
+// orçamento, para e deixa o resto pra próxima chamada (botão de novo ou
+// cron), já tendo avançado last_synced_at até onde completou.
+const CHUNK_DAYS = 7;
+const TIME_BUDGET_MS = 45_000;
+
 function toIsoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
@@ -247,29 +257,50 @@ interface EduzzOAuthConnectionRow {
 }
 
 /**
- * Sincroniza 1 empresa: assinaturas primeiro (popula a "ficha" do contrato
- * antes das vendas, pra `findContractByCustomerAndProduct`/multiplicador de
- * valor já terem o que precisam), depois vendas, depois chargebacks. Erro
- * isolado por empresa (mesmo padrão de `syncAccount()` em
- * instagram/accounts/sync-all) — nunca derruba a sync de outras empresas.
+ * Sincroniza 1 empresa em janelas de CHUNK_DAYS: assinaturas primeiro (popula
+ * a "ficha" do contrato antes das vendas, pra
+ * `findContractByCustomerAndProduct`/multiplicador de valor já terem o que
+ * precisam), depois vendas, depois chargebacks — dentro de cada janela. A
+ * cada janela concluída, `last_synced_at` avança e é gravado na hora (mesmo
+ * que o resto do período ainda falte) — isso é o que garante que a function
+ * morrendo por maxDuration nunca trava o status em "syncing": o progresso já
+ * feito fica salvo, e o que faltar é coberto na próxima chamada (botão
+ * "Sincronizar agora" de novo, ou o cron de 6h). Erro isolado por empresa
+ * (mesmo padrão de `syncAccount()` em instagram/accounts/sync-all) — nunca
+ * derruba a sync de outras empresas.
  */
 export async function syncCompany(db: SupabaseClient, connection: EduzzOAuthConnectionRow): Promise<void> {
   const { company_id: companyId } = connection;
   const token = decryptToken(connection.access_token);
+  const startedAt = Date.now();
 
-  const endDate = toIsoDate(new Date());
-  const startDate = connection.last_synced_at
-    ? toIsoDate(new Date(connection.last_synced_at))
-    : toIsoDate(new Date(Date.now() - FIRST_SYNC_LOOKBACK_DAYS * 86400000));
+  const fullEnd = new Date();
+  let cursor = connection.last_synced_at
+    ? new Date(connection.last_synced_at)
+    : new Date(Date.now() - FIRST_SYNC_LOOKBACK_DAYS * 86400000);
 
   try {
-    await syncCompanySubscriptions(db, companyId, token, startDate, endDate);
-    await syncCompanySales(db, companyId, token, startDate, endDate);
-    await syncCompanyChargebacks(db, companyId, token, startDate, endDate);
+    while (cursor < fullEnd) {
+      const chunkEnd = new Date(Math.min(cursor.getTime() + CHUNK_DAYS * 86400000, fullEnd.getTime()));
+      const startDate = toIsoDate(cursor);
+      const endDate = toIsoDate(chunkEnd);
+
+      await syncCompanySubscriptions(db, companyId, token, startDate, endDate);
+      await syncCompanySales(db, companyId, token, startDate, endDate);
+      await syncCompanyChargebacks(db, companyId, token, startDate, endDate);
+
+      cursor = chunkEnd;
+      await db
+        .from("eduzz_oauth_connections")
+        .update({ last_synced_at: cursor.toISOString(), updated_at: new Date().toISOString() })
+        .eq("company_id", companyId);
+
+      if (Date.now() - startedAt > TIME_BUDGET_MS) break;
+    }
 
     await db
       .from("eduzz_oauth_connections")
-      .update({ status: "connected", last_synced_at: new Date().toISOString(), last_sync_error: null, updated_at: new Date().toISOString() })
+      .update({ status: "connected", last_sync_error: null, updated_at: new Date().toISOString() })
       .eq("company_id", companyId);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
