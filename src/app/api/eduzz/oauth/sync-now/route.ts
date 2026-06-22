@@ -1,0 +1,54 @@
+import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/utils/supabase/server";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { syncCompany } from "@/lib/eduzzSync";
+
+export const runtime = "nodejs";
+
+/**
+ * POST /api/eduzz/oauth/sync-now
+ * Body: { company_id }. Sincronização sob demanda (botão "Sincronizar
+ * agora" no painel) — mesma checagem de permissão do oauth/start, mas usa
+ * supabaseAdmin (service_role) pra rodar a sync, já que syncCompany() grava
+ * em tabelas (events_log, eduzz_contracts) que o usuário final não tem
+ * permissão de escrita direta.
+ */
+export async function POST(request: NextRequest) {
+  const body = await request.json().catch(() => null) as { company_id?: string } | null;
+  const companyId = body?.company_id;
+  if (!companyId) {
+    return NextResponse.json({ error: "company_id ausente." }, { status: 400 });
+  }
+
+  const sb = await createClient();
+  const { data: auth } = await sb.auth.getUser();
+  if (!auth?.user) {
+    return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+  }
+
+  const { data: canWrite, error: rpcError } = await sb.rpc("can_write_company", { cid: companyId });
+  if (rpcError || !canWrite) {
+    return NextResponse.json({ error: "Sem permissão para sincronizar essa empresa." }, { status: 403 });
+  }
+
+  const admin = supabaseAdmin();
+  const { data: connection, error } = await admin
+    .from("eduzz_oauth_connections")
+    .select("company_id, access_token, last_synced_at")
+    .eq("company_id", companyId)
+    .single();
+
+  if (error || !connection) {
+    return NextResponse.json({ error: "Empresa sem conexão Eduzz." }, { status: 404 });
+  }
+
+  await syncCompany(admin, connection as { company_id: string; access_token: string; last_synced_at: string | null });
+
+  const { data: updated } = await admin
+    .from("eduzz_oauth_connections")
+    .select("status, last_synced_at, last_sync_error")
+    .eq("company_id", companyId)
+    .single();
+
+  return NextResponse.json({ ok: true, connection: updated });
+}

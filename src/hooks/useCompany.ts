@@ -563,6 +563,62 @@ export async function deleteEduzzWebhookConfig(configId: string): Promise<void> 
   if (error) throw new Error(error.message);
 }
 
+// ─── Conexão OAuth2 com a API da Eduzz (migration 058) ────────────────────────
+// Complemento ao webhook — pull de dados pra cobrir lacunas estruturais (ver
+// src/app/api/eduzz/CLAUDE.md). 1 conexão por empresa, fluxo iniciado por
+// navegação de página inteira (/api/eduzz/oauth/start), não por fetch — por
+// isso não tem "createEduzzOAuthConnection" aqui, só leitura/desconexão.
+export interface EduzzOAuthConnection {
+  companyId: string;
+  eduzzUserEmail: string | null;
+  eduzzUserName: string | null;
+  status: "connected" | "error";
+  lastSyncedAt: string | null;
+  lastSyncError: string | null;
+}
+
+function rowToEduzzOAuthConnection(row: Record<string, unknown>): EduzzOAuthConnection {
+  return {
+    companyId: row.company_id as string,
+    eduzzUserEmail: (row.eduzz_user_email as string | null) ?? null,
+    eduzzUserName: (row.eduzz_user_name as string | null) ?? null,
+    status: row.status as "connected" | "error",
+    lastSyncedAt: (row.last_synced_at as string | null) ?? null,
+    lastSyncError: (row.last_sync_error as string | null) ?? null,
+  };
+}
+
+/** Lê a conexão OAuth Eduzz da empresa, se existir (RLS: membro da empresa). */
+export async function fetchEduzzOAuthConnection(companyId: string): Promise<EduzzOAuthConnection | null> {
+  if (!supabaseClient) return null;
+  const { data, error } = await supabaseClient
+    .from("eduzz_oauth_connections")
+    .select("company_id, eduzz_user_email, eduzz_user_name, status, last_synced_at, last_sync_error")
+    .eq("company_id", companyId)
+    .maybeSingle();
+  if (error || !data) return null;
+  return rowToEduzzOAuthConnection(data);
+}
+
+/** Desconecta (apaga a conexão) — RLS: owner OU manager. Próxima sync do cron simplesmente ignora a empresa. */
+export async function disconnectEduzzOAuth(companyId: string): Promise<void> {
+  if (!supabaseClient) throw new Error("Supabase não configurado.");
+  const { error } = await supabaseClient.from("eduzz_oauth_connections").delete().eq("company_id", companyId);
+  if (error) throw new Error(error.message);
+}
+
+/** Dispara uma sincronização sob demanda (botão "Sincronizar agora"). */
+export async function syncEduzzOAuthNow(companyId: string): Promise<EduzzOAuthConnection> {
+  const res = await fetch("/api/eduzz/oauth/sync-now", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ company_id: companyId }),
+  });
+  const json = await res.json().catch(() => null) as { error?: string; connection?: Record<string, unknown> } | null;
+  if (!res.ok || !json?.connection) throw new Error(json?.error ?? "Falha ao sincronizar.");
+  return rowToEduzzOAuthConnection({ company_id: companyId, ...json.connection });
+}
+
 // ─── Painel de super admin ────────────────────────────────────────────────────
 
 export interface AdminCompany {

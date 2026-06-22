@@ -60,3 +60,76 @@
   - **Backfill único de produção (2026-06-19)**: rodado 1x via script ad-hoc (não faz parte do código/migration) lendo `events_log` (Purchase, `source="eduzz"`, `product_parent_id`/`product_item_id` não nulos) e populando `eduzz_products`/`eduzz_product_offers` com o histórico que já existia — sem isso, o catálogo só cresceria a partir da próxima venda nova (o auto-preenchimento do webhook não é retroativo). Não precisa rodar de novo; é só pra empresas que já tinham histórico acumulado antes da feature existir.
   - **Migrations anteriores desta mesma feature (048/049, `eduzz_product_pixel_map`, chave ambígua productId-ou-parentId + política manual)** nunca chegaram a ir pra produção — a 050 dropa essa tabela (com backfill defensivo pra `eduzz_products` caso alguém já tenha cadastrado algo nela) e substitui pelo catálogo. Não usar o desenho antigo como referência.
 - **Fora do escopo, não implementado**: reversão do evento na Meta quando há reembolso/chargeback (hoje só atualiza `status` no nosso banco, não desfaz a Purchase já enviada); normalização de telefone na correlação (item 3 acima); e qualquer plataforma além da Eduzz (Hotmart/Kiwify/Monetizze teriam que ganhar seu próprio parser de payload, reaproveitando os mesmos helpers de `events_log`/CAPI/recorrência).
+
+## Sincronização via API (OAuth2, `src/lib/eduzzOAuth.ts`/`eduzzSync.ts`, migration 058)
+
+Complemento ao webhook acima, não substituto — o webhook continua sendo a
+ÚNICA via que dispara Meta CAPI (`recordSale`) e fica fora desta sync. Existe
+pra cobrir lacunas estruturais do webhook documentadas nas seções acima:
+`contract_created`/`contract_updated` que nunca chega (só dispara em mudança
+ESTRUTURAL do contrato, nunca em cobrança rotineira — um contrato saudável
+pode nunca gerar esse evento), `invoice_paid` com `contract: null` mesmo
+contrato já existindo (bug confirmado do lado da Eduzz), histórico anterior à
+instalação do webhook, e reembolso/chargeback que se perde se cair fora da
+janela de retry da Eduzz. Roda via cron (`vercel.json`, a cada 6h,
+`/api/eduzz/sync-all`) + botão manual no painel ("Sincronizar agora").
+
+- **Por que reusa as MESMAS funções do webhook em vez de duplicar lógica**:
+  `parseModernPayload`/`recordSale`/`recordRenewal`/`recordInstallment`/
+  `upsertContractInfo`/`handleReversal`/`alreadyProcessed`/
+  `isKnownRecurrence`/`isInstallmentContinuation` já resolvem corretamente
+  recorrência, parcela, order bump, correlação de visita e idempotência —
+  histórico extenso de bugs sutis já corrigidos nessas funções (ver seções
+  acima). Reimplementar a partir do shape da API ia divergir e reintroduzir
+  os mesmos bugs. Em vez disso, `eduzzSync.ts` ADAPTA a resposta da API pro
+  mesmo shape que o webhook já entende (`EduzzModernPayload`/
+  `EduzzContractPayload`) e chama as funções de `webhook/route.ts`
+  diretamente — só ganharam a palavra `export`, zero mudança de lógica. A
+  árvore de decisão de `syncCompanySales()` é uma cópia estrutural do
+  `POST()` do webhook (parcela → idempotência → renovação vs. venda nova),
+  mas vive só em `eduzzSync.ts` (não exportada do webhook) — não acopla o
+  webhook a um shape de loop que só a sync usa.
+- **Limitações deliberadas da adaptação** (`mapApiSaleToModernPayload`):
+  não popula `parentId`/catálogo (`eduzz_products`/`eduzz_product_offers`,
+  migration 050) — a API de vendas não confirma esse campo, então o catálogo
+  de produto→pixel continua sendo preenchido só pelo webhook; e não tenta
+  multiplicar por `bankSlipInstallment` — `sale.total`/`netGain`/`grossGain`
+  da API já é o valor da fatura individual (mesma granularidade do
+  `price.value` do webhook), então não há nada pra multiplicar a partir
+  desse endpoint. Vendas puladas pela sync que vierem assim do jeito errado
+  não são "piores" que antes — só não ganham o tratamento completo que o
+  webhook dá; o objetivo da sync é pegar venda que o webhook PERDEU, não
+  replicar 100% de cada nuance.
+  - **Reembolso "simples" (não-chargeback) fica fora do v1** — sem endpoint
+    de listagem confirmado na doc (só `GET /myeduzz/v1/sales/chargebacks`).
+- **Token cifrado reaproveitando `IG_TOKEN_ENCRYPTION_KEY`** (`src/lib/crypto.ts`)
+  — decisão deliberada: a função (`encryptToken`/`decryptToken`, AES-256-GCM)
+  já é genérica, nada específico de Instagram no algoritmo, só o nome
+  histórico da env var. Criar uma 2ª chave só pra Eduzz seria overhead de
+  infra sem ganho de segurança real (mesma chave simétrica serve pra
+  qualquer token de qualquer integração).
+  - Token Eduzz **não expira e não tem refresh_token** (`expires_in: 0`,
+    `refresh_token: null`, confirmado na doc oficial) — diferente do fluxo
+    Meta/Instagram. Se for revogado manualmente no painel da Eduzz, a próxima
+    sync falha e `status` vira `"error"` — a UI pede reconexão, não há
+    refresh automático possível.
+- **CSRF do OAuth: cookie é a fonte de verdade, não o `state` ecoado** — o
+  cookie httpOnly `eduzz_oauth_state` (TTL 600s) é setado em `oauth/start` com
+  `companyId` embutido (`${companyId}.${random}`) e lido de volta em
+  `oauth/callback`. A doc oficial da Eduzz não confirma que um `state`
+  arbitrário mandado pra `/oauth/authorize` é ecoado de volta no redirect
+  (diferente do OAuth2 padrão/Meta) — por isso o `companyId` é extraído do
+  COOKIE, nunca do query `state`; se um `state` de query vier mesmo assim, é
+  só checado como defesa extra, não como fonte primária.
+- **1ª sincronização é `await`ada, não fire-and-forget** — `oauth/callback`
+  espera `syncCompany()` terminar antes de redirecionar (mais lento, mas
+  correto): Vercel pode matar a function logo depois do `return`, então um
+  `void syncCompany(...)` arriscava nunca rodar a sync inicial.
+- **Permissão de escrita nas rotas novas via RPC, não RLS direto** — diferente
+  do CRUD de `eduzz_webhook_configs` (cliente anon + RLS), as rotas OAuth
+  (`start`/`callback`/`sync-now`) correm no servidor e checam
+  `sb.rpc("can_write_company", { cid })` usando o client autenticado
+  (`@/utils/supabase/server`) — mesma função Postgres `SECURITY DEFINER`
+  que já apoia as policies de RLS, só chamada diretamente porque a escrita
+  real (`eduzz_oauth_connections`, `events_log`, `eduzz_contracts`) usa
+  `supabaseAdmin()` (service role, sem RLS).

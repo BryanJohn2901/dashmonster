@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Loader2, Save, Plus, Trash2, ChevronDown, ChevronRight } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Loader2, Save, Plus, Trash2, ChevronDown, ChevronRight, RefreshCw, Unlink } from "lucide-react";
 import { toast } from "@/hooks/useToast";
 import {
   fetchEduzzWebhookConfigs, createEduzzWebhookConfig, renameEduzzWebhookConfig, deleteEduzzWebhookConfig,
   fetchTrackingPixels, fetchEduzzCatalog, upsertEduzzProduct, setEduzzProductPixel,
-  type Company, type EduzzWebhookConfig, type TrackingPixel, type EduzzProduct,
+  fetchEduzzOAuthConnection, disconnectEduzzOAuth, syncEduzzOAuthNow,
+  type Company, type EduzzWebhookConfig, type TrackingPixel, type EduzzProduct, type EduzzOAuthConnection,
 } from "@/hooks/useCompany";
 
 const BRAND = "#6366C8";
@@ -90,7 +91,140 @@ export function EduzzConfigPanel({ company, canEdit }: { company: Company; canEd
         </button>
       )}
 
+      <EduzzOAuthSection company={company} canEdit={canEdit} />
       <ProductPixelMapSection company={company} canEdit={canEdit} />
+    </div>
+  );
+}
+
+// Conexão OAuth2 com a API da Eduzz (migration 058) — complemento ao webhook
+// acima, pra cobrir lacunas estruturais (contract_created que nunca chega,
+// invoice_paid com contract:null, histórico anterior ao webhook). Ver
+// src/app/api/eduzz/CLAUDE.md. Sincroniza automaticamente a cada 6h (cron) +
+// botão manual aqui; o webhook continua sendo o caminho rápido de toda venda.
+function EduzzOAuthSection({ company, canEdit }: { company: Company; canEdit: boolean }) {
+  const [connection, setConnection] = useState<EduzzOAuthConnection | null | undefined>(undefined);
+  const [syncing, setSyncing] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+
+  const load = useCallback(() => {
+    void fetchEduzzOAuthConnection(company.id).then(setConnection);
+  }, [company.id]);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Lê o resultado do callback OAuth (?eduzz_oauth=...) e limpa a URL —
+  // mesmo padrão de ?ig_oauth= em ControlPanel.tsx.
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const status = params.get("eduzz_oauth");
+      if (!status) return;
+      if (status === "connected") {
+        toast.success("Conta Eduzz conectada! Já rodou a 1ª sincronização (últimos 90 dias).");
+        load();
+      } else {
+        toast.error(params.get("reason") ?? "Falha ao conectar com a Eduzz.");
+      }
+      params.delete("eduzz_oauth"); params.delete("reason");
+      const clean = window.location.pathname + (params.toString() ? `?${params}` : "");
+      window.history.replaceState({}, "", clean);
+    } catch { /* silent */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const connect = () => {
+    window.location.href = `/api/eduzz/oauth/start?company_id=${company.id}`;
+  };
+
+  const syncNow = async () => {
+    setSyncing(true);
+    try {
+      const updated = await syncEduzzOAuthNow(company.id);
+      setConnection(updated);
+      toast.success(updated.status === "connected" ? "Sincronizado!" : (updated.lastSyncError ?? "Falha na sincronização."));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao sincronizar.");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const disconnect = async () => {
+    if (!confirm("Desconectar a conta Eduzz? A sincronização automática para; o webhook continua funcionando normalmente.")) return;
+    setDisconnecting(true);
+    try {
+      await disconnectEduzzOAuth(company.id);
+      setConnection(null);
+      toast.success("Conta Eduzz desconectada.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao desconectar.");
+    } finally {
+      setDisconnecting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3 rounded-2xl border p-4" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)" }}>
+      <div>
+        <h3 className="text-[12px] font-bold" style={{ color: "var(--dm-text-secondary)" }}>Sincronização via API (complemento ao webhook)</h3>
+        <p className="mt-1 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
+          Conecte sua conta Eduzz pra preencher automaticamente o que o webhook às vezes não recebe (assinaturas sem aviso de
+          mudança, histórico antigo, reembolsos atrasados) — roda sozinho a cada 6h, sem precisar fazer nada depois de conectar.
+        </p>
+      </div>
+
+      {connection === undefined ? (
+        <div className="flex items-center justify-center py-3">
+          <Loader2 size={14} className="animate-spin" style={{ color: "var(--dm-text-tertiary)" }} />
+        </div>
+      ) : connection === null ? (
+        canEdit ? (
+          <button type="button" onClick={connect} className={`h-11 w-full ${btnPrimary}`} style={btnPrimaryStyle}>
+            Conectar conta Eduzz
+          </button>
+        ) : (
+          <p className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>Nenhuma conta conectada.</p>
+        )
+      ) : (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-2 rounded-xl border px-3 py-2" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ background: connection.status === "connected" ? "#05CD99" : "#ef4444" }} />
+                <span className="truncate text-[12px] font-semibold" style={{ color: "var(--dm-text-primary)" }}>
+                  {connection.eduzzUserName || connection.eduzzUserEmail || "Conta Eduzz"}
+                </span>
+              </div>
+              <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                {connection.status === "error"
+                  ? (connection.lastSyncError ?? "Erro na última sincronização.")
+                  : connection.lastSyncedAt
+                    ? `Última sincronização: ${new Date(connection.lastSyncedAt).toLocaleString("pt-BR")}`
+                    : "Ainda não sincronizou."}
+              </p>
+            </div>
+          </div>
+
+          {canEdit && (
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={() => void syncNow()} disabled={syncing} className={`h-10 flex-1 ${btnPrimary}`} style={btnPrimaryStyle}>
+                {syncing ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Sincronizar agora
+              </button>
+              <button
+                type="button"
+                onClick={() => void disconnect()}
+                disabled={disconnecting}
+                title="Desconectar"
+                className="flex h-10 items-center justify-center rounded-xl border px-3 transition-opacity hover:opacity-80 disabled:opacity-40"
+                style={{ borderColor: "var(--dm-border-default)", color: "#ef4444" }}
+              >
+                {disconnecting ? <Loader2 size={13} className="animate-spin" /> : <Unlink size={13} />}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

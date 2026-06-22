@@ -113,7 +113,7 @@ const toDate = (v: unknown): string => {
 
 // ─── Formato unificado, depois de detectar/parsear qualquer um dos 2 ─────────
 
-interface SaleEvent {
+export interface SaleEvent {
   transactionId: string;
   /** Valor CHEIO da venda — em boleto parcelado já vem multiplicado por `installments` (migration 053+052: ver `invoiceValue` abaixo pra valor só dessa fatura/parcela). */
   value: number;
@@ -194,7 +194,7 @@ function parseLegacyPayload(body: RawPayload): SaleEvent | { ignored: string } {
   };
 }
 
-interface EduzzModernPayload {
+export interface EduzzModernPayload {
   event?: string;
   data?: {
     status?: string;
@@ -225,7 +225,7 @@ interface EduzzModernPayload {
 // fim definido. "Ficha do contrato" guardada em `eduzz_contracts` (migration
 // 052), consultada depois em cada invoice_paid pelo `contract.id` (=
 // recurrence_key) pra saber quanto multiplicar — ver `findContractInfo()`.
-interface EduzzContractPayload {
+export interface EduzzContractPayload {
   event?: string;
   data?: {
     /** email do comprador — junto com `products[0].id`, é o que permite achar de volta o contrato certo quando uma venda chega "órfã" (ver `findContractByCustomerAndProduct`). Schema próprio desse evento, não confundir com `data.buyer` do invoice_paid. */
@@ -258,7 +258,7 @@ const CONTRACT_EVENTS = new Set(["myeduzz.contract_created", "myeduzz.contract_u
 // em vez de grupo, porque cada uma é independente/de migration própria).
 const OPTIONAL_CONTRACT_COLUMNS = ["current_charge", "customer_email", "product_id", "starts_at", "finishes_at"];
 
-async function upsertContractInfo(db: SupabaseClient, companyId: string, body: EduzzContractPayload): Promise<void> {
+export async function upsertContractInfo(db: SupabaseClient, companyId: string, body: EduzzContractPayload): Promise<void> {
   const contract = body.data?.contract;
   if (!contract?.id) return;
 
@@ -481,7 +481,7 @@ async function findContractInfo(
 // também exige que a data da fatura caia dentro da vigência — desambigua o
 // caso de o mesmo cliente reassinar o MESMO produto em períodos diferentes
 // (2 contratos, mesmo email+produto, vigências que não se sobrepõem).
-async function findContractByCustomerAndProduct(
+export async function findContractByCustomerAndProduct(
   db: SupabaseClient,
   companyId: string,
   email: string,
@@ -520,11 +520,11 @@ async function countRecurrenceCharges(db: SupabaseClient, companyId: string, rec
   return (data as unknown[]).length;
 }
 
-function isModernPayload(body: RawPayload): boolean {
+export function isModernPayload(body: RawPayload): boolean {
   return typeof body.event === "string" && typeof body.data === "object" && body.data !== null && "buyer" in (body.data as object);
 }
 
-function parseModernPayload(body: EduzzModernPayload): SaleEvent | { ignored: string } {
+export function parseModernPayload(body: EduzzModernPayload): SaleEvent | { ignored: string } {
   if (body.event !== "myeduzz.invoice_paid") return { ignored: `event=${body.event ?? "desconhecido"}` };
   const data = body.data ?? {};
   // price/paid: confirmado na doc oficial da Eduzz que os 2 são "valor da
@@ -717,7 +717,7 @@ function computeFingerprintId(match: VisitMatch | null, sale: SaleEvent): string
   );
 }
 
-async function recordSale(db: SupabaseClient, companyId: string, sale: SaleEvent) {
+export async function recordSale(db: SupabaseClient, companyId: string, sale: SaleEvent) {
   const match = await resolveVisitMatch(db, companyId, sale);
   await upsertProductCatalog(db, companyId, sale);
 
@@ -948,7 +948,7 @@ function buildCommerceCustomData(items: SaleEvent["items"]) {
 
 // Parcela de boleto (>1) é só continuação de um pagamento já contado por
 // completo na parcela 1 — sem revenue novo, sem registro novo, ignora 100%.
-function isInstallmentContinuation(sale: SaleEvent): boolean {
+export function isInstallmentContinuation(sale: SaleEvent): boolean {
   return Boolean(sale.installmentNumber && sale.installmentNumber > 1);
 }
 
@@ -956,7 +956,7 @@ function isInstallmentContinuation(sale: SaleEvent): boolean {
 // da parcela: é receita nova de verdade (cobrança do mês), só não deve gerar
 // Purchase pra Meta (evita ruído de "venda nova" todo mês — pedido explícito).
 // `recordRenewal()` ainda guarda o valor pra relatório futuro de MRR/LTV.
-async function isKnownRecurrence(db: SupabaseClient, companyId: string, recurrenceKey: string): Promise<boolean> {
+export async function isKnownRecurrence(db: SupabaseClient, companyId: string, recurrenceKey: string): Promise<boolean> {
   const { data, error } = await db
     .from("events_log")
     .select("id")
@@ -1020,7 +1020,7 @@ async function upsertCampaignMetrics(db: SupabaseClient, companyId: string, sale
 // no isCustomer/timeline de venda do dashboard atual, é só dado pra um
 // relatório futuro de MRR/LTV agrupar por recurrence_key). capi_status fica
 // fixo em "skipped": nem tentamos configurar pixel pra isso.
-async function recordRenewal(db: SupabaseClient, companyId: string, sale: SaleEvent): Promise<void> {
+export async function recordRenewal(db: SupabaseClient, companyId: string, sale: SaleEvent): Promise<void> {
   // Mesma correlação de visita que recordSale() faz — sem isso, o fingerprint
   // calculado aqui (antes: sale.recurrenceKey || transactionId) não batia com
   // o fingerprint da 1ª cobrança, e a renovação aparecia como um "visitante"
@@ -1085,7 +1085,7 @@ async function recordRenewal(db: SupabaseClient, companyId: string, sale: SaleEv
 // chave SINTÉTICA própria (nunca colide com o id de nenhuma parcela, seja
 // repetido ou não do lado da Eduzz) tanto pra idempotência quanto pra
 // gravar a linha.
-function installmentTransactionId(sale: SaleEvent): string {
+export function installmentTransactionId(sale: SaleEvent): string {
   return `${sale.transactionId}-parcela-${sale.installmentNumber}`;
 }
 
@@ -1099,7 +1099,7 @@ function installmentTransactionId(sale: SaleEvent): string {
 // de recordRenewal() pra assinatura). `value` aqui é `invoiceValue` (só o
 // valor DESSA parcela), não o total — quem quiser o total consulta a linha
 // Purchase da parcela 1 via `main_sale_transaction_id`.
-async function recordInstallment(db: SupabaseClient, companyId: string, sale: SaleEvent): Promise<void> {
+export async function recordInstallment(db: SupabaseClient, companyId: string, sale: SaleEvent): Promise<void> {
   // Mesma correlação/fingerprint de recordSale() — mesmo motivo do
   // recordRenewal() acima: sem isso, a parcela 2/3 aparecia como um
   // "visitante" separado em vez de cair no histórico da mesma pessoa.
@@ -1139,12 +1139,12 @@ async function recordInstallment(db: SupabaseClient, companyId: string, sale: Sa
 // receita líquida poder excluir vendas revertidas). Se não achar a linha
 // (webhook de reembolso chegou sem a gente ter visto o invoice_paid antes,
 // raro), não tem o que atualizar — só confirma recebimento.
-const REVERSAL_EVENTS: Record<string, "refunded" | "chargeback"> = {
+export const REVERSAL_EVENTS: Record<string, "refunded" | "chargeback"> = {
   "myeduzz.invoice_refunded": "refunded",
   "myeduzz.invoice_chargeback": "chargeback",
 };
 
-async function handleReversal(db: SupabaseClient, companyId: string, body: EduzzModernPayload, status: "refunded" | "chargeback") {
+export async function handleReversal(db: SupabaseClient, companyId: string, body: EduzzModernPayload, status: "refunded" | "chargeback") {
   const transactionId = body.data?.transaction?.id || body.data?.transaction?.key;
   if (!transactionId) return NextResponse.json({ received: true, ignored: "sem transaction id" });
 
@@ -1167,7 +1167,7 @@ async function handleReversal(db: SupabaseClient, companyId: string, body: Eduzz
 // venda viraria 2 Purchase na Meta e contaria receita em dobro em
 // campaign_metrics. Se a coluna ainda não existir (migration 040 pendente),
 // segue sem checar — mesmo risco que já existia antes desta feature.
-async function alreadyProcessed(db: SupabaseClient, companyId: string, transactionId: string): Promise<boolean> {
+export async function alreadyProcessed(db: SupabaseClient, companyId: string, transactionId: string): Promise<boolean> {
   const { data, error } = await db
     .from("events_log")
     .select("id")
