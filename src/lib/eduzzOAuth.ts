@@ -7,6 +7,31 @@
 // Token Eduzz não expira (`expires_in: 0`) e não tem refresh_token (sempre
 // `null`, confirmado na doc oficial) — diferente do fluxo Meta/Instagram.
 
+import { createClient as createSupabaseJsClient } from "@supabase/supabase-js";
+
+/**
+ * Client Supabase com o JWT do usuário no header, pra usar nas rotas
+ * /api/eduzz/oauth/* (start, sync-now). `@/utils/supabase/server` é
+ * cookie-based e não serve aqui (login do app usa supabaseClient puro,
+ * sessão em localStorage — ver CLAUDE.md da pasta). `auth.getUser(token)`
+ * funciona com qualquer client porque é uma chamada stateless à Auth API,
+ * mas `sb.rpc(...)` manda o Authorization header configurado no client —
+ * sem isso o RPC roda como anônimo e `auth.uid()` vem null dentro de
+ * `can_write_company`, mesmo com token válido. Por isso esse client tem
+ * que levar o Bearer token nos headers globais.
+ */
+export function eduzzUserScopedClient(token: string) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const supabaseAnonKey = (
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+  )!;
+  return createSupabaseJsClient(supabaseUrl, supabaseAnonKey, {
+    global: { headers: { Authorization: `Bearer ${token}` } },
+    auth: { persistSession: false },
+  });
+}
+
 export const EDUZZ_AUTHORIZE_URL = "https://accounts.eduzz.com/oauth/authorize";
 export const EDUZZ_TOKEN_URL = "https://accounts-api.eduzz.com/oauth/token";
 export const EDUZZ_API_BASE = "https://api.eduzz.com";

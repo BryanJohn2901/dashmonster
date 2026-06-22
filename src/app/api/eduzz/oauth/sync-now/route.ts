@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/utils/supabase/server";
+import { eduzzUserScopedClient } from "@/lib/eduzzOAuth";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { syncCompany } from "@/lib/eduzzSync";
 
@@ -9,11 +9,13 @@ export const runtime = "nodejs";
  * POST /api/eduzz/oauth/sync-now
  * Body: { company_id }, header Authorization: Bearer <token> (não cookie —
  * mesmo motivo do oauth/start, login do app usa sessão em localStorage, não
- * em cookie). Sincronização sob demanda (botão "Sincronizar agora" no
- * painel) — mesma checagem de permissão do oauth/start, mas usa
- * supabaseAdmin (service_role) pra rodar a sync, já que syncCompany() grava
- * em tabelas (events_log, eduzz_contracts) que o usuário final não tem
- * permissão de escrita direta.
+ * em cookie). Usa `eduzzUserScopedClient(token)` pra checar permissão
+ * (`can_write_company` via RPC precisa do Authorization header no request,
+ * não só do token validado em `getUser`). Sincronização sob demanda (botão
+ * "Sincronizar agora" no painel) — mesma checagem de permissão do
+ * oauth/start, mas usa supabaseAdmin (service_role) pra rodar a sync, já
+ * que syncCompany() grava em tabelas (events_log, eduzz_contracts) que o
+ * usuário final não tem permissão de escrita direta.
  */
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null) as { company_id?: string } | null;
@@ -27,7 +29,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
   }
 
-  const sb = await createClient();
+  const sb = eduzzUserScopedClient(token);
   const { data: auth } = await sb.auth.getUser(token);
   if (!auth?.user) {
     return NextResponse.json({ error: "Não autenticado." }, { status: 401 });

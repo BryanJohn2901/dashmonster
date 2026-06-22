@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "crypto";
-import { createClient } from "@/utils/supabase/server";
-import { EDUZZ_AUTHORIZE_URL, eduzzRedirectUri } from "@/lib/eduzzOAuth";
+import { EDUZZ_AUTHORIZE_URL, eduzzRedirectUri, eduzzUserScopedClient } from "@/lib/eduzzOAuth";
 
 export const runtime = "nodejs";
 
@@ -19,9 +18,14 @@ const STATE_COOKIE = "eduzz_oauth_state";
  * É POST com token explícito, não GET com sessão via cookie: o login do app
  * usa `supabaseClient` puro (@supabase/supabase-js, sessão em localStorage),
  * nunca grava cookie de sessão — `cookies()`/`@/utils/supabase/server` aqui
- * sempre veria "sem usuário". O `state` ainda vai num cookie httpOnly próprio
- * (não é sessão Supabase, é CSRF nosso) porque o `callback` da Eduzz é, esse
- * sim, uma navegação de página inteira de volta pro nosso domínio.
+ * sempre veria "sem usuário". Usa `eduzzUserScopedClient(token)` (não o
+ * client cookie-based) porque o `sb.rpc("can_write_company", ...)` precisa
+ * mandar o Authorization: Bearer no request pro PostgREST resolver
+ * `auth.uid()` certo — `auth.getUser(token)` valida o token mas não
+ * configura esse header pros outros chamados do client. O `state` ainda vai
+ * num cookie httpOnly próprio (não é sessão Supabase, é CSRF nosso) porque
+ * o `callback` da Eduzz é, esse sim, uma navegação de página inteira de
+ * volta pro nosso domínio.
  */
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null) as { company_id?: string } | null;
@@ -40,7 +44,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
   }
 
-  const sb = await createClient();
+  const sb = eduzzUserScopedClient(token);
   const { data: auth } = await sb.auth.getUser(token);
   if (!auth?.user) {
     return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
