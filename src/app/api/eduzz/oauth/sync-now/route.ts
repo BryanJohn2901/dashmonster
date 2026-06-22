@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { syncCompany } from "@/lib/eduzzSync";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 /**
  * POST /api/eduzz/oauth/sync-now
