@@ -572,7 +572,7 @@ export interface EduzzOAuthConnection {
   companyId: string;
   eduzzUserEmail: string | null;
   eduzzUserName: string | null;
-  status: "connected" | "error";
+  status: "connected" | "error" | "syncing";
   lastSyncedAt: string | null;
   lastSyncError: string | null;
 }
@@ -582,7 +582,7 @@ function rowToEduzzOAuthConnection(row: Record<string, unknown>): EduzzOAuthConn
     companyId: row.company_id as string,
     eduzzUserEmail: (row.eduzz_user_email as string | null) ?? null,
     eduzzUserName: (row.eduzz_user_name as string | null) ?? null,
-    status: row.status as "connected" | "error",
+    status: row.status as "connected" | "error" | "syncing",
     lastSyncedAt: (row.last_synced_at as string | null) ?? null,
     lastSyncError: (row.last_sync_error as string | null) ?? null,
   };
@@ -630,7 +630,13 @@ export async function startEduzzOAuth(companyId: string): Promise<string> {
   return json.url;
 }
 
-/** Dispara uma sincronização sob demanda (botão "Sincronizar agora"). */
+/**
+ * Dispara uma sincronização sob demanda (botão "Sincronizar agora"). A rota
+ * roda a sync em background (after()) e responde na hora com status
+ * "syncing" — histórico grande passa fácil do maxDuration mesmo em 60s.
+ * Status final ("connected"/"error") só aparece num fetchEduzzOAuthConnection
+ * posterior.
+ */
 export async function syncEduzzOAuthNow(companyId: string): Promise<EduzzOAuthConnection> {
   const res = await fetch("/api/eduzz/oauth/sync-now", {
     method: "POST",

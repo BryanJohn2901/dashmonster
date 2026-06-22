@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { after } from "next/server";
 import { eduzzUserScopedClient } from "@/lib/eduzzOAuth";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { syncCompany } from "@/lib/eduzzSync";
@@ -17,6 +18,12 @@ export const maxDuration = 60;
  * oauth/start, mas usa supabaseAdmin (service_role) pra rodar a sync, já
  * que syncCompany() grava em tabelas (events_log, eduzz_contracts) que o
  * usuário final não tem permissão de escrita direta.
+ *
+ * A sync roda em background (after(), mesmo motivo do oauth/callback): um
+ * histórico grande passa fácil do maxDuration mesmo em 60s, e antes disso a
+ * function morria com 504 antes do front receber qualquer resposta. Aqui a
+ * rota marca status "syncing" e responde na hora — status final
+ * ("connected"/"error") só aparece numa leitura posterior da conexão.
  */
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null) as { company_id?: string } | null;
@@ -52,7 +59,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Empresa sem conexão Eduzz." }, { status: 404 });
   }
 
-  await syncCompany(admin, connection as { company_id: string; access_token: string; last_synced_at: string | null });
+  await admin
+    .from("eduzz_oauth_connections")
+    .update({ status: "syncing", last_sync_error: null, updated_at: new Date().toISOString() })
+    .eq("company_id", companyId);
+
+  after(async () => {
+    await syncCompany(admin, connection as { company_id: string; access_token: string; last_synced_at: string | null });
+  });
 
   const { data: updated } = await admin
     .from("eduzz_oauth_connections")

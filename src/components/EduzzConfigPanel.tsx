@@ -115,6 +115,15 @@ function EduzzOAuthSection({ company, canEdit }: { company: Company; canEdit: bo
 
   useEffect(() => { load(); }, [load]);
 
+  // Sync roda em background na rota (after()) — enquanto status for
+  // "syncing", repolla até virar "connected"/"error" pra refletir o
+  // resultado final sem precisar o usuário recarregar a página.
+  useEffect(() => {
+    if (connection?.status !== "syncing") return;
+    const id = setInterval(load, 5000);
+    return () => clearInterval(id);
+  }, [connection?.status, load]);
+
   // Lê o resultado do callback OAuth (?eduzz_oauth=...) e limpa a URL —
   // mesmo padrão de ?ig_oauth= em ControlPanel.tsx.
   useEffect(() => {
@@ -123,7 +132,7 @@ function EduzzOAuthSection({ company, canEdit }: { company: Company; canEdit: bo
       const status = params.get("eduzz_oauth");
       if (!status) return;
       if (status === "connected") {
-        toast.success("Conta Eduzz conectada! Já rodou a 1ª sincronização (últimos 90 dias).");
+        toast.success("Conta Eduzz conectada! A 1ª sincronização (últimos 90 dias) está rodando em segundo plano.");
         load();
       } else {
         toast.error(params.get("reason") ?? "Falha ao conectar com a Eduzz.");
@@ -152,7 +161,7 @@ function EduzzOAuthSection({ company, canEdit }: { company: Company; canEdit: bo
     try {
       const updated = await syncEduzzOAuthNow(company.id);
       setConnection(updated);
-      toast.success(updated.status === "connected" ? "Sincronizado!" : (updated.lastSyncError ?? "Falha na sincronização."));
+      toast.success("Sincronização iniciada — pode levar alguns minutos.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro ao sincronizar.");
     } finally {
@@ -201,25 +210,30 @@ function EduzzOAuthSection({ company, canEdit }: { company: Company; canEdit: bo
           <div className="flex items-center justify-between gap-2 rounded-xl border px-3 py-2" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
-                <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ background: connection.status === "connected" ? "#05CD99" : "#ef4444" }} />
+                <span
+                  className="h-1.5 w-1.5 flex-shrink-0 rounded-full"
+                  style={{ background: connection.status === "connected" ? "#05CD99" : connection.status === "syncing" ? "#f59e0b" : "#ef4444" }}
+                />
                 <span className="truncate text-[12px] font-semibold" style={{ color: "var(--dm-text-primary)" }}>
                   {connection.eduzzUserName || connection.eduzzUserEmail || "Conta Eduzz"}
                 </span>
               </div>
               <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
-                {connection.status === "error"
-                  ? (connection.lastSyncError ?? "Erro na última sincronização.")
-                  : connection.lastSyncedAt
-                    ? `Última sincronização: ${new Date(connection.lastSyncedAt).toLocaleString("pt-BR")}`
-                    : "Ainda não sincronizou."}
+                {connection.status === "syncing"
+                  ? "Sincronizando..."
+                  : connection.status === "error"
+                    ? (connection.lastSyncError ?? "Erro na última sincronização.")
+                    : connection.lastSyncedAt
+                      ? `Última sincronização: ${new Date(connection.lastSyncedAt).toLocaleString("pt-BR")}`
+                      : "Ainda não sincronizou."}
               </p>
             </div>
           </div>
 
           {canEdit && (
             <div className="flex items-center gap-2">
-              <button type="button" onClick={() => void syncNow()} disabled={syncing} className={`h-10 flex-1 ${btnPrimary}`} style={btnPrimaryStyle}>
-                {syncing ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Sincronizar agora
+              <button type="button" onClick={() => void syncNow()} disabled={syncing || connection.status === "syncing"} className={`h-10 flex-1 ${btnPrimary}`} style={btnPrimaryStyle}>
+                {syncing || connection.status === "syncing" ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Sincronizar agora
               </button>
               <button
                 type="button"

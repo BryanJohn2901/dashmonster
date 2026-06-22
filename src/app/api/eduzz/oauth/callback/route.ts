@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
           eduzz_user_id: token.user?.id ?? null,
           eduzz_user_email: token.user?.email ?? null,
           eduzz_user_name: token.user?.name ?? null,
-          status: "connected",
+          status: "syncing",
           last_sync_error: null,
           updated_at: new Date().toISOString(),
         },
