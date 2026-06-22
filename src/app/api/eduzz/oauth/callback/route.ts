@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { after } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { encryptToken } from "@/lib/crypto";
 import { exchangeCodeForToken, eduzzRedirectUri } from "@/lib/eduzzOAuth";
 import { syncCompany } from "@/lib/eduzzSync";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 const STATE_COOKIE = "eduzz_oauth_state";
 
@@ -73,18 +75,23 @@ export async function GET(request: NextRequest) {
       return backToApp("error", { reason: error.message });
     }
 
-    // 1ª sincronização (90 dias) ANTES do redirect — ambiente serverless
-    // (Vercel) pode matar a function logo depois da resposta, então não dá
-    // pra disparar em "fire and forget"; erros ficam em last_sync_error e
-    // não impedem o redirect de "connected" (a conexão já foi salva).
-    const { data: connection } = await sb
-      .from("eduzz_oauth_connections")
-      .select("company_id, access_token, last_synced_at")
-      .eq("company_id", companyId)
-      .single();
-    if (connection) {
-      await syncCompany(sb, connection as { company_id: string; access_token: string; last_synced_at: string | null });
-    }
+    // 1ª sincronização (90 dias) DEPOIS do redirect (via after()) — rodar
+    // antes travava o browser na tela de "redirecionando" da Eduzz até
+    // estourar o timeout da function (paginação de 90 dias passa fácil de
+    // 10s). `after()` manda a resposta de redirect na hora e continua a
+    // sync em segundo plano (Vercel usa waitUntil — function só morre depois
+    // que a promise resolve ou bate o maxDuration). Erro vira
+    // last_sync_error, não afeta o redirect que já foi enviado.
+    after(async () => {
+      const { data: connection } = await sb
+        .from("eduzz_oauth_connections")
+        .select("company_id, access_token, last_synced_at")
+        .eq("company_id", companyId)
+        .single();
+      if (connection) {
+        await syncCompany(sb, connection as { company_id: string; access_token: string; last_synced_at: string | null });
+      }
+    });
 
     const res = backToApp("connected");
     res.cookies.delete(STATE_COOKIE);
