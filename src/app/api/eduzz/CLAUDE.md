@@ -161,15 +161,19 @@ janela de retry da Eduzz. Roda via cron (`vercel.json`, a cada 6h,
   ao webhook", não backfill geral). Fix: antes de `recordSale()` na branch de
   venda NOVA (não é parcela, não é renovação conhecida) em
   `syncCompanySales()`, checa `hasTrackedHistory(db, companyId, sale.email)` —
-  existe ALGUM evento prévio em `events_log` com esse email (Lead, PageView,
-  Purchase de outro produto, não importa a origem)? Se não, pula (`continue`),
-  não grava nada. Como as janelas processam da mais antiga pra mais nova,
+  existe alguma linha em `events_log` com esse email E `source = EDUZZ_SOURCE`
+  ("eduzz")? Deliberadamente **restrito a vendas já processadas pelo webhook**
+  (pedido reforçado pelo usuário: "só completa o que já chegou do webhook, o
+  que não chegar não pega nada") — um Lead/PageView do pixel sem nenhuma
+  venda NÃO conta como "já rastreado" pra esse gate; só Purchase/Renewal/
+  Installment com `source="eduzz"` contam. Sem isso, pula (`continue`), não
+  grava nada. Como as janelas processam da mais antiga pra mais nova,
   isso também blinda renovações/parcelas seguintes do MESMO contrato: se a 1ª
   cobrança nunca foi gravada (cliente desconhecido), `isKnownRecurrence` nunca
   vira true pra aquele `recurrenceKey`, então as cobranças seguintes caem na
   mesma branch e também são puladas — a jornada inteira fica de fora, não só
-  a 1ª linha. Continua funcionando o caso de uso real da sync: cliente JÁ
-  rastreado (apareceu em algum evento) cuja assinatura o webhook perdeu
+  a 1ª linha. Continua funcionando o caso de uso real da sync: cliente que JÁ
+  tem venda do webhook, mas cuja assinatura o webhook perdeu
   (`contract_updated` que nunca chegou, `invoice_paid` com `contract: null`)
   — esse caso passa o `hasTrackedHistory` e ganha o histórico completo de
   parcelas/renovações. `syncCompanySubscriptions()` (`upsertContractInfo`,

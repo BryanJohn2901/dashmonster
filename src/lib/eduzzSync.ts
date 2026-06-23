@@ -22,6 +22,7 @@ import {
   handleReversal,
   installmentTransactionId,
   REVERSAL_EVENTS,
+  EDUZZ_SOURCE,
 } from "@/app/api/eduzz/webhook/route";
 import {
   fetchSales,
@@ -49,26 +50,32 @@ const PAGE_SIZE = 100;
 const CHUNK_DAYS = 7;
 const DEFAULT_TIME_BUDGET_MS = 35_000;
 
-// Sync só deve ENRIQUECER jornada que o webhook/pixel já capturou (mesma
-// pessoa, por email) — nunca criar uma "primeira venda" do zero pra cliente
-// que nunca apareceu em events_log. Pedido explícito do usuário (2026-06-23):
-// o backfill de 90 dias estava criando cards "via eduzz" soltos no Histórico
-// do visitante pra clientes nunca rastreados (sem Lead/PageView, sem UTM/fbp/
-// fbc) — jornada fantasma, sem nenhum dado de atribuição por trás. `alreadyProcessed`/
-// `isKnownRecurrence` já cobrem "já vimos ESSA venda/contrato"; isto cobre
-// "já vimos ESSA PESSOA alguma vez" (mesmo critério de email usado em
+// Sync só deve ENRIQUECER venda que o WEBHOOK já capturou (mesma pessoa, por
+// email) — nunca criar uma "primeira venda" do zero. Pedido explícito do
+// usuário (2026-06-23, reforçado depois: "só completa o que já chegou do
+// webhook, o que não chegar não pega nada"): o backfill de 90 dias estava
+// criando cards "via eduzz" soltos no Histórico do visitante pra clientes
+// sem NENHUMA venda prévia via webhook — jornada fantasma, sem nenhum dado
+// real de atribuição por trás. Filtra por `source = EDUZZ_SOURCE` (não só
+// "qualquer evento", o que incluiria um Lead do pixel sem venda nenhuma) —
+// só Purchase/Renewal/Installment gravados pelo webhook (ou por esta própria
+// sync, depois de já liberada) usam esse source; Lead/PageView do pixel não
+// contam como "veio do webhook". `alreadyProcessed`/`isKnownRecurrence` já
+// cobrem "já vimos ESSA venda/contrato"; isto cobre "essa PESSOA já tem
+// alguma venda processada pelo webhook" (mesmo critério de email usado em
 // `resolveVisitMatch()`/`findContractByCustomerAndProduct()` no webhook).
 // Como as janelas processam da mais antiga pra mais nova, isso também blinda
 // renovações/parcelas seguintes do MESMO contrato: se a 1ª cobrança nunca foi
-// gravada (cliente desconhecido), `isKnownRecurrence` nunca vira true pra esse
-// `recurrenceKey`, então as cobranças seguintes caem aqui de novo e também
-// são puladas — a jornada inteira fica de fora, não só a 1ª linha.
+// gravada (cliente sem venda via webhook), `isKnownRecurrence` nunca vira
+// true pra esse `recurrenceKey`, então as cobranças seguintes caem aqui de
+// novo e também são puladas — a jornada inteira fica de fora, não só a 1ª linha.
 async function hasTrackedHistory(db: SupabaseClient, companyId: string, email: string | null | undefined): Promise<boolean> {
   if (!email) return false;
   const { data, error } = await db
     .from("events_log")
     .select("id")
     .eq("company_id", companyId)
+    .eq("source", EDUZZ_SOURCE)
     .ilike("lead_email", email)
     .limit(1)
     .maybeSingle();

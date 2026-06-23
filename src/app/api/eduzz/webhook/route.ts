@@ -52,7 +52,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
  *      histórico de visita, mas a Purchase vai pra Meta sem fbp/fbc/url.
  */
 
-const EDUZZ_SOURCE = "eduzz" as const;
+export const EDUZZ_SOURCE = "eduzz" as const;
 
 // Status que contam como venda concretizada (formato antigo).
 const PAID_STATUSES = new Set(["3", "paid", "pago", "aprovada", "approved", "completed"]);
