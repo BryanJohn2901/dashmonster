@@ -256,9 +256,9 @@ const CONTRACT_EVENTS = new Set(["myeduzz.contract_created", "myeduzz.contract_u
 // mencionar e tenta de novo, até não sobrar nenhuma conhecida (mesmo padrão
 // de OPTIONAL_COLUMN_GROUPS de insertEventsLogRow, só que coluna por coluna
 // em vez de grupo, porque cada uma é independente/de migration própria).
-const OPTIONAL_CONTRACT_COLUMNS = ["current_charge", "customer_email", "product_id", "starts_at", "finishes_at"];
+const OPTIONAL_CONTRACT_COLUMNS = ["current_charge", "customer_email", "product_id", "starts_at", "finishes_at", "created_received"];
 
-export async function upsertContractInfo(db: SupabaseClient, companyId: string, body: EduzzContractPayload): Promise<void> {
+export async function upsertContractInfo(db: SupabaseClient, companyId: string, body: EduzzContractPayload, isCreatedEvent = false): Promise<void> {
   const contract = body.data?.contract;
   if (!contract?.id) return;
 
@@ -299,13 +299,165 @@ export async function upsertContractInfo(db: SupabaseClient, companyId: string, 
   }
   if (error) console.error("[eduzz webhook] falha ao gravar eduzz_contracts:", error.message);
 
-  // Resolve a RACE: a Eduzz não garante ordem de entrega, então o invoice_paid
-  // da 1ª cobrança pode chegar ANTES do contract_created/updated. Quando isso
-  // acontece, recordSale() já gravou a Purchase com o valor da cobrança (não o
-  // do contrato) e installments null. Agora que a ficha chegou, corrige
-  // retroativamente as linhas dessa assinatura. (Não reenvia pra Meta — o
-  // evento da 1ª cobrança já foi; corrige só dashboard/relatório.)
+  // Marca created_received = true SOMENTE no contract_created, nunca no
+  // contract_updated (não rebaixa o flag se já estava true de um created
+  // anterior). UPDATE separado pós-upsert evita que o upsert genérico
+  // sobrescreva o flag com false (PostgREST não tem COALESCE nativo em upsert).
+  if (isCreatedEvent && !error) {
+    const { error: flagErr } = await db
+      .from("eduzz_contracts")
+      .update({ created_received: true })
+      .eq("company_id", companyId)
+      .eq("contract_id", contract.id);
+    if (flagErr && !flagErr.message?.includes("created_received")) {
+      console.error("[eduzz webhook] falha ao marcar created_received:", flagErr.message);
+    }
+  }
+
+  // Race invoice_paid → contract_created: confirma venda pendente se houver.
+  // Só no contract_created — backfill de valores roda pra ambos os eventos.
+  if (isCreatedEvent) {
+    await confirmPendingSubscription(db, companyId, contract.id);
+  }
+
+  // Race genérico (contract_created/updated chegou depois do invoice_paid
+  // normal — já confirmado): corrige valor/installments retroativamente.
   await backfillContractValues(db, companyId, contract.id, total, isFinite, current, chargeValue, customerEmail, productId, startsAt, finishesAt);
+}
+
+// Confirma uma venda de assinatura que chegou ANTES do contract_created
+// (sale_confirmed=false). Roda quando o contract_created finalmente chega.
+// Também faz cleanup lazy de pendentes expiradas (>24h) da empresa —
+// fallback pro pg_cron em planos onde ele não está disponível.
+async function confirmPendingSubscription(db: SupabaseClient, companyId: string, contractId: string): Promise<void> {
+  const cutoffIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+  // Cleanup lazy: deleta pendentes expirados de QUALQUER contrato da empresa.
+  await db
+    .from("events_log")
+    .delete()
+    .eq("company_id", companyId)
+    .eq("sale_confirmed", false)
+    .not("recurrence_key", "is", null)
+    .lt("created_at", cutoffIso);
+
+  // Acha a venda pendente deste contrato (deve existir no máximo 1, já que
+  // invoice_paid duplicado cai em alreadyProcessed antes de gravar de novo).
+  const { data: pending, error: findErr } = await db
+    .from("events_log")
+    .select(
+      "id, value, installment_value, currency, product_name, created_at, pixel_id, event_id, recurrence_key, lead_email, lead_phone, lead_name, fingerprint_id, fbp, fbc, country, country_region, city, postal_code, client_ip_address, client_user_agent",
+    )
+    .eq("company_id", companyId)
+    .eq("recurrence_key", contractId)
+    .eq("sale_confirmed", false)
+    .gte("created_at", cutoffIso)
+    .maybeSingle();
+
+  if (findErr) {
+    // Coluna sale_confirmed ainda não existe (migration pendente) — sem nada pra confirmar.
+    if (findErr.message?.includes("sale_confirmed")) return;
+    console.error("[eduzz webhook] confirmPendingSubscription lookup:", findErr.message);
+    return;
+  }
+  if (!pending) return;
+
+  const row = pending as {
+    id: string; value: number; installment_value: number | null; currency: string;
+    product_name: string; created_at: string; pixel_id: string | null; event_id: string;
+    recurrence_key: string | null; lead_email: string | null; lead_phone: string | null;
+    lead_name: string | null; fingerprint_id: string | null; fbp: string | null; fbc: string | null;
+    country: string | null; country_region: string | null; city: string | null;
+    postal_code: string | null; client_ip_address: string | null; client_user_agent: string | null;
+  };
+
+  // Confirma a linha — a partir daqui aparece no dashboard.
+  const { error: confirmErr } = await db
+    .from("events_log")
+    .update({ sale_confirmed: true })
+    .eq("id", row.id);
+  if (confirmErr) {
+    console.error("[eduzz webhook] confirmPendingSubscription update:", confirmErr.message);
+    return;
+  }
+
+  // Receita: usa installment_value (valor real da cobrança, não displayValue).
+  const saleDate = row.created_at.slice(0, 10);
+  const revenue = Number(row.installment_value ?? row.value);
+  const { data: existing } = await db
+    .from("campaign_metrics")
+    .select("revenue, conversions")
+    .eq("company_id", companyId)
+    .eq("date", saleDate)
+    .eq("campaign_name", row.product_name)
+    .eq("source", EDUZZ_SOURCE)
+    .maybeSingle();
+  let { error: metricsErr } = await db.from("campaign_metrics").upsert(
+    {
+      company_id: companyId,
+      date: saleDate,
+      campaign_name: row.product_name,
+      investment: 0, clicks: 0, impressions: 0, leads: 0,
+      conversions: Number(existing?.conversions ?? 0) + 1,
+      revenue: Number(existing?.revenue ?? 0) + revenue,
+      source: EDUZZ_SOURCE,
+    },
+    { onConflict: "company_id,date,campaign_name,source" },
+  );
+  if (metricsErr && /no unique|exclusion constraint/i.test(metricsErr.message)) {
+    ({ error: metricsErr } = await db.from("campaign_metrics").upsert(
+      {
+        company_id: companyId,
+        date: saleDate,
+        campaign_name: row.product_name,
+        investment: 0, clicks: 0, impressions: 0, leads: 0,
+        conversions: Number(existing?.conversions ?? 0) + 1,
+        revenue: Number(existing?.revenue ?? 0) + revenue,
+        source: EDUZZ_SOURCE,
+      },
+      { onConflict: "date,campaign_name,source" },
+    ));
+  }
+  if (metricsErr) console.error("[eduzz webhook] confirmPendingSubscription metrics:", metricsErr.message);
+
+  // Meta CAPI — só se o produto tem pixel configurado.
+  if (!row.pixel_id) return;
+  const resolvedPixel = await resolvePixelById(db, companyId, row.pixel_id);
+  if (!resolvedPixel.meta_pixel_id || !resolvedPixel.meta_capi_token) return;
+
+  await sendMetaCapiEvent(db, {
+    metaPixelId: resolvedPixel.meta_pixel_id,
+    metaCapiToken: resolvedPixel.meta_capi_token,
+    testEventCode: resolvedPixel.meta_test_event_code,
+    eventLogId: row.id,
+    eventData: {
+      event_name: "Purchase",
+      event_time: Math.floor(new Date(row.created_at).getTime() / 1000),
+      event_id: row.event_id,
+      action_source: "system_generated",
+      user_data: {
+        em: hashLower(row.lead_email),
+        ph: hashPhone(row.lead_phone),
+        ...splitName(row.lead_name),
+        fbp: row.fbp || undefined,
+        fbc: row.fbc || undefined,
+        client_ip_address: row.client_ip_address || undefined,
+        client_user_agent: row.client_user_agent || undefined,
+        country: hashLower(row.country),
+        st: hashNormalized(row.country_region),
+        ct: hashNormalized(row.city),
+        zp: hashNormalized(row.postal_code),
+        external_id: hashLower(row.fingerprint_id),
+      },
+      custom_data: {
+        value: Number(row.value),
+        currency: row.currency,
+        content_name: row.product_name,
+        order_id: row.event_id,
+        subscription_id: row.recurrence_key ?? undefined,
+      },
+    },
+  });
 }
 
 // Backfill retroativo das linhas já gravadas de uma assinatura, quando a ficha
@@ -441,18 +593,16 @@ async function findContractInfo(
   db: SupabaseClient,
   companyId: string,
   contractId: string,
-): Promise<{ total: number | null; current: number | null; chargeValue: number | null }> {
+): Promise<{ total: number | null; current: number | null; chargeValue: number | null; createdReceived: boolean }> {
   let { data, error } = await db
     .from("eduzz_contracts")
-    .select("total_installments, is_finite, current_charge, charge_value")
+    .select("total_installments, is_finite, current_charge, charge_value, created_received")
     .eq("company_id", companyId)
     .eq("contract_id", contractId)
     .maybeSingle();
-  // migration 055 (current_charge/charge_value) pode ainda não ter rodado —
-  // sem isso, o SELECT inteiro falha e a gente perdia até o `total` (que já
-  // funcionava antes dessas colunas existirem). Regrava sem elas em vez de
-  // regredir.
-  if (error?.message?.includes("current_charge") || error?.message?.includes("charge_value")) {
+  // migrations 055/064 podem ainda não ter rodado — regrava sem a(s) coluna(s)
+  // nova(s) em vez de perder a ficha inteira.
+  if (error?.message?.includes("current_charge") || error?.message?.includes("charge_value") || error?.message?.includes("created_received")) {
     ({ data, error } = await db
       .from("eduzz_contracts")
       .select("total_installments, is_finite")
@@ -460,11 +610,15 @@ async function findContractInfo(
       .eq("contract_id", contractId)
       .maybeSingle());
   }
-  if (error || !data) return { total: null, current: null, chargeValue: null };
+  if (error || !data) return { total: null, current: null, chargeValue: null, createdReceived: false };
   return {
     total: data.is_finite && data.total_installments ? (data.total_installments as number) : null,
     current: (data as { current_charge?: number | null }).current_charge ?? null,
     chargeValue: (data as { charge_value?: number | null }).charge_value ?? null,
+    // Se a coluna ainda não existe (migration 064 pendente), `data` não tem o
+    // campo → undefined → cai pra false (assume "não confirmado ainda").
+    // Comportamento conservador: venda pode ficar pendente até a migration rodar.
+    createdReceived: Boolean((data as { created_received?: boolean | null }).created_received),
   };
 }
 
@@ -717,7 +871,76 @@ function computeFingerprintId(match: VisitMatch | null, sale: SaleEvent): string
   );
 }
 
-export async function recordSale(db: SupabaseClient, companyId: string, sale: SaleEvent): Promise<{ excluded?: string }> {
+// Grava venda de assinatura como pendente (sale_confirmed=false) quando o
+// contract_created ainda não chegou. Não soma receita nem vai pra Meta —
+// confirmPendingSubscription() faz isso quando o contract_created chegar.
+async function recordPendingSale(db: SupabaseClient, companyId: string, sale: SaleEvent): Promise<{ pending?: boolean }> {
+  const match = await resolveVisitMatch(db, companyId, sale);
+  const fingerprintId = computeFingerprintId(match, sale);
+  const productPixelId = await findProductPixelId(db, companyId, sale.productParentId);
+  const resolvedPixel: ResolvedPixel = productPixelId
+    ? await resolvePixelById(db, companyId, productPixelId)
+    : { companyId, pixelId: null, meta_pixel_id: null, meta_capi_token: null, dominio_autorizado: null, meta_test_event_code: null };
+
+  const country = normalizeCountry(sale.address.country) ?? (match?.country as string | null);
+  const countryRegion = sale.address.state ?? (match?.country_region as string | null);
+  const city = sale.address.city ?? (match?.city as string | null);
+  const postalCode = sale.address.zip ?? (match?.postal_code as string | null);
+  const fbp = (match?.fbp as string | null) ?? null;
+  const fbc = (match?.fbc as string | null) ?? null;
+  const clientIp = (match?.client_ip_address as string | null) ?? null;
+  const clientUserAgent = (match?.client_user_agent as string | null) ?? null;
+
+  const { error } = await insertEventsLogRow(db, {
+    company_id: companyId,
+    event_name: "Purchase",
+    fingerprint_id: fingerprintId,
+    event_url: match?.event_url ?? null,
+    user_data: { em: hashLower(sale.email), ph: hashPhone(sale.phone) },
+    lead_email: sale.email,
+    lead_phone: sale.phone,
+    lead_name: sale.name,
+    product_name: sale.productName,
+    product_parent_id: sale.productParentId,
+    product_item_id: sale.items[0]?.productId ?? null,
+    extra_fields: { produto: sale.productName },
+    // capi_status fica "pending" — confirmPendingSubscription() vai chamar a
+    // Meta depois; se expirar em 24h, a linha será deletada e nunca enviada.
+    capi_status: resolvedPixel.meta_pixel_id ? "pending" : "skipped",
+    country,
+    country_region: countryRegion,
+    city,
+    postal_code: postalCode,
+    event_id: sale.transactionId,
+    pixel_id: resolvedPixel.pixelId,
+    recurrence_key: sale.recurrenceKey,
+    utm_source: sale.utm.source,
+    utm_medium: sale.utm.medium,
+    utm_campaign: sale.utm.campaign,
+    utm_content: sale.utm.content,
+    utm_term: sale.utm.term,
+    // value aqui é o invoiceValue (sem contrato conhecido, não multiplica).
+    value: sale.invoiceValue,
+    currency: sale.currency,
+    external_transaction_id: sale.transactionId,
+    source: EDUZZ_SOURCE,
+    payment_method: sale.paymentMethod,
+    installment_number: sale.installmentNumber ?? 1,
+    installment_value: sale.invoiceValue,
+    fbp,
+    fbc,
+    client_ip_address: clientIp,
+    client_user_agent: clientUserAgent,
+    total_installments_raw: sale.totalInstallmentsRaw,
+    contract_unlimited_installments: sale.contractUnlimitedInstallments,
+    sale_confirmed: false,
+  });
+
+  if (error) console.error("[eduzz webhook] falha ao gravar venda pendente:", error.message);
+  return { pending: true };
+}
+
+export async function recordSale(db: SupabaseClient, companyId: string, sale: SaleEvent): Promise<{ excluded?: string; pending?: boolean }> {
   // Catálogo é populado mesmo numa venda que será descartada abaixo (queremos
   // o produto na lista de configuração de qualquer jeito) — por isso roda antes
   // da checagem de "assinatura capturada tarde".
@@ -731,11 +954,17 @@ export async function recordSale(db: SupabaseClient, companyId: string, sale: Sa
   // cobrança (melhor esforço — não dá pra saber que é tarde sem a ficha).
   const contractInfo = sale.recurrenceKey
     ? await findContractInfo(db, companyId, sale.recurrenceKey)
-    : { total: null, current: null, chargeValue: null };
+    : { total: null, current: null, chargeValue: null, createdReceived: false };
   if (sale.recurrenceKey) {
     const chargeNumber = sale.installmentNumber ?? contractInfo.current ?? 1;
     if (chargeNumber > 1) {
       return { excluded: "late_subscription" };
+    }
+    // invoice_paid chegou antes do contract_created: grava como pendente.
+    // A linha fica sale_confirmed=false — não vai pra dashboard nem pra Meta
+    // até o contract_created confirmar (ou expirar em 24h).
+    if (!contractInfo.createdReceived) {
+      return await recordPendingSale(db, companyId, sale);
     }
   }
 
@@ -1246,7 +1475,7 @@ export async function POST(request: NextRequest) {
   // — não é venda, não passa pelo parse de SaleEvent. Schema próprio (tem
   // `data.customer`, não `data.buyer`), por isso checa antes de isModernPayload.
   if (typeof body.event === "string" && CONTRACT_EVENTS.has(body.event)) {
-    await upsertContractInfo(db, companyId, body as EduzzContractPayload);
+    await upsertContractInfo(db, companyId, body as EduzzContractPayload, body.event === "myeduzz.contract_created");
     return NextResponse.json({ received: true });
   }
 
@@ -1305,6 +1534,9 @@ export async function POST(request: NextRequest) {
     const result = await recordSale(db, companyId, sale);
     if (result?.excluded) {
       return NextResponse.json({ received: true, excluded: result.excluded });
+    }
+    if (result?.pending) {
+      return NextResponse.json({ received: true, pending: true, produto: sale.productName });
     }
   } catch (err) {
     console.error("[eduzz webhook] falha ao registrar Purchase:", err instanceof Error ? err.message : err);

@@ -748,6 +748,7 @@ export function TrackingEventsView() {
         .from("events_log")
         .select(EVENTS_SELECT)
         .eq("company_id", companyId)
+        .neq("sale_confirmed", false)
         .gte("created_at", `${dateFrom}T00:00:00`)
         .lte("created_at", `${dateTo}T23:59:59`)
         .order("created_at", { ascending: false })
@@ -767,7 +768,7 @@ export function TrackingEventsView() {
       "page_title", "extra_fields", "country", "country_region", "city", "event_id",
       "utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "utm_placement", "utm_campaign_id", "utm_adset_id", "utm_ad_id",
       "lead_name", "value", "currency", "external_transaction_id", "source", "payment_method", "installments", "installment_number", "installment_value", "recurrence_key", "product_name",
-      "is_order_bump", "main_sale_transaction_id", "client_user_agent", "via",
+      "is_order_bump", "main_sale_transaction_id", "client_user_agent", "via", "sale_confirmed",
     ].some((col) => eventsRes.error?.message?.includes(col));
     if (missingNewColumn) {
       // Migration 033/034/038/039/040 ainda não rodou no Supabase — busca sem as colunas novas em vez de quebrar a tela.
