@@ -17,42 +17,46 @@ import type { AdvertiserProfile } from "@/hooks/useAdvertiserStore";
 // ─── Advertiser Profiles ──────────────────────────────────────────────────────
 
 /**
- * Busca os perfis salvos no Supabase para o usuário autenticado.
- * Retorna [] se não houver dados ou se o usuário não estiver logado.
+ * Busca os perfis salvos no Supabase pra EMPRESA do usuário autenticado
+ * (migration 059 — 1 linha compartilhada por empresa, não mais por usuário;
+ * antes disso, cada membro só via os próprios perfis, nunca os de um
+ * colega). Sem empresa resolvida (migration 021 ausente ou usuário sem
+ * vínculo), não tenta nenhum fallback por usuário — retorna [], igual a
+ * "sem dados ainda" (localStorage continua sendo a fonte primária).
  */
 export async function fetchProfilesFromDB(): Promise<AdvertiserProfile[]> {
   if (!supabaseClient) return [];
-  // Filtra pelo user_id em nível de aplicação além do RLS — defesa em profundidade
-  // para o caso em que a migration 016 ainda não foi aplicada ou o RLS está desabilitado.
   const { data: { user } } = await supabaseClient.auth.getUser();
   if (!user) return [];
+  const { company } = await getCompanyContext();
+  if (!company) return [];
   const { data, error } = await supabaseClient
     .from("advertiser_profiles")
     .select("profiles")
-    .eq("user_id", user.id)
+    .eq("company_id", company.id)
     .maybeSingle();
   if (error || !data) return [];
   return Array.isArray(data.profiles) ? (data.profiles as AdvertiserProfile[]) : [];
 }
 
 /**
- * Salva (upsert) todos os perfis do usuário no Supabase.
- * Fire-and-forget — não lança exceção para o chamador.
+ * Salva (upsert) todos os perfis da EMPRESA no Supabase — 1 linha
+ * compartilhada por `company_id` (migration 059), last-write-wins, mesmo
+ * padrão de `companies.settings`. Sem empresa resolvida, não escreve nada
+ * (não há mais linha por usuário pra cair de fallback). Fire-and-forget —
+ * não lança exceção para o chamador.
  */
 export async function saveProfilesToDB(profiles: AdvertiserProfile[]): Promise<void> {
   if (!supabaseClient) return;
   const { data: { user } } = await supabaseClient.auth.getUser();
   if (!user) return;
   const { company } = await getCompanyContext();
+  if (!company) return;
   await supabaseClient
     .from("advertiser_profiles")
     .upsert(
-      {
-        user_id: user.id, profiles,
-        updated_at: new Date().toISOString(),
-        ...(company ? { company_id: company.id } : {}),
-      },
-      { onConflict: "user_id" },
+      { company_id: company.id, profiles, updated_at: new Date().toISOString() },
+      { onConflict: "company_id" },
     );
 }
 
