@@ -62,7 +62,7 @@ import { DashboardWelcome } from "@/components/empty/DashboardWelcome";
 import { AnaliseEmpty } from "@/components/empty/AnaliseEmpty";
 import { CriativosEmpty } from "@/components/empty/CriativosEmpty";
 import { PixelFunnelSection } from "@/components/PixelFunnelSection";
-import { MyAccount } from "@/components/MyAccount";
+import { MyAccount, accountTabsForRole } from "@/components/MyAccount";
 import { toast } from "@/hooks/useToast";
 import { exportDashboardCsv } from "@/utils/exportCsv";
 import { useManualMetrics } from "@/hooks/useManualMetrics";
@@ -1912,7 +1912,10 @@ export function Dashboard({
   }, []);
   const [dashSubTab, setDashSubTab]         = useState<DashSubTab>("overview");
   const [histKind, setHistKind]             = useState<HistoricalKind>("lancamento");
-  const { company: activeCompany }          = useCompany();
+  const { company: activeCompany, isOwner } = useCompany();
+  // Usuário padrão (não-dono) só vê abas de conta pessoais na sidebar; o painel
+  // de controle da empresa é exclusivo do dono. Mesma regra do MyAccount.
+  const visibleAccountTabIds = accountTabsForRole(isOwner);
   const histLabels = activeCompany?.settings?.[HISTORY_TAB_LABELS_KEY] as Record<string, string> | undefined;
   const customHistTabs = readCustomHistoryTabs(activeCompany?.settings);
   const [myAccountTab, setMyAccountTab]     = useState<MyAccountTabId>("profile");
@@ -2734,7 +2737,7 @@ export function Dashboard({
       });
     }
     if (parentId === "myaccount") {
-      return SIDEBAR_ACCOUNT_TABS.map(({ id, label, icon: Icon }) => {
+      return SIDEBAR_ACCOUNT_TABS.filter((t) => visibleAccountTabIds.includes(t.id)).map(({ id, label, icon: Icon }) => {
         const active = myAccountTab === id;
         return (
           <button

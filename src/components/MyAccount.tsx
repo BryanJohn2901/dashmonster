@@ -11,6 +11,8 @@ import {
 } from "@/components/ControlPanel";
 import { AccountsHub } from "@/components/CampaignCenter";
 import { CompanyStudio } from "@/components/CompanyStudio";
+import { useCompany, type CompanyRole } from "@/hooks/useCompany";
+import { ArrowLeftRight, Building2 } from "lucide-react";
 import type { UserCategory, UserAccountEntry } from "@/types/userConfig";
 import type { MetaSyncResult } from "@/utils/supabaseCampaigns";
 
@@ -25,6 +27,25 @@ type AccountTab =
   | "privacy"
   | "notifications"
   | "personalization";
+
+/**
+ * Abas visíveis para "usuário padrão" (não-dono): só personalização da conta,
+ * sem painel de controle da empresa. O dono vê todas. Exportado para a sidebar
+ * do Dashboard filtrar igual — fonte única da regra de papel.
+ */
+export const STANDARD_ACCOUNT_TABS: AccountTab[] = ["profile", "privacy", "notifications"];
+
+/** Abas que só o dono enxerga (painel de controle da empresa + dev). */
+const OWNER_ONLY_TABS: AccountTab[] = ["accounts", "company", "integrations", "sync", "personalization"];
+
+export function accountTabsForRole(isOwner: boolean): AccountTab[] {
+  return isOwner ? [...STANDARD_ACCOUNT_TABS, ...OWNER_ONLY_TABS] : STANDARD_ACCOUNT_TABS;
+}
+
+const ACCOUNT_ROLE_LABELS: Record<CompanyRole, string> = {
+  owner: "Dono", manager: "Gestor de tráfego", viewer: "Visualização",
+};
+const ACCOUNT_ROLE_COLORS: Record<CompanyRole, string> = { owner: "#8b5cf6", manager: "#10b981", viewer: "#64748b" };
 
 interface MyAccountProps {
   userName:           string;
@@ -47,15 +68,17 @@ interface MyAccountProps {
 
 // ─── Sub-tab definitions ──────────────────────────────────────────────────────
 
-const TABS: { id: AccountTab; label: string }[] = [
-  { id: "profile",         label: "Meu perfil"     },
-  { id: "accounts",        label: "Contas"          },
-  { id: "company",         label: "Empresa"         },
-  { id: "integrations",    label: "Integrações"     },
-  { id: "sync",            label: "Sincronização"   },
-  { id: "privacy",         label: "Privacidade"     },
-  { id: "notifications",   label: "Notificações"    },
-  { id: "personalization", label: "Personalização"  },
+// Dois grupos: "conta" (personalização da conta — todo mundo) e "empresa"
+// (painel de controle — só dono). A ordem aqui é a ordem de exibição.
+const TABS: { id: AccountTab; label: string; group: "conta" | "empresa" }[] = [
+  { id: "profile",         label: "Meu perfil",     group: "conta"   },
+  { id: "privacy",         label: "Privacidade",    group: "conta"   },
+  { id: "notifications",   label: "Notificações",   group: "conta"   },
+  { id: "personalization", label: "Personalização", group: "conta"   },
+  { id: "company",         label: "Empresa",        group: "empresa" },
+  { id: "accounts",        label: "Contas",         group: "empresa" },
+  { id: "integrations",    label: "Integrações",    group: "empresa" },
+  { id: "sync",            label: "Sincronização",  group: "empresa" },
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -272,12 +295,20 @@ export function MyAccount({
   activeTab: propTab, onTabChange,
 }: MyAccountProps) {
   const [internalTab, setInternalTab] = useState<AccountTab>("profile");
-  const activeTab = propTab ?? internalTab;
   const setActiveTab = (tab: AccountTab) => {
     setInternalTab(tab);
     onTabChange?.(tab);
   };
   const initials = getInitials(userName || userEmail || "U");
+
+  // ── Papel na empresa: dono vê painel de controle; padrão só personaliza ──────
+  const { company, role, isOwner, memberships, switchCompany } = useCompany();
+  const visibleTabs = TABS.filter((t) => accountTabsForRole(isOwner).includes(t.id));
+  const allowedIds = visibleTabs.map((t) => t.id);
+  const requestedTab = propTab ?? internalTab;
+  // Trava: se o papel não permite a aba pedida (ex: viewer com aba "Empresa"
+  // herdada da sidebar), cai para o perfil — nunca renderiza painel de controle.
+  const activeTab: AccountTab = allowedIds.includes(requestedTab) ? requestedTab : "profile";
 
   // ── Avatar picker ──────────────────────────────────────────────────────────
   const { avatarUrl, updateAvatar } = useAvatarUrl();
@@ -396,24 +427,63 @@ export function MyAccount({
           <p className="text-[13px] mt-1" style={{ color: "var(--dm-text-tertiary)" }}>
             {userEmail}
           </p>
+
+          {/* ── Identificador da empresa (todos os papéis) ──────────────── */}
+          {company && (
+            <div className="mt-2.5 flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold"
+                style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-elevated)", color: "var(--dm-text-secondary)" }}>
+                <Building2 size={12} style={{ color: "#6366C8" }} />
+                {company.name}
+                {role && (
+                  <span className="font-bold" style={{ color: ACCOUNT_ROLE_COLORS[role] }}>
+                    · {ACCOUNT_ROLE_LABELS[role]}
+                  </span>
+                )}
+              </span>
+              {/* Troca rápida de empresa quando o usuário participa de 2+ */}
+              {memberships.length > 1 && (
+                <label className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold cursor-pointer"
+                  style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)", color: "var(--dm-text-secondary)" }}>
+                  <ArrowLeftRight size={12} style={{ color: "#6366C8" }} />
+                  <select value={company.id} onChange={(e) => switchCompany(e.target.value)} aria-label="Trocar empresa ativa"
+                    className="cursor-pointer bg-transparent text-[11px] font-semibold outline-none" style={{ color: "var(--dm-text-secondary)" }}>
+                    {memberships.map((m) => <option key={m.company.id} value={m.company.id}>{m.company.name}</option>)}
+                  </select>
+                </label>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
       {/* ── Sub-tabs ──────────────────────────────────────────────────── */}
+      {/* Grupos: "Conta" (personalização) e — só para o dono — "Empresa" */}
+      {/* (painel de controle), separados por um divisor visual.          */}
       <div className="account-tabs mt-10">
-        {TABS.map(tab => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => setActiveTab(tab.id)}
-            className={`account-tab${activeTab === tab.id ? " active" : ""}`}
-          >
-            {tab.id === "privacy"         && <Lock    size={13} className="mr-1.5 inline" />}
-            {tab.id === "notifications"   && <Bell    size={13} className="mr-1.5 inline" />}
-            {tab.id === "personalization" && <Sliders size={13} className="mr-1.5 inline" />}
-            {tab.label}
-          </button>
-        ))}
+        {visibleTabs.map((tab, i) => {
+          const prev = visibleTabs[i - 1];
+          const groupBreak = prev && prev.group !== tab.group;
+          return (
+            <span key={tab.id} className="flex items-center">
+              {groupBreak && (
+                <span className="mx-2 self-stretch" aria-hidden
+                  style={{ width: 1, background: "var(--dm-border-default)" }} />
+              )}
+              <button
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`account-tab${activeTab === tab.id ? " active" : ""}`}
+              >
+                {tab.id === "privacy"         && <Lock    size={13} className="mr-1.5 inline" />}
+                {tab.id === "notifications"   && <Bell    size={13} className="mr-1.5 inline" />}
+                {tab.id === "personalization" && <Sliders size={13} className="mr-1.5 inline" />}
+                {tab.id === "company"         && <Building2 size={13} className="mr-1.5 inline" />}
+                {tab.label}
+              </button>
+            </span>
+          );
+        })}
       </div>
 
       {/* ── Tab content ───────────────────────────────────────────────── */}

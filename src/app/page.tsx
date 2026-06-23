@@ -8,6 +8,7 @@ import { Dashboard } from "@/components/Dashboard";
 import { ControlPanel, type CPTab } from "@/components/ControlPanel";
 import { OnboardingTutorial } from "@/components/OnboardingTutorial";
 import { AuthScreen } from "@/components/AuthScreen";
+import { CompanySelectScreen } from "@/components/CompanySelectScreen";
 import { CampaignData } from "@/types/campaign";
 import { MOCK_CAMPAIGNS, MOCK_SOURCE_LABEL, seedDemoData } from "@/utils/mockData";
 import { fetchCampaignSheetData, parseCampaignCsvFile } from "@/utils/googleSheets";
@@ -261,6 +262,8 @@ export default function Home() {
     setCampaigns([]);
     setDataSource(null);
     replaceUserAccountEntries([]);
+    try { sessionStorage.removeItem(COMPANY_CHOSEN_KEY); } catch {}
+    setCompanyChosen(false);
     setSession(null);
   };
 
@@ -525,8 +528,15 @@ export default function Home() {
   }, []);
 
   // Empresa ativa (multi-empresa / super admin) — usada para recarregar ao trocar.
-  const { companyId: activeCompanyId } = useCompany();
+  const { companyId: activeCompanyId, memberships, loading: companyLoading, switchCompany } = useCompany();
   const companyLoadedRef = useRef<string | null>(null);
+
+  // Seletor de empresa pós-login: a flag de sessão zera no logout, então uma
+  // nova autenticação volta a perguntar qual empresa abrir (só se houver 2+).
+  const COMPANY_CHOSEN_KEY = "dm_company_chosen_v1";
+  const [companyChosen, setCompanyChosen] = useState<boolean>(() => {
+    try { return sessionStorage.getItem(COMPANY_CHOSEN_KEY) === "1"; } catch { return false; }
+  });
 
   useEffect(() => {
     if (!session?.user.id || !isSupabaseConfigured) {
@@ -687,6 +697,33 @@ export default function Home() {
     email: devBypass ? "dev@preview.local" : (session?.user.email ?? ""),
     name:  devBypass ? "Dev Preview" : String(session?.user.user_metadata?.full_name ?? "").trim(),
   };
+
+  // ── Seletor de empresa pós-login (só com 2+ empresas, 1x por sessão) ──────────
+  if (session && isSupabaseConfigured && !devBypass) {
+    if (companyLoading) {
+      return (
+        <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-slate-50 dark:bg-[#0C0C0C] px-4">
+          <div className="h-9 w-9 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" aria-hidden />
+          <p className="text-sm text-slate-600 dark:text-slate-400">A carregar empresas…</p>
+        </div>
+      );
+    }
+    if (memberships.length >= 2 && !companyChosen) {
+      return (
+        <CompanySelectScreen
+          memberships={memberships}
+          activeCompanyId={activeCompanyId}
+          userName={currentUser.name}
+          onSelect={(id) => {
+            switchCompany(id);
+            try { sessionStorage.setItem(COMPANY_CHOSEN_KEY, "1"); } catch {}
+            setCompanyChosen(true);
+          }}
+          onSignOut={handleSignOut}
+        />
+      );
+    }
+  }
 
   return (
     <>
