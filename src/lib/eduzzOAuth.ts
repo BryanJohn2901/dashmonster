@@ -122,6 +122,27 @@ export async function exchangeCodeForToken(code: string, redirectUri: string): P
 // Todas GET, header `authorization: bearer <token>` (lowercase, igual exemplo
 // oficial da doc). Rate limit confirmado: 30 req/min na maioria dos endpoints.
 
+// Monta uma mensagem de erro ÚTIL a partir do corpo do erro da API. Um 422
+// "validation error" sozinho não diz NADA — a Eduzz manda o campo ofensor em
+// algum lugar do corpo (estrutura não documentada, varia por endpoint), então
+// captura `message` + qualquer detalhe que vier (details/errors/violations/
+// error) e SEMPRE inclui o path + status, pra dar pra saber qual endpoint e
+// qual campo falhou olhando só o last_sync_error no painel.
+function describeEduzzError(path: string, status: number, json: unknown): string {
+  if (status === 429) {
+    return `Eduzz API ${path}: limite de requisições atingido (30/min). Tente de novo em 1 min.`;
+  }
+  const parts: string[] = [];
+  if (json && typeof json === "object") {
+    const j = json as Record<string, unknown>;
+    if (typeof j.message === "string") parts.push(j.message);
+    const detail = j.details ?? j.errors ?? j.violations ?? j.error;
+    if (detail) parts.push(typeof detail === "string" ? detail : JSON.stringify(detail));
+  }
+  const summary = parts.join(" — ").slice(0, 500);
+  return `Eduzz API ${path} (HTTP ${status})${summary ? `: ${summary}` : ""}`;
+}
+
 async function eduzzApiGet<T>(token: string, path: string, params: Record<string, string | number | undefined> = {}): Promise<T> {
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
@@ -133,13 +154,7 @@ async function eduzzApiGet<T>(token: string, path: string, params: Record<string
   const res = await eduzzFetch(url, { headers: { authorization: `bearer ${token}` } });
   const json = await res.json().catch(() => null);
   if (!res.ok) {
-    // 429 = rate limit (30 req/min, confirmado na doc) — mensagem clara pra
-    // diferenciar de erro de auth/dados na hora de debugar.
-    if (res.status === 429) {
-      throw new Error(`Eduzz API ${path}: limite de requisições atingido (30/min). Tente de novo em 1 min.`);
-    }
-    const reason = (json && typeof json === "object" && "message" in json ? (json as { message?: string }).message : null);
-    throw new Error(reason ?? `Eduzz API ${path} falhou (HTTP ${res.status}).`);
+    throw new Error(describeEduzzError(path, res.status, json));
   }
   return json as T;
 }

@@ -49,11 +49,12 @@ const PAGE_SIZE = 100;
 const CHUNK_DAYS = 7;
 const DEFAULT_TIME_BUDGET_MS = 35_000;
 
-// A API da Eduzz espera datas em ISO 8601 completo (ex.: 2023-01-02T12:00:00.000Z,
-// confirmado na doc) — mandar só YYYY-MM-DD pode ser rejeitado/interpretado
-// errado por alguns endpoints.
-function toIsoDateTime(d: Date): string {
-  return d.toISOString();
+// Data em YYYY-MM-DD (simples). O endpoint de chargebacks mostra exemplo com
+// ISO completo na doc, MAS os de vendas/assinaturas rejeitam datetime com
+// "validation error" (422) — confirmado em produção 2026-06-22. Data simples
+// é aceita pelos três, então é o denominador comum.
+function toIsoDate(d: Date): string {
+  return d.toISOString().slice(0, 10);
 }
 
 // ─── Adapters: API → mesmo shape do webhook ───────────────────────────────────
@@ -304,8 +305,8 @@ export async function syncCompany(
   try {
     while (cursor < fullEnd) {
       const chunkEnd = new Date(Math.min(cursor.getTime() + CHUNK_DAYS * 86400000, fullEnd.getTime()));
-      const startDate = toIsoDateTime(cursor);
-      const endDate = toIsoDateTime(chunkEnd);
+      const startDate = toIsoDate(cursor);
+      const endDate = toIsoDate(chunkEnd);
 
       await syncCompanySubscriptions(db, companyId, token, startDate, endDate);
       await syncCompanySales(db, companyId, token, startDate, endDate);
