@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, Save, Plus, Trash2, ChevronDown, ChevronRight, RefreshCw, Unlink } from "lucide-react";
 import { toast } from "@/hooks/useToast";
 import {
@@ -106,6 +106,9 @@ function EduzzOAuthSection({ company, canEdit }: { company: Company; canEdit: bo
   const [connection, setConnection] = useState<EduzzOAuthConnection | null | undefined>(undefined);
   const [syncing, setSyncing] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  // Evita 2 loops de sync simultâneos (re-render, StrictMode, clique duplo) —
+  // ref e não state porque não precisa re-renderizar quando muda.
+  const runningRef = useRef(false);
 
   const load = useCallback(() => {
     fetchEduzzOAuthConnection(company.id)
@@ -115,14 +118,44 @@ function EduzzOAuthSection({ company, canEdit }: { company: Company; canEdit: bo
 
   useEffect(() => { load(); }, [load]);
 
-  // Sync roda em background na rota (after()) — enquanto status for
-  // "syncing", repolla até virar "connected"/"error" pra refletir o
-  // resultado final sem precisar o usuário recarregar a página.
+  // A rota sync-now é síncrona e faz UMA fatia por chamada (bounded por tempo),
+  // devolvendo done=false enquanto sobrar período. Aqui rodamos as fatias em
+  // loop até done — cada fatia atualiza a UI (status/última data) na hora, e o
+  // teto de iterações evita loop infinito se algo der errado no servidor.
+  const runSync = useCallback(async () => {
+    if (runningRef.current) return;
+    runningRef.current = true;
+    setSyncing(true);
+    try {
+      for (let i = 0; i < 60; i++) {
+        const { connection: updated, done } = await syncEduzzOAuthNow(company.id);
+        setConnection(updated);
+        if (updated.status === "error") {
+          toast.error(updated.lastSyncError ?? "Falha na sincronização.");
+          return;
+        }
+        if (done) {
+          toast.success("Sincronização concluída.");
+          return;
+        }
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao sincronizar.");
+      load();
+    } finally {
+      runningRef.current = false;
+      setSyncing(false);
+    }
+  }, [company.id, load]);
+
+  // Auto-retoma: se a conexão está "syncing" (1ª sync após conectar, ou uma
+  // sync interrompida por reload/aba fechada), continua sozinho — não fica
+  // preso. O guard runningRef impede disparo duplicado durante o loop.
   useEffect(() => {
-    if (connection?.status !== "syncing") return;
-    const id = setInterval(load, 5000);
-    return () => clearInterval(id);
-  }, [connection?.status, load]);
+    if (connection?.status === "syncing" && !runningRef.current) {
+      void runSync();
+    }
+  }, [connection?.status, runSync]);
 
   // Lê o resultado do callback OAuth (?eduzz_oauth=...) e limpa a URL —
   // mesmo padrão de ?ig_oauth= em ControlPanel.tsx.
@@ -132,7 +165,7 @@ function EduzzOAuthSection({ company, canEdit }: { company: Company; canEdit: bo
       const status = params.get("eduzz_oauth");
       if (!status) return;
       if (status === "connected") {
-        toast.success("Conta Eduzz conectada! A 1ª sincronização (últimos 90 dias) está rodando em segundo plano.");
+        toast.success("Conta Eduzz conectada! Sincronizando os últimos 90 dias — acompanhe aqui embaixo.");
         load();
       } else {
         toast.error(params.get("reason") ?? "Falha ao conectar com a Eduzz.");
@@ -156,18 +189,7 @@ function EduzzOAuthSection({ company, canEdit }: { company: Company; canEdit: bo
     }
   };
 
-  const syncNow = async () => {
-    setSyncing(true);
-    try {
-      const updated = await syncEduzzOAuthNow(company.id);
-      setConnection(updated);
-      toast.success("Sincronização iniciada — pode levar alguns minutos.");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erro ao sincronizar.");
-    } finally {
-      setSyncing(false);
-    }
-  };
+  const syncNow = () => { void runSync(); };
 
   const disconnect = async () => {
     if (!confirm("Desconectar a conta Eduzz? A sincronização automática para; o webhook continua funcionando normalmente.")) return;
@@ -220,7 +242,9 @@ function EduzzOAuthSection({ company, canEdit }: { company: Company; canEdit: bo
               </div>
               <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
                 {connection.status === "syncing"
-                  ? "Sincronizando..."
+                  ? connection.lastSyncedAt
+                    ? `Sincronizando... (já processou até ${new Date(connection.lastSyncedAt).toLocaleDateString("pt-BR")})`
+                    : "Sincronizando..."
                   : connection.status === "error"
                     ? (connection.lastSyncError ?? "Erro na última sincronização.")
                     : connection.lastSyncedAt
@@ -232,7 +256,7 @@ function EduzzOAuthSection({ company, canEdit }: { company: Company; canEdit: bo
 
           {canEdit && (
             <div className="flex items-center gap-2">
-              <button type="button" onClick={() => void syncNow()} disabled={syncing || connection.status === "syncing"} className={`h-10 flex-1 ${btnPrimary}`} style={btnPrimaryStyle}>
+              <button type="button" onClick={syncNow} disabled={syncing || connection.status === "syncing"} className={`h-10 flex-1 ${btnPrimary}`} style={btnPrimaryStyle}>
                 {syncing || connection.status === "syncing" ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Sincronizar agora
               </button>
               <button

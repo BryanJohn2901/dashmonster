@@ -41,14 +41,19 @@ const PAGE_SIZE = 100;
 // no Hobby da Vercel) numa janela de 90 dias com volume real — a function é
 // matada no meio, sem rodar o update final de status, e a conexão fica
 // presa em "syncing" pra sempre. Por isso syncCompany() processa em janelas
-// de CHUNK_DAYS e checa TIME_BUDGET_MS depois de cada janela: se passou do
-// orçamento, para e deixa o resto pra próxima chamada (botão de novo ou
-// cron), já tendo avançado last_synced_at até onde completou.
+// de CHUNK_DAYS e checa o budget de tempo depois de cada janela: se passou do
+// orçamento, para e devolve done=false, já tendo avançado last_synced_at até
+// onde completou — quem chamou (rota sync-now no loop do front, ou o cron)
+// retoma de onde parou. Garante que CADA invocação termina dentro do tempo e
+// sempre grava um status final, nunca deixa preso em "syncing".
 const CHUNK_DAYS = 7;
-const TIME_BUDGET_MS = 45_000;
+const DEFAULT_TIME_BUDGET_MS = 35_000;
 
-function toIsoDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
+// A API da Eduzz espera datas em ISO 8601 completo (ex.: 2023-01-02T12:00:00.000Z,
+// confirmado na doc) — mandar só YYYY-MM-DD pode ser rejeitado/interpretado
+// errado por alguns endpoints.
+function toIsoDateTime(d: Date): string {
+  return d.toISOString();
 }
 
 // ─── Adapters: API → mesmo shape do webhook ───────────────────────────────────
@@ -178,7 +183,8 @@ export async function syncCompanySales(db: SupabaseClient, companyId: string, to
       }
     }
 
-    if (res.totalPages != null && page >= res.totalPages) break;
+    const totalPages = res.pages ?? res.totalPages;
+    if (totalPages != null && page >= totalPages) break;
     if (sales.length < PAGE_SIZE) break;
     page++;
   }
@@ -212,7 +218,8 @@ export async function syncCompanyChargebacks(db: SupabaseClient, companyId: stri
       }
     }
 
-    if (res.totalPages != null && page >= res.totalPages) break;
+    const totalPages = res.pages ?? res.totalPages;
+    if (totalPages != null && page >= totalPages) break;
     if (chargebacks.length < PAGE_SIZE) break;
     page++;
   }
@@ -240,7 +247,8 @@ export async function syncCompanySubscriptions(db: SupabaseClient, companyId: st
       }
     }
 
-    if (res.totalPages != null && page >= res.totalPages) break;
+    const totalPages = res.pages ?? res.totalPages;
+    if (totalPages != null && page >= totalPages) break;
     if (subs.length < PAGE_SIZE) break;
     page++;
   }
@@ -257,19 +265,33 @@ interface EduzzOAuthConnectionRow {
 }
 
 /**
- * Sincroniza 1 empresa em janelas de CHUNK_DAYS: assinaturas primeiro (popula
- * a "ficha" do contrato antes das vendas, pra
- * `findContractByCustomerAndProduct`/multiplicador de valor já terem o que
- * precisam), depois vendas, depois chargebacks — dentro de cada janela. A
- * cada janela concluída, `last_synced_at` avança e é gravado na hora (mesmo
- * que o resto do período ainda falte) — isso é o que garante que a function
- * morrendo por maxDuration nunca trava o status em "syncing": o progresso já
- * feito fica salvo, e o que faltar é coberto na próxima chamada (botão
- * "Sincronizar agora" de novo, ou o cron de 6h). Erro isolado por empresa
- * (mesmo padrão de `syncAccount()` em instagram/accounts/sync-all) — nunca
- * derruba a sync de outras empresas.
+ * Sincroniza 1 empresa em janelas de CHUNK_DAYS, dentro de um orçamento de
+ * tempo (budgetMs): assinaturas primeiro (popula a "ficha" do contrato antes
+ * das vendas, pra `findContractByCustomerAndProduct`/multiplicador de valor já
+ * terem o que precisam), depois vendas, depois chargebacks — em cada janela.
+ *
+ * Garantias (o que mata o bug de "preso em syncing pra sempre"):
+ *  - todo fetch tem timeout (ver eduzzFetch), então nenhuma janela pendura a
+ *    function até a Vercel matar por maxDuration;
+ *  - a cada janela concluída, `last_synced_at` avança e é gravado na hora —
+ *    progresso nunca se perde;
+ *  - SEMPRE grava um status final antes de retornar: "connected" se terminou
+ *    o período todo, "error" se algo falhou, ou continua "syncing" (com
+ *    updated_at fresco) se só estourou o budget e ainda falta período — nesse
+ *    caso retorna done=false e quem chamou (loop do front em sync-now, ou o
+ *    cron) retoma de onde parou.
+ *
+ * Erro isolado por empresa (mesmo padrão de `syncAccount()` em
+ * instagram/accounts/sync-all) — nunca derruba a sync de outras empresas.
+ *
+ * @returns done=true quando o período inteiro foi sincronizado; false se
+ *          parou no budget e ainda há período a cobrir.
  */
-export async function syncCompany(db: SupabaseClient, connection: EduzzOAuthConnectionRow): Promise<void> {
+export async function syncCompany(
+  db: SupabaseClient,
+  connection: EduzzOAuthConnectionRow,
+  budgetMs: number = DEFAULT_TIME_BUDGET_MS,
+): Promise<{ done: boolean }> {
   const { company_id: companyId } = connection;
   const token = decryptToken(connection.access_token);
   const startedAt = Date.now();
@@ -282,8 +304,8 @@ export async function syncCompany(db: SupabaseClient, connection: EduzzOAuthConn
   try {
     while (cursor < fullEnd) {
       const chunkEnd = new Date(Math.min(cursor.getTime() + CHUNK_DAYS * 86400000, fullEnd.getTime()));
-      const startDate = toIsoDate(cursor);
-      const endDate = toIsoDate(chunkEnd);
+      const startDate = toIsoDateTime(cursor);
+      const endDate = toIsoDateTime(chunkEnd);
 
       await syncCompanySubscriptions(db, companyId, token, startDate, endDate);
       await syncCompanySales(db, companyId, token, startDate, endDate);
@@ -295,13 +317,19 @@ export async function syncCompany(db: SupabaseClient, connection: EduzzOAuthConn
         .update({ last_synced_at: cursor.toISOString(), updated_at: new Date().toISOString() })
         .eq("company_id", companyId);
 
-      if (Date.now() - startedAt > TIME_BUDGET_MS) break;
+      if (Date.now() - startedAt > budgetMs) break;
     }
 
+    const done = cursor >= fullEnd;
     await db
       .from("eduzz_oauth_connections")
-      .update({ status: "connected", last_sync_error: null, updated_at: new Date().toISOString() })
+      .update({
+        status: done ? "connected" : "syncing",
+        last_sync_error: null,
+        updated_at: new Date().toISOString(),
+      })
       .eq("company_id", companyId);
+    return { done };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("[eduzz sync] falha ao sincronizar empresa:", companyId, message);
@@ -309,5 +337,6 @@ export async function syncCompany(db: SupabaseClient, connection: EduzzOAuthConn
       .from("eduzz_oauth_connections")
       .update({ status: "error", last_sync_error: message, updated_at: new Date().toISOString() })
       .eq("company_id", companyId);
+    return { done: true };
   }
 }

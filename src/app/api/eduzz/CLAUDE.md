@@ -121,10 +121,36 @@ janela de retry da Eduzz. Roda via cron (`vercel.json`, a cada 6h,
   (diferente do OAuth2 padrão/Meta) — por isso o `companyId` é extraído do
   COOKIE, nunca do query `state`; se um `state` de query vier mesmo assim, é
   só checado como defesa extra, não como fonte primária.
-- **1ª sincronização é `await`ada, não fire-and-forget** — `oauth/callback`
-  espera `syncCompany()` terminar antes de redirecionar (mais lento, mas
-  correto): Vercel pode matar a function logo depois do `return`, então um
-  `void syncCompany(...)` arriscava nunca rodar a sync inicial.
+- **Sync em janelas + síncrona, NUNCA `after()` (bug real: preso em "syncing"
+  pra sempre)** — histórico de 90 dias não cabe no `maxDuration` (60s no Hobby)
+  numa tacada. Tentativas anteriores falharam: (1) sync no `oauth/callback`
+  antes do redirect → 504 na cara do usuário; (2) `after()` (waitUntil) →
+  invisível e, se a function morrer antes do update final de status, a conexão
+  fica presa em `"syncing"` pra SEMPRE. Desenho atual, à prova disso:
+  - `syncCompany(db, conn, budgetMs)` processa em **janelas de 7 dias**
+    (`CHUNK_DAYS`), gravando `last_synced_at` a cada janela concluída
+    (progresso nunca se perde) e parando quando estoura `budgetMs`. **Sempre**
+    grava um status final antes de retornar: `"connected"` (período todo),
+    `"error"` (falhou) ou continua `"syncing"` com `updated_at` fresco (só
+    estourou o budget, ainda falta período) — e retorna `{ done }`.
+  - **Todo fetch à Eduzz tem timeout** (`eduzzFetch`, 15s, AbortController) —
+    sem isso uma API pendurada trava a function até o `maxDuration` matar, que
+    era a causa raiz do "syncing" eterno. API que não responde vira erro
+    capturado → status `"error"`, nunca trava.
+  - **`oauth/callback` NÃO sincroniza** — só troca o token, grava
+    `status: "syncing"` e redireciona (rápido, sem 504). A 1ª sync é dirigida
+    pelo painel.
+  - **`oauth/sync-now` é síncrona** (sem `after()`): faz uma fatia bounded
+    (`REQUEST_BUDGET_MS` 40s) e devolve `{ done, connection }` com o status
+    real. O painel (`EduzzConfigPanel`) chama em **loop** até `done` (teto de
+    60 iterações), atualizando a UI a cada fatia (mostra até que data já
+    processou). Se a aba fechar no meio, fica `"syncing"`; ao reabrir o painel
+    **auto-retoma** (effect que dispara `runSync` quando vê `"syncing"`), e o
+    cron também retoma (pega `status IN ('connected','syncing')`).
+  - Datas vão em **ISO 8601 completo** pra API (`toIsoDateTime`), e a
+    paginação lê **`pages`** (não `totalPages` — engano antigo) do envelope
+    `{ items, page, pages, itemsPerPage, totalItems }`. Rate limit 30 req/min:
+    o cron processa empresas em **sequência** (não `Promise.all`).
 - **Permissão de escrita nas rotas novas via RPC, não RLS direto** — diferente
   do CRUD de `eduzz_webhook_configs` (cliente anon + RLS), as rotas OAuth
   (`start`/`sync-now`) correm no servidor e checam

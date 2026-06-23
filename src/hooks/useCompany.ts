@@ -631,21 +631,26 @@ export async function startEduzzOAuth(companyId: string): Promise<string> {
 }
 
 /**
- * Dispara uma sincronização sob demanda (botão "Sincronizar agora"). A rota
- * roda a sync em background (after()) e responde na hora com status
- * "syncing" — histórico grande passa fácil do maxDuration mesmo em 60s.
- * Status final ("connected"/"error") só aparece num fetchEduzzOAuthConnection
- * posterior.
+ * Dispara UMA fatia da sincronização sob demanda. A rota é síncrona e roda em
+ * janelas até estourar um orçamento de tempo (< maxDuration), devolvendo
+ * `done`: true = período inteiro sincronizado (status "connected"); false =
+ * ainda falta período, o chamador deve chamar de novo (continua de onde
+ * parou). O painel (EduzzConfigPanel) chama isso em loop até `done`. Status
+ * final ("connected"/"error") já vem na própria resposta — a rota sempre
+ * grava um status, nunca deixa preso em "syncing".
  */
-export async function syncEduzzOAuthNow(companyId: string): Promise<EduzzOAuthConnection> {
+export async function syncEduzzOAuthNow(companyId: string): Promise<{ connection: EduzzOAuthConnection; done: boolean }> {
   const res = await fetch("/api/eduzz/oauth/sync-now", {
     method: "POST",
     headers: { "Content-Type": "application/json", ...(await authHeader()) },
     body: JSON.stringify({ company_id: companyId }),
   });
-  const json = await res.json().catch(() => null) as { error?: string; connection?: Record<string, unknown> } | null;
+  const json = await res.json().catch(() => null) as { error?: string; done?: boolean; connection?: Record<string, unknown> } | null;
   if (!res.ok || !json?.connection) throw new Error(json?.error ?? "Falha ao sincronizar.");
-  return rowToEduzzOAuthConnection({ company_id: companyId, ...json.connection });
+  return {
+    connection: rowToEduzzOAuthConnection({ company_id: companyId, ...json.connection }),
+    done: json.done ?? true,
+  };
 }
 
 // ─── Painel de super admin ────────────────────────────────────────────────────

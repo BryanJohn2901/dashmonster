@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { after } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { encryptToken } from "@/lib/crypto";
 import { exchangeCodeForToken, eduzzRedirectUri } from "@/lib/eduzzOAuth";
-import { syncCompany } from "@/lib/eduzzSync";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -13,8 +11,14 @@ const STATE_COOKIE = "eduzz_oauth_state";
 /**
  * GET /api/eduzz/oauth/callback?code=...&state=...
  * Troca o code por um access_token (não expira, sem refresh — confirmado na
- * doc oficial), grava cifrado em eduzz_oauth_connections e dispara a 1ª
- * sincronização (90 dias) antes de redirecionar de volta pro painel.
+ * doc oficial), grava cifrado em eduzz_oauth_connections com status "syncing"
+ * e redireciona de volta pro painel.
+ *
+ * NÃO roda a 1ª sincronização aqui (antes rodava, e dava timeout 504 antes do
+ * redirect — 90 dias de histórico não cabem no maxDuration). Quem faz a 1ª
+ * sync é o próprio painel: ao voltar e ver status "syncing", ele chama
+ * /oauth/sync-now em loop até terminar (ver EduzzConfigPanel). Mantém o
+ * callback rápido (só troca token + grava) e a sync observável/retomável.
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
@@ -75,24 +79,8 @@ export async function GET(request: NextRequest) {
       return backToApp("error", { reason: error.message });
     }
 
-    // 1ª sincronização (90 dias) DEPOIS do redirect (via after()) — rodar
-    // antes travava o browser na tela de "redirecionando" da Eduzz até
-    // estourar o timeout da function (paginação de 90 dias passa fácil de
-    // 10s). `after()` manda a resposta de redirect na hora e continua a
-    // sync em segundo plano (Vercel usa waitUntil — function só morre depois
-    // que a promise resolve ou bate o maxDuration). Erro vira
-    // last_sync_error, não afeta o redirect que já foi enviado.
-    after(async () => {
-      const { data: connection } = await sb
-        .from("eduzz_oauth_connections")
-        .select("company_id, access_token, last_synced_at")
-        .eq("company_id", companyId)
-        .single();
-      if (connection) {
-        await syncCompany(sb, connection as { company_id: string; access_token: string; last_synced_at: string | null });
-      }
-    });
-
+    // Sem sync aqui — o painel, ao ver status "syncing", chama sync-now em
+    // loop pra fazer a 1ª sincronização (ver doc no topo do arquivo).
     const res = backToApp("connected");
     res.cookies.delete(STATE_COOKIE);
     return res;

@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { after } from "next/server";
 import { eduzzUserScopedClient } from "@/lib/eduzzOAuth";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { syncCompany } from "@/lib/eduzzSync";
@@ -7,23 +6,28 @@ import { syncCompany } from "@/lib/eduzzSync";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
+// Orçamento de trabalho por request (< maxDuration de 60s com folga). A sync
+// roda em janelas; quando estoura esse tempo, a rota responde done=false e o
+// front chama de novo, continuando de onde parou (last_synced_at).
+const REQUEST_BUDGET_MS = 40_000;
+
 /**
  * POST /api/eduzz/oauth/sync-now
  * Body: { company_id }, header Authorization: Bearer <token> (não cookie —
- * mesmo motivo do oauth/start, login do app usa sessão em localStorage, não
- * em cookie). Usa `eduzzUserScopedClient(token)` pra checar permissão
- * (`can_write_company` via RPC precisa do Authorization header no request,
- * não só do token validado em `getUser`). Sincronização sob demanda (botão
- * "Sincronizar agora" no painel) — mesma checagem de permissão do
- * oauth/start, mas usa supabaseAdmin (service_role) pra rodar a sync, já
- * que syncCompany() grava em tabelas (events_log, eduzz_contracts) que o
- * usuário final não tem permissão de escrita direta.
+ * login do app usa sessão em localStorage, ver CLAUDE.md da pasta). Usa
+ * `eduzzUserScopedClient(token)` pra checar permissão (`can_write_company` via
+ * RPC precisa do Authorization header no request, não só do token validado em
+ * `getUser`); a sync em si usa supabaseAdmin (service_role) porque escreve em
+ * events_log/eduzz_contracts.
  *
- * A sync roda em background (after(), mesmo motivo do oauth/callback): um
- * histórico grande passa fácil do maxDuration mesmo em 60s, e antes disso a
- * function morria com 504 antes do front receber qualquer resposta. Aqui a
- * rota marca status "syncing" e responde na hora — status final
- * ("connected"/"error") só aparece numa leitura posterior da conexão.
+ * SÍNCRONO de propósito (NÃO usa after()): after() depende de o waitUntil da
+ * Vercel rodar o callback depois da resposta — invisível, sem como ver o
+ * resultado, e se não rodar a conexão fica presa em "syncing" pra sempre (bug
+ * real). Aqui a rota faz o trabalho dentro do request (bounded por
+ * REQUEST_BUDGET_MS, com timeout em cada fetch — ver eduzzFetch) e devolve o
+ * resultado de verdade: done + connection com status final. Se done=false,
+ * ainda falta período — o front (EduzzConfigPanel) chama de novo em loop até
+ * done=true. syncCompany SEMPRE grava um status final, então nunca trava.
  */
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null) as { company_id?: string } | null;
@@ -64,9 +68,11 @@ export async function POST(request: NextRequest) {
     .update({ status: "syncing", last_sync_error: null, updated_at: new Date().toISOString() })
     .eq("company_id", companyId);
 
-  after(async () => {
-    await syncCompany(admin, connection as { company_id: string; access_token: string; last_synced_at: string | null });
-  });
+  const { done } = await syncCompany(
+    admin,
+    connection as { company_id: string; access_token: string; last_synced_at: string | null },
+    REQUEST_BUDGET_MS,
+  );
 
   const { data: updated } = await admin
     .from("eduzz_oauth_connections")
@@ -74,5 +80,5 @@ export async function POST(request: NextRequest) {
     .eq("company_id", companyId)
     .single();
 
-  return NextResponse.json({ ok: true, connection: updated });
+  return NextResponse.json({ ok: true, done, connection: updated });
 }

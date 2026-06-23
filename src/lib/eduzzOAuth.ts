@@ -68,6 +68,28 @@ export interface EduzzTokenResponse {
   user: { id: string; eduzzId: string; nutrorId?: string; name: string; email: string };
 }
 
+// Timeout em TODA chamada à Eduzz. Sem isso, uma API lenta/pendurada deixa o
+// fetch travado até a Vercel matar a function por maxDuration — e aí o update
+// final de status (connected/error) nunca roda, deixando a conexão presa em
+// "syncing" pra sempre (bug real em produção). Com timeout, API que não
+// responde vira erro capturado → status "error" com mensagem, nunca trava.
+const EDUZZ_FETCH_TIMEOUT_MS = 15_000;
+
+async function eduzzFetch(url: string, init: RequestInit): Promise<Response> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), EDUZZ_FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: ctrl.signal });
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error(`Eduzz não respondeu em ${EDUZZ_FETCH_TIMEOUT_MS / 1000}s (timeout).`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Troca o `code` do redirect por um access_token (não expira, sem refresh). */
 export async function exchangeCodeForToken(code: string, redirectUri: string): Promise<EduzzTokenResponse> {
   const clientId = process.env.EDUZZ_CLIENT_ID;
@@ -76,7 +98,7 @@ export async function exchangeCodeForToken(code: string, redirectUri: string): P
     throw new Error("EDUZZ_CLIENT_ID/EDUZZ_CLIENT_SECRET não configurados no servidor.");
   }
 
-  const res = await fetch(EDUZZ_TOKEN_URL, {
+  const res = await eduzzFetch(EDUZZ_TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -108,19 +130,31 @@ async function eduzzApiGet<T>(token: string, path: string, params: Record<string
   const qs = query.toString();
   const url = `${EDUZZ_API_BASE}${path}${qs ? `?${qs}` : ""}`;
 
-  const res = await fetch(url, { headers: { authorization: `bearer ${token}` } });
+  const res = await eduzzFetch(url, { headers: { authorization: `bearer ${token}` } });
   const json = await res.json().catch(() => null);
   if (!res.ok) {
+    // 429 = rate limit (30 req/min, confirmado na doc) — mensagem clara pra
+    // diferenciar de erro de auth/dados na hora de debugar.
+    if (res.status === 429) {
+      throw new Error(`Eduzz API ${path}: limite de requisições atingido (30/min). Tente de novo em 1 min.`);
+    }
     const reason = (json && typeof json === "object" && "message" in json ? (json as { message?: string }).message : null);
     throw new Error(reason ?? `Eduzz API ${path} falhou (HTTP ${res.status}).`);
   }
   return json as T;
 }
 
+// Envelope de paginação da API MyEduzz: { items, page, pages, itemsPerPage,
+// totalItems } — confirmado na doc oficial (Padrões de respostas). Atenção: o
+// total de páginas é `pages`, NÃO `totalPages` (engano anterior — o loop só
+// não travava porque caía no fallback length < itemsPerPage). `totalPages`
+// mantido opcional só por segurança caso algum endpoint divirja.
 export interface EduzzPaginated<T> {
   items: T[];
   page: number;
+  pages?: number;
   totalPages?: number;
+  itemsPerPage?: number;
   totalItems?: number;
 }
 
