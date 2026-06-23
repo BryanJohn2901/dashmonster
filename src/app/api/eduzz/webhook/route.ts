@@ -717,9 +717,29 @@ function computeFingerprintId(match: VisitMatch | null, sale: SaleEvent): string
   );
 }
 
-export async function recordSale(db: SupabaseClient, companyId: string, sale: SaleEvent) {
-  const match = await resolveVisitMatch(db, companyId, sale);
+export async function recordSale(db: SupabaseClient, companyId: string, sale: SaleEvent): Promise<{ excluded?: string }> {
+  // Catálogo é populado mesmo numa venda que será descartada abaixo (queremos
+  // o produto na lista de configuração de qualquer jeito) — por isso roda antes
+  // da checagem de "assinatura capturada tarde".
   await upsertProductCatalog(db, companyId, sale);
+
+  // Regra "só compras reais" (2026-06-23): se é assinatura/contrato e a 1ª
+  // cobrança que recebemos já NÃO é a nº 1 (contrato maduro, capturado tarde —
+  // ex.: "13 de 18"), DESCARTA: não grava, não soma receita, não vai pra Meta.
+  // Usa a ficha do contrato (findContractInfo) — mesma consulta que o cálculo
+  // de valor cheio já faria, sem 2ª query. Sem ficha (current=null), assume 1ª
+  // cobrança (melhor esforço — não dá pra saber que é tarde sem a ficha).
+  const contractInfo = sale.recurrenceKey
+    ? await findContractInfo(db, companyId, sale.recurrenceKey)
+    : { total: null, current: null, chargeValue: null };
+  if (sale.recurrenceKey) {
+    const chargeNumber = sale.installmentNumber ?? contractInfo.current ?? 1;
+    if (chargeNumber > 1) {
+      return { excluded: "late_subscription" };
+    }
+  }
+
+  const match = await resolveVisitMatch(db, companyId, sale);
 
   const fingerprintId = computeFingerprintId(match, sale);
 
@@ -753,19 +773,12 @@ export async function recordSale(db: SupabaseClient, companyId: string, sale: Sa
   const clientIp = (match?.client_ip_address as string | null) ?? null;
   const clientUserAgent = (match?.client_user_agent as string | null) ?? null;
 
-  // Assinatura/PSL: sale.value aqui é só o valor DESSA cobrança (ex.: R$10) —
-  // upsertCampaignMetrics() (chamado MAIS ABAIXO, depois do insert em
-  // events_log, por idempotência) soma esse valor real na receita mensal,
-  // então NÃO reatribuímos sale.value (ia dobrar a contagem quando as
-  // renovações seguintes somarem de novo). Em vez
-  // disso, calcula um valor separado SÓ pra mostrar no card da venda e mandar
-  // pra Meta na 1ª cobrança — "esse contrato vale R$120 (12x de R$10)", sem
-  // tocar na receita mensal que já está certa. Sem contrato conhecido (não
-  // recorrente, ou contract_created/updated nunca chegou pra esse contractId),
+  // Assinatura/PSL: sale.value aqui é só o valor DESSA cobrança (ex.: R$10).
+  // `contractInfo` (ficha do contrato) já foi consultada lá em cima (pra
+  // decidir se descarta uma cobrança capturada tarde). Aqui usamos o total de
+  // parcelas pra calcular um valor cheio SÓ pra exibição/Meta — sem tocar na
+  // receita mensal (campaign_metrics usa sale.value cru). Sem ficha conhecida,
   // cai pro valor normal — comportamento de sempre, sem inventar total.
-  const contractInfo = sale.recurrenceKey
-    ? await findContractInfo(db, companyId, sale.recurrenceKey)
-    : { total: null, current: null, chargeValue: null };
   const contractTotalInstallments = contractInfo.total;
   // Bug real confirmado em produção: ofertas com "1ª parcela com desconto"
   // (ex.: 50% off só na 1ª) têm `sale.value` (valor cobrado AGORA) diferente
@@ -855,7 +868,7 @@ export async function recordSale(db: SupabaseClient, companyId: string, sale: Sa
 
   if (insertError || !inserted) {
     console.error("[eduzz webhook] falha ao gravar events_log:", insertError?.message);
-    return;
+    return {};
   }
 
   // Receita só é contabilizada DEPOIS da linha de events_log existir — ela é a
@@ -865,7 +878,7 @@ export async function recordSale(db: SupabaseClient, companyId: string, sale: Sa
   // qualquer retry cai no caminho de duplicado e não conta de novo.
   await upsertCampaignMetrics(db, companyId, sale);
 
-  if (!metaConfigured) return;
+  if (!metaConfigured) return {};
 
   const eventTime = sale.paidAtIso ? Math.floor(new Date(sale.paidAtIso).getTime() / 1000) : Math.floor(Date.now() / 1000);
 
@@ -928,6 +941,8 @@ export async function recordSale(db: SupabaseClient, companyId: string, sale: Sa
       },
     },
   });
+
+  return {};
 }
 
 // content_ids só inclui itens com productId real (formato antigo não tem) —
@@ -1013,13 +1028,14 @@ async function upsertCampaignMetrics(db: SupabaseClient, companyId: string, sale
   }
 }
 
-// Renovação de assinatura: NUNCA manda pra Meta (decisão de produto — só a 1ª
-// cobrança é "venda nova" pra fins de otimização de campanha), mas guarda o
-// valor em campaign_metrics (receita recorrente entra no total normal) e um
-// registro em events_log com event_name="Renewal" (não "Purchase" — não entra
-// no isCustomer/timeline de venda do dashboard atual, é só dado pra um
-// relatório futuro de MRR/LTV agrupar por recurrence_key). capi_status fica
-// fixo em "skipped": nem tentamos configurar pixel pra isso.
+// DESATIVADA desde 2026-06-23 — não é mais chamada pelo POST(). Decisão do
+// usuário: renovação de assinatura passa a ser DESCARTADA (não grava
+// events_log, não soma receita/MRR, não vai pra Meta). Mantida aqui só como
+// referência/possível reuso futuro; `countRecurrenceCharges`/`installmentTransactionId`
+// ficaram órfãs junto. Pra re-religar, ver a árvore de decisão do POST().
+//
+// (comportamento antigo) Renovação: NUNCA mandava pra Meta, mas guardava o
+// valor em campaign_metrics e um registro events_log event_name="Renewal".
 export async function recordRenewal(db: SupabaseClient, companyId: string, sale: SaleEvent): Promise<void> {
   // Mesma correlação de visita que recordSale() faz — sem isso, o fingerprint
   // calculado aqui (antes: sale.recurrenceKey || transactionId) não batia com
@@ -1089,16 +1105,13 @@ export function installmentTransactionId(sale: SaleEvent): string {
   return `${sale.transactionId}-parcela-${sale.installmentNumber}`;
 }
 
-// Parcela > 1 de boleto parcelado (`isInstallmentContinuation()`) NÃO é venda
-// nova — o valor CHEIO já foi contado por completo na parcela 1 (recordSale,
-// `value` já multiplicado). Mas é dado de pagamento real, útil pra um
-// dashboard futuro de progresso/inadimplência ("3 de 3 parcelas pagas") — por
-// isso grava uma linha própria em vez de ignorar 100% como antes. NUNCA soma
-// em campaign_metrics (já somou o total na parcela 1 — somar aqui de novo
-// dobraria a receita) nem manda pra Meta (não é conversão nova, mesma lógica
-// de recordRenewal() pra assinatura). `value` aqui é `invoiceValue` (só o
-// valor DESSA parcela), não o total — quem quiser o total consulta a linha
-// Purchase da parcela 1 via `main_sale_transaction_id`.
+// DESATIVADA desde 2026-06-23 — não é mais chamada pelo POST(). Decisão do
+// usuário: parcela 2+ de boleto passa a ser DESCARTADA (não grava nada).
+// Mantida só como referência. (comportamento antigo abaixo.)
+//
+// Parcela > 1 de boleto parcelado NÃO é venda nova — o valor cheio já contou
+// na parcela 1. Gravava uma linha "Installment" (sem Meta, sem somar receita)
+// pra um dashboard futuro de progresso de pagamento.
 export async function recordInstallment(db: SupabaseClient, companyId: string, sale: SaleEvent): Promise<void> {
   // Mesma correlação/fingerprint de recordSale() — mesmo motivo do
   // recordRenewal() acima: sem isso, a parcela 2/3 aparecia como um
@@ -1242,28 +1255,28 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ received: true, ignored: sale.ignored });
   }
 
+  // ── REGRA "só compras reais" (2026-06-23, decisão do usuário) ───────────────
+  // Mantém SOMENTE: venda única (cartão/pix/boleto à vista, ou a 1ª parcela de
+  // boleto parcelado) E a 1ª cobrança REAL de uma assinatura/contrato. São
+  // DESCARTADAS (não gravam events_log, não somam receita, não vão pra Meta):
+  //   - parcela 2+ de boleto;
+  //   - renovação de assinatura (recurrence_key já visto);
+  //   - assinatura capturada tarde (a 1ª cobrança que recebemos já é "13 de 18").
+  // Antes, parcela e renovação geravam linhas ("Installment"/"Renewal") e a
+  // renovação somava MRR — esse comportamento foi removido a pedido do usuário.
+
   if (isInstallmentContinuation(sale)) {
-    if (await alreadyProcessed(db, companyId, installmentTransactionId(sale))) {
-      return NextResponse.json({ received: true, duplicate: true });
-    }
-    try {
-      await recordInstallment(db, companyId, sale);
-    } catch (err) {
-      console.error("[eduzz webhook] falha ao registrar parcela:", err instanceof Error ? err.message : err);
-    }
-    return NextResponse.json({ received: true, installment: true, parcela: sale.installmentNumber, totalParcelas: sale.installments });
+    // Parcela 2+ de boleto: descartada (a compra já contou na parcela 1).
+    return NextResponse.json({ received: true, excluded: "installment", parcela: sale.installmentNumber });
   }
 
   // Cura venda recorrente órfã (contract: null no invoice_paid, bug confirmado
-  // do lado da Eduzz) ANTES de decidir Purchase vs Renewal — sem isso, toda
-  // cobrança que chegar assim seria sempre "venda nova", mesmo sendo a 3ª/4ª
-  // renovação de uma assinatura madura. Só cura quando inequívoco (ver
-  // findContractByCustomerAndProduct) — sem candidato certo, segue como hoje.
-  // `!sale.installments` exclui boleto parcelado (mecanismo próprio, já
-  // tratado acima via isInstallmentContinuation/recordInstallment) — sem essa
-  // guarda, uma coincidência rara (mesmo email+produto entre um boleto
-  // parcelado e uma assinatura ativa) poderia vincular um recurrence_key
-  // errado num boleto, fazendo recordSale() multiplicar pelo contrato errado.
+  // do lado da Eduzz) ANTES de decidir manter vs descartar — sem isso, uma
+  // renovação que chegar órfã seria tratada como "venda nova" (1ª cobrança) e
+  // entraria indevidamente. Só cura quando inequívoco (ver
+  // findContractByCustomerAndProduct). `!sale.installments` exclui boleto
+  // parcelado (mecanismo próprio, já tratado acima) — sem essa guarda, uma
+  // coincidência rara poderia vincular um recurrence_key errado num boleto.
   if (!sale.recurrenceKey && !sale.installments && sale.email && sale.items[0]?.productId) {
     const healedContractId = await findContractByCustomerAndProduct(
       db, companyId, sale.email, sale.items[0].productId, sale.paidAtIso ?? sale.date,
@@ -1275,24 +1288,24 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ received: true, duplicate: true });
   }
 
-  // Renovação de assinatura: guarda a receita (campaign_metrics + events_log
-  // "Renewal", pra relatório futuro de MRR/LTV) mas NUNCA manda pra Meta —
-  // só a 1ª cobrança é "venda nova" pra fins de otimização de campanha.
+  // Renovação de assinatura (recurrence_key já visto): descartada.
   if (sale.recurrenceKey && (await isKnownRecurrence(db, companyId, sale.recurrenceKey))) {
-    try {
-      await recordRenewal(db, companyId, sale);
-    } catch (err) {
-      console.error("[eduzz webhook] falha ao registrar renovação:", err instanceof Error ? err.message : err);
-    }
-    return NextResponse.json({ received: true, renewal: true, produto: sale.productName, revenue: sale.value });
+    return NextResponse.json({ received: true, excluded: "renewal", produto: sale.productName });
   }
 
-  // Purchase em events_log + Meta CAPI nunca pode derrubar a resposta —
-  // se a Eduzz não receber 200 rápido, ela reenfileira a notificação.
-  // `recordSale` cuida de events_log → campaign_metrics → Meta, nessa ordem
-  // (insert primeiro pela idempotência — ver comentário lá dentro).
+  // Mantida (em princípio): venda única OU 1ª cobrança real de assinatura →
+  // grava em events_log + campaign_metrics + Meta CAPI. `recordSale` ainda
+  // pode DESCARTAR internamente uma assinatura capturada tarde (a 1ª cobrança
+  // que recebemos já é "13 de 18") — devolve { excluded } nesse caso; faz a
+  // decisão lá pra reusar o findContractInfo que já consulta (sem 2ª query).
+  // Nunca pode derrubar a resposta (se a Eduzz não receber 200 rápido, ela
+  // reenfileira). Ordem interna: events_log → campaign_metrics → Meta (insert
+  // 1º pela idempotência).
   try {
-    await recordSale(db, companyId, sale);
+    const result = await recordSale(db, companyId, sale);
+    if (result?.excluded) {
+      return NextResponse.json({ received: true, excluded: result.excluded });
+    }
   } catch (err) {
     console.error("[eduzz webhook] falha ao registrar Purchase:", err instanceof Error ? err.message : err);
   }

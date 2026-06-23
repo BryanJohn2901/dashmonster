@@ -416,11 +416,8 @@ describe("POST /api/eduzz/webhook", () => {
     expect(sentBody.data[0].event_source_url).toBeUndefined();
   });
 
-  it("parcela > 1 de boleto parcelado: grava linha própria (event_name=Installment, valor só dessa parcela), sem somar receita nem mandar pra Meta", async () => {
+  it("parcela > 1 de boleto parcelado: DESCARTADA (regra 'só compras reais') — não grava, não soma receita, não vai pra Meta", async () => {
     mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
-    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // idempotência da parcela (chave sintética própria)
-    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // recordInstallment correlaciona visita: sem match por email
-    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por telefone
 
     const payload = {
       ...MODERN_PAYLOAD,
@@ -429,34 +426,11 @@ describe("POST /api/eduzz/webhook", () => {
     const res = await POST(buildRequest(payload));
     const json = await res.json();
 
-    expect(json.installment).toBe(true);
+    expect(json.excluded).toBe("installment");
     expect(json.parcela).toBe(2);
-    expect(mockMetricsUpsert).not.toHaveBeenCalled(); // valor cheio já foi somado na parcela 1, não soma de novo aqui
-    expect(global.fetch).not.toHaveBeenCalled(); // não é conversão nova, não manda pra Meta
-
-    expect(mockInsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        event_name: "Installment",
-        value: 297, // só o valor DESSA parcela, não o total (891)
-        installment_number: 2,
-        installments: 3,
-        main_sale_transaction_id: "TX-MODERN-1", // liga com a venda principal (parcela 1)
-        external_transaction_id: "TX-MODERN-1-parcela-2",
-        capi_status: "skipped",
-      }),
-    );
-  });
-
-  it("parcela > 1 de boleto parcelado: retry da Eduzz (mesma parcela 2x) não duplica a linha", async () => {
-    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
-    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: { id: "evt-parcela-2-ja-gravada" }, error: null });
-
-    const payload = { ...MODERN_PAYLOAD, data: { ...MODERN_PAYLOAD.data, bankSlipInstallment: { installmentNumber: 2, totalInstallments: 3 } } };
-    const res = await POST(buildRequest(payload));
-    const json = await res.json();
-
-    expect(json.duplicate).toBe(true);
     expect(mockInsert).not.toHaveBeenCalled();
+    expect(mockMetricsUpsert).not.toHaveBeenCalled();
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 
   it("1ª parcela de boleto parcelado processa normal, multiplica pro valor cheio e grava o total de parcelas (pra exibir 'Boleto · 3x')", async () => {
@@ -561,80 +535,35 @@ describe("POST /api/eduzz/webhook", () => {
     expect(mockInsert).toHaveBeenCalledWith(expect.objectContaining({ value: 970, recurrence_key: "sub-1" }));
   });
 
-  it("assinatura recorrente: renovação (mesmo recurrence_key já visto) guarda receita mas NÃO manda pra Meta", async () => {
+  it("renovação de assinatura (recurrence_key já visto): DESCARTADA — não grava, não soma receita, não vai pra Meta", async () => {
     mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
     mockNotYetProcessed(); // alreadyProcessed: essa transação (da renovação) ainda não foi vista
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: { id: "evt-primeira-cobranca" }, error: null }); // isKnownRecurrence: já existe esse recurrence_key
-    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // recordRenewal correlaciona visita: sem match por email
-    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por telefone
-    // sem ficha em eduzz_contracts (default) e sem linhas anteriores contadas (default mockEventsLogCount: []) -> installment_number=1.
 
     const payload = { ...MODERN_PAYLOAD, data: { ...MODERN_PAYLOAD.data, contract: { id: "sub-1" } } };
     const res = await POST(buildRequest(payload));
     const json = await res.json();
 
-    expect(json.renewal).toBe(true);
-    expect(mockMetricsUpsert).toHaveBeenCalledWith(expect.objectContaining({ campaign_name: "Curso Y", revenue: 297 }), expect.anything());
-    expect(mockInsert).toHaveBeenCalledWith(expect.objectContaining({ event_name: "Renewal", recurrence_key: "sub-1", capi_status: "skipped", installment_number: 1 }));
-    expect(global.fetch).not.toHaveBeenCalled(); // nunca manda renovação pra Meta
+    expect(json.excluded).toBe("renewal");
+    expect(mockInsert).not.toHaveBeenCalled();
+    expect(mockMetricsUpsert).not.toHaveBeenCalled();
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  it("assinatura recorrente: renovação numera a cobrança atual (3ª de 12) usando a ficha do contrato e a contagem de linhas já gravadas", async () => {
+  it("assinatura capturada tarde (1ª cobrança que recebemos já é a 9 de 18, pela ficha): DESCARTADA como late_subscription", async () => {
     mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
-    mockNotYetProcessed();
-    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: { id: "evt-primeira-cobranca" }, error: null }); // isKnownRecurrence
-    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // recordRenewal correlaciona visita: sem match por email
-    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por telefone
-    mockContractMaybeSingle.mockResolvedValueOnce({ data: { total_installments: 12, is_finite: true }, error: null });
-    mockEventsLogCount.mockResolvedValueOnce({ data: [{ id: "evt-1" }, { id: "evt-2" }], error: null }); // já existem 2 linhas (1ª cobrança + 1 renovação) -> essa é a 3ª
-
-    const payload = { ...MODERN_PAYLOAD, data: { ...MODERN_PAYLOAD.data, paid: { value: 10, currency: "BRL" }, contract: { id: "sub-psl-1" } } };
-    await POST(buildRequest(payload));
-
-    expect(mockInsert).toHaveBeenCalledWith(
-      expect.objectContaining({ event_name: "Renewal", recurrence_key: "sub-psl-1", installment_number: 3, installments: 12, value: 10 }),
-    );
-  });
-
-  it("renovação usa current_charge da ficha quando ele é MAIOR que a contagem de linhas (cobranças anteriores nunca chegaram como webhook)", async () => {
-    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
-    mockNotYetProcessed();
-    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: { id: "evt-primeira-cobranca" }, error: null }); // isKnownRecurrence
-    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por email
-    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por telefone
-    // ficha já sabe que essa é a cobrança 9 — mesmo que só exista 1 linha
-    // gravada no banco (cobranças 2-8 nunca chegaram como webhook), contagem
-    // (0 linhas existentes além da 1ª +1 = 1) ficaria bem atrás da ficha.
-    mockContractMaybeSingle.mockResolvedValueOnce({ data: { total_installments: 18, is_finite: true, current_charge: 9 }, error: null });
+    mockNotYetProcessed(); // alreadyProcessed: não vista
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // isKnownRecurrence: nenhuma linha desse contrato ainda
+    mockContractMaybeSingle.mockResolvedValueOnce({ data: { total_installments: 18, is_finite: true, current_charge: 9 }, error: null }); // ficha: cobrança 9
 
     const payload = { ...MODERN_PAYLOAD, data: { ...MODERN_PAYLOAD.data, paid: { value: 10, currency: "BRL" }, contract: { id: "sub-gap-1" } } };
-    await POST(buildRequest(payload));
+    const res = await POST(buildRequest(payload));
+    const json = await res.json();
 
-    // Math.max(9, 0+1) = 9, não 1.
-    expect(mockInsert).toHaveBeenCalledWith(
-      expect.objectContaining({ event_name: "Renewal", recurrence_key: "sub-gap-1", installment_number: 9, installments: 18 }),
-    );
-  });
-
-  it("renovação usa a contagem de linhas quando ela é MAIOR que current_charge da ficha (contract_updated dessa cobrança ainda não chegou — ficha atrasada)", async () => {
-    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
-    mockNotYetProcessed();
-    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: { id: "evt-primeira-cobranca" }, error: null }); // isKnownRecurrence
-    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por email
-    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por telefone
-    // ficha ainda mostra a cobrança 4 (contract_updated dessa cobrança nova
-    // ainda não chegou), mas já temos 4 linhas gravadas pra esse contrato ->
-    // essa é a 5ª, mais avançada que a ficha.
-    mockContractMaybeSingle.mockResolvedValueOnce({ data: { total_installments: 18, is_finite: true, current_charge: 4 }, error: null });
-    mockEventsLogCount.mockResolvedValueOnce({ data: [{ id: "1" }, { id: "2" }, { id: "3" }, { id: "4" }], error: null });
-
-    const payload = { ...MODERN_PAYLOAD, data: { ...MODERN_PAYLOAD.data, paid: { value: 10, currency: "BRL" }, contract: { id: "sub-ahead-1" } } };
-    await POST(buildRequest(payload));
-
-    // Math.max(4, 4+1) = 5, não 4.
-    expect(mockInsert).toHaveBeenCalledWith(
-      expect.objectContaining({ event_name: "Renewal", recurrence_key: "sub-ahead-1", installment_number: 5, installments: 18 }),
-    );
+    expect(json.excluded).toBe("late_subscription");
+    expect(mockInsert).not.toHaveBeenCalled();
+    expect(mockMetricsUpsert).not.toHaveBeenCalled();
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 
   it("contract_created guarda a ficha do contrato (nº de parcelas, fim definido) em eduzz_contracts, sem tratar como venda", async () => {
@@ -837,24 +766,6 @@ describe("POST /api/eduzz/webhook", () => {
     expect(mockUpdate).not.toHaveBeenCalledWith({ installment_number: 8 });
   });
 
-  it("renovação entra como RECEITA mas NÃO conta conversão nova (conversions += 0)", async () => {
-    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
-    mockNotYetProcessed();
-    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: { id: "evt-1a" }, error: null }); // isKnownRecurrence
-    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // match email
-    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // match telefone
-    mockMetricsMaybeSingle.mockResolvedValueOnce({ data: { revenue: 1000, conversions: 5 }, error: null });
-
-    const payload = { ...MODERN_PAYLOAD, data: { ...MODERN_PAYLOAD.data, contract: { id: "sub-1" } } };
-    await POST(buildRequest(payload));
-
-    // revenue soma (1000 + 297), conversions fica em 5 (renovação não é venda nova).
-    expect(mockMetricsUpsert).toHaveBeenCalledWith(
-      expect.objectContaining({ revenue: 1297, conversions: 5 }),
-      expect.anything(),
-    );
-  });
-
   it("normaliza country da Eduzz pra ISO-2 antes de gravar/hashear (Brazil -> BR)", async () => {
     mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
     mockNotYetProcessed();
@@ -1013,23 +924,20 @@ describe("POST /api/eduzz/webhook", () => {
     expect(mockInsert).toHaveBeenCalledWith(expect.objectContaining({ recurrence_key: null }));
   });
 
-  it("1ª venda CAPTURADA de um contrato já em andamento usa current_charge da ficha em vez de assumir cobrança 1 (cobranças anteriores nunca chegaram como webhook)", async () => {
+  it("1ª venda CAPTURADA de um contrato já em andamento (ficha: cobrança 13 de 25): DESCARTADA como late_subscription, mesmo com pixel configurado", async () => {
     mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
-    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // isKnownRecurrence: nenhuma linha gravada ainda pra esse recurrence_key
-    mockNotYetProcessed();
-    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por email
-    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por telefone
-    mockProductPixelConfigured();
-    mockPixelMaybeSingle.mockResolvedValueOnce({ data: PIXEL_OK, error: null });
+    mockNotYetProcessed(); // alreadyProcessed: não vista
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // isKnownRecurrence: nenhuma linha gravada ainda
     // ficha do contrato (migration 055): 25 parcelas, já na cobrança 13.
     mockContractMaybeSingle.mockResolvedValueOnce({ data: { total_installments: 25, is_finite: true, current_charge: 13 }, error: null });
 
     const payload = { ...MODERN_PAYLOAD, data: { ...MODERN_PAYLOAD.data, paid: { value: 189, currency: "BRL" }, contract: { id: "sub-13-de-25" } } };
-    await POST(buildRequest(payload));
+    const res = await POST(buildRequest(payload));
+    const json = await res.json();
 
-    expect(mockInsert).toHaveBeenCalledWith(
-      expect.objectContaining({ recurrence_key: "sub-13-de-25", installments: 25, installment_number: 13 }),
-    );
+    expect(json.excluded).toBe("late_subscription");
+    expect(mockInsert).not.toHaveBeenCalled();
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 
   it("PSL sem ficha conhecida (contract_created não recebido ainda): usa o valor da cobrança, sem adivinhar total", async () => {
