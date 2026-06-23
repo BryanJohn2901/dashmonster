@@ -5,38 +5,28 @@ import { Camera, Trash2, UserRound, Bell, Lock, Sliders, KeyRound } from "lucide
 import { useDevMode } from "@/hooks/useDevMode";
 import { useTheme } from "next-themes";
 import { useAvatarUrl, resolveAvatarSrc, AVATAR_ICON_COUNT } from "@/hooks/useAvatarUrl";
-import {
-  TabProfile, TabIntegrations, TabSync,
-  type TabAccountsProps,
-} from "@/components/ControlPanel";
-import { AccountsHub } from "@/components/CampaignCenter";
-import { CompanyStudio } from "@/components/CompanyStudio";
+import { TabProfile } from "@/components/ControlPanel";
 import { useCompany, type CompanyRole } from "@/hooks/useCompany";
 import { ArrowLeftRight, Building2 } from "lucide-react";
-import type { UserCategory, UserAccountEntry } from "@/types/userConfig";
-import type { MetaSyncResult } from "@/utils/supabaseCampaigns";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+// A configuração da empresa (painel de controle) saiu daqui — virou a aba de
+// topo "Empresa" (EmpresaTab, só dono). Aqui ficam só coisas do usuário.
 
 type AccountTab =
   | "profile"
-  | "accounts"
-  | "company"
-  | "integrations"
-  | "sync"
   | "privacy"
   | "notifications"
   | "personalization";
 
 /**
- * Abas visíveis para "usuário padrão" (não-dono): só personalização da conta,
- * sem painel de controle da empresa. O dono vê todas. Exportado para a sidebar
- * do Dashboard filtrar igual — fonte única da regra de papel.
+ * Abas do "usuário padrão" (não-dono). O dono ganha também "personalization".
+ * Exportado para a sidebar do Dashboard filtrar igual — fonte única da regra.
  */
 export const STANDARD_ACCOUNT_TABS: AccountTab[] = ["profile", "privacy", "notifications"];
 
-/** Abas que só o dono enxerga (painel de controle da empresa + dev). */
-const OWNER_ONLY_TABS: AccountTab[] = ["accounts", "company", "integrations", "sync", "personalization"];
+/** Abas só do dono (modo dev/personalização). */
+const OWNER_ONLY_TABS: AccountTab[] = ["personalization"];
 
 export function accountTabsForRole(isOwner: boolean): AccountTab[] {
   return isOwner ? [...STANDARD_ACCOUNT_TABS, ...OWNER_ONLY_TABS] : STANDARD_ACCOUNT_TABS;
@@ -50,17 +40,8 @@ const ACCOUNT_ROLE_COLORS: Record<CompanyRole, string> = { owner: "#8b5cf6", man
 interface MyAccountProps {
   userName:           string;
   userEmail:          string;
-  categories:         UserCategory[];
-  accountEntries:     UserAccountEntry[];
-  onCategoriesChange: (cats: UserCategory[])       => void;
-  onEntriesChange:    (entries: UserAccountEntry[]) => void;
   onUpdateProfile:    (name: string)                => Promise<void>;
   onSignOut:          ()                            => Promise<void>;
-  syncStatus?:        { syncing: boolean; result?: MetaSyncResult; error?: string };
-  campaignCount?:     number;
-  dataSource?:        { type: string; label: string } | null;
-  onRefresh?:         () => Promise<void>;
-  onClearData?:       () => Promise<void>;
   /** Controlled tab — lifted to Dashboard for sidebar nav */
   activeTab?:         AccountTab;
   onTabChange?:       (tab: AccountTab) => void;
@@ -68,17 +49,11 @@ interface MyAccountProps {
 
 // ─── Sub-tab definitions ──────────────────────────────────────────────────────
 
-// Dois grupos: "conta" (personalização da conta — todo mundo) e "empresa"
-// (painel de controle — só dono). A ordem aqui é a ordem de exibição.
-const TABS: { id: AccountTab; label: string; group: "conta" | "empresa" }[] = [
-  { id: "profile",         label: "Meu perfil",     group: "conta"   },
-  { id: "privacy",         label: "Privacidade",    group: "conta"   },
-  { id: "notifications",   label: "Notificações",   group: "conta"   },
-  { id: "personalization", label: "Personalização", group: "conta"   },
-  { id: "company",         label: "Empresa",        group: "empresa" },
-  { id: "accounts",        label: "Contas",         group: "empresa" },
-  { id: "integrations",    label: "Integrações",    group: "empresa" },
-  { id: "sync",            label: "Sincronização",  group: "empresa" },
+const TABS: { id: AccountTab; label: string }[] = [
+  { id: "profile",         label: "Meu perfil"     },
+  { id: "privacy",         label: "Privacidade"    },
+  { id: "notifications",   label: "Notificações"   },
+  { id: "personalization", label: "Personalização" },
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -288,10 +263,7 @@ function TabPersonalization() {
 
 export function MyAccount({
   userName, userEmail,
-  categories, accountEntries,
-  onCategoriesChange, onEntriesChange,
   onUpdateProfile, onSignOut,
-  syncStatus, campaignCount, dataSource, onRefresh, onClearData,
   activeTab: propTab, onTabChange,
 }: MyAccountProps) {
   const [internalTab, setInternalTab] = useState<AccountTab>("profile");
@@ -338,13 +310,6 @@ export function MyAccount({
     reader.readAsDataURL(file);
     e.target.value = "";
   }
-
-  const tabAccountsProps: TabAccountsProps = {
-    categories,
-    accountEntries,
-    onCategoriesChange,
-    onEntriesChange,
-  };
 
   return (
     <div className="mx-auto w-full px-4 pb-16 pt-8" style={{ maxWidth: 1000 }}>
@@ -458,32 +423,20 @@ export function MyAccount({
       </div>
 
       {/* ── Sub-tabs ──────────────────────────────────────────────────── */}
-      {/* Grupos: "Conta" (personalização) e — só para o dono — "Empresa" */}
-      {/* (painel de controle), separados por um divisor visual.          */}
       <div className="account-tabs mt-10">
-        {visibleTabs.map((tab, i) => {
-          const prev = visibleTabs[i - 1];
-          const groupBreak = prev && prev.group !== tab.group;
-          return (
-            <span key={tab.id} className="flex items-center">
-              {groupBreak && (
-                <span className="mx-2 self-stretch" aria-hidden
-                  style={{ width: 1, background: "var(--dm-border-default)" }} />
-              )}
-              <button
-                type="button"
-                onClick={() => setActiveTab(tab.id)}
-                className={`account-tab${activeTab === tab.id ? " active" : ""}`}
-              >
-                {tab.id === "privacy"         && <Lock    size={13} className="mr-1.5 inline" />}
-                {tab.id === "notifications"   && <Bell    size={13} className="mr-1.5 inline" />}
-                {tab.id === "personalization" && <Sliders size={13} className="mr-1.5 inline" />}
-                {tab.id === "company"         && <Building2 size={13} className="mr-1.5 inline" />}
-                {tab.label}
-              </button>
-            </span>
-          );
-        })}
+        {visibleTabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setActiveTab(tab.id)}
+            className={`account-tab${activeTab === tab.id ? " active" : ""}`}
+          >
+            {tab.id === "privacy"         && <Lock    size={13} className="mr-1.5 inline" />}
+            {tab.id === "notifications"   && <Bell    size={13} className="mr-1.5 inline" />}
+            {tab.id === "personalization" && <Sliders size={13} className="mr-1.5 inline" />}
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       {/* ── Tab content ───────────────────────────────────────────────── */}
@@ -494,22 +447,6 @@ export function MyAccount({
             email={userEmail}
             onUpdateProfile={onUpdateProfile}
             onSignOut={onSignOut}
-          />
-        )}
-        {activeTab === "accounts" && (
-          <AccountsHub {...tabAccountsProps} />
-        )}
-        {activeTab === "company" && <CompanyStudio categories={categories} onNavigate={(t) => setActiveTab(t)} />}
-        {activeTab === "integrations" && (
-          <TabIntegrations onSyncNow={() => { void onRefresh?.(); }} />
-        )}
-        {activeTab === "sync" && (
-          <TabSync
-            syncStatus={syncStatus}
-            campaignCount={campaignCount}
-            dataSource={dataSource}
-            onRefresh={onRefresh}
-            onClearData={onClearData}
           />
         )}
         {activeTab === "privacy"         && <TabPrivacy />}

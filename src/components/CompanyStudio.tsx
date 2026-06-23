@@ -34,11 +34,37 @@ export type SectionId = "identidade" | "conexao" | "tracking" | "contas" | "filt
 
 // ─── Accordion section ────────────────────────────────────────────────────────
 
-function Section({ id, icon: Icon, title, summary, status, open, onToggle, children }: {
+function Section({ id, icon: Icon, title, summary, status, open, onToggle, children, variant = "accordion" }: {
   id: SectionId; icon: typeof Building2; title: string; summary: string;
   status: "ok" | "todo" | "neutral"; open: boolean; onToggle: (id: SectionId) => void; children: React.ReactNode;
+  /** "panel" = sempre aberto, sem toggle/chevron — usado no wizard da aba Empresa. */
+  variant?: "accordion" | "panel";
 }) {
   const statusColor = status === "ok" ? "#05CD99" : status === "todo" ? "#F4A60D" : "var(--dm-text-tertiary)";
+
+  // ── Modo painel (wizard): cabeçalho estático, conteúdo sempre visível, respiro ──
+  if (variant === "panel") {
+    return (
+      <div id={`studio-section-${id}`} className="rounded-2xl border" style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
+        <div className="flex items-center gap-3 px-5 pt-5 pb-3">
+          <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: "rgba(99,102,200,0.12)" }}>
+            <Icon size={17} style={{ color: BRAND }} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-bold" style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>{title}</p>
+            <p className="truncate text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>{summary}</p>
+          </div>
+          {status !== "neutral" && (
+            status === "ok"
+              ? <CheckCircle2 size={15} style={{ color: statusColor }} aria-label="configurado" />
+              : <AlertCircle size={15} style={{ color: statusColor }} aria-label="pendente" />
+          )}
+        </div>
+        <div className="space-y-3 px-5 pb-5 pt-1">{children}</div>
+      </div>
+    );
+  }
+
   return (
     <div id={`studio-section-${id}`} className="rounded-2xl border transition-colors scroll-mt-4" style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: open ? BRAND : "var(--dm-border-default)" }}>
       <button type="button" onClick={() => onToggle(id)} aria-expanded={open}
@@ -211,7 +237,7 @@ export function CompanyStudio({ categories = [], onNavigate, focusSection }: {
 
 // ─── Identidade ───────────────────────────────────────────────────────────────
 
-function IdentidadeSection({ company, canEdit, open, onToggle }: { company: Company; canEdit: boolean; open: boolean; onToggle: (id: SectionId) => void }) {
+export function IdentidadeSection({ company, canEdit, open, onToggle, variant }: { company: Company; canEdit: boolean; open: boolean; onToggle: (id: SectionId) => void; variant?: "accordion" | "panel" }) {
   const [name, setName] = useState(company.name);
   const [saving, setSaving] = useState(false);
   useEffect(() => setName(company.name), [company.name]);
@@ -222,7 +248,7 @@ function IdentidadeSection({ company, canEdit, open, onToggle }: { company: Comp
     catch (e) { toast.error(e instanceof Error ? e.message : "Erro."); } finally { setSaving(false); }
   };
   return (
-    <Section id="identidade" icon={Building2} title="Identidade" summary={company.name} status="ok" open={open} onToggle={onToggle}>
+    <Section id="identidade" icon={Building2} title="Identidade" summary={company.name} status="ok" open={open} onToggle={onToggle} variant={variant}>
       <div className="flex gap-3">
         <input value={name} onChange={(e) => setName(e.target.value)} disabled={!canEdit} className={`flex-1 ${inputCls} disabled:opacity-60`} style={inputStyle} />
         {canEdit && (
@@ -237,8 +263,8 @@ function IdentidadeSection({ company, canEdit, open, onToggle }: { company: Comp
 
 // ─── Conexão Meta (token) ─────────────────────────────────────────────────────
 
-function ConexaoSection({ company, canEdit, token, onToken, open, onToggle }: {
-  company: Company; canEdit: boolean; token: string; onToken: (t: string) => void; open: boolean; onToggle: (id: SectionId) => void;
+export function ConexaoSection({ company, canEdit, token, onToken, open, onToggle, variant }: {
+  company: Company; canEdit: boolean; token: string; onToken: (t: string) => void; open: boolean; onToggle: (id: SectionId) => void; variant?: "accordion" | "panel";
 }) {
   const [input, setInput] = useState("");
   const [saving, setSaving] = useState(false);
@@ -256,7 +282,7 @@ function ConexaoSection({ company, canEdit, token, onToken, open, onToggle }: {
     } catch (e) { toast.error(e instanceof Error ? e.message : "Erro ao salvar token."); } finally { setSaving(false); }
   };
   return (
-    <Section id="conexao" icon={KeyRound} title="Conexão Meta" summary={has ? "Token configurado e ativo" : "Nenhum token ainda"} status={has ? "ok" : "todo"} open={open} onToggle={onToggle}>
+    <Section id="conexao" icon={KeyRound} title="Conexão Meta" summary={has ? "Token configurado e ativo" : "Nenhum token ainda"} status={has ? "ok" : "todo"} open={open} onToggle={onToggle} variant={variant}>
       {has && (
         <div className="flex items-center gap-2 rounded-xl border px-3 py-2" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)" }}>
           <span className="min-w-0 flex-1 truncate font-mono text-[11px]" style={{ color: "var(--dm-text-secondary)" }}>{reveal ? token : masked}</span>
@@ -277,11 +303,11 @@ function ConexaoSection({ company, canEdit, token, onToken, open, onToggle }: {
 
 // ─── Tracking Pixel (Server-Side) ─────────────────────────────────────────────
 
-function TrackingSection({ company, canEdit, open, onToggle }: {
-  company: Company; canEdit: boolean; open: boolean; onToggle: (id: SectionId) => void;
+export function TrackingSection({ company, canEdit, open, onToggle, variant }: {
+  company: Company; canEdit: boolean; open: boolean; onToggle: (id: SectionId) => void; variant?: "accordion" | "panel";
 }) {
   return (
-    <Section id="tracking" icon={Radar} title="Tracking Pixel" summary="1 pixel por landing page/produto" status="ok" open={open} onToggle={onToggle}>
+    <Section id="tracking" icon={Radar} title="Tracking Pixel" summary="1 pixel por landing page/produto" status="ok" open={open} onToggle={onToggle} variant={variant}>
       <TrackingConfigPanel company={company} canEdit={canEdit} />
     </Section>
   );
@@ -289,8 +315,8 @@ function TrackingSection({ company, canEdit, open, onToggle }: {
 
 // ─── Contas (registro de sugestões) ───────────────────────────────────────────
 
-function ContasSection({ company, canEdit, suggestions, open, onToggle }: {
-  company: Company; canEdit: boolean; suggestions: AdAccountSuggestion[]; open: boolean; onToggle: (id: SectionId) => void;
+export function ContasSection({ company, canEdit, suggestions, open, onToggle, variant }: {
+  company: Company; canEdit: boolean; suggestions: AdAccountSuggestion[]; open: boolean; onToggle: (id: SectionId) => void; variant?: "accordion" | "panel";
 }) {
   const [list, setList] = useState<AdAccountSuggestion[]>(suggestions);
   const [id, setId] = useState(""); const [label, setLabel] = useState(""); const [saving, setSaving] = useState(false);
@@ -308,7 +334,7 @@ function ContasSection({ company, canEdit, suggestions, open, onToggle }: {
     setId(""); setLabel(""); toast.success(`Conta ${clean} registrada — vira sugestão ★ no Adicionar conta.`);
   };
   return (
-    <Section id="contas" icon={Megaphone} title="Contas de anúncio" summary={list.length ? `${list.length} registrada${list.length > 1 ? "s" : ""} · vira sugestão` : "Nenhuma registrada"} status={list.length ? "ok" : "todo"} open={open} onToggle={onToggle}>
+    <Section id="contas" icon={Megaphone} title="Contas de anúncio" summary={list.length ? `${list.length} registrada${list.length > 1 ? "s" : ""} · vira sugestão` : "Nenhuma registrada"} status={list.length ? "ok" : "todo"} open={open} onToggle={onToggle} variant={variant}>
       <p className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
         Registre os IDs de conta da empresa. Eles aparecem como sugestão ★ (com o nome certo) no &ldquo;Adicionar conta&rdquo; para todos os membros — sem acoplar a nenhum filtro.
       </p>
@@ -371,8 +397,8 @@ function FiltrosSection({ filters, onNavigate, open, onToggle }: {
 
 // ─── Histórico (rename + custom) ──────────────────────────────────────────────
 
-function HistoricoSection({ company, canEdit, customTabs, totalTabs, open, onToggle }: {
-  company: Company; canEdit: boolean; customTabs: CustomHistoryTab[]; totalTabs: number; open: boolean; onToggle: (id: SectionId) => void;
+export function HistoricoSection({ company, canEdit, customTabs, totalTabs, open, onToggle, variant }: {
+  company: Company; canEdit: boolean; customTabs: CustomHistoryTab[]; totalTabs: number; open: boolean; onToggle: (id: SectionId) => void; variant?: "accordion" | "panel";
 }) {
   const initial = (company.settings?.[HISTORY_TAB_LABELS_KEY] as Record<string, string> | undefined) ?? {};
   const [labels, setLabels] = useState<Record<string, string>>(() => Object.fromEntries(HISTORY_KINDS.map((k) => [k, initial[k] ?? ""])));
@@ -389,7 +415,7 @@ function HistoricoSection({ company, canEdit, customTabs, totalTabs, open, onTog
     } catch (e) { toast.error(e instanceof Error ? e.message : "Erro ao salvar."); } finally { setSaving(false); }
   };
   return (
-    <Section id="historico" icon={History} title="Sub-abas do Histórico" summary={`${totalTabs}/${MAX_HISTORY_TABS} abas`} status="ok" open={open} onToggle={onToggle}>
+    <Section id="historico" icon={History} title="Sub-abas do Histórico" summary={`${totalTabs}/${MAX_HISTORY_TABS} abas`} status="ok" open={open} onToggle={onToggle} variant={variant}>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {HISTORY_KINDS.map((k) => (
           <label key={k} className="flex flex-col gap-1">
@@ -426,8 +452,8 @@ function HistoricoSection({ company, canEdit, customTabs, totalTabs, open, onTog
 
 // ─── Equipe (membros) ─────────────────────────────────────────────────────────
 
-function EquipeSection({ company, canEdit, members, setMembers, open, onToggle }: {
-  company: Company; canEdit: boolean; members: CompanyMember[] | null; setMembers: (m: CompanyMember[]) => void; open: boolean; onToggle: (id: SectionId) => void;
+export function EquipeSection({ company, canEdit, members, setMembers, open, onToggle, variant }: {
+  company: Company; canEdit: boolean; members: CompanyMember[] | null; setMembers: (m: CompanyMember[]) => void; open: boolean; onToggle: (id: SectionId) => void; variant?: "accordion" | "panel";
 }) {
   const [email, setEmail] = useState(""); const [role, setRole] = useState<CompanyRole>("manager");
   const [inviting, setInviting] = useState(false); const [busyId, setBusyId] = useState<string | null>(null);
@@ -453,7 +479,7 @@ function EquipeSection({ company, canEdit, members, setMembers, open, onToggle }
     catch (e) { toast.error(e instanceof Error ? e.message : "Erro."); } finally { setBusyId(null); }
   };
   return (
-    <Section id="equipe" icon={Users} title="Equipe" summary={`${list.length} membro${list.length !== 1 ? "s" : ""}`} status="neutral" open={open} onToggle={onToggle}>
+    <Section id="equipe" icon={Users} title="Equipe" summary={`${list.length} membro${list.length !== 1 ? "s" : ""}`} status="neutral" open={open} onToggle={onToggle} variant={variant}>
       {canEdit && (
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <div className="relative flex-1">

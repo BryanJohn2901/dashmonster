@@ -88,7 +88,15 @@ export function ReportModal({ data, fileName, onClose }: ReportModalProps) {
         <div className="w-full max-w-md overflow-hidden rounded-3xl border shadow-2xl"
           style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
           <div className="flex items-center justify-between border-b px-5 py-4" style={{ borderColor: "var(--dm-border-subtle)" }}>
-            <h3 className="text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>Gerar relatório</h3>
+            <div className="flex items-center gap-3">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)" }}>
+                <FileText size={16} className="text-white" />
+              </span>
+              <div>
+                <h3 className="text-sm font-bold leading-tight" style={{ color: "var(--dm-text-primary)" }}>Gerar relatório</h3>
+                <p className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>Exporte a visão atual em PNG ou PDF</p>
+              </div>
+            </div>
             <button type="button" onClick={onClose} className="rounded-lg p-1 hover:bg-white/10" style={{ color: "var(--dm-text-tertiary)" }}><X size={16} /></button>
           </div>
           <div className="grid grid-cols-1 gap-3 p-5 sm:grid-cols-2">

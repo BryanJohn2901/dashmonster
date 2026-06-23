@@ -9,7 +9,7 @@ import {
   Activity, BadgeDollarSign, BarChart2, BookOpen, CalendarDays,
   CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CircleDollarSign, Download, Dumbbell, FileText,
   FileUp, Filter, Flag, GraduationCap, Home, ImageIcon, Link2, Loader2, LogOut, Menu, Moon,
-  Building2, MousePointerClick, Package, Pencil, Plus, Repeat, RotateCcw, Search, Settings2, SlidersHorizontal, Sun,
+  Building2, Megaphone, MousePointerClick, Package, Pencil, Plus, Repeat, RotateCcw, Search, Settings2, SlidersHorizontal, Sun,
   Target, Trash2, TrendingUp, Trophy, Upload, UserRound, Users, Wallet, X, XCircle, Zap,
   LayoutDashboard, History, LineChart, Sparkles, Database, Dna, Weight, HeartPulse,
   Medal, PersonStanding, Flame, BookText, MonitorSmartphone, Ticket, Library, VenetianMask,
@@ -40,7 +40,7 @@ import {
   buildCampaignComparison, buildDailyTrend, formatCurrency, formatDatePtBr, formatNumber, formatPercent,
 } from "@/utils/metrics";
 import { KpiCard } from "@/components/KpiCard";
-import { FunnelCard, reportFunnelFromValues } from "@/components/FunnelCard";
+import { reportFunnelFromValues } from "@/components/FunnelCard";
 import { OverviewBento } from "@/components/OverviewBento";
 import { ExportReportButton } from "@/components/ExportReportButton";
 import type { ReportData } from "@/types/report";
@@ -63,6 +63,8 @@ import { AnaliseEmpty } from "@/components/empty/AnaliseEmpty";
 import { CriativosEmpty } from "@/components/empty/CriativosEmpty";
 import { PixelFunnelSection } from "@/components/PixelFunnelSection";
 import { MyAccount, accountTabsForRole } from "@/components/MyAccount";
+import { EmpresaTab } from "@/components/EmpresaTab";
+import { DashboardSpotlight, type SpotlightMetric } from "@/components/DashboardSpotlight";
 import { toast } from "@/hooks/useToast";
 import { exportDashboardCsv } from "@/utils/exportCsv";
 import { useManualMetrics } from "@/hooks/useManualMetrics";
@@ -107,13 +109,22 @@ function formatDataSourcePill(ds: DataSource | null | undefined): { title: strin
   return { title: titles[ds.type], subtitle: ds.label };
 }
 
-type MainTab = "overview" | "history" | "leads" | "tracking" | "profiles" | "products" | "myaccount";
+type MainTab = "overview" | "history" | "leads" | "tracking" | "profiles" | "products" | "empresa" | "myaccount";
 type DashSubTab = "overview" | "analysis" | "creatives";
 
 const DASH_SUB_TABS: Array<{ id: DashSubTab; label: string; icon: React.ElementType }> = [
   { id: "overview",  label: "Visão Geral", icon: LayoutDashboard },
   { id: "analysis",  label: "Análise",     icon: LineChart },
   { id: "creatives", label: "Criativos",   icon: Sparkles },
+];
+
+// Controle segmentado interno da Visão Geral — simplifica o scroll longo em 3 focos.
+type OverviewSegment = "indicators" | "campaigns" | "daily";
+const OVERVIEW_SEGMENT_KEY = "pta_overview_segment_v1";
+const OVERVIEW_SEGMENTS: Array<{ id: OverviewSegment; label: string; icon: React.ElementType }> = [
+  { id: "indicators", label: "Indicadores principais", icon: LayoutDashboard },
+  { id: "campaigns",  label: "Campanhas",              icon: Megaphone },
+  { id: "daily",      label: "Resumo diário",          icon: CalendarDays },
 ];
 
 type SortBy = "date-desc" | "date-asc" | "invest-desc" | "invest-asc" | "roas-desc" | "ctr-desc";
@@ -138,13 +149,10 @@ const SIDEBAR_HISTORY_TABS: Array<{ id: HistoricalKind; icon: React.ElementType 
 
 // ─── MyAccount sub-tabs (sidebar) ─────────────────────────────────────────────
 
-type MyAccountTabId = "profile"|"accounts"|"company"|"integrations"|"sync"|"privacy"|"notifications"|"personalization";
+// Config da empresa saiu da Minha conta → virou a aba de topo "Empresa".
+type MyAccountTabId = "profile"|"privacy"|"notifications"|"personalization";
 const SIDEBAR_ACCOUNT_TABS: Array<{ id: MyAccountTabId; label: string; icon: React.ElementType }> = [
   { id: "profile",         label: "Meu perfil",     icon: UserRound    },
-  { id: "accounts",        label: "Contas",          icon: Settings2    },
-  { id: "company",         label: "Empresa",         icon: Building2    },
-  { id: "integrations",    label: "Integrações",     icon: Link2        },
-  { id: "sync",            label: "Sincronização",   icon: RotateCcw    },
   { id: "privacy",         label: "Privacidade",     icon: Zap          },
   { id: "notifications",   label: "Notificações",    icon: Activity     },
   { id: "personalization", label: "Personalização",  icon: SlidersHorizontal },
@@ -158,6 +166,7 @@ const MAIN_TABS: Array<{ id: MainTab; label: string; shortLabel: string; icon: R
   { id: "tracking",   label: "Tracking",              shortLabel: "Tracking",  icon: Radar },
   { id: "profiles",   label: "Perfil de Anunciantes", shortLabel: "Perfil",    icon: Target },
   { id: "products",   label: "Base de Produtos",      shortLabel: "Produtos",  icon: Database },
+  { id: "empresa",    label: "Empresa",               shortLabel: "Empresa",   icon: Building2 },
   { id: "myaccount",  label: "Minha conta",            shortLabel: "Conta",     icon: UserRound },
 ];
 
@@ -1911,11 +1920,23 @@ export function Dashboard({
     try { localStorage.setItem("dm_main_tab", tab); } catch {}
   }, []);
   const [dashSubTab, setDashSubTab]         = useState<DashSubTab>("overview");
+  // Segmento interno da Visão Geral (layout simplificado): Indicadores · Campanhas · Resumo diário.
+  const [overviewSegment, setOverviewSegment] = useState<OverviewSegment>(() => {
+    if (typeof window === "undefined") return "indicators";
+    const saved = localStorage.getItem(OVERVIEW_SEGMENT_KEY);
+    return saved === "campaigns" || saved === "daily" ? saved : "indicators";
+  });
+  const selectOverviewSegment = useCallback((seg: OverviewSegment) => {
+    setOverviewSegment(seg);
+    try { localStorage.setItem(OVERVIEW_SEGMENT_KEY, seg); } catch {}
+  }, []);
   const [histKind, setHistKind]             = useState<HistoricalKind>("lancamento");
   const { company: activeCompany, isOwner } = useCompany();
   // Usuário padrão (não-dono) só vê abas de conta pessoais na sidebar; o painel
   // de controle da empresa é exclusivo do dono. Mesma regra do MyAccount.
   const visibleAccountTabIds = accountTabsForRole(isOwner);
+  // A aba de topo "Empresa" só aparece para o dono (consistente com o badge).
+  const visibleMainTabs = MAIN_TABS.filter((t) => t.id !== "empresa" || isOwner);
   const histLabels = activeCompany?.settings?.[HISTORY_TAB_LABELS_KEY] as Record<string, string> | undefined;
   const customHistTabs = readCustomHistoryTabs(activeCompany?.settings);
   const [myAccountTab, setMyAccountTab]     = useState<MyAccountTabId>("profile");
@@ -2580,6 +2601,22 @@ export function Dashboard({
   const budgetDistribution = buildBudgetDistribution(filteredCampaigns);
   const aggregated         = useMemo(() => aggregateByCampaign(filteredCampaigns), [filteredCampaigns]);
 
+  // ── Spotlight: métricas em destaque (valor de `totals`, série diária do período) ──
+  const spotlightMetrics = useMemo<SpotlightMetric[]>(() => {
+    const revByDate = new Map<string, number>();
+    filteredCampaigns.forEach((c) => revByDate.set(c.date, (revByDate.get(c.date) ?? 0) + (c.revenue ?? 0)));
+    const revSeries    = dailyTrend.map((d) => revByDate.get(d.date) ?? 0);
+    const investSeries = dailyTrend.map((d) => d.investment ?? 0);
+    const convSeries   = dailyTrend.map((d) => d.conversions ?? 0);
+    const roasSeries   = dailyTrend.map((d, i) => (investSeries[i] > 0 ? revSeries[i] / investSeries[i] : 0));
+    return [
+      { id: "revenue",     label: "Receita no período",          value: formatCurrency(totals.totalRevenue),                       series: revSeries,    tone: "green"   },
+      { id: "roas",        label: "ROAS",                        value: `${totals.roas.toFixed(2)}x`,                              series: roasSeries,   tone: "primary" },
+      { id: "investment",  label: "Investimento",                value: formatCurrency(totals.totalInvestment),                    series: investSeries, tone: "amber"   },
+      { id: "conversions", label: intentResult?.label ?? "Conversões", value: formatNumber(intentResult?.value ?? effectiveConversions), series: convSeries,   tone: "violet"  },
+    ];
+  }, [filteredCampaigns, dailyTrend, totals, intentResult, effectiveConversions]);
+
   /**
    * Campaign ID filter passed to BestCreatives.
    *
@@ -2768,7 +2805,7 @@ export function Dashboard({
   /* Nav items list — reutilizado dentro do card expandido */
   const navItemsList = (
     <nav className="flex flex-col gap-0.5 py-2 px-2">
-      {MAIN_TABS.map(({ id, label, icon: Icon }) => {
+      {visibleMainTabs.map(({ id, label, icon: Icon }) => {
         const isActive = mainTab === id;
         const hasSubItems = ["overview", "history", "myaccount"].includes(id);
         return (
@@ -2929,7 +2966,7 @@ export function Dashboard({
 
             {/* Icon-only nav — tooltips à direita */}
             <div className="flex flex-col items-center gap-1 w-full px-2">
-              {MAIN_TABS.map(({ id, label, icon: Icon }) => (
+              {visibleMainTabs.map(({ id, label, icon: Icon }) => (
                 <button
                   key={id}
                   onClick={() => { setMainTab(id); setShowMobileNav(false); }}
@@ -3365,14 +3402,30 @@ export function Dashboard({
                 )}
 
                 {dashSubTab === "overview" && (<>
+                {/* ── Spotlight (métrica em destaque) + controle segmentado ── */}
                 {filteredCampaigns.length > 0 && (
-                  <OverviewBento totals={totals} campaigns={campaignsWithOverrides} conversions={effectiveConversions} leadsByOrigin={leadsByOrigin} onManage={onOpenControlPanel} />
+                  <DashboardSpotlight metrics={spotlightMetrics} />
                 )}
-                {false && overviewSelectionSummary && (
-                  <section style={{ display: "none" }}>
-                      <span>{filteredCampaigns.length} / {categorizedCampaigns.length} campanhas
-                      </span>
-                  </section>
+                {filteredCampaigns.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1 rounded-2xl border p-1"
+                    style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)", width: "fit-content" }}>
+                    {OVERVIEW_SEGMENTS.map(({ id, label, icon: Icon }) => {
+                      const on = overviewSegment === id;
+                      return (
+                        <button key={id} type="button" onClick={() => selectOverviewSegment(id)}
+                          aria-pressed={on}
+                          className="flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-[12.5px] font-semibold transition"
+                          style={{ background: on ? "rgba(99,102,200,0.12)" : "transparent", color: on ? "var(--dm-primary)" : "var(--dm-text-tertiary)" }}>
+                          <Icon size={14} /> <span className="hidden sm:inline">{label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Indicadores principais → Bento */}
+                {filteredCampaigns.length > 0 && overviewSegment === "indicators" && (
+                  <OverviewBento totals={totals} campaigns={campaignsWithOverrides} conversions={effectiveConversions} leadsByOrigin={leadsByOrigin} onManage={onOpenControlPanel} />
                 )}
 
                 {filteredCampaigns.length === 0 && (
@@ -3397,7 +3450,8 @@ export function Dashboard({
                     </div>
                   </div>
                 )}
-                {/* KPI block */}
+                {/* KPI block — Indicadores principais */}
+                {overviewSegment === "indicators" && (
                 <section className="space-y-3" aria-labelledby="kpi-section-title">
                   <div className="relative flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                     <div className="flex flex-wrap items-center gap-2 min-w-0">
@@ -3715,18 +3769,15 @@ export function Dashboard({
                   );
                 })()}
                 </section>
+                )}
 
-                {/* Funnel */}
-                <FunnelCard
-                  impressions={totals.totalImpressions}
-                  clicks={totals.totalClicks}
-                  conversions={effectiveConversions}
-                  investment={totals.totalInvestment}
-                  leads={totals.totalLeads}
-                  pageViews={totals.totalPageViews}
-                  storageScope={currentUser.email}
-                />
+                {/* Campanhas → tabela (antes dominava o scroll, agora só neste segmento) */}
+                {overviewSegment === "campaigns" && (
+                  <CampaignTable campaigns={sortedCampaigns} isMetricVisible={isMetricVisible} />
+                )}
 
+                {/* Resumo diário → tendência diária + Funil do Pixel */}
+                {overviewSegment === "daily" && (<>
                 <ChartsSection dailyTrend={dailyTrend} campaignComparison={campaignComparison} budgetDistribution={budgetDistribution} />
                 {/* Funil do Pixel — collapsible */}
                 <div className="rounded-xl border overflow-hidden" style={{ borderColor: "var(--dm-border-default)" }}>
@@ -3754,7 +3805,7 @@ export function Dashboard({
                     />
                   )}
                 </div>
-                <CampaignTable campaigns={sortedCampaigns} isMetricVisible={isMetricVisible} />
+                </>)}
                 </>)}
 
                 {dashSubTab === "analysis" && (
@@ -3813,21 +3864,26 @@ export function Dashboard({
             />
           )}
 
-          {mainTab === "myaccount" && (
-            <MyAccount
-              userName={currentUser.name}
-              userEmail={currentUser.email}
+          {mainTab === "empresa" && isOwner && (
+            <EmpresaTab
               categories={categories}
               accountEntries={accountEntries}
               onCategoriesChange={onCategoriesChange ?? (() => {})}
               onEntriesChange={onEntriesChange ?? (() => {})}
-              onUpdateProfile={onUpdateProfile}
-              onSignOut={onSignOut}
               syncStatus={syncStatus}
               campaignCount={campaigns.length}
               dataSource={dataSource}
               onRefresh={onRefresh}
               onClearData={onClearData}
+            />
+          )}
+
+          {mainTab === "myaccount" && (
+            <MyAccount
+              userName={currentUser.name}
+              userEmail={currentUser.email}
+              onUpdateProfile={onUpdateProfile}
+              onSignOut={onSignOut}
               activeTab={myAccountTab}
               onTabChange={setMyAccountTab}
             />

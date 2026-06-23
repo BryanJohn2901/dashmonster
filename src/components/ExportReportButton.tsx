@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Download } from "lucide-react";
+import { FileText } from "lucide-react";
 import { ReportModal } from "@/components/ReportModal";
 import type { ReportData } from "@/types/report";
 
@@ -20,11 +20,11 @@ export function ExportReportButton({ buildData, fileName, label = "Relatório" }
       <button
         type="button"
         onClick={() => setData(buildData())}
-        className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-semibold shadow-sm transition hover:opacity-90
-                   bg-[var(--dm-brand-500,#6366C8)] text-white
-                   dark:bg-white dark:text-[#0b1437]"
+        title="Gerar relatório"
+        className="flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-[13px] font-bold text-white shadow-sm transition hover:opacity-90 active:scale-[0.98]"
+        style={{ background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)" }}
       >
-        <Download size={14} />
+        <FileText size={14} />
         <span className="hidden sm:inline">{label}</span>
       </button>
 
