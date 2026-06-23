@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
 
   const { data: updated } = await admin
     .from("eduzz_oauth_connections")
-    .select("status, last_synced_at, last_sync_error")
+    .select("status, last_synced_at, last_sync_error, created_at")
     .eq("company_id", companyId)
     .single();
 

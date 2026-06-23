@@ -593,6 +593,7 @@ export interface EduzzOAuthConnection {
   status: "connected" | "error" | "syncing";
   lastSyncedAt: string | null;
   lastSyncError: string | null;
+  createdAt: string;
 }
 
 function rowToEduzzOAuthConnection(row: Record<string, unknown>): EduzzOAuthConnection {
@@ -603,6 +604,7 @@ function rowToEduzzOAuthConnection(row: Record<string, unknown>): EduzzOAuthConn
     status: row.status as "connected" | "error" | "syncing",
     lastSyncedAt: (row.last_synced_at as string | null) ?? null,
     lastSyncError: (row.last_sync_error as string | null) ?? null,
+    createdAt: (row.created_at as string | null) ?? new Date().toISOString(),
   };
 }
 
@@ -611,7 +613,7 @@ export async function fetchEduzzOAuthConnection(companyId: string): Promise<Eduz
   if (!supabaseClient) return null;
   const { data, error } = await supabaseClient
     .from("eduzz_oauth_connections")
-    .select("company_id, eduzz_user_email, eduzz_user_name, status, last_synced_at, last_sync_error")
+    .select("company_id, eduzz_user_email, eduzz_user_name, status, last_synced_at, last_sync_error, created_at")
     .eq("company_id", companyId)
     .maybeSingle();
   if (error || !data) return null;

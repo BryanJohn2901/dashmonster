@@ -151,6 +151,32 @@ janela de retry da Eduzz. Roda via cron (`vercel.json`, a cada 6h,
     paginação lê **`pages`** (não `totalPages` — engano antigo) do envelope
     `{ items, page, pages, itemsPerPage, totalItems }`. Rate limit 30 req/min:
     o cron processa empresas em **sequência** (não `Promise.all`).
+- **Sync NUNCA cria jornada nova pra cliente nunca rastreado (`hasTrackedHistory`,
+  `eduzzSync.ts`)** — bug real reportado pelo usuário (2026-06-23, prints do
+  Histórico do visitante): o backfill de 90 dias estava trazendo qualquer
+  venda da Eduzz, inclusive de clientes que NUNCA passaram pelo nosso pixel/
+  webhook (sem Lead, sem PageView, sem UTM/fbp/fbc) — criava cards "via eduzz"
+  soltos, sem nenhum dado de atribuição, poluindo o histórico com jornadas
+  fantasma. Isso contradiz o propósito documentado desta sync ("complemento
+  ao webhook", não backfill geral). Fix: antes de `recordSale()` na branch de
+  venda NOVA (não é parcela, não é renovação conhecida) em
+  `syncCompanySales()`, checa `hasTrackedHistory(db, companyId, sale.email)` —
+  existe ALGUM evento prévio em `events_log` com esse email (Lead, PageView,
+  Purchase de outro produto, não importa a origem)? Se não, pula (`continue`),
+  não grava nada. Como as janelas processam da mais antiga pra mais nova,
+  isso também blinda renovações/parcelas seguintes do MESMO contrato: se a 1ª
+  cobrança nunca foi gravada (cliente desconhecido), `isKnownRecurrence` nunca
+  vira true pra aquele `recurrenceKey`, então as cobranças seguintes caem na
+  mesma branch e também são puladas — a jornada inteira fica de fora, não só
+  a 1ª linha. Continua funcionando o caso de uso real da sync: cliente JÁ
+  rastreado (apareceu em algum evento) cuja assinatura o webhook perdeu
+  (`contract_updated` que nunca chegou, `invoice_paid` com `contract: null`)
+  — esse caso passa o `hasTrackedHistory` e ganha o histórico completo de
+  parcelas/renovações. `syncCompanySubscriptions()` (`upsertContractInfo`,
+  só grava ficha em `eduzz_contracts`, nunca um evento visível) e
+  `syncCompanyChargebacks()` (`handleReversal`, só `UPDATE` em linha já
+  existente) não precisaram do mesmo gate — nenhum dos dois cria card novo no
+  Histórico do visitante por conta própria.
 - **Permissão de escrita nas rotas novas via RPC, não RLS direto** — diferente
   do CRUD de `eduzz_webhook_configs` (cliente anon + RLS), as rotas OAuth
   (`start`/`sync-now`) correm no servidor e checam

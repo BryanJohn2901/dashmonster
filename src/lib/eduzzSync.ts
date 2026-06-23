@@ -49,6 +49,32 @@ const PAGE_SIZE = 100;
 const CHUNK_DAYS = 7;
 const DEFAULT_TIME_BUDGET_MS = 35_000;
 
+// Sync só deve ENRIQUECER jornada que o webhook/pixel já capturou (mesma
+// pessoa, por email) — nunca criar uma "primeira venda" do zero pra cliente
+// que nunca apareceu em events_log. Pedido explícito do usuário (2026-06-23):
+// o backfill de 90 dias estava criando cards "via eduzz" soltos no Histórico
+// do visitante pra clientes nunca rastreados (sem Lead/PageView, sem UTM/fbp/
+// fbc) — jornada fantasma, sem nenhum dado de atribuição por trás. `alreadyProcessed`/
+// `isKnownRecurrence` já cobrem "já vimos ESSA venda/contrato"; isto cobre
+// "já vimos ESSA PESSOA alguma vez" (mesmo critério de email usado em
+// `resolveVisitMatch()`/`findContractByCustomerAndProduct()` no webhook).
+// Como as janelas processam da mais antiga pra mais nova, isso também blinda
+// renovações/parcelas seguintes do MESMO contrato: se a 1ª cobrança nunca foi
+// gravada (cliente desconhecido), `isKnownRecurrence` nunca vira true pra esse
+// `recurrenceKey`, então as cobranças seguintes caem aqui de novo e também
+// são puladas — a jornada inteira fica de fora, não só a 1ª linha.
+async function hasTrackedHistory(db: SupabaseClient, companyId: string, email: string | null | undefined): Promise<boolean> {
+  if (!email) return false;
+  const { data, error } = await db
+    .from("events_log")
+    .select("id")
+    .eq("company_id", companyId)
+    .ilike("lead_email", email)
+    .limit(1)
+    .maybeSingle();
+  return !error && Boolean(data);
+}
+
 // Data em YYYY-MM-DD (simples). O endpoint de chargebacks mostra exemplo com
 // ISO completo na doc, MAS os de vendas/assinaturas rejeitam datetime com
 // "validation error" (422) — confirmado em produção 2026-06-22. Data simples
@@ -175,6 +201,10 @@ export async function syncCompanySales(db: SupabaseClient, companyId: string, to
         if (sale.recurrenceKey && (await isKnownRecurrence(db, companyId, sale.recurrenceKey))) {
           await recordRenewal(db, companyId, sale);
         } else {
+          // 1ª venda desse contrato/cliente: só grava se a pessoa já tem
+          // ALGUM histórico rastreado (webhook/pixel) — senão é cliente que
+          // nunca passou pelo nosso tracking, sync não deve inventar jornada.
+          if (!(await hasTrackedHistory(db, companyId, sale.email))) continue;
           await recordSale(db, companyId, sale);
         }
         processed++;

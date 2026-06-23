@@ -102,6 +102,15 @@ export function EduzzConfigPanel({ company, canEdit }: { company: Company; canEd
 // invoice_paid com contract:null, histórico anterior ao webhook). Ver
 // src/app/api/eduzz/CLAUDE.md. Sincroniza automaticamente a cada 6h (cron) +
 // botão manual aqui; o webhook continua sendo o caminho rápido de toda venda.
+function computeSyncProgressPct(connection: EduzzOAuthConnection | null | undefined): number | null {
+  if (!connection?.lastSyncedAt) return null;
+  const start = new Date(connection.createdAt).getTime() - 90 * 86400000;
+  const last = new Date(connection.lastSyncedAt).getTime();
+  const now = Date.now();
+  if (!(now > start) || Number.isNaN(last)) return null;
+  return Math.min(100, Math.max(0, Math.round(((last - start) / (now - start)) * 100)));
+}
+
 function EduzzOAuthSection({ company, canEdit }: { company: Company; canEdit: boolean }) {
   const [connection, setConnection] = useState<EduzzOAuthConnection | null | undefined>(undefined);
   const [syncing, setSyncing] = useState(false);
@@ -117,6 +126,27 @@ function EduzzOAuthSection({ company, canEdit }: { company: Company; canEdit: bo
   }, [company.id]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Notifica erro de sync que aconteceu enquanto o usuário estava fora do
+  // painel (ex.: cron de madrugada) — sem isso, só descobria abrindo o
+  // painel e lendo o texto pequeno do status. Toast 1x por sessão (ref),
+  // não repete a cada re-render.
+  const erroredToastedRef = useRef(false);
+  useEffect(() => {
+    if (connection?.status === "error" && !erroredToastedRef.current) {
+      erroredToastedRef.current = true;
+      toast.error(connection.lastSyncError ?? "A última sincronização com a Eduzz falhou.");
+    }
+  }, [connection?.status, connection?.lastSyncError]);
+
+  // Progresso aproximado: do início do período (1ª sync, 90 dias antes da
+  // conexão) até hoje, quanto já foi coberto por `last_synced_at`. É uma
+  // estimativa (sync que retoma de um erro tem o mesmo cálculo, só não
+  // distingue "retomando" de "1ª vez") — serve pra dar uma noção visual de
+  // quanto falta, não uma métrica exata. Não memoizado (usa Date.now(), o
+  // React Compiler rejeita impureza dentro de useMemo) — cálculo é trivial,
+  // não precisa de cache.
+  const syncProgressPct = computeSyncProgressPct(connection);
 
   // A rota sync-now é síncrona e faz UMA fatia por chamada (bounded por tempo),
   // devolvendo done=false enquanto sobrar período. Aqui rodamos as fatias em
@@ -243,16 +273,27 @@ function EduzzOAuthSection({ company, canEdit }: { company: Company; canEdit: bo
               <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
                 {connection.status === "syncing"
                   ? connection.lastSyncedAt
-                    ? `Sincronizando... (já processou até ${new Date(connection.lastSyncedAt).toLocaleDateString("pt-BR")})`
+                    ? `Sincronizando... (já processou até ${new Date(connection.lastSyncedAt).toLocaleDateString("pt-BR")}${syncProgressPct != null ? ` — ${syncProgressPct}%` : ""})`
                     : "Sincronizando..."
                   : connection.status === "error"
-                    ? (connection.lastSyncError ?? "Erro na última sincronização.")
+                    ? "Erro na última sincronização — veja detalhes abaixo."
                     : connection.lastSyncedAt
                       ? `Última sincronização: ${new Date(connection.lastSyncedAt).toLocaleString("pt-BR")}`
                       : "Ainda não sincronizou."}
               </p>
+              {connection.status === "syncing" && syncProgressPct != null && (
+                <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full" style={{ background: "var(--dm-bg-elevated)" }}>
+                  <div className="h-full rounded-full transition-all" style={{ width: `${syncProgressPct}%`, background: "#f59e0b" }} />
+                </div>
+              )}
             </div>
           </div>
+
+          {connection.status === "error" && (
+            <div className="rounded-xl border px-3 py-2" style={{ borderColor: "rgba(239,68,68,0.4)", backgroundColor: "rgba(239,68,68,0.08)" }}>
+              <p className="text-[11px] font-medium" style={{ color: "#ef4444" }}>{connection.lastSyncError ?? "Erro desconhecido na última sincronização."}</p>
+            </div>
+          )}
 
           {canEdit && (
             <div className="flex items-center gap-2">
