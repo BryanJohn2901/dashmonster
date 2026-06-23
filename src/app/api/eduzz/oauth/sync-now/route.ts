@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { eduzzUserScopedClient } from "@/lib/eduzzOAuth";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { syncCompany } from "@/lib/eduzzSync";
+import { syncCompany, syncCompanyRange } from "@/lib/eduzzSync";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -28,9 +28,19 @@ const REQUEST_BUDGET_MS = 40_000;
  * resultado de verdade: done + connection com status final. Se done=false,
  * ainda falta período — o front (EduzzConfigPanel) chama de novo em loop até
  * done=true. syncCompany SEMPRE grava um status final, então nunca trava.
+ *
+ * Body opcional `range: { from, to, cursor? }` (ISO date) — pedido explícito
+ * do usuário: período menor sincroniza mais rápido (menos volume), período
+ * maior demora mais; sem essa opção, a 1ª sync sempre varria os mesmos
+ * 90 dias fixos. Modo período NÃO toca `last_synced_at` (cursor incremental
+ * normal) — só o front rastreia `cursor` entre chamadas do loop pra resumir
+ * um período grande que não cabe num request só.
  */
 export async function POST(request: NextRequest) {
-  const body = await request.json().catch(() => null) as { company_id?: string } | null;
+  const body = await request.json().catch(() => null) as {
+    company_id?: string;
+    range?: { from?: string; to?: string; cursor?: string };
+  } | null;
   const companyId = body?.company_id;
   if (!companyId) {
     return NextResponse.json({ error: "company_id ausente." }, { status: 400 });
@@ -63,16 +73,51 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Empresa sem conexão Eduzz." }, { status: 404 });
   }
 
+  const conn = connection as { company_id: string; access_token: string; last_synced_at: string | null };
+
   await admin
     .from("eduzz_oauth_connections")
     .update({ status: "syncing", last_sync_error: null, updated_at: new Date().toISOString() })
     .eq("company_id", companyId);
 
-  const { done } = await syncCompany(
-    admin,
-    connection as { company_id: string; access_token: string; last_synced_at: string | null },
-    REQUEST_BUDGET_MS,
-  );
+  const range = body?.range;
+  if (range?.from && range.to) {
+    const fromDate = new Date(range.cursor || range.from);
+    const toDate = new Date(range.to);
+    if (Number.isNaN(fromDate.getTime()) || Number.isNaN(toDate.getTime())) {
+      return NextResponse.json({ error: "Período inválido." }, { status: 400 });
+    }
+
+    let done = false;
+    let cursor = range.cursor || range.from;
+    try {
+      const result = await syncCompanyRange(admin, conn, fromDate, toDate, REQUEST_BUDGET_MS);
+      done = result.done;
+      cursor = result.cursor;
+      await admin
+        .from("eduzz_oauth_connections")
+        .update({ status: done ? "connected" : "syncing", last_sync_error: null, updated_at: new Date().toISOString() })
+        .eq("company_id", companyId);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("[eduzz sync] falha ao sincronizar período customizado:", companyId, message);
+      done = true;
+      await admin
+        .from("eduzz_oauth_connections")
+        .update({ status: "error", last_sync_error: message, updated_at: new Date().toISOString() })
+        .eq("company_id", companyId);
+    }
+
+    const { data: updatedRange } = await admin
+      .from("eduzz_oauth_connections")
+      .select("status, last_synced_at, last_sync_error, created_at")
+      .eq("company_id", companyId)
+      .single();
+
+    return NextResponse.json({ ok: true, done, cursor, connection: updatedRange });
+  }
+
+  const { done } = await syncCompany(admin, conn, REQUEST_BUDGET_MS);
 
   const { data: updated } = await admin
     .from("eduzz_oauth_connections")

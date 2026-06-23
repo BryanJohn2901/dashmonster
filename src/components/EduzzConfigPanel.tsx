@@ -221,6 +221,50 @@ function EduzzOAuthSection({ company, canEdit }: { company: Company; canEdit: bo
 
   const syncNow = () => { void runSync(); };
 
+  // Período customizado (pedido explícito do usuário): a sync incremental
+  // sempre varre os mesmos 90 dias fixos na 1ª vez — período menor processa
+  // mais rápido (menos volume pra paginar), período maior demora mais. Não
+  // toca `last_synced_at` (cursor incremental normal, ver syncCompanyRange em
+  // eduzzSync.ts) — só este loop rastreia o cursor entre chamadas.
+  const [rangeOpen, setRangeOpen] = useState(false);
+  const [rangeFrom, setRangeFrom] = useState("");
+  const [rangeTo, setRangeTo] = useState("");
+  const [rangeRunning, setRangeRunning] = useState(false);
+  const [rangeProgress, setRangeProgress] = useState<string | null>(null);
+
+  const runRangeSync = useCallback(async () => {
+    if (runningRef.current) return;
+    if (!rangeFrom || !rangeTo) {
+      toast.error("Escolha as 2 datas.");
+      return;
+    }
+    runningRef.current = true;
+    setRangeRunning(true);
+    setRangeProgress(null);
+    let cursor: string | undefined;
+    try {
+      for (let i = 0; i < 200; i++) {
+        const { connection: updated, done, cursor: nextCursor } = await syncEduzzOAuthNow(company.id, { from: rangeFrom, to: rangeTo, cursor });
+        setConnection(updated);
+        cursor = nextCursor;
+        if (cursor) setRangeProgress(`já processou até ${new Date(cursor).toLocaleDateString("pt-BR")}`);
+        if (updated.status === "error") {
+          toast.error(updated.lastSyncError ?? "Falha ao sincronizar o período.");
+          return;
+        }
+        if (done) {
+          toast.success("Período sincronizado.");
+          return;
+        }
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao sincronizar o período.");
+    } finally {
+      runningRef.current = false;
+      setRangeRunning(false);
+    }
+  }, [company.id, rangeFrom, rangeTo]);
+
   const disconnect = async () => {
     if (!confirm("Desconectar a conta Eduzz? A sincronização automática para; o webhook continua funcionando normalmente.")) return;
     setDisconnecting(true);
@@ -310,6 +354,46 @@ function EduzzOAuthSection({ company, canEdit }: { company: Company; canEdit: bo
               >
                 {disconnecting ? <Loader2 size={13} className="animate-spin" /> : <Unlink size={13} />}
               </button>
+            </div>
+          )}
+
+          {canEdit && (
+            <div className="rounded-xl border" style={{ borderColor: "var(--dm-border-default)" }}>
+              <button
+                type="button"
+                onClick={() => setRangeOpen((v) => !v)}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] font-semibold transition-opacity hover:opacity-80"
+                style={{ color: "var(--dm-text-secondary)" }}
+              >
+                {rangeOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                Sincronizar um período específico
+                <span className="ml-auto rounded-full px-2 py-0.5 text-[9px] font-semibold" style={{ background: "rgba(100,116,139,0.12)", color: "var(--dm-text-tertiary)" }}>opcional</span>
+              </button>
+
+              {rangeOpen && (
+                <div className="space-y-2 border-t px-3 py-3" style={{ borderColor: "var(--dm-border-default)" }}>
+                  <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                    Período menor sincroniza mais rápido (menos dado pra revisar); período maior demora mais.
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <input type="date" value={rangeFrom} onChange={(e) => setRangeFrom(e.target.value)} className={`${inputCls} h-9 flex-1 text-[12px]`} style={inputStyle} />
+                    <span className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>até</span>
+                    <input type="date" value={rangeTo} onChange={(e) => setRangeTo(e.target.value)} className={`${inputCls} h-9 flex-1 text-[12px]`} style={inputStyle} />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void runRangeSync()}
+                    disabled={rangeRunning || syncing || connection.status === "syncing"}
+                    className={`h-9 w-full ${btnPrimary}`}
+                    style={btnPrimaryStyle}
+                  >
+                    {rangeRunning ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} Sincronizar este período
+                  </button>
+                  {rangeProgress && (
+                    <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>{rangeProgress}</p>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>

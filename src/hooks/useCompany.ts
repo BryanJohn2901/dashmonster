@@ -659,17 +659,27 @@ export async function startEduzzOAuth(companyId: string): Promise<string> {
  * final ("connected"/"error") já vem na própria resposta — a rota sempre
  * grava um status, nunca deixa preso em "syncing".
  */
-export async function syncEduzzOAuthNow(companyId: string): Promise<{ connection: EduzzOAuthConnection; done: boolean }> {
+/**
+ * `range`, se passado, sincroniza só esse período explícito (ISO date),
+ * sem tocar no cursor incremental normal (`last_synced_at`) — pra retomar
+ * um período grande que não cabe num request só, mande `range.cursor` com o
+ * `cursor` devolvido pela chamada anterior (senão recomeça de `range.from`).
+ */
+export async function syncEduzzOAuthNow(
+  companyId: string,
+  range?: { from: string; to: string; cursor?: string },
+): Promise<{ connection: EduzzOAuthConnection; done: boolean; cursor?: string }> {
   const res = await fetch("/api/eduzz/oauth/sync-now", {
     method: "POST",
     headers: { "Content-Type": "application/json", ...(await authHeader()) },
-    body: JSON.stringify({ company_id: companyId }),
+    body: JSON.stringify({ company_id: companyId, range }),
   });
-  const json = await res.json().catch(() => null) as { error?: string; done?: boolean; connection?: Record<string, unknown> } | null;
+  const json = await res.json().catch(() => null) as { error?: string; done?: boolean; cursor?: string; connection?: Record<string, unknown> } | null;
   if (!res.ok || !json?.connection) throw new Error(json?.error ?? "Falha ao sincronizar.");
   return {
     connection: rowToEduzzOAuthConnection({ company_id: companyId, ...json.connection }),
     done: json.done ?? true,
+    cursor: json.cursor,
   };
 }
 
