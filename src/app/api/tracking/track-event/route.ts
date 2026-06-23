@@ -7,6 +7,13 @@ import { insertEventsLogRow } from "@/lib/eventsLogInsert";
 import { sendMetaCapiEvent } from "@/lib/metaCapi";
 import { type ResolvedPixel, selectLegacyCompanyConfig } from "@/lib/resolvePixel";
 
+export const runtime = "nodejs";
+// Folga acima do default curto do Hobby (~10s): a rota faz insert + (await) da
+// Meta CAPI. A CAPI já tem timeout próprio de 8s (ver metaCapi.ts), então na
+// prática nunca chega perto disso — é só margem pra capi_status sempre sair de
+// "pending" pra "sent"/"failed" antes de a function ser encerrada.
+export const maxDuration = 30;
+
 // Classifica o User-Agent (já chega em toda request) em 3 baldes pra relatório
 // futuro de "performance por dispositivo" — guarda só a categoria, não o UA
 // crú inteiro, que teria muito mais variação do que um relatório precisa.

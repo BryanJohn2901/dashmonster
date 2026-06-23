@@ -328,6 +328,23 @@ function randomSlug(): string {
   return Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6);
 }
 
+/**
+ * Reduz o que o usuário digitar no campo "Domínio autorizado" ao hostname puro
+ * — track-event compara `new URL(origin).hostname` (sem protocolo/porta/path)
+ * EXATAMENTE com esse valor. Footgun real: colar "https://meusite.com.br" ou
+ * "meusite.com.br/" salvava a string crua e NUNCA casava com o hostname do
+ * visitante → todo evento virava 403 silencioso ("Domínio não autorizado").
+ * Não tira "www." de propósito: se o site usa www, o hostname do visitante
+ * também vem com www e precisa bater. Vazio = sem restrição (continua válido).
+ */
+export function normalizeHostname(raw: string): string {
+  let v = raw.trim().toLowerCase();
+  if (!v) return "";
+  v = v.replace(/^[a-z][a-z0-9+.-]*:\/\//, ""); // tira protocolo (http://, https://)
+  v = v.split("/")[0].split("?")[0].split("#")[0].split(":")[0]; // tira path/query/fragment/porta
+  return v;
+}
+
 /** Lista os pixels de tracking de uma empresa (mais antigo primeiro — o "Pixel principal" migrado vem primeiro). */
 export async function fetchTrackingPixels(companyId: string): Promise<TrackingPixel[]> {
   if (!supabaseClient) return [];
@@ -394,7 +411,8 @@ export async function updateTrackingPixel(
       name: patch.name.trim() || "Pixel sem nome",
       meta_pixel_id: patch.metaPixelId.trim() || null,
       meta_capi_token: patch.metaCapiToken.trim() || null,
-      dominio_autorizado: patch.dominioAutorizado.trim() || null,
+      // Normaliza pra hostname puro — senão URL completa colada vira 403 silencioso (ver normalizeHostname).
+      dominio_autorizado: normalizeHostname(patch.dominioAutorizado) || null,
       meta_test_event_code: patch.metaTestEventCode.trim() || null,
     })
     .eq("id", pixelId);

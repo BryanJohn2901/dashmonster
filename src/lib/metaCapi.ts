@@ -4,6 +4,30 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 // tem ~2 anos de vida). Subir junto quando uma nova virar a estável recomendada.
 const META_API_VERSION = "v23.0";
 
+// Timeout do POST pra Graph API. Sem isso, se a Meta pendurar, o `await`
+// pendura junto: no track-event a function fica viva até a Vercel matar por
+// maxDuration (e aí capi_status nunca sai de "pending"); no webhook da Eduzz
+// atrasa a resposta 200 que a Eduzz espera. Com timeout, Meta lenta vira
+// capi_status "failed" com mensagem clara, rápido. (Não vira fire-and-forget:
+// na Vercel a function pode morrer após o return, perdendo o envio — o await
+// curto + timeout é o equilíbrio certo.)
+const META_CAPI_TIMEOUT_MS = 8000;
+
+async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), META_CAPI_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error(`Timeout: Meta CAPI não respondeu em ${META_CAPI_TIMEOUT_MS / 1000}s.`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // Erro da Graph API tem MUITO mais detalhe do que só `message` ("Invalid
 // parameter" sozinho não diz qual campo) — `error_user_msg`/`error_subcode`/
 // `error_data` apontam o campo ofensor. Antes a gente guardava só `message` e
@@ -57,7 +81,7 @@ export async function sendMetaCapiEvent(
     };
 
     const capiUrl = `https://graph.facebook.com/${META_API_VERSION}/${args.metaPixelId}/events?access_token=${args.metaCapiToken}`;
-    const capiRes = await fetch(capiUrl, {
+    const capiRes = await fetchWithTimeout(capiUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(capiPayload),

@@ -143,6 +143,10 @@ const UTM_KEYS = [
   "utm_ad_id",
 ];
 
+// Teto de linhas por busca — protege o browser de agrupar volume absurdo de
+// uma vez. Quando atingido, a UI avisa que pode estar truncado (ver eventsCapped).
+const EVENTS_LIMIT = 1000;
+
 const EVENTS_SELECT =
   "id, event_name, fingerprint_id, event_url, page_title, user_data, lead_email, lead_phone, lead_name, extra_fields, country, country_region, city, event_id, " +
   "utm_source, utm_medium, utm_campaign, utm_content, utm_term, utm_placement, utm_campaign_id, utm_adset_id, utm_ad_id, " +
@@ -683,10 +687,10 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
                   <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                     <span
                       className="inline-block rounded-full px-2 py-0.5 text-[9px] font-semibold"
-                      style={{ background: STATUS_COLORS[event.capi_status].bg, color: STATUS_COLORS[event.capi_status].text }}
+                      style={{ background: (STATUS_COLORS[event.capi_status] ?? STATUS_COLORS.skipped).bg, color: (STATUS_COLORS[event.capi_status] ?? STATUS_COLORS.skipped).text }}
                       title={event.capi_error ?? undefined}
                     >
-                      {STATUS_LABELS[event.capi_status]}
+                      {STATUS_LABELS[event.capi_status] ?? event.capi_status}
                     </span>
                     {event.event_id && (
                       <span className="font-mono text-[9px]" style={{ color: "var(--dm-text-tertiary)" }} title="event_id — usado pra deduplicar Pixel (navegador) + Conversions API (servidor) na Meta">
@@ -747,7 +751,7 @@ export function TrackingEventsView() {
         .gte("created_at", `${dateFrom}T00:00:00`)
         .lte("created_at", `${dateTo}T23:59:59`)
         .order("created_at", { ascending: false })
-        .limit(1000),
+        .limit(EVENTS_LIMIT),
       supabaseClient.from("tracking_pixels").select("meta_pixel_id").eq("company_id", companyId),
     ]);
 
@@ -774,7 +778,7 @@ export function TrackingEventsView() {
         .gte("created_at", `${dateFrom}T00:00:00`)
         .lte("created_at", `${dateTo}T23:59:59`)
         .order("created_at", { ascending: false })
-        .limit(1000);
+        .limit(EVENTS_LIMIT);
       if (retry.error) {
         setError(retry.error.message);
       } else {
@@ -834,6 +838,10 @@ export function TrackingEventsView() {
   const deviceCategories = [...new Set(visitors.map((v) => parseUserAgent(v.lastUserAgent)?.device).filter((d): d is "mobile" | "tablet" | "desktop" => Boolean(d)))];
   // Captura funciona sem Meta — isso é só um lembrete de que o envio CAPI está desligado, não um erro.
   const metaNotConfigured = !loading && !error && !anyMetaConfigured;
+  // A query tem limit(1000) — quando bate exatamente nisso, provavelmente há
+  // mais eventos no período que não vieram, então visitantes/receita podem estar
+  // truncados. Avisa em vez de mostrar números silenciosamente errados.
+  const eventsCapped = events.length >= EVENTS_LIMIT;
 
   // Mantém o drawer em sincronia se um refresh trouxer novos eventos do mesmo visitante.
   const openVisitor = selectedVisitor
@@ -852,6 +860,7 @@ export function TrackingEventsView() {
           </h2>
           <p className="text-[11px] mt-0.5" style={{ color: "var(--dm-text-tertiary)" }}>
             Pixel Server-Side · {filteredVisitors.length} visitante{filteredVisitors.length !== 1 ? "s" : ""} · {events.length} evento{events.length !== 1 ? "s" : ""}
+            {eventsCapped && <span style={{ color: "#d97706" }}> · mostrando os {EVENTS_LIMIT} mais recentes (estreite o período pra ver tudo)</span>}
           </p>
         </div>
         <div className="flex flex-shrink-0 items-center gap-2">

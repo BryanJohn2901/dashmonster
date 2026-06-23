@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Loader2, Save, Plus, Trash2, Star, Download, AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
 import { toast } from "@/hooks/useToast";
 import {
-  fetchTrackingPixels, createTrackingPixel, updateTrackingPixel, deleteTrackingPixel, setDefaultTrackingPixel, verifyMetaToken,
+  fetchTrackingPixels, createTrackingPixel, updateTrackingPixel, deleteTrackingPixel, setDefaultTrackingPixel, verifyMetaToken, normalizeHostname,
   type Company, type TrackingPixel,
 } from "@/hooks/useCompany";
 
@@ -143,7 +143,12 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
   const save = async () => {
     setSaving(true);
     try {
-      const patch = { name: name.trim(), metaPixelId: pixelId.trim(), metaCapiToken: capiToken.trim(), dominioAutorizado: dominio.trim(), metaTestEventCode: testEventCode.trim() };
+      // Normaliza o domínio aqui também (não só no hook) pra UI refletir o que
+      // foi salvo de fato — senão o dirty-check ficaria sempre "sujo" se o
+      // usuário colou uma URL completa que o hook reduziu a hostname.
+      const cleanDominio = normalizeHostname(dominio);
+      if (cleanDominio !== dominio) setDominio(cleanDominio);
+      const patch = { name: name.trim(), metaPixelId: pixelId.trim(), metaCapiToken: capiToken.trim(), dominioAutorizado: cleanDominio, metaTestEventCode: testEventCode.trim() };
 
       // Com Pixel ID + token preenchidos, confere com a Meta se o token autoriza
       // ESSE pixel antes de salvar — token de outro pixel é aceito pela Meta mas

@@ -37,7 +37,16 @@ export async function POST(request: NextRequest) {
 
   try {
     const url = `https://graph.facebook.com/${META_API_VERSION}/debug_token?input_token=${encodeURIComponent(token)}&access_token=${encodeURIComponent(token)}`;
-    const res = await fetch(url);
+    // Timeout: sem isso, Meta lenta deixa o botão "Salvar" pendurado no
+    // spinner sem fim. 8s e desiste como "unknown" (não bloqueia o save).
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    let res: Response;
+    try {
+      res = await fetch(url, { signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
     const json = (await res.json()) as DebugTokenResponse;
 
     // Erro da Graph API (token malformado, app sem permissão de debug etc.) —
