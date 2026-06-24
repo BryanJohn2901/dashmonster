@@ -136,9 +136,13 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
 
   // pixel.slug é opaco e estável — renomear o pixel (campo "name") nunca muda
   // esse snippet, então uma instalação já feita não quebra.
-  // Caminho RELATIVO (sem origin), porque o dm-proxy.php mora no domínio do
-  // PRÓPRIO cliente, nunca no dashmonster — ver download/instruções abaixo.
-  const snippet = `<script src="/dm-proxy.php?ep=pixel"></script>\n<script>Tracker.init("${company.slug}", "${pixel.slug}");</script>`;
+  // O pixel.js carrega DIRETO do dashmonster com `async` (não trava o
+  // carregamento da página do cliente) e a fila `dmq` garante a ordem mesmo
+  // assíncrono (mesma técnica do gtag/fbq). Só o track-event passa pelo
+  // dm-proxy.php (1ª parte, é o que grava o cookie _dm_uid de 400 dias) — por
+  // isso o arquivo PHP continua obrigatório, mesmo o script vindo daqui.
+  const appBase = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== "undefined" ? window.location.origin : "");
+  const snippet = `<script async src="${appBase}/api/tracking/pixel.js?via=proxy"></script>\n<script>window.dmq=window.dmq||[];dmq.push(["init","${company.slug}","${pixel.slug}"]);</script>`;
 
   const save = async () => {
     setSaving(true);

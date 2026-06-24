@@ -24,8 +24,15 @@ import { NextRequest } from "next/server";
 // e outras formas de injeção dinâmica de script, comuns no perfil de cliente
 // desta agência.
 function buildPixelScript(apiBase: string, proxyMode: boolean): string {
+  // SÓ o track-event precisa passar pelo dm-proxy.php — é a única chamada que
+  // grava o Set-Cookie de 1ª parte (_dm_uid). config NÃO seta cookie, então vai
+  // DIRETO pro backend mesmo em modo proxy, poupando 1 hop pelo PHP do cliente
+  // (e elimina de vez a classe de bug do separador "?ep=config?client_id=", já
+  // que config nunca mais carrega a query do proxy). O pixel.js em si também é
+  // carregado direto da Vercel pelo snippet novo (ver TrackingConfigPanel) com
+  // `async`, então o único hop que sobra no PHP é o do cookie.
   const trackUrl = proxyMode ? "/dm-proxy.php?ep=track" : `${apiBase}/api/tracking/track-event`;
-  const configUrl = proxyMode ? "/dm-proxy.php?ep=config" : `${apiBase}/api/tracking/config`;
+  const configUrl = `${apiBase}/api/tracking/config`;
   return `(function () {
   "use strict";
 
@@ -384,6 +391,22 @@ function buildPixelScript(apiBase: string, proxyMode: boolean): string {
       safe(function () { attachFormListener(clientId); });
     },
   };
+
+  // ─── Fila estilo gtag/fbq — deixa o script carregar com \`async\` ───────────
+  // O snippet novo carrega este arquivo com \`async\` (não trava o parse/render
+  // da página do cliente) e empilha o init em window.dmq ANTES do script chegar:
+  //   window.dmq=window.dmq||[]; dmq.push(["init","empresa","pixel"]);
+  // Drenamos a fila aqui e trocamos dmq.push por execução imediata, pra um push
+  // tardio (depois que o script carregou) também rodar na hora. O Tracker.init()
+  // direto (snippet legado, script bloqueante) continua válido — window.Tracker
+  // segue exposto acima, então nenhuma instalação antiga quebra.
+  function dmExec(args) {
+    if (!args || !args.length) return;
+    if (args[0] === "init") safe(function () { window.Tracker.init(args[1], args[2]); });
+  }
+  var existingQueue = window.dmq && window.dmq.length ? window.dmq : [];
+  for (var qi = 0; qi < existingQueue.length; qi++) dmExec(existingQueue[qi]);
+  window.dmq = { push: function (args) { dmExec(args); } };
 })();
 `;
 }

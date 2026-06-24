@@ -51,6 +51,13 @@ function buildRequest(body: unknown, headers: Record<string, string> = {}) {
   });
 }
 
+// A Meta CAPI agora roda DEPOIS da resposta (after()/waitUntil em produção;
+// fora de request scope — como aqui — o route cai pro fallback inline de
+// runAfterResponse, que dispara a Promise sem travar o POST). Esperar um tick
+// de macrotask deixa essa Promise (fetch + update mockados) assentar antes de
+// assertar os efeitos colaterais da CAPI (fetch pra graph.facebook, mockUpdate).
+const flushAfter = () => new Promise((resolve) => setImmediate(resolve));
+
 const COMPANY_ID_OK = { id: "company-1" };
 const PIXEL_OK = {
   id: "pixel-1",
@@ -143,6 +150,7 @@ describe("POST /api/tracking/track-event", () => {
       }),
     );
 
+    await flushAfter();
     expect(global.fetch).toHaveBeenCalledWith(
       expect.stringContaining("graph.facebook.com"),
       expect.objectContaining({ method: "POST" }),
@@ -158,6 +166,7 @@ describe("POST /api/tracking/track-event", () => {
     const res = await POST(buildRequest({ client_id: "acme", event_name: "Lead", event_url: "http://localhost:3000/" }));
 
     expect(res.status).toBe(200);
+    await flushAfter();
     expect(mockUpdate).toHaveBeenCalledWith({ capi_status: "failed", capi_error: "rede fora" });
   });
 
@@ -338,6 +347,7 @@ describe("POST /api/tracking/track-event", () => {
 
     expect(mockInsert).toHaveBeenCalledWith(expect.objectContaining({ event_id: "evt-uuid-123" }));
 
+    await flushAfter();
     const sentBody = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
     expect(sentBody.data[0].event_id).toBe("evt-uuid-123");
     expect(sentBody.data[0].user_data.fbp).toBe("fb.1.123.456");
@@ -355,6 +365,7 @@ describe("POST /api/tracking/track-event", () => {
       }),
     );
 
+    await flushAfter();
     const sentBody = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
     expect(sentBody.data[0].user_data.fn).toBe("hash-first-name");
     expect(sentBody.data[0].user_data.ln).toBe("hash-last-name");
@@ -382,6 +393,7 @@ describe("POST /api/tracking/track-event", () => {
 
     await POST(req);
 
+    await flushAfter();
     const sentBody = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
     expect(sentBody.data[0].user_data.country).toBe(sha256("BR"));
     expect(sentBody.data[0].user_data.st).toBe(sha256("SP"));
@@ -396,6 +408,7 @@ describe("POST /api/tracking/track-event", () => {
     mockHappyPath({ meta_test_event_code: "TEST123" });
     await POST(buildRequest({ client_id: "acme", event_name: "PageView", event_url: "http://localhost:3000/" }));
 
+    await flushAfter();
     const sentBody = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
     expect(sentBody.test_event_code).toBe("TEST123");
   });
@@ -404,6 +417,7 @@ describe("POST /api/tracking/track-event", () => {
     mockHappyPath();
     await POST(buildRequest({ client_id: "acme", event_name: "PageView", event_url: "http://localhost:3000/" }));
 
+    await flushAfter();
     const sentBody = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
     expect(sentBody.test_event_code).toBeUndefined();
   });
@@ -439,6 +453,7 @@ describe("POST /api/tracking/track-event", () => {
     const res = await POST(buildRequest({ client_id: "acme", event_name: "PageView", event_url: "http://localhost:3000/" }));
 
     expect(res.status).toBe(200);
+    await flushAfter();
     expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining("LEGACY_PIXEL"), expect.anything());
     expect(mockInsert).toHaveBeenCalledWith(expect.objectContaining({ pixel_id: null }));
   });
