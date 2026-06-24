@@ -29,51 +29,6 @@ function runAfterResponse(task: () => Promise<void>): void {
   }
 }
 
-// Em modo proxy, geolocation(request) reflete o IP do servidor PHP do cliente
-// (é quem conectou na Vercel), não o IP real do visitante. O PHP já repassa o
-// IP real via X-Forwarded-For; buscamos a geo desse IP numa API externa,
-// depois da resposta (after()), pra não adicionar latência. Free tier do
-// ipinfo.io: 50k req/mês, HTTPS, sem chave — suficiente pra uso em agência.
-interface ProxyGeo {
-  country: string | null;
-  countryRegion: string | null;
-  city: string | null;
-  postalCode: string | null;
-  latitude: number | null;
-  longitude: number | null;
-}
-
-async function lookupGeoByIp(ip: string): Promise<ProxyGeo | null> {
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 1500);
-    try {
-      const res = await fetch(`https://ipinfo.io/${ip}/json`, { signal: controller.signal });
-      if (!res.ok) return null;
-      const data = (await res.json()) as {
-        city?: string;
-        region?: string;
-        country?: string;
-        loc?: string;
-        postal?: string;
-      };
-      const [lat, lon] = (data.loc ?? "").split(",").map(Number);
-      return {
-        country: data.country?.trim() || null,
-        countryRegion: data.region?.trim() || null,
-        city: data.city?.trim() || null,
-        postalCode: data.postal?.trim() || null,
-        latitude: isFinite(lat) ? lat : null,
-        longitude: isFinite(lon) ? lon : null,
-      };
-    } finally {
-      clearTimeout(timer);
-    }
-  } catch {
-    return null;
-  }
-}
-
 // Classifica o User-Agent (já chega em toda request) em 3 baldes pra relatório
 // futuro de "performance por dispositivo" — guarda só a categoria, não o UA
 // crú inteiro, que teria muito mais variação do que um relatório precisa.
@@ -228,6 +183,22 @@ interface TrackEventPayload {
   ping?: boolean;
   /** "proxy" | "direct" — mandado pelo próprio pixel.js (PROXY_MODE, decidido no servidor em pixel.js/route.ts), migration 057. Null em payload antigo/cliente em cache. */
   via?: string;
+  /**
+   * Geo do visitante capturado em pixel.js/route.ts, que recebe a request
+   * DIRETO do browser (não via PHP) — nessa request a Vercel vê o IP real do
+   * visitante e seta x-vercel-ip-* corretamente. No track-event a Vercel vê o
+   * IP do servidor PHP (em modo proxy), então geolocation(request) lá daria a
+   * cidade do hosting do cliente. Só presente em modo proxy com snippet novo
+   * (carregado direto da Vercel); null em snippets legados (via PHP) ou modo direto.
+   */
+  server_geo?: {
+    country?: string | null;
+    countryRegion?: string | null;
+    city?: string | null;
+    postalCode?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
+  } | null;
 }
 
 function corsHeaders(origin: string | null): HeadersInit {
@@ -382,16 +353,19 @@ export async function POST(request: NextRequest) {
     ...baseRow,
     page_title: payload.page_title?.trim() || null,
     extra_fields: payload.pii?.fields ?? {},
-    country: isProxyMode ? null : (geo.country ?? null),
-    country_region: isProxyMode ? null : (geo.countryRegion ?? null),
-    city: isProxyMode ? null : (geo.city ?? null),
+    // Em modo proxy, geo vem de server_geo (injetado pelo pixel.js/route.ts que
+    // recebe a request direto do browser e tem o IP real do visitante). Em modo
+    // direto, geo vem dos headers x-vercel-ip-* da Vercel nesta request.
+    country: isProxyMode ? (payload.server_geo?.country ?? null) : (geo.country ?? null),
+    country_region: isProxyMode ? (payload.server_geo?.countryRegion ?? null) : (geo.countryRegion ?? null),
+    city: isProxyMode ? (payload.server_geo?.city ?? null) : (geo.city ?? null),
     event_id: payload.event_id?.trim() || null,
     pixel_id: resolved.pixelId,
     ...parseUtmColumns(payload.event_url),
     lead_name: payload.pii?.name?.trim() || null,
-    postal_code: isProxyMode ? null : (geo.postalCode ?? null),
-    latitude: isProxyMode ? null : (geo.latitude ?? null),
-    longitude: isProxyMode ? null : (geo.longitude ?? null),
+    postal_code: isProxyMode ? (payload.server_geo?.postalCode ?? null) : (geo.postalCode ?? null),
+    latitude: isProxyMode ? (payload.server_geo?.latitude ?? null) : (geo.latitude ?? null),
+    longitude: isProxyMode ? (payload.server_geo?.longitude ?? null) : (geo.longitude ?? null),
     device_type: classifyDevice(userAgent),
     // "proxy"/"direct" (migration 057) — mandado pelo pixel.js, null se vier
     // de outro valor/ausente (payload velho, cliente em cache).
@@ -457,10 +431,10 @@ export async function POST(request: NextRequest) {
             // (IP real do visitante, repassado pelo proxy via X-Forwarded-For).
             // country fica no hashLower (ISO 2-letter "BR"). ct/st/zp usam
             // hashNormalized (tira acento/espaço/pontuação) — regra da Meta pra esses.
-            country: isProxyMode ? undefined : hashLower(geo.country),
-            st: isProxyMode ? undefined : hashNormalized(geo.countryRegion),
-            ct: isProxyMode ? undefined : hashNormalized(geo.city),
-            zp: isProxyMode ? undefined : hashNormalized(geo.postalCode),
+            country: isProxyMode ? hashLower(payload.server_geo?.country) : hashLower(geo.country),
+            st: isProxyMode ? hashNormalized(payload.server_geo?.countryRegion) : hashNormalized(geo.countryRegion),
+            ct: isProxyMode ? hashNormalized(payload.server_geo?.city) : hashNormalized(geo.city),
+            zp: isProxyMode ? hashNormalized(payload.server_geo?.postalCode) : hashNormalized(geo.postalCode),
             // external_id: hash do _dm_uid persistente — não é PII, mas a Meta
             // recomenda mandar hasheado por consistência com os outros campos.
             external_id: hashLower(payload.user_id),
@@ -469,27 +443,6 @@ export async function POST(request: NextRequest) {
         },
       }),
     );
-  }
-
-  // Proxy: geo lookup no IP real do visitante (X-Forwarded-For, repassado pelo
-  // PHP) roda em paralelo com a CAPI — ambos são after() independentes.
-  // Direto: geo já veio dos headers x-vercel-ip-* da Vercel, nada a fazer aqui.
-  if (isProxyMode && ip !== "unknown") {
-    runAfterResponse(async () => {
-      const proxyGeo = await lookupGeoByIp(ip);
-      if (!proxyGeo) return;
-      await db
-        .from("events_log")
-        .update({
-          country: proxyGeo.country,
-          country_region: proxyGeo.countryRegion,
-          city: proxyGeo.city,
-          postal_code: proxyGeo.postalCode,
-          latitude: proxyGeo.latitude,
-          longitude: proxyGeo.longitude,
-        })
-        .eq("id", inserted.id);
-    });
   }
 
   return NextResponse.json({ received: true }, { status: 200, headers: withTrackingCookie(headers, fingerprintId) });

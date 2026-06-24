@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { geolocation } from "@vercel/functions";
 
 // Servido via route handler (não public/pixel.js estático) pra poder injetar
 // a origem da API em runtime e controlar cache sem passo de build — TTL
@@ -23,7 +24,7 @@ import { NextRequest } from "next/server";
 // (ex.: `document.currentScript`) — isso seria frágil com Google Tag Manager
 // e outras formas de injeção dinâmica de script, comuns no perfil de cliente
 // desta agência.
-function buildPixelScript(apiBase: string, proxyMode: boolean): string {
+function buildPixelScript(apiBase: string, proxyMode: boolean, serverGeoJson: string): string {
   // SÓ o track-event precisa passar pelo dm-proxy.php — é a única chamada que
   // grava o Set-Cookie de 1ª parte (_dm_uid). config NÃO seta cookie, então vai
   // DIRETO pro backend mesmo em modo proxy, poupando 1 hop pelo PHP do cliente
@@ -39,6 +40,11 @@ function buildPixelScript(apiBase: string, proxyMode: boolean): string {
   var TRACK_URL = ${JSON.stringify(trackUrl)};
   var CONFIG_URL = ${JSON.stringify(configUrl)};
   var PROXY_MODE = ${proxyMode ? "true" : "false"};
+  // Geo injetado pelo servidor ao servir este script — só em modo proxy, onde
+  // a request do pixel.js chega direto do browser pra Vercel (não via PHP) e
+  // a Vercel tem o IP real do visitante. No track-event, em modo proxy, a
+  // request já passou pelo PHP e a Vercel veria o IP do servidor PHP.
+  var SERVER_GEO = ${serverGeoJson};
   var COOKIE_NAME = "_dm_uid";
   var COOKIE_DAYS = 400; // máximo aceito pelo Chrome pra cookies de 1ª parte
   // Id do visitante memoizado por carga de página — ver getUserId().
@@ -264,6 +270,7 @@ function buildPixelScript(apiBase: string, proxyMode: boolean): string {
         fbp: getFbp() || undefined,
         fbc: getFbc() || undefined,
         via: PROXY_MODE ? "proxy" : "direct",
+        server_geo: PROXY_MODE ? SERVER_GEO : undefined,
       },
       extra,
       { user_data: enrichedUserData }
@@ -415,7 +422,25 @@ export async function GET(request: NextRequest) {
   const apiBase = process.env.NEXT_PUBLIC_APP_URL ?? request.nextUrl.origin;
   const proxyMode = request.nextUrl.searchParams.get("via") === "proxy";
 
-  return new Response(buildPixelScript(apiBase, proxyMode), {
+  // Em modo proxy, a request DO PIXEL.JS vem direto do browser (não via PHP) —
+  // nessa request a Vercel tem o IP real do visitante e os x-vercel-ip-* certos.
+  // Injetamos esse geo no script pra track-event receber via payload.server_geo
+  // (em track-event a Vercel vê o IP do servidor PHP do cliente, não do visitante).
+  // Em modo direto, track-event já recebe a request do browser diretamente.
+  let serverGeoJson = "null";
+  if (proxyMode) {
+    const geo = geolocation(request);
+    serverGeoJson = JSON.stringify({
+      country: geo.country ?? null,
+      countryRegion: geo.countryRegion ?? null,
+      city: geo.city ?? null,
+      postalCode: geo.postalCode ?? null,
+      latitude: geo.latitude ? parseFloat(geo.latitude) || null : null,
+      longitude: geo.longitude ? parseFloat(geo.longitude) || null : null,
+    });
+  }
+
+  return new Response(buildPixelScript(apiBase, proxyMode, serverGeoJson), {
     status: 200,
     headers: {
       "Content-Type": "application/javascript; charset=utf-8",
