@@ -678,6 +678,80 @@ export function isModernPayload(body: RawPayload): boolean {
   return typeof body.event === "string" && typeof body.data === "object" && body.data !== null && "buyer" in (body.data as object);
 }
 
+// Formato "flat moderno" — Eduzz manda os campos na RAIZ do body (sem envelope
+// event/data), com estrutura idêntica ao formato moderno mas sem o wrapper.
+// Detectado pela presença de `buyer` objeto + `items` array na raiz. Exemplos
+// reais confirmados: webhooks de Notificações com order bump (has:true).
+export function isFlatModernPayload(body: RawPayload): boolean {
+  return (
+    typeof body.buyer === "object" && body.buyer !== null &&
+    Array.isArray(body.items) &&
+    typeof body.transaction === "object" && body.transaction !== null
+  );
+}
+
+export function parseFlatModernPayload(body: RawPayload): SaleEvent | { ignored: string } {
+  const status = String(body.status ?? "").toLowerCase();
+  if (status && !PAID_STATUSES.has(status)) return { ignored: `status=${status}` };
+
+  const priceObj = body.price as { value?: number; currency?: string } | null;
+  const paidObj = body.paid as { value?: number; currency?: string } | null;
+  const invoiceValue = toNumber(priceObj?.value ?? paidObj?.value);
+  if (invoiceValue <= 0) return { ignored: "sem valor" };
+
+  const bankSlip = body.bankSlipInstallment as { installmentNumber?: number; totalInstallments?: number } | null;
+  const totalInstallments = bankSlip?.totalInstallments;
+  const value = totalInstallments && totalInstallments > 1 ? invoiceValue * totalInstallments : invoiceValue;
+
+  const items = (body.items as { productId?: string; parentId?: string; name?: string; price?: { value?: number } }[]) ?? [];
+  const productName = items[0]?.name?.trim() || "Eduzz";
+
+  const buyer = body.buyer as { name?: string; email?: string; phone?: string; cellphone?: string; address?: { city?: string; state?: string; country?: string; zipCode?: string } } | null;
+  const transaction = body.transaction as { id?: string; key?: string } | null;
+  const utm = body.utm as { source?: string; medium?: string; campaign?: string; content?: string; term?: string } | null;
+  const contract = body.contract as { id?: string; isUnlimitedInstallments?: boolean } | null;
+  const orderBump = body.orderBump as { has?: boolean; isMainSale?: boolean; mainSaleId?: number | string | null } | null;
+
+  return {
+    transactionId: transaction?.id || transaction?.key || `flat-${Date.now()}`,
+    value,
+    invoiceValue,
+    currency: priceObj?.currency || paidObj?.currency || "BRL",
+    productName,
+    date: toDate(body.paidAt as string | undefined),
+    paidAtIso: (body.paidAt as string | null) ?? null,
+    email: buyer?.email?.trim() || null,
+    phone: buyer?.cellphone?.trim() || buyer?.phone?.trim() || null,
+    name: buyer?.name?.trim() || null,
+    trackerCode: null,
+    paymentMethod: (body.paymentMethod as string | null) ?? null,
+    utm: {
+      source: utm?.source ?? null,
+      medium: utm?.medium ?? null,
+      campaign: utm?.campaign ?? null,
+      content: utm?.content ?? null,
+      term: utm?.term ?? null,
+    },
+    address: {
+      city: buyer?.address?.city ?? null,
+      state: buyer?.address?.state ?? null,
+      country: buyer?.address?.country ?? null,
+      zip: buyer?.address?.zipCode ?? null,
+    },
+    recurrenceKey: contract?.id ?? null,
+    installmentNumber: bankSlip?.installmentNumber ?? null,
+    installments: bankSlip?.totalInstallments ?? null,
+    isOrderBump: Boolean(orderBump?.has && orderBump?.isMainSale === false),
+    mainSaleTransactionId: orderBump?.mainSaleId != null ? String(orderBump.mainSaleId) : null,
+    items: items.length
+      ? items.map((item) => ({ productId: item.productId ?? null, parentId: item.parentId ?? null, name: item.name?.trim() || "Eduzz", value: toNumber(item.price?.value) }))
+      : [{ productId: null, parentId: null, name: productName, value }],
+    productParentId: items[0]?.parentId ?? null,
+    totalInstallmentsRaw: (body.installments as number | null) ?? null,
+    contractUnlimitedInstallments: contract?.isUnlimitedInstallments ?? null,
+  };
+}
+
 export function parseModernPayload(body: EduzzModernPayload): SaleEvent | { ignored: string } {
   if (body.event !== "myeduzz.invoice_paid") return { ignored: `event=${body.event ?? "desconhecido"}` };
   const data = body.data ?? {};
@@ -1479,7 +1553,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ received: true });
   }
 
-  const sale = isModernPayload(body) ? parseModernPayload(body as EduzzModernPayload) : parseLegacyPayload(body);
+  const sale = isModernPayload(body) ? parseModernPayload(body as EduzzModernPayload)
+    : isFlatModernPayload(body) ? parseFlatModernPayload(body)
+    : parseLegacyPayload(body);
   if ("ignored" in sale) {
     return NextResponse.json({ received: true, ignored: sale.ignored });
   }
