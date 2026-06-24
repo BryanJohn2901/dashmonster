@@ -29,6 +29,51 @@ function runAfterResponse(task: () => Promise<void>): void {
   }
 }
 
+// Em modo proxy, geolocation(request) reflete o IP do servidor PHP do cliente
+// (é quem conectou na Vercel), não o IP real do visitante. O PHP já repassa o
+// IP real via X-Forwarded-For; buscamos a geo desse IP numa API externa,
+// depois da resposta (after()), pra não adicionar latência. Free tier do
+// ipinfo.io: 50k req/mês, HTTPS, sem chave — suficiente pra uso em agência.
+interface ProxyGeo {
+  country: string | null;
+  countryRegion: string | null;
+  city: string | null;
+  postalCode: string | null;
+  latitude: number | null;
+  longitude: number | null;
+}
+
+async function lookupGeoByIp(ip: string): Promise<ProxyGeo | null> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 1500);
+    try {
+      const res = await fetch(`https://ipinfo.io/${ip}/json`, { signal: controller.signal });
+      if (!res.ok) return null;
+      const data = (await res.json()) as {
+        city?: string;
+        region?: string;
+        country?: string;
+        loc?: string;
+        postal?: string;
+      };
+      const [lat, lon] = (data.loc ?? "").split(",").map(Number);
+      return {
+        country: data.country?.trim() || null,
+        countryRegion: data.region?.trim() || null,
+        city: data.city?.trim() || null,
+        postalCode: data.postal?.trim() || null,
+        latitude: isFinite(lat) ? lat : null,
+        longitude: isFinite(lon) ? lon : null,
+      };
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch {
+    return null;
+  }
+}
+
 // Classifica o User-Agent (já chega em toda request) em 3 baldes pra relatório
 // futuro de "performance por dispositivo" — guarda só a categoria, não o UA
 // crú inteiro, que teria muito mais variação do que um relatório precisa.
@@ -424,6 +469,27 @@ export async function POST(request: NextRequest) {
         },
       }),
     );
+  }
+
+  // Proxy: geo lookup no IP real do visitante (X-Forwarded-For, repassado pelo
+  // PHP) roda em paralelo com a CAPI — ambos são after() independentes.
+  // Direto: geo já veio dos headers x-vercel-ip-* da Vercel, nada a fazer aqui.
+  if (isProxyMode && ip !== "unknown") {
+    runAfterResponse(async () => {
+      const proxyGeo = await lookupGeoByIp(ip);
+      if (!proxyGeo) return;
+      await db
+        .from("events_log")
+        .update({
+          country: proxyGeo.country,
+          country_region: proxyGeo.countryRegion,
+          city: proxyGeo.city,
+          postal_code: proxyGeo.postalCode,
+          latitude: proxyGeo.latitude,
+          longitude: proxyGeo.longitude,
+        })
+        .eq("id", inserted.id);
+    });
   }
 
   return NextResponse.json({ received: true }, { status: 200, headers: withTrackingCookie(headers, fingerprintId) });
