@@ -13,7 +13,7 @@ import {
 import {
   fetchMetaCampaigns, fetchMetaInsights, fetchMetaAdAccounts,
   loadMetaCredentials, MetaInsight, MetaAdAccount,
-  extractLeads, extractRevenue,
+  extractLeads, extractRevenue, fetchCampaignGoals,
 } from "@/utils/metaApi";
 import {
   fetchInstagramAccounts, fetchInstagramInsights,
@@ -36,6 +36,10 @@ import { useCampaignCenter } from "@/hooks/useCampaignCenter";
 import type { CampaignConfig } from "@/hooks/useCampaignStore";
 import { readSharedDateRange } from "@/hooks/useDateRange";
 import { useManualMetrics } from "@/hooks/useManualMetrics";
+import {
+  getActionValue, autoDetectResultType, computeCustomResult,
+  resolveRowResult, type CampaignGoal,
+} from "@/lib/resultDetection";
 
 const formatCurrency = formatBRL;
 const formatNumber = formatInt;
@@ -194,7 +198,13 @@ interface AdsetRow {
   page_views: number;
   profile_visits: number;
   new_followers: number;
-  customResult: number;  // configured resultType value (0 when no resultType)
+  // customResult = resultado REAL auto-detectado por linha (prioriza eventos custom
+  // de pixel tipo EndForm). Alimenta o KPI "Resultados" e a coluna da tabela.
+  customResult: number;
+  // configuredResult = valor do resultType configurado (lead, purchase…) ou auto-detect
+  // quando nenhum tipo definido. Alimenta `sales` e os cards de destaque (Resultado/
+  // Custo por Resultado) — preserva comportamento legado e labels corretos.
+  configuredResult: number;
 }
 
 // Human-readable labels for each result type
@@ -244,113 +254,6 @@ function parseMetaNum(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-function getActionValue(actions: MetaInsight["actions"], type: string): number {
-  return Number(actions?.find((a) => a.action_type === type)?.value ?? 0);
-}
-
-// Priority order for auto-detecting the dominant result type from Meta actions
-const AUTO_DETECT_PRIORITY: ResultType[] = [
-  "offsite_conversion.fb_pixel_purchase",
-  "purchase",
-  "offsite_conversion.fb_pixel_lead",
-  "onsite_conversion.lead_grouped",
-  "leadgen_grouped",
-  "lead",
-  "omni_complete_registration",
-  "submit_application",
-  "schedule",
-  "contact",
-  "follow",
-  "view_content",
-  "profile_visit",
-];
-
-function autoDetectResultType(data: MetaInsight[]): ResultType | undefined {
-  const totals: Partial<Record<ResultType, number>> = {};
-  for (const insight of data) {
-    for (const type of AUTO_DETECT_PRIORITY) {
-      const val = getActionValue(insight.actions, type);
-      if (val > 0) totals[type] = (totals[type] ?? 0) + val;
-    }
-  }
-  for (const type of AUTO_DETECT_PRIORITY) {
-    if ((totals[type] ?? 0) > 0) return type;
-  }
-  return undefined;
-}
-
-/**
- * Resultado de UMA linha (campanha/conjunto) pelo seu próprio tipo dominante.
- * Usado quando não há resultType uniforme: a Visão Geral soma o resultado real
- * de cada campanha em vez de aplicar um único tipo a todas (que zerava as de
- * tipo diferente do dominante). `follow` soma follow + page_fan_adds.
- */
-function detectRowResultValue(d: MetaInsight): number {
-  // High-priority standard conversions first (purchases + pixel-tracked leads).
-  const HIGH_PRIORITY: ResultType[] = [
-    "offsite_conversion.fb_pixel_purchase",
-    "purchase",
-    "offsite_conversion.fb_pixel_lead",
-  ];
-  for (const type of HIGH_PRIORITY) {
-    const v = getActionValue(d.actions, type);
-    if (v > 0) return v;
-  }
-  // Custom pixel events checked BEFORE generic catch-alls like "lead".
-  // Advertisers configure these intentionally (e.g. EndForm, ScheduleCall) — they
-  // represent the real business result and should win over generic lead counts.
-  if (d.actions) {
-    for (const a of d.actions) {
-      if (
-        (a.action_type.startsWith("offsite_conversion.custom.") ||
-         a.action_type.startsWith("offsite_conversion.fb_pixel_custom.")) &&
-        Number(a.value) > 0
-      ) {
-        return Number(a.value);
-      }
-    }
-  }
-  // Remaining standard types (lead form, follows, profile visits, etc.)
-  const LOW_PRIORITY: ResultType[] = [
-    "onsite_conversion.lead_grouped",
-    "leadgen_grouped",
-    "lead",
-    "omni_complete_registration",
-    "submit_application",
-    "schedule",
-    "contact",
-    "follow",
-    "view_content",
-    "profile_visit",
-  ];
-  for (const type of LOW_PRIORITY) {
-    const v = type === "follow"
-      ? getActionValue(d.actions, "follow") + getActionValue(d.actions, "page_fan_adds")
-      : getActionValue(d.actions, type);
-    if (v > 0) return v;
-  }
-  return 0;
-}
-
-/**
- * Computes customResult for a single insight row given an optional configured resultType.
- * Falls back to extractLeads when a lead-type resultType yields 0 (Meta may use a different key).
- */
-function computeCustomResult(d: MetaInsight, resultType: string | undefined): number {
-  if (!resultType) return detectRowResultValue(d);
-  if (resultType === "link_click") {
-    return d.inline_link_clicks != null ? parseMetaNum(d.inline_link_clicks) : parseMetaNum(d.clicks);
-  }
-  if (resultType === "follow") {
-    return getActionValue(d.actions, "follow") + getActionValue(d.actions, "page_fan_adds");
-  }
-  const direct = getActionValue(d.actions, resultType);
-  if (direct > 0) return direct;
-  // Configured type not found in data — auto-detect dominant result (covers lead variants,
-  // custom pixel events like EndForm, etc.)
-  return detectRowResultValue(d);
-}
-
 function pickActionValue(avs: MetaInsight["action_values"], ...types: string[]): number {
   if (!avs) return 0;
   for (const t of types) {
@@ -360,7 +263,11 @@ function pickActionValue(avs: MetaInsight["action_values"], ...types: string[]):
   return 0;
 }
 
-function toAdsetRows(data: MetaInsight[], resultType?: string): AdsetRow[] {
+function toAdsetRows(
+  data: MetaInsight[],
+  resultTypeMap?: Record<string, string>,
+  goalMap?: Record<string, CampaignGoal>,
+): AdsetRow[] {
   const map = new Map<string, AdsetRow>();
   data.forEach((d) => {
     const key = d.adset_name ?? d.campaign_name;
@@ -368,7 +275,7 @@ function toAdsetRows(data: MetaInsight[], resultType?: string): AdsetRow[] {
       name: key,
       impressions: 0, reach: 0, clicks: 0, total_clicks: 0, spend: 0, revenue: 0,
       cpm: 0, ctr: 0, ctr_all: 0, purchases: 0, leads: 0, cpa: 0,
-      page_views: 0, profile_visits: 0, new_followers: 0, customResult: 0,
+      page_views: 0, profile_visits: 0, new_followers: 0, customResult: 0, configuredResult: 0,
     };
     cur.impressions   += parseMetaNum(d.impressions);
     cur.reach         += parseMetaNum(d.reach);
@@ -390,7 +297,11 @@ function toAdsetRows(data: MetaInsight[], resultType?: string): AdsetRow[] {
     // new_followers: "follow" (ad engagement objective) OR "page_fan_adds" (traffic-to-profile)
     cur.new_followers += getActionValue(d.actions, "follow")
                        + getActionValue(d.actions, "page_fan_adds");
-    cur.customResult += computeCustomResult(d, resultType);
+    // customResult = objetivo REAL da campanha (igual à coluna Meta) — sem override manual.
+    // configuredResult = resultType configurado pelo usuário → "Conversões (pixel)".
+    const rt = resultTypeMap?.[d.campaign_id];
+    cur.customResult     += resolveRowResult(d, { goal: goalMap?.[d.campaign_id] });
+    cur.configuredResult += computeCustomResult(d, rt);
     map.set(key ?? "", cur);
   });
   return Array.from(map.values()).map((r) => ({
@@ -409,7 +320,11 @@ interface DailyRow extends AdsetRow { date: string; }
  * toAdsetRows colapsa por nome de conjunto/campanha — aqui a chave é a data,
  * usada na tabela "Acompanhamento Diário" da aba Campanha.
  */
-function toDailyRows(data: MetaInsight[], resultType?: string): DailyRow[] {
+function toDailyRows(
+  data: MetaInsight[],
+  resultTypeMap?: Record<string, string>,
+  goalMap?: Record<string, CampaignGoal>,
+): DailyRow[] {
   const map = new Map<string, DailyRow>();
   data.forEach((d) => {
     const date = d.date_start;
@@ -418,7 +333,7 @@ function toDailyRows(data: MetaInsight[], resultType?: string): DailyRow[] {
       date, name: date,
       impressions: 0, reach: 0, clicks: 0, total_clicks: 0, spend: 0, revenue: 0,
       cpm: 0, ctr: 0, ctr_all: 0, purchases: 0, leads: 0, cpa: 0,
-      page_views: 0, profile_visits: 0, new_followers: 0, customResult: 0,
+      page_views: 0, profile_visits: 0, new_followers: 0, customResult: 0, configuredResult: 0,
     };
     cur.impressions   += parseMetaNum(d.impressions);
     cur.reach         += parseMetaNum(d.reach);
@@ -435,7 +350,9 @@ function toDailyRows(data: MetaInsight[], resultType?: string): DailyRow[] {
                         + getActionValue(d.actions, "onsite_conversion.post_save");
     cur.new_followers += getActionValue(d.actions, "follow")
                        + getActionValue(d.actions, "page_fan_adds");
-    cur.customResult += computeCustomResult(d, resultType);
+    const rt = resultTypeMap?.[d.campaign_id];
+    cur.customResult     += resolveRowResult(d, { goal: goalMap?.[d.campaign_id] });
+    cur.configuredResult += computeCustomResult(d, rt);
     map.set(date, cur);
   });
   return Array.from(map.values()).map((r) => ({
@@ -1281,10 +1198,11 @@ function ProfileOverviewPanel({
   // Só definido se TODAS as campanhas concordam no mesmo resultType.
   // Alimenta toAdsetRows e rawValues.sales para unificar métricas entre tabs.
   const dominantResultType = useMemo(() => {
-    const types = campaigns.map(c => c.resultType).filter(Boolean) as ResultType[];
-    if (types.length === 0) return undefined;
-    const first = types[0]!;
-    return types.every(t => t === first) ? first : undefined;
+    // Só definido quando TODAS as campanhas (inclusive as sem tipo) concordam.
+    if (campaigns.length === 0) return undefined;
+    const first = campaigns[0]!.resultType;
+    if (!first) return undefined;
+    return campaigns.every(c => c.resultType === first) ? first : undefined;
   }, [campaigns]);
 
   // Auto-detected type when no manual resultType is configured
@@ -1392,17 +1310,20 @@ function ProfileOverviewPanel({
     const { accessToken } = loadMetaCredentials();
     if (!accessToken) return;
     setLoading(true); setError(null);
-    fetchMetaInsights(adAccountId, dateFrom, dateTo, {
-      level: "campaign",
-      timeIncrement: "all_days",
-      campaignIds: campaigns.map((c) => c.id),
-    })
-      .then((data) => {
+    const ids = campaigns.map((c) => c.id);
+    Promise.all([
+      fetchMetaInsights(adAccountId, dateFrom, dateTo, { level: "campaign", timeIncrement: "all_days", campaignIds: ids }),
+      fetchCampaignGoals(adAccountId, accessToken, ids),
+    ])
+      .then(([data, goals]) => {
         const effective = dominantResultType ?? autoDetectResultType(data);
         setDetectedResultType(effective ?? null);
-        // dominantResultType (config manual uniforme) manda; senão undefined →
-        // toAdsetRows soma o resultado real de cada campanha (corrige a Visão Geral).
-        setRows(toAdsetRows(data, dominantResultType));
+        // Mapa por campanha: cada campanha usa seu próprio resultType (se configurado).
+        // Isso garante que 1 campanha com "lead" não sobrescreva o objetivo das outras.
+        const rtMap = Object.fromEntries(
+          campaigns.filter(c => c.resultType).map(c => [c.id, c.resultType!])
+        );
+        setRows(toAdsetRows(data, rtMap, goals));
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Erro ao buscar dados."))
       .finally(() => setLoading(false));
@@ -1421,8 +1342,9 @@ function ProfileOverviewPanel({
     const pvt  = rows.reduce((s, r) => s + r.profile_visits, 0);
     const fol  = rows.reduce((s, r) => s + r.new_followers, 0);
     const allC = rows.reduce((s, r) => s + r.total_clicks, 0);
-    const cust = rows.reduce((s, r) => s + r.customResult, 0);
-    return { inv, imp, clk, rch, conv, rev, lds, pv, pvt, fol, allC, cust };
+    const cust = rows.reduce((s, r) => s + r.customResult, 0);     // auto-detectado (Resultados)
+    const cfg  = rows.reduce((s, r) => s + r.configuredResult, 0); // tipo configurado (sales)
+    return { inv, imp, clk, rch, conv, rev, lds, pv, pvt, fol, allC, cust, cfg };
   }, [rows]);
 
   // ── Template-driven KPI values ────────────────────────────────────────────
@@ -1437,8 +1359,10 @@ function ProfileOverviewPanel({
     spend:          totals.inv,
     revenue:        (ovData?.revenue ?? 0) > 0 ? ovData!.revenue! : totals.rev,
     leads:          totals.lds,
+    // "Resultados" = real auto-detectado (EndForm, lead, compra…); independe de config.
     customResult:   totals.cust,
-    sales:          effectiveResultType && totals.cust > 0 ? totals.cust : totals.conv,
+    // "Conversões (pixel)" = tipo configurado quando há, senão compras (legado preservado).
+    sales:          effectiveResultType && totals.cfg > 0 ? totals.cfg : totals.conv,
     tickets:        (ovData?.tickets ?? 0) > 0 ? ovData!.tickets! : totals.conv,
     page_views:     totals.pv,
     profile_visits: totals.pvt,
@@ -1456,7 +1380,13 @@ function ProfileOverviewPanel({
     clicks:         totals.clk,
     page_views:     totals.pv,
     leads:          totals.lds,
-    sales:          effectiveResultType && totals.cust > 0 ? totals.cust : totals.conv,
+    // Usa o resultado real (customResult) quando disponível — mesmo valor do KPI "Resultados".
+    // Fallback para o tipo configurado (cfg) ou compras (conv) quando não há customResult.
+    sales:          totals.cust > 0
+                      ? totals.cust
+                      : effectiveResultType && totals.cfg > 0
+                        ? totals.cfg
+                        : totals.conv,
     profile_visits: totals.pvt,
     new_followers:  totals.fol,
   };
@@ -1524,13 +1454,17 @@ function ProfileOverviewPanel({
           const { accessToken } = loadMetaCredentials();
           if (!accessToken) return;
           setLoading(true); setError(null);
-          fetchMetaInsights(adAccountId, dateFrom, dateTo, {
-            level: "campaign", timeIncrement: "all_days",
-            campaignIds: campaigns.map((c) => c.id),
-          }).then((data) => {
+          const retryIds = campaigns.map((c) => c.id);
+          Promise.all([
+            fetchMetaInsights(adAccountId, dateFrom, dateTo, { level: "campaign", timeIncrement: "all_days", campaignIds: retryIds }),
+            fetchCampaignGoals(adAccountId, accessToken, retryIds),
+          ]).then(([data, goals]) => {
               const effective = dominantResultType ?? autoDetectResultType(data);
               setDetectedResultType(effective ?? null);
-              setRows(toAdsetRows(data, dominantResultType));
+              const rtMap = Object.fromEntries(
+                campaigns.filter(c => c.resultType).map(c => [c.id, c.resultType!])
+              );
+              setRows(toAdsetRows(data, rtMap, goals));
             })
             .catch((e) => setError(e instanceof Error ? e.message : "Erro ao buscar dados."))
             .finally(() => setLoading(false));
@@ -2230,8 +2164,10 @@ function CampaignAnalysisPanel({
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
+      const { accessToken } = loadMetaCredentials();
       // Parallel: campaign/daily for KPI totals + adset/all_days for Análise de Conjunto
-      const [rawKpi, rawAdset] = await Promise.all([
+      // + objetivo real da campanha (Meta) pra contar o "Resultado" certo.
+      const [rawKpi, rawAdset, goals] = await Promise.all([
         fetchMetaInsights(adAccountId, dateFrom, dateTo, {
           level: "campaign",
           timeIncrement: "1",
@@ -2242,10 +2178,13 @@ function CampaignAnalysisPanel({
           timeIncrement: "all_days",
           campaignIds: [campaign.id],
         }),
+        fetchCampaignGoals(adAccountId, accessToken, [campaign.id]),
       ]);
-      setKpiData(toAdsetRows(rawKpi, resultType ?? campaign.resultType));
-      setDailyData(toDailyRows(rawKpi, resultType ?? campaign.resultType));
-      setAdsetData(toAdsetRows(rawAdset, resultType ?? campaign.resultType));
+      const rt = resultType ?? campaign.resultType;
+      const rtMap = rt ? { [campaign.id]: rt } : undefined;
+      setKpiData(toAdsetRows(rawKpi, rtMap, goals));
+      setDailyData(toDailyRows(rawKpi, rtMap, goals));
+      setAdsetData(toAdsetRows(rawAdset, rtMap, goals));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao buscar dados.");
     } finally {
@@ -2267,15 +2206,17 @@ function CampaignAnalysisPanel({
   const totalLeads        = data.reduce((s, r) => s + r.leads,         0);
   const totalPageViews    = data.reduce((s, r) => s + r.page_views,    0);
   const totalNewFollowers = data.reduce((s, r) => s + r.new_followers, 0);
-  const totalCustomResult = data.reduce((s, r) => s + r.customResult,  0);
+  const totalCustomResult     = data.reduce((s, r) => s + r.customResult,     0); // real auto-detectado
+  const totalConfiguredResult = data.reduce((s, r) => s + r.configuredResult, 0); // tipo configurado
   const txCaptura        = totalClicks    > 0 ? (totalLeads    / totalClicks)    * 100 : 0;
   const txConversao      = totalLeads     > 0 ? (totalPurchases / totalLeads)    * 100
                          : totalClicks   > 0 ? (totalPurchases / totalClicks)   * 100 : 0;
   const cpaMedia         = totalPurchases > 0 ? totalSpend / totalPurchases : 0;
   const roas             = totalSpend     > 0 ? totalRevenue / totalSpend        : 0;
-  // Resultado variável — only meaningful when resultType is explicitly set
+  // Resultado variável — only meaningful when resultType is explicitly set.
+  // Cards de destaque usam o tipo configurado (label bate com o número).
   const activeResultType = resultType ?? campaign.resultType;
-  const resultCount      = activeResultType ? totalCustomResult : 0;
+  const resultCount      = activeResultType ? totalConfiguredResult : 0;
   const costPerResult    = resultCount > 0 ? totalSpend / resultCount : 0;
 
   if (loading && data.length === 0) {
@@ -2323,10 +2264,10 @@ function CampaignAnalysisPanel({
     spend:          totalSpend,
     revenue:        manualRevenue ?? totalRevenue,
     leads:          totalLeads,
-    // Resultado principal: usa customResult quando resultType configurado e > 0
-    sales:          activeResultType && totalCustomResult > 0 ? totalCustomResult : totalPurchases,
-    // customResult: sempre o resultado auto-detectado (por linha) — exposto para
-    // o KPI "Resultados" no layout personalizado, independente de resultType uniforme.
+    // "Conversões (pixel)" = tipo configurado quando há, senão compras (legado).
+    sales:          activeResultType && totalConfiguredResult > 0 ? totalConfiguredResult : totalPurchases,
+    // "Resultados" = real auto-detectado por linha (prioriza eventos custom tipo
+    // EndForm); independe do resultType configurado. Alimenta o KPI do personalizado.
     customResult:   totalCustomResult,
     tickets:        manualTickets ?? totalPurchases,
     page_views:     totalPageViews,
