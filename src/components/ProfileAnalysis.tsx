@@ -308,12 +308,6 @@ function detectRowResultValue(d: MetaInsight): number {
   return 0;
 }
 
-// Lead result types that Meta may report under a different action_type key.
-// e.g., "leadgen_grouped" configured but API only returns "lead" (or vice-versa).
-const LEAD_RESULT_TYPES = new Set([
-  "lead", "leadgen_grouped", "offsite_conversion.fb_pixel_lead", "onsite_conversion.lead_grouped",
-]);
-
 /**
  * Computes customResult for a single insight row given an optional configured resultType.
  * Falls back to extractLeads when a lead-type resultType yields 0 (Meta may use a different key).
@@ -328,8 +322,8 @@ function computeCustomResult(d: MetaInsight, resultType: string | undefined): nu
   }
   const direct = getActionValue(d.actions, resultType);
   if (direct > 0) return direct;
-  if (LEAD_RESULT_TYPES.has(resultType)) return extractLeads(d.actions);
-  // Custom pixel event configured but not found under exact key — fallback to auto-detect.
+  // Configured type not found in data — auto-detect dominant result (covers lead variants,
+  // custom pixel events like EndForm, etc.)
   return detectRowResultValue(d);
 }
 
