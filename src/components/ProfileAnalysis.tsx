@@ -286,14 +286,19 @@ function autoDetectResultType(data: MetaInsight[]): ResultType | undefined {
  * tipo diferente do dominante). `follow` soma follow + page_fan_adds.
  */
 function detectRowResultValue(d: MetaInsight): number {
-  for (const type of AUTO_DETECT_PRIORITY) {
-    const v = type === "follow"
-      ? getActionValue(d.actions, "follow") + getActionValue(d.actions, "page_fan_adds")
-      : getActionValue(d.actions, type);
+  // High-priority standard conversions first (purchases + pixel-tracked leads).
+  const HIGH_PRIORITY: ResultType[] = [
+    "offsite_conversion.fb_pixel_purchase",
+    "purchase",
+    "offsite_conversion.fb_pixel_lead",
+  ];
+  for (const type of HIGH_PRIORITY) {
+    const v = getActionValue(d.actions, type);
     if (v > 0) return v;
   }
-  // Fallback: custom pixel events (fbq trackCustom) — e.g. "EndForm", "ScheduleCall".
-  // Meta reports these as offsite_conversion.custom.* or offsite_conversion.fb_pixel_custom.*
+  // Custom pixel events checked BEFORE generic catch-alls like "lead".
+  // Advertisers configure these intentionally (e.g. EndForm, ScheduleCall) — they
+  // represent the real business result and should win over generic lead counts.
   if (d.actions) {
     for (const a of d.actions) {
       if (
@@ -304,6 +309,25 @@ function detectRowResultValue(d: MetaInsight): number {
         return Number(a.value);
       }
     }
+  }
+  // Remaining standard types (lead form, follows, profile visits, etc.)
+  const LOW_PRIORITY: ResultType[] = [
+    "onsite_conversion.lead_grouped",
+    "leadgen_grouped",
+    "lead",
+    "omni_complete_registration",
+    "submit_application",
+    "schedule",
+    "contact",
+    "follow",
+    "view_content",
+    "profile_visit",
+  ];
+  for (const type of LOW_PRIORITY) {
+    const v = type === "follow"
+      ? getActionValue(d.actions, "follow") + getActionValue(d.actions, "page_fan_adds")
+      : getActionValue(d.actions, type);
+    if (v > 0) return v;
   }
   return 0;
 }
