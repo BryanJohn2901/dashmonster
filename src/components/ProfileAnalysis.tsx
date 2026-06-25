@@ -2287,6 +2287,9 @@ function CampaignAnalysisPanel({
     leads:          totalLeads,
     // Resultado principal: usa customResult quando resultType configurado e > 0
     sales:          activeResultType && totalCustomResult > 0 ? totalCustomResult : totalPurchases,
+    // customResult: sempre o resultado auto-detectado (por linha) — exposto para
+    // o KPI "Resultados" no layout personalizado, independente de resultType uniforme.
+    customResult:   totalCustomResult,
     tickets:        manualTickets ?? totalPurchases,
     page_views:     totalPageViews,
     profile_visits: 0,

@@ -13,7 +13,8 @@ export interface KpiGroup {
 
 export const ALL_KPI_OPTIONS: KpiSpec[] = [
   // Resultados
-  { id: "sales",         label: "Conversões",              format: formatInt,                    color: "green", tooltip: "Conversões registradas pelo pixel Meta (compras, cadastros conforme objetivo)" },
+  { id: "customResult",  label: "Resultados",              format: formatInt,                    color: "green", tooltip: "Resultado auto-detectado da campanha — adapta-se ao tipo configurado (lead, compra, formulário, seguidor…). Mesmo valor que aparece na coluna Resultados da tabela." },
+  { id: "sales",         label: "Conversões (pixel)",      format: formatInt,                    color: "green", tooltip: "Conversões registradas pelo pixel Meta — usa o resultado configurado quando disponível, caso contrário compras do pixel." },
   { id: "leads",         label: "Leads",                   format: formatInt,                    color: "green" },
   { id: "cpa",           label: "Custo por resultado",     format: formatBRL,                    color: "rose", invert: true },
   { id: "cpl",           label: "Custo por lead",          format: formatBRL,                    color: "rose", invert: true },
@@ -59,7 +60,7 @@ export const ALL_KPI_OPTIONS: KpiSpec[] = [
 // ─── KPI groups for builder UI (3.5) ─────────────────────────────────────────
 
 export const KPI_GROUPS: KpiGroup[] = [
-  { label: "Resultados",        kpiIds: ["sales", "leads", "cpa", "cpl"] },
+  { label: "Resultados",        kpiIds: ["customResult", "sales", "leads", "cpa", "cpl"] },
   { label: "Alcance e entrega", kpiIds: ["reach", "impressions", "frequency", "cpm"] },
   { label: "Cliques e tráfego", kpiIds: ["clicks", "total_clicks", "cpc_link", "cpc_all", "ctr", "ctr_all", "page_views", "cpv"] },
   { label: "Investimento",      kpiIds: ["spend", "revenue", "roas"] },
@@ -124,7 +125,9 @@ export function buildPersonalizadoTemplate(config: PersonalizadoConfig): Templat
     funnel,
     table: { title: "Performance por Conjunto", columns: tableColumns },
     derive: (raw) => ({
-      cpa:        safeDivide(raw.spend, raw.sales ?? 0),
+      // cpa usa customResult quando disponível (auto-detectado por linha),
+      // cai pra sales como fallback (comportamento pré-3.8 preservado).
+      cpa:        safeDivide(raw.spend, (raw.customResult || raw.sales) ?? 0),
       cpl:        safeDivide(raw.spend, raw.leads ?? 0),
       cpm:        raw.impressions > 0 ? (raw.spend / raw.impressions) * 1000 : 0,
       frequency:  safeDivide(raw.impressions, raw.reach ?? 0),
