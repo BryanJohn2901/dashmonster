@@ -1448,9 +1448,9 @@ function ProfileOverviewPanel({
       title: reportTitle,
       period: `${dateFrom} → ${dateTo}`,
       kpis: template.kpis.map((k) =>
-        k.id === "sales" && effectiveResultType
+        k.id === "sales" && effectiveResultType && template.id !== "personalizado"
           ? { ...k, label: RESULT_TYPE_LABELS[effectiveResultType] }
-          : k.id === "cpa" && effectiveResultType
+          : k.id === "cpa" && effectiveResultType && template.id !== "personalizado"
             ? { ...k, label: `Custo por ${RESULT_TYPE_LABELS[effectiveResultType]}` }
             : k
       ),
@@ -1616,9 +1616,9 @@ function ProfileOverviewPanel({
                 </div>
 
                 <p className="mb-1 text-[12px] font-semibold" style={{ color: "var(--dm-text-secondary)" }} title={kpi.tooltip}>
-                  {kpi.id === "sales" && effectiveResultType
+                  {kpi.id === "sales" && effectiveResultType && template.id !== "personalizado"
                     ? RESULT_TYPE_LABELS[effectiveResultType]
-                    : kpi.id === "cpa" && effectiveResultType
+                    : kpi.id === "cpa" && effectiveResultType && template.id !== "personalizado"
                       ? `Custo por ${RESULT_TYPE_LABELS[effectiveResultType]}`
                       : kpi.label}
                   {isOvEditable && val > 0 && (
