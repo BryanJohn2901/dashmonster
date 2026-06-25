@@ -292,7 +292,45 @@ function detectRowResultValue(d: MetaInsight): number {
       : getActionValue(d.actions, type);
     if (v > 0) return v;
   }
+  // Fallback: custom pixel events (fbq trackCustom) — e.g. "EndForm", "ScheduleCall".
+  // Meta reports these as offsite_conversion.custom.* or offsite_conversion.fb_pixel_custom.*
+  if (d.actions) {
+    for (const a of d.actions) {
+      if (
+        (a.action_type.startsWith("offsite_conversion.custom.") ||
+         a.action_type.startsWith("offsite_conversion.fb_pixel_custom.")) &&
+        Number(a.value) > 0
+      ) {
+        return Number(a.value);
+      }
+    }
+  }
   return 0;
+}
+
+// Lead result types that Meta may report under a different action_type key.
+// e.g., "leadgen_grouped" configured but API only returns "lead" (or vice-versa).
+const LEAD_RESULT_TYPES = new Set([
+  "lead", "leadgen_grouped", "offsite_conversion.fb_pixel_lead", "onsite_conversion.lead_grouped",
+]);
+
+/**
+ * Computes customResult for a single insight row given an optional configured resultType.
+ * Falls back to extractLeads when a lead-type resultType yields 0 (Meta may use a different key).
+ */
+function computeCustomResult(d: MetaInsight, resultType: string | undefined): number {
+  if (!resultType) return detectRowResultValue(d);
+  if (resultType === "link_click") {
+    return d.inline_link_clicks != null ? parseMetaNum(d.inline_link_clicks) : parseMetaNum(d.clicks);
+  }
+  if (resultType === "follow") {
+    return getActionValue(d.actions, "follow") + getActionValue(d.actions, "page_fan_adds");
+  }
+  const direct = getActionValue(d.actions, resultType);
+  if (direct > 0) return direct;
+  if (LEAD_RESULT_TYPES.has(resultType)) return extractLeads(d.actions);
+  // Custom pixel event configured but not found under exact key — fallback to auto-detect.
+  return detectRowResultValue(d);
 }
 
 function pickActionValue(avs: MetaInsight["action_values"], ...types: string[]): number {
@@ -334,18 +372,7 @@ function toAdsetRows(data: MetaInsight[], resultType?: string): AdsetRow[] {
     // new_followers: "follow" (ad engagement objective) OR "page_fan_adds" (traffic-to-profile)
     cur.new_followers += getActionValue(d.actions, "follow")
                        + getActionValue(d.actions, "page_fan_adds");
-    // configurable result type — link_click usa inline_link_clicks; follow soma
-    // follow + page_fan_adds (novos seguidores, igual a cur.new_followers).
-    if (resultType) {
-      cur.customResult += resultType === "link_click"
-        ? (d.inline_link_clicks != null ? parseMetaNum(d.inline_link_clicks) : parseMetaNum(d.clicks))
-        : resultType === "follow"
-          ? getActionValue(d.actions, "follow") + getActionValue(d.actions, "page_fan_adds")
-          : getActionValue(d.actions, resultType);
-    } else {
-      // sem tipo uniforme: cada linha conta o próprio resultado dominante
-      cur.customResult += detectRowResultValue(d);
-    }
+    cur.customResult += computeCustomResult(d, resultType);
     map.set(key ?? "", cur);
   });
   return Array.from(map.values()).map((r) => ({
@@ -390,15 +417,7 @@ function toDailyRows(data: MetaInsight[], resultType?: string): DailyRow[] {
                         + getActionValue(d.actions, "onsite_conversion.post_save");
     cur.new_followers += getActionValue(d.actions, "follow")
                        + getActionValue(d.actions, "page_fan_adds");
-    if (resultType) {
-      cur.customResult += resultType === "link_click"
-        ? (d.inline_link_clicks != null ? parseMetaNum(d.inline_link_clicks) : parseMetaNum(d.clicks))
-        : resultType === "follow"
-          ? getActionValue(d.actions, "follow") + getActionValue(d.actions, "page_fan_adds")
-          : getActionValue(d.actions, resultType);
-    } else {
-      cur.customResult += detectRowResultValue(d);
-    }
+    cur.customResult += computeCustomResult(d, resultType);
     map.set(date, cur);
   });
   return Array.from(map.values()).map((r) => ({

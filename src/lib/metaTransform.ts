@@ -60,13 +60,15 @@ export function extractConversions(actions: MetaAction[] | undefined): number {
 
 /**
  * Conta leads. Primeiro match vence.
- * IMPORTANTE: "lead" e "onsite_conversion.lead_grouped" são redundantes — a Meta
- * retorna o mesmo valor nos dois. Somar = contagem dobrada.
+ * IMPORTANTE: os tipos são redundantes — a Meta pode retornar o mesmo valor em
+ * "lead", "onsite_conversion.lead_grouped" e "leadgen_grouped". Somar = dobrado.
+ * leadgen_grouped = Leads de Formulário (Meta native forms); os demais = pixel/web.
  */
 export function extractLeads(actions: MetaAction[] | undefined): number {
   return pickAction(
     actions,
     "onsite_conversion.lead_grouped",
+    "leadgen_grouped",
     "lead",
     "offsite_conversion.fb_pixel_lead",
   );
