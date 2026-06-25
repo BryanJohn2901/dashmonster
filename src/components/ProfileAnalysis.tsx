@@ -1400,6 +1400,7 @@ function ProfileOverviewPanel({
     spend:          totals.inv,
     revenue:        (ovData?.revenue ?? 0) > 0 ? ovData!.revenue! : totals.rev,
     leads:          totals.lds,
+    customResult:   totals.cust,
     sales:          effectiveResultType && totals.cust > 0 ? totals.cust : totals.conv,
     tickets:        (ovData?.tickets ?? 0) > 0 ? ovData!.tickets! : totals.conv,
     page_views:     totals.pv,
