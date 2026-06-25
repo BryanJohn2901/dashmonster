@@ -52,7 +52,7 @@ describe("GET /api/tracking/config", () => {
     const json = await res.json();
 
     expect(res.status).toBe(200);
-    expect(json).toEqual({ metaPixelId: "PIXEL_123" });
+    expect(json).toEqual({ metaPixelId: "PIXEL_123", geo: null });
   });
 
   it("resolve por pixel_slug quando informado", async () => {
@@ -62,7 +62,7 @@ describe("GET /api/tracking/config", () => {
     const res = await GET(buildRequest("acme", "landing-x"));
     const json = await res.json();
 
-    expect(json).toEqual({ metaPixelId: "PIXEL_LANDING_X" });
+    expect(json).toEqual({ metaPixelId: "PIXEL_LANDING_X", geo: null });
     const results = mockPixelSelect.mock.results;
     const query = results[results.length - 1].value as { eq: jest.Mock };
     expect(query.eq.mock.calls).toEqual(expect.arrayContaining([["slug", "landing-x"]]));
@@ -75,7 +75,7 @@ describe("GET /api/tracking/config", () => {
     const res = await GET(buildRequest("acme"));
     const json = await res.json();
 
-    expect(json).toEqual({ metaPixelId: "LEGACY_PIXEL" });
+    expect(json).toEqual({ metaPixelId: "LEGACY_PIXEL", geo: null });
   });
 
   it("metaPixelId null quando empresa não existe", async () => {
@@ -84,7 +84,7 @@ describe("GET /api/tracking/config", () => {
     const json = await res.json();
 
     expect(res.status).toBe(200);
-    expect(json).toEqual({ metaPixelId: null });
+    expect(json).toEqual({ metaPixelId: null, geo: null });
   });
 
   it("metaPixelId null quando a empresa existe mas não tem pixel default configurado", async () => {
@@ -94,7 +94,7 @@ describe("GET /api/tracking/config", () => {
     const res = await GET(buildRequest("acme"));
     const json = await res.json();
 
-    expect(json).toEqual({ metaPixelId: null });
+    expect(json).toEqual({ metaPixelId: null, geo: null });
   });
 
   it("CORS aberto (Access-Control-Allow-Origin: *)", async () => {

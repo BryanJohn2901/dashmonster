@@ -53,6 +53,14 @@ function buildPixelScript(apiBase: string, proxyMode: boolean, serverGeoJson: st
   // Qual pixel da empresa usar (migration 037, 1 por landing page/produto) —
   // omitido em Tracker.init() = usa o pixel "is_default" da empresa.
   var currentPixelSlug = null;
+  // geo capturada via config endpoint — esse fetch vai SEMPRE do browser direto
+  // pra Vercel (nunca passa pelo PHP), então a Vercel vê o IP real do visitante
+  // mesmo no snippet legado (onde PHP serve o pixel.js e SERVER_GEO fica com a
+  // geo do servidor PHP). configGeo substitui SERVER_GEO quando disponível.
+  var configGeo = null;
+  // clientId pendente de PageView — disparado só depois que config resolver, pra
+  // o PageView já sair com configGeo correta mesmo no snippet legado.
+  var pendingPageViewClientId = null;
 
   // ─── Meta Pixel (fbq) no navegador, pareado por event_id com a CAPI ────────
   // Carregamos o fbq da própria Meta (não um 2º script — é o mesmo de sempre)
@@ -102,14 +110,15 @@ function buildPixelScript(apiBase: string, proxyMode: boolean, serverGeoJson: st
     if (currentPixelSlug) url += "&pixel_slug=" + encodeURIComponent(currentPixelSlug);
     fetch(url)
       .then(function (r) { return r.json(); })
-      .then(function (cfg) { onConfigResolved(cfg && cfg.metaPixelId); })
-      .catch(function () { onConfigResolved(null); });
+      .then(function (cfg) { onConfigResolved(cfg && cfg.metaPixelId, cfg && cfg.geo); })
+      .catch(function () { onConfigResolved(null, null); });
   }
 
-  function onConfigResolved(metaPixelId) {
+  function onConfigResolved(metaPixelId, geo) {
     configResolved = true;
     hasMetaPixel = Boolean(metaPixelId);
     currentMetaPixelId = metaPixelId || null;
+    configGeo = (geo && (geo.country || geo.city)) ? geo : null;
     if (hasMetaPixel) {
       safe(function () { loadFbq(metaPixelId, getLeadCache()); });
       for (var i = 0; i < pendingFbqCalls.length; i++) {
@@ -119,6 +128,10 @@ function buildPixelScript(apiBase: string, proxyMode: boolean, serverGeoJson: st
       }
     }
     pendingFbqCalls = [];
+    if (pendingPageViewClientId) {
+      safe(function () { trackPageView(pendingPageViewClientId); });
+      pendingPageViewClientId = null;
+    }
   }
 
   function safe(fn) {
@@ -270,7 +283,7 @@ function buildPixelScript(apiBase: string, proxyMode: boolean, serverGeoJson: st
         fbp: getFbp() || undefined,
         fbc: getFbc() || undefined,
         via: PROXY_MODE ? "proxy" : "direct",
-        server_geo: PROXY_MODE ? SERVER_GEO : undefined,
+        server_geo: PROXY_MODE ? (configGeo || SERVER_GEO) : undefined,
       },
       extra,
       { user_data: enrichedUserData }
@@ -288,12 +301,18 @@ function buildPixelScript(apiBase: string, proxyMode: boolean, serverGeoJson: st
     void send(clientId, "PageView", {});
   }
 
-  // Detecta campos de nome por name/id ou autocomplete — pra hashear fn/ln
-  // pro user_data da CAPI (a Meta usa nome como chave de match também, junto
-  // com email/telefone). Não impede a captura genérica em "fields" (dashboard).
+  // Detecta campos de nome/telefone por name/id ou autocomplete — pra hashear
+  // fn/ln/ph pro user_data da CAPI (a Meta usa esses como chaves de match).
+  // Não impede a captura genérica em "fields" (dashboard).
   var FIRST_NAME_RE = /^(first[-_ ]?name|fname|nome)$/i;
   var LAST_NAME_RE = /^(last[-_ ]?name|lname|sobrenome|apelido)$/i;
   var FULL_NAME_RE = /^(name|full[-_ ]?name|nome[-_ ]?completo)$/i;
+  // Telefone: forms brasileiros quase sempre usam type="text" + máscara JS
+  // (não type="tel") — sem essa regex, qualquer campo que não seja type="tel"
+  // nunca vira ph no user_data da CAPI e a Meta perde o sinal mais forte de
+  // match no mercado BR. Só ativa pra campos de texto (não "tel", já tratado
+  // acima) pra não hashear o mesmo campo 2x.
+  var PHONE_RE = /^(phone|cel|celular|telefone?|fone|mobile|whatsapp|tel)$/i;
 
   function attachFormListener(clientId) {
     document.addEventListener(
@@ -348,6 +367,10 @@ function buildPixelScript(apiBase: string, proxyMode: boolean, serverGeoJson: st
             }
 
             var autocomplete = (el.autocomplete || "").toLowerCase();
+            if (!userData.ph && (PHONE_RE.test(key) || autocomplete === "tel")) {
+              var phTextHash = await sha256Hex(normalizePhone(el.value));
+              if (phTextHash) { userData.ph = phTextHash; if (!pii.phone) pii.phone = el.value.trim(); }
+            }
             if (!userData.fn && (FIRST_NAME_RE.test(key) || autocomplete === "given-name")) {
               var fnHash = await sha256Hex(el.value);
               if (fnHash) userData.fn = fnHash;
@@ -393,8 +416,8 @@ function buildPixelScript(apiBase: string, proxyMode: boolean, serverGeoJson: st
     // (Estúdio > Tracking > Configuração); sem ele, usa o pixel padrão da empresa.
     init: function (clientId, pixelSlug) {
       currentPixelSlug = pixelSlug || null;
+      pendingPageViewClientId = clientId;
       safe(function () { initMetaConfig(clientId); });
-      safe(function () { trackPageView(clientId); });
       safe(function () { attachFormListener(clientId); });
     },
   };

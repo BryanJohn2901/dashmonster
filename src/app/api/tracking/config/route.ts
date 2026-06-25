@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { geolocation } from "@vercel/functions";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 // Endpoint público (sem auth, CORS aberto) — só devolve o que já é público
@@ -22,10 +23,25 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "client_id é obrigatório." }, { status: 400, headers });
   }
 
+  // geo extraída aqui (antes dos lookups de DB) — essa request vem sempre
+  // direto do browser, então a Vercel tem o IP real do visitante, mesmo no
+  // snippet legado onde PHP serve o pixel.js (o CONFIG_URL nunca passa pelo PHP).
+  const g = geolocation(request);
+  const geo = (g.country || g.city)
+    ? {
+        country: g.country ?? null,
+        countryRegion: g.countryRegion ?? null,
+        city: g.city ?? null,
+        postalCode: g.postalCode ?? null,
+        latitude: g.latitude ? parseFloat(g.latitude) || null : null,
+        longitude: g.longitude ? parseFloat(g.longitude) || null : null,
+      }
+    : null;
+
   const db = supabaseAdmin();
   const company = await db.from("companies").select("id, meta_pixel_id").eq("slug", clientId).single();
   if (!company.data) {
-    return NextResponse.json({ metaPixelId: null }, { status: 200, headers: { ...headers, "Cache-Control": "no-store" } });
+    return NextResponse.json({ metaPixelId: null, geo }, { status: 200, headers: { ...headers, "Cache-Control": "no-store" } });
   }
 
   // Cada landing page pode ter o seu pixel (migration 037) — pixel_slug
@@ -42,7 +58,7 @@ export async function GET(request: NextRequest) {
     : pixel.data?.meta_pixel_id ?? null;
 
   return NextResponse.json(
-    { metaPixelId },
+    { metaPixelId, geo },
     { status: 200, headers: { ...headers, "Cache-Control": "no-store" } },
   );
 }
