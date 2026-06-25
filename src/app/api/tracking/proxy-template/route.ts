@@ -30,7 +30,11 @@ $qs = $_GET; unset($qs['ep']);
 if ($ep === 'pixel') $qs['via'] = 'proxy'; // sinaliza pro backend gerar a variante proxy do script
 $url = DASHMONSTER_BASE . $paths[$ep] . (count($qs) ? '?' . http_build_query($qs) : '');
 
-$headers = ['Referer: ' . ($_SERVER['HTTP_REFERER'] ?? '')]; // preserva a checagem de dominio_autorizado (senão cai sempre no soft-fail)
+$headers = [
+  'Referer: '       . ($_SERVER['HTTP_REFERER']    ?? ''), // preserva a checagem de dominio_autorizado
+  'User-Agent: '    . ($_SERVER['HTTP_USER_AGENT'] ?? ''), // repassa o UA real do browser — sem isso o backend salva o UA do cURL e OS/Browser ficam nulos
+  'X-Forwarded-For: ' . ($_SERVER['REMOTE_ADDR']  ?? ''), // IP real do visitante — sem isso o backend vê o IP do servidor PHP e a geo fica errada
+];
 $body = null;
 if ($method === 'POST') {
   $body = file_get_contents('php://input', false, null, 0, 65536); // limite de 64KB — sem isso é vetor de DoS sob a identidade do domínio do cliente

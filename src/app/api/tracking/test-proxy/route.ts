@@ -94,8 +94,13 @@ export async function POST(request: NextRequest) {
       pageError = `Página respondeu ${pageRes.status}.`;
     } else {
       const html = (await pageRes.text()).slice(0, MAX_HTML_CHARS);
-      scriptFound = html.includes("dm-proxy.php?ep=pixel") && html.includes(`Tracker.init("${companySlug}"`);
-      if (!scriptFound) pageError = "Página acessível, mas não achei o script do dm-proxy.php (ou o Tracker.init) nela.";
+      // Aceita os 2 formatos de snippet: o novo (pixel.js direto da Vercel +
+      // dmq.push(["init", ...]), carregado async) e o legado (dm-proxy.php?ep=pixel
+      // + Tracker.init(...)). Os dois resultam no mesmo modo proxy/cookie.
+      const hasScript = html.includes("pixel.js?via=proxy") || html.includes("dm-proxy.php?ep=pixel");
+      const hasInit = html.includes(`Tracker.init("${companySlug}"`) || html.includes(`"init","${companySlug}"`);
+      scriptFound = hasScript && hasInit;
+      if (!scriptFound) pageError = "Página acessível, mas não achei o script do pixel (ou o init com o slug da empresa) nela.";
     }
   } catch {
     pageError = "Não foi possível acessar essa página (timeout ou domínio incorreto).";

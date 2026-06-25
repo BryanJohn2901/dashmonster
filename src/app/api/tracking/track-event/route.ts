@@ -1,5 +1,5 @@
 import { createHash } from "crypto";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { geolocation } from "@vercel/functions";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { hashLower, hashNormalized } from "@/lib/metaHash";
@@ -8,11 +8,26 @@ import { sendMetaCapiEvent } from "@/lib/metaCapi";
 import { type ResolvedPixel, selectLegacyCompanyConfig } from "@/lib/resolvePixel";
 
 export const runtime = "nodejs";
-// Folga acima do default curto do Hobby (~10s): a rota faz insert + (await) da
-// Meta CAPI. A CAPI já tem timeout próprio de 8s (ver metaCapi.ts), então na
-// prática nunca chega perto disso — é só margem pra capi_status sempre sair de
-// "pending" pra "sent"/"failed" antes de a function ser encerrada.
+// Folga acima do default curto do Hobby (~10s): a resposta (200 + Set-Cookie)
+// volta logo após o insert, e a Meta CAPI roda DEPOIS via after()/waitUntil
+// (ver runAfterResponse + o bloco da CAPI no fim do POST). O maxDuration cobre
+// esse trabalho pós-resposta — a CAPI tem timeout próprio de 8s (metaCapi.ts),
+// então capi_status sempre sai de "pending" pra "sent"/"failed" dentro dele.
 export const maxDuration = 30;
+
+// Agenda trabalho pra rodar DEPOIS que a resposta foi enviada. Na Vercel o
+// after() do Next usa waitUntil por baixo: a function fica viva até a Promise
+// resolver (dentro do maxDuration), então NÃO é fire-and-forget ingênuo — o
+// envio pra Meta não se perde. Fora de um request scope (ex.: testes unitários
+// chamando POST() direto) o after() do Next lança; nesse caso caímos pra rodar
+// inline (sem travar quem chamou). Centralizado aqui pra documentar o porquê.
+function runAfterResponse(task: () => Promise<void>): void {
+  try {
+    after(task);
+  } catch {
+    void task();
+  }
+}
 
 // Classifica o User-Agent (já chega em toda request) em 3 baldes pra relatório
 // futuro de "performance por dispositivo" — guarda só a categoria, não o UA
@@ -168,6 +183,22 @@ interface TrackEventPayload {
   ping?: boolean;
   /** "proxy" | "direct" — mandado pelo próprio pixel.js (PROXY_MODE, decidido no servidor em pixel.js/route.ts), migration 057. Null em payload antigo/cliente em cache. */
   via?: string;
+  /**
+   * Geo do visitante capturado em pixel.js/route.ts, que recebe a request
+   * DIRETO do browser (não via PHP) — nessa request a Vercel vê o IP real do
+   * visitante e seta x-vercel-ip-* corretamente. No track-event a Vercel vê o
+   * IP do servidor PHP (em modo proxy), então geolocation(request) lá daria a
+   * cidade do hosting do cliente. Só presente em modo proxy com snippet novo
+   * (carregado direto da Vercel); null em snippets legados (via PHP) ou modo direto.
+   */
+  server_geo?: {
+    country?: string | null;
+    countryRegion?: string | null;
+    city?: string | null;
+    postalCode?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
+  } | null;
 }
 
 function corsHeaders(origin: string | null): HeadersInit {
@@ -297,6 +328,16 @@ export async function POST(request: NextRequest) {
   // Repasse pra Meta CAPI é best-effort, abaixo, só quando ambos existem.
   const metaConfigured = Boolean(resolved.meta_pixel_id && resolved.meta_capi_token);
 
+  // Em modo proxy, geolocalização vem dos headers x-vercel-ip-* que a Vercel
+  // seta com base no IP de QUEM conectou — que é o servidor PHP do cliente, não
+  // o visitante real. Enviar esses dados pra CAPI prejudica o Event Match Quality
+  // (Meta receberia cidade/estado do servidor de hospedagem, não do comprador).
+  // Com X-Forwarded-For repassando o IP real do visitante (proxy-template),
+  // a Meta resolve a geo ela mesma a partir do `client_ip_address`.
+  // No events_log também salvamos null em modo proxy — não adianta guardar a
+  // cidade do servidor de hospedagem como se fosse a cidade do visitante.
+  const isProxyMode = payload.via === "proxy";
+
   const baseRow = {
     company_id: resolved.companyId,
     event_name: payload.event_name,
@@ -312,16 +353,19 @@ export async function POST(request: NextRequest) {
     ...baseRow,
     page_title: payload.page_title?.trim() || null,
     extra_fields: payload.pii?.fields ?? {},
-    country: geo.country ?? null,
-    country_region: geo.countryRegion ?? null,
-    city: geo.city ?? null,
+    // Em modo proxy, geo vem de server_geo (injetado pelo pixel.js/route.ts que
+    // recebe a request direto do browser e tem o IP real do visitante). Em modo
+    // direto, geo vem dos headers x-vercel-ip-* da Vercel nesta request.
+    country: isProxyMode ? (payload.server_geo?.country ?? null) : (geo.country ?? null),
+    country_region: isProxyMode ? (payload.server_geo?.countryRegion ?? null) : (geo.countryRegion ?? null),
+    city: isProxyMode ? (payload.server_geo?.city ?? null) : (geo.city ?? null),
     event_id: payload.event_id?.trim() || null,
     pixel_id: resolved.pixelId,
     ...parseUtmColumns(payload.event_url),
     lead_name: payload.pii?.name?.trim() || null,
-    postal_code: geo.postalCode ?? null,
-    latitude: geo.latitude ?? null,
-    longitude: geo.longitude ?? null,
+    postal_code: isProxyMode ? (payload.server_geo?.postalCode ?? null) : (geo.postalCode ?? null),
+    latitude: isProxyMode ? (payload.server_geo?.latitude ?? null) : (geo.latitude ?? null),
+    longitude: isProxyMode ? (payload.server_geo?.longitude ?? null) : (geo.longitude ?? null),
     device_type: classifyDevice(userAgent),
     // "proxy"/"direct" (migration 057) — mandado pelo pixel.js, null se vier
     // de outro valor/ausente (payload velho, cliente em cache).
@@ -344,54 +388,62 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ received: true }, { status: 200, headers: withTrackingCookie(headers, fingerprintId) });
   }
 
-  if (!metaConfigured) {
-    return NextResponse.json({ received: true }, { status: 200, headers: withTrackingCookie(headers, fingerprintId) });
+  // Meta CAPI roda DEPOIS da resposta (after()/waitUntil) — o 200 + Set-Cookie
+  // voltam logo após o insert (~200ms), bem antes do CURLOPT_TIMEOUT de 5s do
+  // dm-proxy.php, então o cookie de 1ª parte é setado de forma confiável em todo
+  // evento mesmo quando a Meta está lenta. Antes, com a CAPI no caminho da
+  // resposta, uma CAPI > 5s fazia o PHP encerrar antes do Set-Cookie chegar ao
+  // navegador (cookie não renovava naquela visita). capi_status continua saindo
+  // de "pending" pra "sent"/"failed" porque o waitUntil mantém a function viva.
+  if (metaConfigured) {
+    runAfterResponse(() =>
+      sendMetaCapiEvent(db, {
+        metaPixelId: resolved.meta_pixel_id!,
+        metaCapiToken: resolved.meta_capi_token!,
+        testEventCode: resolved.meta_test_event_code,
+        eventLogId: inserted.id,
+        eventData: {
+          event_name: payload.event_name,
+          event_time: Math.floor(Date.now() / 1000),
+          // Mesmo event_id que o pixel manda pro fbq('track', ..., {eventID})
+          // no navegador — sem isso a Meta não consegue deduplicar Pixel+CAPI
+          // e cada conversão conta em dobro (1x via browser, 1x via server).
+          event_id: payload.event_id || undefined,
+          action_source: "website",
+          event_source_url: payload.event_url,
+          user_data: {
+            // em/ph/fn/ln já chegam hasheados do pixel.js (mesma normalização
+            // trim+lowercase, ver sha256Hex no pixel.js) — servidor só repassa.
+            em: payload.user_data?.em,
+            ph: payload.user_data?.ph,
+            fn: payload.user_data?.fn,
+            ln: payload.user_data?.ln,
+            client_ip_address: ip,
+            client_user_agent: userAgent,
+            // fbp/fbc NÃO são hasheados (são identificadores de clique/browser,
+            // não PII) — manda como string crua, é o que a Meta espera.
+            fbp: payload.fbp || undefined,
+            fbc: payload.fbc || undefined,
+            // País/estado/cidade vêm do geo-IP da Vercel — só em modo direto.
+            // Em modo proxy, os headers x-vercel-ip-* refletem o IP do servidor PHP
+            // do cliente (não do visitante), então enviar esses dados pra Meta seria
+            // pior do que não enviar. A Meta resolve a geo pelo client_ip_address
+            // (IP real do visitante, repassado pelo proxy via X-Forwarded-For).
+            // country fica no hashLower (ISO 2-letter "BR"). ct/st/zp usam
+            // hashNormalized (tira acento/espaço/pontuação) — regra da Meta pra esses.
+            country: isProxyMode ? hashLower(payload.server_geo?.country) : hashLower(geo.country),
+            st: isProxyMode ? hashNormalized(payload.server_geo?.countryRegion) : hashNormalized(geo.countryRegion),
+            ct: isProxyMode ? hashNormalized(payload.server_geo?.city) : hashNormalized(geo.city),
+            zp: isProxyMode ? hashNormalized(payload.server_geo?.postalCode) : hashNormalized(geo.postalCode),
+            // external_id: hash do _dm_uid persistente — não é PII, mas a Meta
+            // recomenda mandar hasheado por consistência com os outros campos.
+            external_id: hashLower(payload.user_id),
+          },
+          custom_data: payload.custom_data ?? {},
+        },
+      }),
+    );
   }
-
-  await sendMetaCapiEvent(db, {
-    metaPixelId: resolved.meta_pixel_id!,
-    metaCapiToken: resolved.meta_capi_token!,
-    testEventCode: resolved.meta_test_event_code,
-    eventLogId: inserted.id,
-    eventData: {
-      event_name: payload.event_name,
-      event_time: Math.floor(Date.now() / 1000),
-      // Mesmo event_id que o pixel manda pro fbq('track', ..., {eventID})
-      // no navegador — sem isso a Meta não consegue deduplicar Pixel+CAPI
-      // e cada conversão conta em dobro (1x via browser, 1x via server).
-      event_id: payload.event_id || undefined,
-      action_source: "website",
-      event_source_url: payload.event_url,
-      user_data: {
-        // em/ph/fn/ln já chegam hasheados do pixel.js (mesma normalização
-        // trim+lowercase, ver sha256Hex no pixel.js) — servidor só repassa.
-        em: payload.user_data?.em,
-        ph: payload.user_data?.ph,
-        fn: payload.user_data?.fn,
-        ln: payload.user_data?.ln,
-        client_ip_address: ip,
-        client_user_agent: userAgent,
-        // fbp/fbc NÃO são hasheados (são identificadores de clique/browser,
-        // não PII) — manda como string crua, é o que a Meta espera.
-        fbp: payload.fbp || undefined,
-        fbc: payload.fbc || undefined,
-        // País/estado/cidade vêm do geo-IP da Vercel (geo, calculado acima)
-        // — únicos campos hasheados no servidor, porque só o servidor sabe
-        // a localização (o browser não manda isso). zp (CEP) também vem
-        // de graça do geo-IP quando a Vercel resolve.
-        // country fica no hashLower (ISO 2-letter "BR" do geo-IP). ct/st/zp usam
-        // hashNormalized (tira acento/espaço/pontuação) — regra da Meta pra esses.
-        country: hashLower(geo.country),
-        st: hashNormalized(geo.countryRegion),
-        ct: hashNormalized(geo.city),
-        zp: hashNormalized(geo.postalCode),
-        // external_id: hash do _dm_uid persistente — não é PII, mas a Meta
-        // recomenda mandar hasheado por consistência com os outros campos.
-        external_id: hashLower(payload.user_id),
-      },
-      custom_data: payload.custom_data ?? {},
-    },
-  });
 
   return NextResponse.json({ received: true }, { status: 200, headers: withTrackingCookie(headers, fingerprintId) });
 }

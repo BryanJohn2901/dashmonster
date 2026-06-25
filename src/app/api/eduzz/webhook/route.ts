@@ -678,6 +678,118 @@ export function isModernPayload(body: RawPayload): boolean {
   return typeof body.event === "string" && typeof body.data === "object" && body.data !== null && "buyer" in (body.data as object);
 }
 
+// Formato "flat moderno" — Eduzz manda os campos na RAIZ do body (sem envelope
+// event/data), com estrutura idêntica ao formato moderno mas sem o wrapper.
+// Detectado pela presença de `buyer` objeto + `items` array na raiz. Exemplos
+// reais confirmados: webhooks de Notificações com order bump (has:true).
+export function isFlatModernPayload(body: RawPayload): boolean {
+  return (
+    typeof body.buyer === "object" && body.buyer !== null &&
+    Array.isArray(body.items) &&
+    typeof body.transaction === "object" && body.transaction !== null
+  );
+}
+
+export function parseFlatModernPayload(body: RawPayload): SaleEvent | { ignored: string } {
+  const all = parseFlatModernPayloadAllItems(body);
+  return all[0] ?? { ignored: "sem itens" };
+}
+
+// Formato flat moderno pode trazer TODOS os itens do checkout num único payload
+// (produto principal + order bumps em `items[]`). Cria um SaleEvent por item —
+// o item[0] recebe o transactionId real; bumps (index > 0 quando isMainSale=true)
+// recebem id sintético "{transactionId}-bump-{productId}" pra idempotência.
+export function parseFlatModernPayloadAllItems(body: RawPayload): (SaleEvent | { ignored: string })[] {
+  const status = String(body.status ?? "").toLowerCase();
+  if (status && !PAID_STATUSES.has(status)) return [{ ignored: `status=${status}` }];
+
+  const rawItems = (body.items as { productId?: string; parentId?: string; name?: string; price?: { value?: number; currency?: string } }[] | undefined) ?? [];
+
+  const buyer = body.buyer as { name?: string; email?: string; phone?: string; cellphone?: string; address?: { city?: string; state?: string; country?: string; zipCode?: string } } | null;
+  const transaction = body.transaction as { id?: string; key?: string } | null;
+  const utm = body.utm as { source?: string; medium?: string; campaign?: string; content?: string; term?: string } | null;
+  const contract = body.contract as { id?: string; isUnlimitedInstallments?: boolean } | null;
+  const orderBump = body.orderBump as { has?: boolean; isMainSale?: boolean; mainSaleId?: number | string | null } | null;
+  const bankSlip = body.bankSlipInstallment as { installmentNumber?: number; totalInstallments?: number } | null;
+  const priceObj = body.price as { value?: number; currency?: string } | null;
+  const paidObj = body.paid as { value?: number; currency?: string } | null;
+  const paidAt = (body.paidAt as string | undefined) ?? null;
+  const paymentMethod = (body.paymentMethod as string | null) ?? null;
+  const mainTransactionId = transaction?.id || transaction?.key || `flat-${Date.now()}`;
+  // isMainSale=true (ou null/ausente) = esse webhook representa a venda principal
+  // e todos os items[] são do mesmo checkout (item[0] = produto, item[1+] = bumps).
+  const isMainSaleInvoice = orderBump?.isMainSale !== false;
+
+  // Sem itens estruturados: fallback para um único SaleEvent com valor total do payload.
+  if (!rawItems.length) {
+    const fallbackValue = toNumber(priceObj?.value ?? paidObj?.value);
+    if (fallbackValue <= 0) return [{ ignored: "sem valor" }];
+    const totalInstallments = bankSlip?.totalInstallments;
+    const value = totalInstallments && totalInstallments > 1 ? fallbackValue * totalInstallments : fallbackValue;
+    return [{
+      transactionId: mainTransactionId,
+      value,
+      invoiceValue: fallbackValue,
+      currency: priceObj?.currency || paidObj?.currency || "BRL",
+      productName: "Eduzz",
+      date: toDate(paidAt ?? undefined),
+      paidAtIso: paidAt,
+      email: buyer?.email?.trim() || null,
+      phone: buyer?.cellphone?.trim() || buyer?.phone?.trim() || null,
+      name: buyer?.name?.trim() || null,
+      trackerCode: null,
+      paymentMethod,
+      utm: { source: utm?.source ?? null, medium: utm?.medium ?? null, campaign: utm?.campaign ?? null, content: utm?.content ?? null, term: utm?.term ?? null },
+      address: { city: buyer?.address?.city ?? null, state: buyer?.address?.state ?? null, country: buyer?.address?.country ?? null, zip: buyer?.address?.zipCode ?? null },
+      recurrenceKey: contract?.id ?? null,
+      installmentNumber: bankSlip?.installmentNumber ?? null,
+      installments: bankSlip?.totalInstallments ?? null,
+      isOrderBump: Boolean(orderBump?.has && !isMainSaleInvoice),
+      mainSaleTransactionId: orderBump?.mainSaleId != null ? String(orderBump.mainSaleId) : null,
+      items: [{ productId: null, parentId: null, name: "Eduzz", value: fallbackValue }],
+      productParentId: null,
+      totalInstallmentsRaw: (body.installments as number | null) ?? null,
+      contractUnlimitedInstallments: contract?.isUnlimitedInstallments ?? null,
+    }];
+  }
+
+  return rawItems.map((item, index): SaleEvent | { ignored: string } => {
+    const itemValue = toNumber(item.price?.value);
+    if (itemValue <= 0) return { ignored: `item sem valor: ${item.name ?? index}` };
+    // item[0] = produto principal (id real); item[1+] = order bumps (id sintético).
+    const isBump = index > 0 && isMainSaleInvoice;
+    const transactionId = isBump ? `${mainTransactionId}-bump-${item.productId ?? index}` : mainTransactionId;
+    const currency = item.price?.currency || priceObj?.currency || paidObj?.currency || "BRL";
+    const productName = item.name?.trim() || "Eduzz";
+
+    return {
+      transactionId,
+      value: itemValue,
+      invoiceValue: itemValue,
+      currency,
+      productName,
+      date: toDate(paidAt ?? undefined),
+      paidAtIso: paidAt,
+      email: buyer?.email?.trim() || null,
+      phone: buyer?.cellphone?.trim() || buyer?.phone?.trim() || null,
+      name: buyer?.name?.trim() || null,
+      trackerCode: null,
+      paymentMethod,
+      utm: { source: utm?.source ?? null, medium: utm?.medium ?? null, campaign: utm?.campaign ?? null, content: utm?.content ?? null, term: utm?.term ?? null },
+      address: { city: buyer?.address?.city ?? null, state: buyer?.address?.state ?? null, country: buyer?.address?.country ?? null, zip: buyer?.address?.zipCode ?? null },
+      recurrenceKey: contract?.id ?? null,
+      installmentNumber: null,
+      installments: null,
+      isOrderBump: isBump,
+      mainSaleTransactionId: isBump ? mainTransactionId : null,
+      items: [{ productId: item.productId ?? null, parentId: item.parentId ?? null, name: productName, value: itemValue }],
+      productParentId: item.parentId ?? null,
+      totalInstallmentsRaw: null,
+      contractUnlimitedInstallments: contract?.isUnlimitedInstallments ?? null,
+    };
+  });
+}
+
 export function parseModernPayload(body: EduzzModernPayload): SaleEvent | { ignored: string } {
   if (body.event !== "myeduzz.invoice_paid") return { ignored: `event=${body.event ?? "desconhecido"}` };
   const data = body.data ?? {};
@@ -1479,11 +1591,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ received: true });
   }
 
-  const sale = isModernPayload(body) ? parseModernPayload(body as EduzzModernPayload) : parseLegacyPayload(body);
-  if ("ignored" in sale) {
-    return NextResponse.json({ received: true, ignored: sale.ignored });
-  }
-
   // ── REGRA "só compras reais" (2026-06-23, decisão do usuário) ───────────────
   // Mantém SOMENTE: venda única (cartão/pix/boleto à vista, ou a 1ª parcela de
   // boleto parcelado) E a 1ª cobrança REAL de uma assinatura/contrato. São
@@ -1493,6 +1600,32 @@ export async function POST(request: NextRequest) {
   //   - assinatura capturada tarde (a 1ª cobrança que recebemos já é "13 de 18").
   // Antes, parcela e renovação geravam linhas ("Installment"/"Renewal") e a
   // renovação somava MRR — esse comportamento foi removido a pedido do usuário.
+
+  // Formato flat moderno: todos os itens do checkout (produto + order bumps) vêm
+  // num único payload — processa cada item como uma venda separada.
+  if (isFlatModernPayload(body)) {
+    const sales = parseFlatModernPayloadAllItems(body);
+    const results: unknown[] = [];
+    for (const sale of sales) {
+      if ("ignored" in sale) { results.push(sale); continue; }
+      if (isInstallmentContinuation(sale)) { results.push({ excluded: "installment", parcela: sale.installmentNumber }); continue; }
+      if (await alreadyProcessed(db, companyId, sale.transactionId)) { results.push({ duplicate: true, produto: sale.productName }); continue; }
+      if (sale.recurrenceKey && (await isKnownRecurrence(db, companyId, sale.recurrenceKey))) { results.push({ excluded: "renewal", produto: sale.productName }); continue; }
+      try {
+        const result = await recordSale(db, companyId, sale);
+        results.push(result?.excluded ? { excluded: result.excluded } : result?.pending ? { pending: true, produto: sale.productName } : { saved: sale.productName, revenue: sale.value });
+      } catch (err) {
+        console.error("[eduzz webhook] falha ao registrar item:", err instanceof Error ? err.message : err);
+        results.push({ error: sale.productName });
+      }
+    }
+    return NextResponse.json({ received: true, items: results.length, results });
+  }
+
+  const sale = isModernPayload(body) ? parseModernPayload(body as EduzzModernPayload) : parseLegacyPayload(body);
+  if ("ignored" in sale) {
+    return NextResponse.json({ received: true, ignored: sale.ignored });
+  }
 
   if (isInstallmentContinuation(sale)) {
     // Parcela 2+ de boleto: descartada (a compra já contou na parcela 1).

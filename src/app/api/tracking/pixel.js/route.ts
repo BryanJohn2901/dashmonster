@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { geolocation } from "@vercel/functions";
 
 // Servido via route handler (não public/pixel.js estático) pra poder injetar
 // a origem da API em runtime e controlar cache sem passo de build — TTL
@@ -23,15 +24,27 @@ import { NextRequest } from "next/server";
 // (ex.: `document.currentScript`) — isso seria frágil com Google Tag Manager
 // e outras formas de injeção dinâmica de script, comuns no perfil de cliente
 // desta agência.
-function buildPixelScript(apiBase: string, proxyMode: boolean): string {
+function buildPixelScript(apiBase: string, proxyMode: boolean, serverGeoJson: string): string {
+  // SÓ o track-event precisa passar pelo dm-proxy.php — é a única chamada que
+  // grava o Set-Cookie de 1ª parte (_dm_uid). config NÃO seta cookie, então vai
+  // DIRETO pro backend mesmo em modo proxy, poupando 1 hop pelo PHP do cliente
+  // (e elimina de vez a classe de bug do separador "?ep=config?client_id=", já
+  // que config nunca mais carrega a query do proxy). O pixel.js em si também é
+  // carregado direto da Vercel pelo snippet novo (ver TrackingConfigPanel) com
+  // `async`, então o único hop que sobra no PHP é o do cookie.
   const trackUrl = proxyMode ? "/dm-proxy.php?ep=track" : `${apiBase}/api/tracking/track-event`;
-  const configUrl = proxyMode ? "/dm-proxy.php?ep=config" : `${apiBase}/api/tracking/config`;
+  const configUrl = `${apiBase}/api/tracking/config`;
   return `(function () {
   "use strict";
 
   var TRACK_URL = ${JSON.stringify(trackUrl)};
   var CONFIG_URL = ${JSON.stringify(configUrl)};
   var PROXY_MODE = ${proxyMode ? "true" : "false"};
+  // Geo injetado pelo servidor ao servir este script — só em modo proxy, onde
+  // a request do pixel.js chega direto do browser pra Vercel (não via PHP) e
+  // a Vercel tem o IP real do visitante. No track-event, em modo proxy, a
+  // request já passou pelo PHP e a Vercel veria o IP do servidor PHP.
+  var SERVER_GEO = ${serverGeoJson};
   var COOKIE_NAME = "_dm_uid";
   var COOKIE_DAYS = 400; // máximo aceito pelo Chrome pra cookies de 1ª parte
   // Id do visitante memoizado por carga de página — ver getUserId().
@@ -40,6 +53,14 @@ function buildPixelScript(apiBase: string, proxyMode: boolean): string {
   // Qual pixel da empresa usar (migration 037, 1 por landing page/produto) —
   // omitido em Tracker.init() = usa o pixel "is_default" da empresa.
   var currentPixelSlug = null;
+  // geo capturada via config endpoint — esse fetch vai SEMPRE do browser direto
+  // pra Vercel (nunca passa pelo PHP), então a Vercel vê o IP real do visitante
+  // mesmo no snippet legado (onde PHP serve o pixel.js e SERVER_GEO fica com a
+  // geo do servidor PHP). configGeo substitui SERVER_GEO quando disponível.
+  var configGeo = null;
+  // clientId pendente de PageView — disparado só depois que config resolver, pra
+  // o PageView já sair com configGeo correta mesmo no snippet legado.
+  var pendingPageViewClientId = null;
 
   // ─── Meta Pixel (fbq) no navegador, pareado por event_id com a CAPI ────────
   // Carregamos o fbq da própria Meta (não um 2º script — é o mesmo de sempre)
@@ -89,14 +110,15 @@ function buildPixelScript(apiBase: string, proxyMode: boolean): string {
     if (currentPixelSlug) url += "&pixel_slug=" + encodeURIComponent(currentPixelSlug);
     fetch(url)
       .then(function (r) { return r.json(); })
-      .then(function (cfg) { onConfigResolved(cfg && cfg.metaPixelId); })
-      .catch(function () { onConfigResolved(null); });
+      .then(function (cfg) { onConfigResolved(cfg && cfg.metaPixelId, cfg && cfg.geo); })
+      .catch(function () { onConfigResolved(null, null); });
   }
 
-  function onConfigResolved(metaPixelId) {
+  function onConfigResolved(metaPixelId, geo) {
     configResolved = true;
     hasMetaPixel = Boolean(metaPixelId);
     currentMetaPixelId = metaPixelId || null;
+    configGeo = (geo && (geo.country || geo.city)) ? geo : null;
     if (hasMetaPixel) {
       safe(function () { loadFbq(metaPixelId, getLeadCache()); });
       for (var i = 0; i < pendingFbqCalls.length; i++) {
@@ -106,6 +128,10 @@ function buildPixelScript(apiBase: string, proxyMode: boolean): string {
       }
     }
     pendingFbqCalls = [];
+    if (pendingPageViewClientId) {
+      safe(function () { trackPageView(pendingPageViewClientId); });
+      pendingPageViewClientId = null;
+    }
   }
 
   function safe(fn) {
@@ -257,6 +283,7 @@ function buildPixelScript(apiBase: string, proxyMode: boolean): string {
         fbp: getFbp() || undefined,
         fbc: getFbc() || undefined,
         via: PROXY_MODE ? "proxy" : "direct",
+        server_geo: PROXY_MODE ? (configGeo || SERVER_GEO) : undefined,
       },
       extra,
       { user_data: enrichedUserData }
@@ -274,12 +301,18 @@ function buildPixelScript(apiBase: string, proxyMode: boolean): string {
     void send(clientId, "PageView", {});
   }
 
-  // Detecta campos de nome por name/id ou autocomplete — pra hashear fn/ln
-  // pro user_data da CAPI (a Meta usa nome como chave de match também, junto
-  // com email/telefone). Não impede a captura genérica em "fields" (dashboard).
+  // Detecta campos de nome/telefone por name/id ou autocomplete — pra hashear
+  // fn/ln/ph pro user_data da CAPI (a Meta usa esses como chaves de match).
+  // Não impede a captura genérica em "fields" (dashboard).
   var FIRST_NAME_RE = /^(first[-_ ]?name|fname|nome)$/i;
   var LAST_NAME_RE = /^(last[-_ ]?name|lname|sobrenome|apelido)$/i;
   var FULL_NAME_RE = /^(name|full[-_ ]?name|nome[-_ ]?completo)$/i;
+  // Telefone: forms brasileiros quase sempre usam type="text" + máscara JS
+  // (não type="tel") — sem essa regex, qualquer campo que não seja type="tel"
+  // nunca vira ph no user_data da CAPI e a Meta perde o sinal mais forte de
+  // match no mercado BR. Só ativa pra campos de texto (não "tel", já tratado
+  // acima) pra não hashear o mesmo campo 2x.
+  var PHONE_RE = /^(phone|cel|celular|telefone?|fone|mobile|whatsapp|tel)$/i;
 
   function attachFormListener(clientId) {
     document.addEventListener(
@@ -334,6 +367,10 @@ function buildPixelScript(apiBase: string, proxyMode: boolean): string {
             }
 
             var autocomplete = (el.autocomplete || "").toLowerCase();
+            if (!userData.ph && (PHONE_RE.test(key) || autocomplete === "tel")) {
+              var phTextHash = await sha256Hex(normalizePhone(el.value));
+              if (phTextHash) { userData.ph = phTextHash; if (!pii.phone) pii.phone = el.value.trim(); }
+            }
             if (!userData.fn && (FIRST_NAME_RE.test(key) || autocomplete === "given-name")) {
               var fnHash = await sha256Hex(el.value);
               if (fnHash) userData.fn = fnHash;
@@ -379,11 +416,27 @@ function buildPixelScript(apiBase: string, proxyMode: boolean): string {
     // (Estúdio > Tracking > Configuração); sem ele, usa o pixel padrão da empresa.
     init: function (clientId, pixelSlug) {
       currentPixelSlug = pixelSlug || null;
+      pendingPageViewClientId = clientId;
       safe(function () { initMetaConfig(clientId); });
-      safe(function () { trackPageView(clientId); });
       safe(function () { attachFormListener(clientId); });
     },
   };
+
+  // ─── Fila estilo gtag/fbq — deixa o script carregar com \`async\` ───────────
+  // O snippet novo carrega este arquivo com \`async\` (não trava o parse/render
+  // da página do cliente) e empilha o init em window.dmq ANTES do script chegar:
+  //   window.dmq=window.dmq||[]; dmq.push(["init","empresa","pixel"]);
+  // Drenamos a fila aqui e trocamos dmq.push por execução imediata, pra um push
+  // tardio (depois que o script carregou) também rodar na hora. O Tracker.init()
+  // direto (snippet legado, script bloqueante) continua válido — window.Tracker
+  // segue exposto acima, então nenhuma instalação antiga quebra.
+  function dmExec(args) {
+    if (!args || !args.length) return;
+    if (args[0] === "init") safe(function () { window.Tracker.init(args[1], args[2]); });
+  }
+  var existingQueue = window.dmq && window.dmq.length ? window.dmq : [];
+  for (var qi = 0; qi < existingQueue.length; qi++) dmExec(existingQueue[qi]);
+  window.dmq = { push: function (args) { dmExec(args); } };
 })();
 `;
 }
@@ -392,7 +445,25 @@ export async function GET(request: NextRequest) {
   const apiBase = process.env.NEXT_PUBLIC_APP_URL ?? request.nextUrl.origin;
   const proxyMode = request.nextUrl.searchParams.get("via") === "proxy";
 
-  return new Response(buildPixelScript(apiBase, proxyMode), {
+  // Em modo proxy, a request DO PIXEL.JS vem direto do browser (não via PHP) —
+  // nessa request a Vercel tem o IP real do visitante e os x-vercel-ip-* certos.
+  // Injetamos esse geo no script pra track-event receber via payload.server_geo
+  // (em track-event a Vercel vê o IP do servidor PHP do cliente, não do visitante).
+  // Em modo direto, track-event já recebe a request do browser diretamente.
+  let serverGeoJson = "null";
+  if (proxyMode) {
+    const geo = geolocation(request);
+    serverGeoJson = JSON.stringify({
+      country: geo.country ?? null,
+      countryRegion: geo.countryRegion ?? null,
+      city: geo.city ?? null,
+      postalCode: geo.postalCode ?? null,
+      latitude: geo.latitude ? parseFloat(geo.latitude) || null : null,
+      longitude: geo.longitude ? parseFloat(geo.longitude) || null : null,
+    });
+  }
+
+  return new Response(buildPixelScript(apiBase, proxyMode, serverGeoJson), {
     status: 200,
     headers: {
       "Content-Type": "application/javascript; charset=utf-8",

@@ -15,16 +15,28 @@ describe("GET /api/tracking/pixel.js", () => {
     expect(script).toContain("var PROXY_MODE = false");
   });
 
-  it("modo proxy (?via=proxy): URLs relativas pro dm-proxy.php do próprio cliente, getUserId() guardado por PROXY_MODE", async () => {
+  it("modo proxy (?via=proxy): só TRACK_URL é relativo pro dm-proxy.php (cookie 1ª parte); CONFIG_URL vai direto pro backend; getUserId() guardado por PROXY_MODE", async () => {
     const res = await GET(buildRequest("?via=proxy"));
     const script = await res.text();
 
     expect(script).toContain('var TRACK_URL = "/dm-proxy.php?ep=track"');
-    expect(script).toContain('var CONFIG_URL = "/dm-proxy.php?ep=config"');
+    // config não seta cookie — vai DIRETO pro dashmonster mesmo em modo proxy
+    // (poupa 1 hop pelo PHP e elimina a classe de bug do separador ?ep=config?).
+    expect(script).toContain('var CONFIG_URL = "http://localhost:3000/api/tracking/config"');
+    expect(script).not.toContain('CONFIG_URL = "/dm-proxy.php?ep=config"');
     expect(script).toContain("var PROXY_MODE = true");
     // getUserId() não pode escrever o cookie incondicionalmente nesse modo —
     // a escrita via JS tem que estar atrás do `if (!PROXY_MODE)`.
     expect(script).toMatch(/if \(!PROXY_MODE\) \{\s*\n\s*\/\/.*\n(\s*\/\/.*\n)*\s*writeCookie\(COOKIE_NAME, id, COOKIE_DAYS\);/);
+  });
+
+  it("expõe a fila dmq (carregamento async) e mantém window.Tracker pro snippet legado", async () => {
+    const script = await (await GET(buildRequest("?via=proxy"))).text();
+    // Drena a fila existente e troca push por execução imediata (estilo gtag/fbq).
+    expect(script).toContain("window.dmq = { push:");
+    expect(script).toContain('if (args[0] === "init")');
+    // Tracker.init() direto (snippet bloqueante legado) continua funcionando.
+    expect(script).toContain("window.Tracker = {");
   });
 
   it("manda via:\"proxy\"/\"direct\" em todo evento (migration 057), pro dashboard saber se o cookie nasceu 1ª parte", async () => {

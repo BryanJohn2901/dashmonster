@@ -4,13 +4,14 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 // tem ~2 anos de vida). Subir junto quando uma nova virar a estável recomendada.
 const META_API_VERSION = "v23.0";
 
-// Timeout do POST pra Graph API. Sem isso, se a Meta pendurar, o `await`
-// pendura junto: no track-event a function fica viva até a Vercel matar por
-// maxDuration (e aí capi_status nunca sai de "pending"); no webhook da Eduzz
-// atrasa a resposta 200 que a Eduzz espera. Com timeout, Meta lenta vira
-// capi_status "failed" com mensagem clara, rápido. (Não vira fire-and-forget:
-// na Vercel a function pode morrer após o return, perdendo o envio — o await
-// curto + timeout é o equilíbrio certo.)
+// Timeout do POST pra Graph API. Sem isso, se a Meta pendurar, este await
+// pendura junto e a function fica viva até a Vercel matar por maxDuration (e aí
+// capi_status nunca sai de "pending"); no webhook da Eduzz atrasa a resposta 200
+// que a Eduzz espera. Com timeout, Meta lenta vira capi_status "failed" com
+// mensagem clara, rápido. O track-event agenda esta função via after()/waitUntil
+// (roda DEPOIS da resposta) — o waitUntil mantém a function viva até a Promise
+// resolver, então o envio não se perde mesmo fora do caminho da resposta; este
+// timeout é o que garante que ela resolve dentro do maxDuration.
 const META_CAPI_TIMEOUT_MS = 8000;
 
 async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
