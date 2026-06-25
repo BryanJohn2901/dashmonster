@@ -241,6 +241,51 @@ export function resolveGoalResultValue(d: MetaInsight, goal: CampaignGoal | unde
 }
 
 /**
+ * Label curto do evento que representa o "Resultado" de uma campanha,
+ * derivado do objetivo real (optimization_goal + promoted_object).
+ * Usado para exibir "Resultados (EndForm)" nos KPIs e no funil.
+ * Retorna undefined quando o objetivo é desconhecido ou não-mapeável.
+ */
+export function goalToEventLabel(goal: CampaignGoal | undefined): string | undefined {
+  const g = goal?.optimizationGoal;
+  if (!g) return undefined;
+  const CUSTOM_EVENT_MAP: Record<string, string> = {
+    PURCHASE: "Compra", LEAD: "Lead (pixel)", COMPLETE_REGISTRATION: "Cadastro",
+    CONTENT_VIEW: "Vis. Conteúdo", ADD_TO_CART: "Carrinho", INITIATED_CHECKOUT: "Checkout",
+    ADD_PAYMENT_INFO: "Info. pagamento", SEARCH: "Busca", SUBSCRIBE: "Assinatura",
+    START_TRIAL: "Trial", CONTACT: "Contato", SCHEDULE: "Agendamento",
+    SUBMIT_APPLICATION: "Formulário", DONATE: "Doação",
+  };
+  switch (g) {
+    case "OFFSITE_CONVERSIONS":
+    case "CONVERSIONS":
+    case "OFFLINE_CONVERSIONS": {
+      const ct = goal!.customEventType;
+      if (!ct || ct === "OTHER") return goal!.customEventStr ?? undefined;
+      return CUSTOM_EVENT_MAP[ct] ?? ct.toLowerCase();
+    }
+    case "LEAD_GENERATION":
+    case "QUALITY_LEAD":       return "Lead (formulário)";
+    case "QUALITY_CALL":       return "Lead (ligação)";
+    case "LINK_CLICKS":        return "Clique no link";
+    case "LANDING_PAGE_VIEWS": return "Vis. de página";
+    case "POST_ENGAGEMENT":    return "Engajamento";
+    case "PAGE_LIKES":         return "Curtida";
+    case "THRUPLAY":
+    case "VIDEO_VIEWS":        return "Visualização de vídeo";
+    case "APP_INSTALLS":       return "Instalação de app";
+    case "CONVERSATIONS":
+    case "REPLIES":            return "Conversa";
+    case "PROFILE_VISIT":
+    case "VISIT_INSTAGRAM_PROFILE": return "Visita ao perfil";
+    case "REACH":              return "Pessoas alcançadas";
+    case "VALUE":
+    case "MAXIMIZE_VALUE":     return "Compra";
+    default:                   return undefined;
+  }
+}
+
+/**
  * Resultado REAL de uma linha, com a melhor fonte disponível:
  *   1º) resultType configurado manualmente (override do usuário, quando houver);
  *   2º) objetivo da campanha vindo da Meta (optimization_goal/promoted_object);
