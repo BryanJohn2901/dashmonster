@@ -661,7 +661,7 @@ function CreativeCard({
 
 // ─── Creative Drawer helpers ──────────────────────────────────────────────────
 
-const DRAWER_GRAD = "linear-gradient(135deg, #6366C8 0%, #313491 100%)";
+const DRAWER_GRAD = "var(--dm-btn-primary-bg)";
 
 interface InsightChip { label: string; color: "green" | "yellow" | "red" | "blue"; }
 
@@ -669,10 +669,10 @@ const CHIP_STYLE = {
   green:  { background: "rgba(5,205,153,0.10)",  color: "#05CD99", border: "1px solid rgba(5,205,153,0.22)" },
   yellow: { background: "rgba(244,166,13,0.10)", color: "#F4A60D", border: "1px solid rgba(244,166,13,0.22)" },
   red:    { background: "rgba(238,93,80,0.10)",  color: "#EE5D50", border: "1px solid rgba(238,93,80,0.22)" },
-  blue:   { background: "rgba(99,102,200,0.10)", color: "#6366C8", border: "1px solid rgba(99,102,200,0.22)" },
+  blue:   { background: "rgba(124,58,237,0.10)", color: "#7C3AED", border: "1px solid rgba(124,58,237,0.22)" },
 } as const;
 
-const QUALITY_TOP = { good: "#05CD99", avg: "#F4A60D", bad: "#EE5D50", neutral: "#6366C8" } as const;
+const QUALITY_TOP = { good: "#05CD99", avg: "#F4A60D", bad: "#EE5D50", neutral: "#7C3AED" } as const;
 type Quality = keyof typeof QUALITY_TOP;
 
 function mq(metric: "ctr" | "cpl" | "roas" | "default", val: number): Quality {
@@ -955,7 +955,7 @@ function PreviewModal({
     : null;
 
   const score      = computeScore(insight);
-  const scoreColor = score === null ? "#6366C8" : score >= 70 ? "#05CD99" : score >= 40 ? "#F4A60D" : "#EE5D50";
+  const scoreColor = score === null ? "#7C3AED" : score >= 70 ? "#05CD99" : score >= 40 ? "#F4A60D" : "#EE5D50";
 
   const campaignPeers = useMemo(() =>
     allAds
@@ -1114,7 +1114,7 @@ function PreviewModal({
                 background: showIframe ? "var(--dm-bg-surface)" : DRAWER_GRAD,
                 color: showIframe ? "var(--dm-text-secondary)" : "#fff",
                 border: showIframe ? "1px solid var(--dm-border-default)" : "none",
-                boxShadow: showIframe ? "none" : "0 4px 14px rgba(49,52,145,0.28)",
+                boxShadow: showIframe ? "none" : "0 4px 14px rgba(124,58,237,0.28)",
               }}
             >
               {showIframe ? (
@@ -1305,7 +1305,7 @@ function PreviewModal({
             )}
             <a href={ad.adLink} target="_blank" rel="noopener noreferrer"
               className="flex flex-1 items-center justify-center gap-2 rounded-[9px] py-2.5 text-[12px] font-bold text-white transition hover:opacity-90"
-              style={{ background: DRAWER_GRAD, boxShadow: "0 4px 14px rgba(49,52,145,0.22)" }}>
+              style={{ background: DRAWER_GRAD, boxShadow: "0 4px 14px rgba(124,58,237,0.22)" }}>
               <ExternalLink size={12} /> Ver no Gerenciador de Anúncios
             </a>
           </div>

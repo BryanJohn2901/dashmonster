@@ -200,18 +200,18 @@ function TabPersonalization() {
       {/* ── Modo DEV — acesso total ── */}
       <div className="rounded-xl p-4"
         style={{
-          background: devActive ? "rgba(99,102,200,0.08)" : "var(--dm-bg-elevated)",
-          border: `1px solid ${devActive ? "#6366C8" : "var(--dm-border-subtle)"}`,
+          background: devActive ? "rgba(124,58,237,0.08)" : "var(--dm-bg-elevated)",
+          border: `1px solid ${devActive ? "#7C3AED" : "var(--dm-border-subtle)"}`,
         }}>
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-2.5">
             <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full"
-              style={{ backgroundColor: devActive ? "#6366C8" : "rgba(99,102,200,0.12)" }}>
-              <KeyRound size={16} style={{ color: devActive ? "#fff" : "#6366C8" }} />
+              style={{ backgroundColor: devActive ? "#7C3AED" : "rgba(124,58,237,0.12)" }}>
+              <KeyRound size={16} style={{ color: devActive ? "#fff" : "#7C3AED" }} />
             </div>
             <div>
               <p className="text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>
-                Modo DEV {devActive && <span className="ml-1 text-[11px] font-bold" style={{ color: "#6366C8" }}>· ativo</span>}
+                Modo DEV {devActive && <span className="ml-1 text-[11px] font-bold" style={{ color: "#7C3AED" }}>· ativo</span>}
               </p>
               <p className="mt-0.5 text-xs" style={{ color: "var(--dm-text-tertiary)" }}>
                 Acesso total: destrava a configuração de qualquer empresa, tokens e membros — você é tratado como dono em tudo.
@@ -244,7 +244,7 @@ function TabPersonalization() {
             />
             <button type="button" onClick={handleEnableDev}
               className="flex h-10 items-center gap-1.5 rounded-xl px-4 text-xs font-bold text-white transition hover:opacity-90"
-              style={{ background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)" }}>
+              style={{ background: "var(--dm-btn-primary-bg)" }}>
               <KeyRound size={13} /> Ativar
             </button>
           </div>
@@ -339,7 +339,7 @@ export function MyAccount({
           style={{
             width: 200, height: 200,
             top: -60, left: "30%",
-            background: "radial-gradient(circle, rgba(49,52,145,0.22) 0%, transparent 70%)",
+            background: "radial-gradient(circle, rgba(124,58,237,0.22) 0%, transparent 70%)",
           }}
         />
       </div>
@@ -356,7 +356,7 @@ export function MyAccount({
             onClick={() => setPickerOpen(true)}
             title="Alterar foto de perfil"
             className="account-avatar text-2xl overflow-hidden transition hover:opacity-85 focus:outline-none"
-            style={{ padding: 0, border: "2px solid rgba(49,52,145,0.35)" }}
+            style={{ padding: 0, border: "2px solid rgba(124,58,237,0.35)" }}
           >
             {resolvedAvatarSrc ? (
               <img src={resolvedAvatarSrc} alt="Avatar" className="h-full w-full object-cover" />
@@ -398,7 +398,7 @@ export function MyAccount({
             <div className="mt-2.5 flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold"
                 style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-elevated)", color: "var(--dm-text-secondary)" }}>
-                <Building2 size={12} style={{ color: "#6366C8" }} />
+                <Building2 size={12} style={{ color: "#7C3AED" }} />
                 {company.name}
                 {role && (
                   <span className="font-bold" style={{ color: ACCOUNT_ROLE_COLORS[role] }}>
@@ -410,7 +410,7 @@ export function MyAccount({
               {memberships.length > 1 && (
                 <label className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold cursor-pointer"
                   style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)", color: "var(--dm-text-secondary)" }}>
-                  <ArrowLeftRight size={12} style={{ color: "#6366C8" }} />
+                  <ArrowLeftRight size={12} style={{ color: "#7C3AED" }} />
                   <select value={company.id} onChange={(e) => switchCompany(e.target.value)} aria-label="Trocar empresa ativa"
                     className="cursor-pointer bg-transparent text-[11px] font-semibold outline-none" style={{ color: "var(--dm-text-secondary)" }}>
                     {memberships.map((m) => <option key={m.company.id} value={m.company.id}>{m.company.name}</option>)}

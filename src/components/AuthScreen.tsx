@@ -11,7 +11,7 @@ interface AuthScreenProps {
   supabaseReady: boolean;
 }
 
-const BRAND_GRAD = "linear-gradient(135deg, #6366C8 0%, #313491 100%)";
+const BRAND_GRAD = "linear-gradient(135deg, #7C3AED 0%, #7C3AED 100%)";
 
 export function AuthScreen({ onSignIn, onSignUp, authError, supabaseReady }: AuthScreenProps) {
   const [email,    setEmail]    = useState("");
@@ -44,9 +44,9 @@ export function AuthScreen({ onSignIn, onSignUp, authError, supabaseReady }: Aut
         <div className="mb-10 flex items-center gap-3">
           <div
             className="flex h-9 w-9 items-center justify-center rounded-[10px] text-[18px]"
-            style={{ background: BRAND_GRAD, boxShadow: "0 4px 12px rgba(49,52,145,0.4)" }}
+            style={{ background: "#B6F500", boxShadow: "0 4px 12px rgba(182,245,0,0.35)" }}
           >
-            <DashMonsterLogo size={20} className="text-white" />
+            <DashMonsterLogo size={20} className="text-[#0E1108]" />
           </div>
           <span
             className="text-[18px] uppercase tracking-wide text-gray-900 dark:text-white"
@@ -119,7 +119,7 @@ export function AuthScreen({ onSignIn, onSignUp, authError, supabaseReady }: Aut
               padding: "13px",
               borderRadius: 14,
               background: BRAND_GRAD,
-              boxShadow: "0 4px 18px rgba(49,52,145,0.38)",
+              boxShadow: "0 4px 18px rgba(124,58,237,0.38)",
               letterSpacing: "0.01em",
             }}
           >
@@ -137,7 +137,7 @@ export function AuthScreen({ onSignIn, onSignUp, authError, supabaseReady }: Aut
             type="button"
             onClick={() => setMode(mode === "login" ? "signup" : "login")}
             className="font-semibold transition hover:underline"
-            style={{ color: "#313491" }}
+            style={{ color: "#7C3AED" }}
           >
             {mode === "login" ? "Criar conta" : "Entrar"}
           </button>
@@ -151,7 +151,7 @@ export function AuthScreen({ onSignIn, onSignUp, authError, supabaseReady }: Aut
       >
         <div
           className="relative flex h-full w-full flex-col items-center justify-center p-12"
-          style={{ background: "linear-gradient(160deg, #0B1437 0%, #1a1b5c 40%, #313491 80%, #6366C8 100%)" }}
+          style={{ background: "linear-gradient(160deg, #0B1437 0%, #1a1b5c 40%, #7C3AED 80%, #7C3AED 100%)" }}
         >
           {/* Orb decorations */}
           <div className="absolute right-[10%] top-[15%] h-48 w-48 rounded-full"
@@ -229,7 +229,7 @@ function Field({ id, label, type, placeholder, value, onChange, focused, setFocu
         style={{
           padding: "12px 16px",
           borderRadius: 14,
-          border: `2px solid ${isActive ? "#313491" : "#E9EDF7"}`,
+          border: `2px solid ${isActive ? "#7C3AED" : "#E9EDF7"}`,
           fontSize: 14,
           fontFamily: "inherit",
           outline: "none",

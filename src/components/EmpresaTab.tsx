@@ -19,7 +19,7 @@ import { readCustomHistoryTabs, type HistoricalKind } from "@/types/historical";
 import type { UserCategory, UserAccountEntry } from "@/types/userConfig";
 import type { MetaSyncResult } from "@/utils/supabaseCampaigns";
 
-const BRAND = "#6366C8";
+const BRAND = "#7C3AED";
 const ROLE_LABELS: Record<CompanyRole, string> = { owner: "Dono", manager: "Gestor de tráfego", viewer: "Visualização" };
 const HISTORY_KINDS: HistoricalKind[] = ["lancamento", "evento", "perpetuo", "instagram"];
 
@@ -102,7 +102,7 @@ export function EmpresaTab({
     <div className="mx-auto w-full px-4 pb-16 pt-8" style={{ maxWidth: 880 }}>
 
       {/* ── Header: identidade + prontidão + troca de empresa ── */}
-      <div className="rounded-2xl border p-5" style={{ background: "linear-gradient(135deg, rgba(99,102,200,0.10), rgba(49,52,145,0.04))", borderColor: BRAND }}>
+      <div className="rounded-2xl border p-5" style={{ background: "linear-gradient(135deg, rgba(124,58,237,0.10), rgba(124,58,237,0.04))", borderColor: BRAND }}>
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: BRAND }}>
             <Building2 size={22} className="text-white" />
@@ -156,7 +156,7 @@ export function EmpresaTab({
                 className="flex min-w-[112px] items-center gap-2 rounded-xl border px-3 py-2.5 text-left transition-colors"
                 style={{
                   borderColor: isActive ? BRAND : "var(--dm-border-default)",
-                  background:  isActive ? "rgba(99,102,200,0.08)" : "var(--dm-bg-surface)",
+                  background:  isActive ? "rgba(124,58,237,0.08)" : "var(--dm-bg-surface)",
                 }}
               >
                 <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-bold"
@@ -225,7 +225,7 @@ export function EmpresaTab({
           onClick={() => setStepIdx((i) => Math.min(steps.length - 1, i + 1))}
           disabled={stepIdx === steps.length - 1}
           className="flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-[13px] font-bold text-white transition hover:opacity-90 disabled:opacity-30"
-          style={{ background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)" }}
+          style={{ background: "var(--dm-btn-primary-bg)" }}
         >
           Avançar <ChevronRight size={15} />
         </button>

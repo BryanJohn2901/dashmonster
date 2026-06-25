@@ -84,7 +84,25 @@
       "Bash(sed -n '/CREATE TABLE IF NOT EXISTS public.user_account_entries/,/\\);/p' supabase/migrations/007_user_categories.sql)",
       "Bash(awk 'NR<=2669 && /^\\(function|const|export function\\) /{f=$0; fl=NR} NR==2669{print fl\": \"f}' src/components/Dashboard.tsx)",
       "Bash(awk 'NR<=392 && /^\\(function|const [A-Z].*=|export function\\) /{f=$0; fl=NR} NR==392{print fl\": \"f}' src/components/HistoricalView.tsx)",
-      "Bash(awk 'NR>=200 && NR<=270' supabase/migrations/021_companies_multi_tenant.sql)"
+      "Bash(awk 'NR>=200 && NR<=270' supabase/migrations/021_companies_multi_tenant.sql)",
+      "Bash(git stash *)",
+      "Bash(echo \"tsc exit: $?\")"
     ]
-  }
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/hook.mjs\"",
+            "timeout": 5,
+            "statusMessage": "Checking UI changes"
+          }
+        ]
+      }
+    ]
+  },
+  "description": "Impeccable design detector: runs after Edit/Write/MultiEdit on UI files and surfaces findings as system reminders."
 }

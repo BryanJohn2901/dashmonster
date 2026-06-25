@@ -22,7 +22,7 @@ export function ExportReportButton({ buildData, fileName, label = "Relatório" }
         onClick={() => setData(buildData())}
         title="Gerar relatório"
         className="flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-[13px] font-bold text-white shadow-sm transition hover:opacity-90 active:scale-[0.98]"
-        style={{ background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)" }}
+        style={{ background: "var(--dm-btn-primary-bg)" }}
       >
         <FileText size={14} />
         <span className="hidden sm:inline">{label}</span>

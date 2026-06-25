@@ -56,7 +56,7 @@ export default function PerpetuoEmObras() {
       <Link
         href="/"
         className="rounded-xl px-5 py-2.5 text-[13px] font-bold text-white transition hover:opacity-90"
-        style={{ background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)" }}
+        style={{ background: "var(--dm-btn-primary-bg)" }}
       >
         ← Voltar pro que funciona
       </Link>

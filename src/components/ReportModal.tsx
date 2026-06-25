@@ -89,7 +89,7 @@ export function ReportModal({ data, fileName, onClose }: ReportModalProps) {
           style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
           <div className="flex items-center justify-between border-b px-5 py-4" style={{ borderColor: "var(--dm-border-subtle)" }}>
             <div className="flex items-center gap-3">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)" }}>
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ background: "var(--dm-btn-primary-bg)" }}>
                 <FileText size={16} className="text-white" />
               </span>
               <div>
@@ -103,14 +103,14 @@ export function ReportModal({ data, fileName, onClose }: ReportModalProps) {
             <button type="button" onClick={() => { setCustom(false); setStep("preview"); }}
               className="flex flex-col items-start gap-2 rounded-2xl border p-4 text-left transition hover:-translate-y-0.5"
               style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)" }}>
-              <Sparkles size={18} style={{ color: "var(--dm-brand-500, #6366C8)" }} />
+              <Sparkles size={18} style={{ color: "var(--dm-brand-500, #7C3AED)" }} />
               <span className="text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>Configuração atual</span>
               <span className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>Gera com todas as métricas e o funil.</span>
             </button>
             <button type="button" onClick={() => { setCustom(true); setStep("preview"); }}
               className="flex flex-col items-start gap-2 rounded-2xl border p-4 text-left transition hover:-translate-y-0.5"
               style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)" }}>
-              <Settings2 size={18} style={{ color: "var(--dm-brand-500, #6366C8)" }} />
+              <Settings2 size={18} style={{ color: "var(--dm-brand-500, #7C3AED)" }} />
               <span className="text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>Personalizar</span>
               <span className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>Escolha quais cards e etapas incluir.</span>
             </button>
@@ -125,7 +125,7 @@ export function ReportModal({ data, fileName, onClose }: ReportModalProps) {
               <button type="button" onClick={() => setCustom((v) => !v)}
                 className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-semibold"
                 style={custom
-                  ? { background: "var(--dm-brand-500, #6366C8)", color: "#fff" }
+                  ? { background: "var(--dm-brand-500, #7C3AED)", color: "#fff" }
                   : { backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)", border: "1px solid var(--dm-border-default)" }}>
                 <Settings2 size={12} /> Personalizar
               </button>
@@ -140,7 +140,7 @@ export function ReportModal({ data, fileName, onClose }: ReportModalProps) {
                 <div className="space-y-1">
                   {toggles.map((t) => (
                     <label key={t.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-[11px] transition hover:bg-white/5" style={{ color: "var(--dm-text-secondary)" }}>
-                      <input type="checkbox" checked={!hidden.has(t.id)} onChange={() => toggle(t.id)} className="h-3.5 w-3.5 accent-[var(--dm-brand-500,#6366C8)]" />
+                      <input type="checkbox" checked={!hidden.has(t.id)} onChange={() => toggle(t.id)} className="h-3.5 w-3.5 accent-[var(--dm-brand-500,#7C3AED)]" />
                       <span className="truncate">{t.label}</span>
                     </label>
                   ))}
@@ -162,7 +162,7 @@ export function ReportModal({ data, fileName, onClose }: ReportModalProps) {
               {(["png", "pdf"] as const).map((f) => (
                 <button key={f} type="button" onClick={() => setFormat(f)}
                   className="flex items-center gap-1.5 rounded-[10px] px-3 py-1.5 text-[12px] font-semibold transition"
-                  style={format === f ? { background: "var(--dm-brand-500, #6366C8)", color: "#fff" } : { color: "var(--dm-text-tertiary)" }}>
+                  style={format === f ? { background: "var(--dm-brand-500, #7C3AED)", color: "#fff" } : { color: "var(--dm-text-tertiary)" }}>
                   {f === "png" ? <ImageIcon size={13} /> : <FileText size={13} />}{f.toUpperCase()}
                 </button>
               ))}
@@ -171,7 +171,7 @@ export function ReportModal({ data, fileName, onClose }: ReportModalProps) {
               <button type="button" onClick={onClose} className="rounded-xl px-3 py-2 text-[12px] font-semibold" style={{ color: "var(--dm-text-tertiary)" }}>Cancelar</button>
               <button type="button" onClick={() => void save()} disabled={busy}
                 className="flex items-center gap-1.5 rounded-xl px-4 py-2 text-[12px] font-bold text-white disabled:opacity-50"
-                style={{ background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)" }}>
+                style={{ background: "var(--dm-btn-primary-bg)" }}>
                 {busy ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}
                 Salvar {format.toUpperCase()}
               </button>

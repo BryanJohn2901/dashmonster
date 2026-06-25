@@ -106,13 +106,13 @@ const EVENT_LABELS: Record<string, string> = {
 };
 
 const EVENT_COLORS: Record<string, { bg: string; text: string }> = {
-  Lead: { bg: "rgba(49,52,145,0.12)", text: "var(--dm-primary)" },
+  Lead: { bg: "rgba(124,58,237,0.12)", text: "var(--dm-primary)" },
   Contact: { bg: "rgba(16,185,129,0.12)", text: "#059669" },
-  Purchase: { bg: "rgba(245,158,11,0.12)", text: "#d97706" },
+  Purchase: { bg: "rgba(22,163,74,0.12)", text: "#15803D" },
   PageView: { bg: "rgba(100,116,139,0.12)", text: "#475569" },
   AddToCart: { bg: "rgba(139,92,246,0.12)", text: "#7c3aed" },
-  Renewal: { bg: "rgba(245,158,11,0.12)", text: "#d97706" },
-  Installment: { bg: "rgba(245,158,11,0.12)", text: "#d97706" },
+  Renewal: { bg: "rgba(22,163,74,0.12)", text: "#15803D" },
+  Installment: { bg: "rgba(22,163,74,0.12)", text: "#15803D" },
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -429,7 +429,7 @@ function Chip({ label, active, onClick }: { label: string; active: boolean; onCl
       className="rounded-full border px-2.5 py-0.5 text-[10px] font-semibold transition-opacity hover:opacity-80"
       style={{
         borderColor: active ? "var(--dm-primary)" : "var(--dm-border-default)",
-        background: active ? "rgba(49,52,145,0.12)" : "transparent",
+        background: active ? "rgba(124,58,237,0.12)" : "transparent",
         color: active ? "var(--dm-primary)" : "var(--dm-text-tertiary)",
       }}
     >
@@ -476,7 +476,7 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
 
         <div className="flex-1 overflow-y-auto px-6 py-5">
           {selectedLead && (
-            <div className="mb-5 rounded-xl border p-3" style={{ borderColor: "var(--dm-primary)", background: "rgba(49,52,145,0.06)" }}>
+            <div className="mb-5 rounded-xl border p-3" style={{ borderColor: "var(--dm-primary)", background: "rgba(124,58,237,0.06)" }}>
               <div className="mb-2 flex items-center justify-between gap-2">
                 <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-primary)" }}>
                   Dados capturados {selectedLead.id === leadEvents[0]?.id ? "(mais recente)" : ""}
@@ -519,7 +519,7 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
           )}
 
           {purchaseEvents.length > 0 && (
-            <div className="mb-5 rounded-xl border p-3" style={{ borderColor: EVENT_COLORS.Purchase.text, background: "rgba(245,158,11,0.06)" }}>
+            <div className="mb-5 rounded-xl border p-3" style={{ borderColor: EVENT_COLORS.Purchase.text, background: "rgba(22,163,74,0.06)" }}>
               <div className="mb-2 flex items-center justify-between gap-2">
                 <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider" style={{ color: EVENT_COLORS.Purchase.text }}>
                   <ShoppingBag size={12} /> {purchaseEvents.length > 1 ? `${purchaseEvents.length} compras` : "Compra"}
@@ -629,7 +629,7 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
                     </div>
                   )}
                   {(event.event_name === "Purchase" || event.event_name === "Renewal" || event.event_name === "Installment") && (
-                    <div className="mt-1.5 rounded-lg border p-2" style={{ borderColor: EVENT_COLORS.Purchase.text, background: "rgba(245,158,11,0.06)" }}>
+                    <div className="mt-1.5 rounded-lg border p-2" style={{ borderColor: EVENT_COLORS.Purchase.text, background: "rgba(22,163,74,0.06)" }}>
                       <div className="flex items-center gap-1.5">
                         <p className="text-sm font-bold" style={{ color: EVENT_COLORS.Purchase.text }}>{formatMoney(event.value, event.currency)}</p>
                         {event.installment_value != null && event.installment_value !== event.value && (
@@ -640,7 +640,7 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
                         {event.event_name !== "Purchase" && (
                           <span
                             className="rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
-                            style={{ background: "rgba(245,158,11,0.12)", color: "#d97706" }}
+                            style={{ background: "rgba(22,163,74,0.12)", color: "#15803D" }}
                             title={event.main_sale_transaction_id ? `Venda principal #${event.main_sale_transaction_id}` : undefined}
                           >
                             {event.event_name === "Renewal" ? "cobrança recorrente" : "parcela"}
@@ -905,7 +905,7 @@ export function TrackingEventsView() {
                 type="button"
                 onClick={() => setConfigTab(tab)}
                 className="h-9 flex-1 rounded-lg text-xs font-bold transition"
-                style={configTab === tab ? { background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)", color: "#fff" } : { color: "var(--dm-text-tertiary)" }}
+                style={configTab === tab ? { background: "var(--dm-btn-primary-bg)", color: "#fff" } : { color: "var(--dm-text-tertiary)" }}
               >
                 {label}
               </button>

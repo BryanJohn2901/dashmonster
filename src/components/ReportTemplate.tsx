@@ -7,7 +7,7 @@ export const REPORT_WIDTH = 1080;
 
 // Acentos semânticos (legíveis em light e dark). Valor neutro usa token de texto.
 const ACCENT_HEX: Record<ReportAccent, string> = {
-  brand: "#6366C8",
+  brand: "#7C3AED",
   green: "#0EA66E",
   rose:  "#E5484D",
   amber: "#D9870B",
@@ -71,7 +71,7 @@ export function ReportTemplate({ data, hiddenIds, generatedAt, innerRef }: Repor
   return (
     <div ref={innerRef} style={{ width: REPORT_WIDTH, background: page, padding: 32, fontFamily: bodyFont, color: tPri, boxSizing: "border-box" }}>
       {/* Cabeçalho */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, borderRadius: 18, padding: "20px 24px", marginBottom: 28, background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)", boxShadow: "0 8px 24px rgba(49,52,145,0.25)" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, borderRadius: 18, padding: "20px 24px", marginBottom: 28, background: "linear-gradient(135deg,#7C3AED 0%,#7C3AED 100%)", boxShadow: "0 8px 24px rgba(124,58,237,0.25)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <div style={{ display: "flex", height: 46, width: 46, alignItems: "center", justifyContent: "center", borderRadius: 13, background: "rgba(255,255,255,0.16)" }}>
             <Sparkles size={22} color="#fff" />

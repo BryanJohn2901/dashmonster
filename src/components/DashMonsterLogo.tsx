@@ -13,7 +13,7 @@ export function DashMonsterLogo({ size = 32, className = "" }: DashMonsterLogoPr
       viewBox="0 0 159.01 159.01"
       width={size}
       height={size}
-      className={`text-[#313491] dark:text-white ${className}`}
+      className={`text-[#0E1108] dark:text-[#B6F500] ${className}`}
       aria-label="DashMonster logo"
     >
       {/* Outer shape with rounder corners (r≈30) + face cutouts */}

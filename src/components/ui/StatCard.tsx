@@ -69,12 +69,12 @@ export function StatCard({
   breakdown?: TileBreakdown[];
 }) {
   return (
-    <div className="flex flex-col justify-between gap-2.5 rounded-2xl border p-4 transition-shadow hover:shadow-md"
-      style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
+    <div className="flex flex-col justify-between gap-2.5 rounded-2xl border p-4"
+      style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-subtle)" }}>
       <div className="flex items-center justify-between">
         <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
-          <span className="flex h-6 w-6 items-center justify-center rounded-lg" style={{ backgroundColor: `${color}1a` }}>
-            <Icon size={13} style={{ color }} />
+          <span className="flex h-6 w-6 items-center justify-center rounded-lg" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
+            <Icon size={13} style={{ color: "var(--dm-text-tertiary)" }} />
           </span>
           {label}
         </span>

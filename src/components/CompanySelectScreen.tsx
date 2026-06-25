@@ -32,7 +32,7 @@ export function CompanySelectScreen({
         {/* Header */}
         <div className="mb-7 text-center">
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl"
-            style={{ background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)" }}>
+            style={{ background: "var(--dm-btn-primary-bg)" }}>
             <Building2 size={26} className="text-white" />
           </div>
           <h1 className="text-[22px] font-bold leading-tight"
@@ -56,12 +56,12 @@ export function CompanySelectScreen({
                 className="group flex items-center gap-3.5 rounded-2xl border p-4 text-left transition-all hover:opacity-95 active:scale-[0.99]"
                 style={{
                   background: "var(--dm-bg-surface)",
-                  borderColor: active ? "#6366C8" : "var(--dm-border-default)",
-                  boxShadow: active ? "0 0 0 3px rgba(99,102,200,0.15)" : "0 4px 16px rgba(0,0,0,0.08)",
+                  borderColor: active ? "#7C3AED" : "var(--dm-border-default)",
+                  boxShadow: active ? "0 0 0 3px rgba(124,58,237,0.15)" : "0 4px 16px rgba(0,0,0,0.08)",
                 }}
               >
                 <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl text-base font-bold text-white"
-                  style={{ background: company.logoUrl ? "transparent" : "linear-gradient(135deg,#6366C8 0%,#313491 100%)" }}>
+                  style={{ background: company.logoUrl ? "transparent" : "var(--dm-btn-primary-bg)" }}>
                   {company.logoUrl
                     ? <img src={company.logoUrl} alt={company.name} className="h-full w-full object-cover" />
                     : initialsOf(company.name)}

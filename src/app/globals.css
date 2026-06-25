@@ -17,62 +17,68 @@
 :root {
 
   /* ----------------------------------------------------------
-     FUNDAÇÃO — Dashfolio Neo: off-white quente, cards brancos
+     FUNDAÇÃO — Renovação calma: neutro frio, cards brancos, sem cor no fundo
      ---------------------------------------------------------- */
-  --dm-bg-page:          #F7F8FC;
+  --dm-bg-page:          #F5F6F8;
   --dm-bg-surface:       #FFFFFF;
-  --dm-bg-sidebar:       #FFFFFF;
-  --dm-bg-elevated:      #F1F4FA;
-  --dm-bg-card-soft:     #F1F4FA;
-  --dm-bg-surface-hover: #F1F4FA;
-  --dm-divider:          #E2E6EF;
+  --dm-bg-sidebar:       #0E1108;   /* rail PipeFlow: ink escuro em qualquer tema */
+  --dm-bg-elevated:      #EEF0F3;
+  --dm-bg-card-soft:     #EEF0F3;
+  --dm-bg-surface-hover: #EEF0F3;
+  --dm-divider:          #EEF0F3;
 
-  --dm-border-subtle:    #EEF1F6;
-  --dm-border-default:   #E2E6EF;
-  --dm-border-strong:    #C8CDD9;
+  --dm-border-subtle:    #EEF0F3;
+  --dm-border-default:   #E4E7EC;
+  --dm-border-strong:    #D0D5DD;
 
   /* ----------------------------------------------------------
      TIPOGRAFIA
      ---------------------------------------------------------- */
-  --dm-text-primary:     #151821;   /* AAA */
-  --dm-text-secondary:   #6F7482;   /* AA  */
-  --dm-text-tertiary:    #A0A5B3;   /* Decorativo */
+  --dm-text-primary:     #161A1D;   /* near-black, não puro */
+  --dm-text-secondary:   #5B6470;   /* AA  */
+  --dm-text-tertiary:    #98A2B3;   /* muted/decorativo */
   --dm-text-disabled:    #C8CDD9;
   --dm-text-inverse:     #FFFFFF;
 
   /* ----------------------------------------------------------
      MARCA — Indigo DashMonster (#313491 Horizon-adapted)
      ---------------------------------------------------------- */
-  --dm-brand-50:         #EEEEFF;
-  --dm-brand-100:        #DDDDFB;
-  --dm-brand-200:        #C5C5F5;
-  --dm-brand-400:        #4D4EAA;
-  --dm-brand-500:        #313491;
-  --dm-brand-600:        #2a2d82;
-  --dm-brand-700:        #22256b;
-  --dm-brand-900:        #14165c;
+  /* Marca = ROXO (seleção/accent secundário). Ação primária é VERDE (btn). */
+  --dm-brand-50:         #F5F3FF;
+  --dm-brand-100:        #EDE9FE;
+  --dm-brand-200:        #DDD6FE;
+  --dm-brand-400:        #A78BFA;
+  --dm-brand-500:        #7C3AED;
+  --dm-brand-600:        #6D28D9;
+  --dm-brand-700:        #5B21B6;
+  --dm-brand-900:        #4C1D95;
+
+  /* PipeFlow: lime (logo + nav ativo) sobre ink (rail/superfície escura) */
+  --dm-lime:             #B6F500;
+  --dm-ink:              #0E1108;
+  --dm-ink-soft:         #191D14;
 
   /* ----------------------------------------------------------
      NAV — ESTADOS
      ---------------------------------------------------------- */
-  --dm-nav-active-bg:    rgba(49,52,145,0.10);
-  --dm-nav-active-text:  #313491;
-  --dm-nav-active-dot:   #313491;
-  --dm-nav-hover-bg:     rgba(49,52,145,0.05);
-  --dm-nav-hover-text:   #313491;
-  --dm-nav-default-text: #6F7482;
+  --dm-nav-active-bg:    rgba(182,245,0,0.14);
+  --dm-nav-active-text:  #B6F500;
+  --dm-nav-active-dot:   #B6F500;
+  --dm-nav-hover-bg:     rgba(255,255,255,0.06);
+  --dm-nav-hover-text:   #FFFFFF;
+  --dm-nav-default-text: #8A8F84;
 
   /* ----------------------------------------------------------
      BOTÕES
      ---------------------------------------------------------- */
-  --dm-primary:          #313491;
-  --dm-primary-hover:    #282B78;
-  --dm-primary-soft:     rgba(49,52,145,0.10);
-  --dm-primary-border:   rgba(49,52,145,0.22);
-  --dm-primary-vivid:    #4B50D9;
-  --dm-btn-primary-bg:   #313491;
+  --dm-primary:          #7C3AED;   /* roxo = seleção/accent (texto branco passa AA) */
+  --dm-primary-hover:    #6D28D9;
+  --dm-primary-soft:     rgba(124,58,237,0.10);
+  --dm-primary-border:   rgba(124,58,237,0.22);
+  --dm-primary-vivid:    #8B5CF6;
+  --dm-btn-primary-bg:   #15803D;   /* verde = 1 CTA primário por tela */
   --dm-btn-primary-text: #FFFFFF;
-  --dm-btn-primary-hover:#282B78;
+  --dm-btn-primary-hover:#166534;
   --dm-btn-ghost-bg:     rgba(49,52,145,0.10);
   --dm-btn-ghost-text:   #313491;
   --dm-btn-ghost-hover:  rgba(49,52,145,0.16);
@@ -221,7 +227,7 @@
   /* ----------------------------------------------------------
      SHADOW
      ---------------------------------------------------------- */
-  --dm-shadow-soft: 0 8px 24px rgba(17,24,39,0.06);
+  --dm-shadow-soft: 0 1px 2px rgba(17,24,39,0.04);
 
   /* ----------------------------------------------------------
      FOCO
@@ -254,7 +260,7 @@
      Fonte: m3.material.io/foundations/interaction/states
      RGB do primary para composição rgba()
      ========================================================== */
-  --dm-primary-rgb:    49, 52, 145;
+  --dm-primary-rgb:    124, 58, 237;
   --dm-state-hover:    rgba(var(--dm-primary-rgb), 0.08);
   --dm-state-focus:    rgba(var(--dm-primary-rgb), 0.12);
   --dm-state-pressed:  rgba(var(--dm-primary-rgb), 0.16);
@@ -284,31 +290,32 @@
 .dark {
 
   /* ----------------------------------------------------------
-     FUNDAÇÃO — near-black neutro, sem azul dominante
+     FUNDAÇÃO DARK — slate neutro (não navy, não preto); verde/roxo
+     são as únicas coisas saturadas no quadro
      ---------------------------------------------------------- */
-  --dm-bg-page:          #07080C;
-  --dm-bg-surface:       #11131A;
-  --dm-bg-sidebar:       #0B0C12;
-  --dm-bg-elevated:      #151821;
-  --dm-bg-card-soft:     #181B24;
-  --dm-bg-surface-hover: #171A23;
-  --dm-bg-input:         #141720;
-  --dm-bg-table:         #11131A;
-  --dm-bg-table-header:  #151821;
-  --dm-bg-table-row:     #11131A;
-  --dm-bg-table-row-hover: #171A23;
-  --dm-divider:          rgba(255,255,255,0.06);
+  --dm-bg-page:          #15171C;
+  --dm-bg-surface:       #1D2027;
+  --dm-bg-sidebar:       #0E1108;   /* rail PipeFlow: ink escuro */
+  --dm-bg-elevated:      #252932;
+  --dm-bg-card-soft:     #252932;
+  --dm-bg-surface-hover: #252932;
+  --dm-bg-input:         #1D2027;
+  --dm-bg-table:         #1D2027;
+  --dm-bg-table-header:  #252932;
+  --dm-bg-table-row:     #1D2027;
+  --dm-bg-table-row-hover: #252932;
+  --dm-divider:          #2D323B;
 
-  --dm-border-subtle:    rgba(255,255,255,0.05);
-  --dm-border-default:   rgba(255,255,255,0.08);
-  --dm-border-strong:    rgba(255,255,255,0.12);
+  --dm-border-subtle:    #252932;
+  --dm-border-default:   #2D323B;
+  --dm-border-strong:    #3A404B;
 
   /* ----------------------------------------------------------
      TIPOGRAFIA DARK (WCAG AA)
      ---------------------------------------------------------- */
-  --dm-text-primary:     #F4F5F7;
-  --dm-text-secondary:   #A4A9B6;
-  --dm-text-tertiary:    #6F7686;
+  --dm-text-primary:     #F2F4F7;
+  --dm-text-secondary:   #98A2B3;
+  --dm-text-tertiary:    #667085;
   --dm-text-disabled:    #3A404F;
   --dm-text-inverse:     #07080C;
   --dm-icon-primary:     #C8CCD8;
@@ -317,36 +324,37 @@
   /* ----------------------------------------------------------
      MARCA DARK — indigo vibrante sobre fundo escuro
      ---------------------------------------------------------- */
-  --dm-brand-50:         #0D0E1E;
-  --dm-brand-100:        #111230;
-  --dm-brand-200:        #161840;
-  --dm-brand-400:        #4A4FCC;
-  --dm-brand-500:        #6366F1;
-  --dm-brand-600:        #818CF8;
-  --dm-brand-700:        #A5B4FC;
-  --dm-brand-900:        #C7D2FE;
+  /* Marca = ROXO no dark (mais claro p/ contraste). Ação = verde (btn). */
+  --dm-brand-50:         #1A1530;
+  --dm-brand-100:        #2E1065;
+  --dm-brand-200:        #3B1F8C;
+  --dm-brand-400:        #8B5CF6;
+  --dm-brand-500:        #8B5CF6;
+  --dm-brand-600:        #A78BFA;
+  --dm-brand-700:        #C4B5FD;
+  --dm-brand-900:        #DDD6FE;
 
   /* ----------------------------------------------------------
      NAV DARK
      ---------------------------------------------------------- */
-  --dm-nav-active-bg:    rgba(110,114,255,0.16);
-  --dm-nav-active-text:  #6E72FF;
-  --dm-nav-active-dot:   #6E72FF;
-  --dm-nav-hover-bg:     rgba(255,255,255,0.05);
-  --dm-nav-hover-text:   #F4F6FB;
-  --dm-nav-default-text: #A9AFBF;
+  --dm-nav-active-bg:    rgba(182,245,0,0.14);
+  --dm-nav-active-text:  #B6F500;
+  --dm-nav-active-dot:   #B6F500;
+  --dm-nav-hover-bg:     rgba(255,255,255,0.06);
+  --dm-nav-hover-text:   #FFFFFF;
+  --dm-nav-default-text: #8A8F84;
 
   /* ----------------------------------------------------------
      BOTÕES DARK
      ---------------------------------------------------------- */
-  --dm-primary:          #6E72FF;
-  --dm-primary-hover:    #8285FF;
-  --dm-primary-soft:     rgba(110,114,255,0.16);
-  --dm-primary-border:   rgba(110,114,255,0.28);
-  --dm-primary-vivid:    #8A8DFF;
-  --dm-btn-primary-bg:   #6E72FF;
+  --dm-primary:          #8B5CF6;   /* roxo = seleção/accent no dark */
+  --dm-primary-hover:    #A78BFA;
+  --dm-primary-soft:     rgba(139,92,246,0.16);
+  --dm-primary-border:   rgba(139,92,246,0.28);
+  --dm-primary-vivid:    #A78BFA;
+  --dm-btn-primary-bg:   #15803D;   /* verde = CTA primário */
   --dm-btn-primary-text: #FFFFFF;
-  --dm-btn-primary-hover:#8285FF;
+  --dm-btn-primary-hover:#166534;
   --dm-btn-ghost-bg:     rgba(110,114,255,0.12);
   --dm-btn-ghost-text:   #6E72FF;
   --dm-btn-ghost-hover:  rgba(110,114,255,0.20);
@@ -473,7 +481,7 @@
   --dm-chart-grid:   rgba(255,255,255,0.07);
 
   /* SHADOW DARK */
-  --dm-shadow-soft: 0 20px 50px rgba(0,0,0,0.32);
+  --dm-shadow-soft: 0 1px 2px rgba(0,0,0,0.40);
 
   /* ----------------------------------------------------------
      CHART TOKENS DARK — nova paleta minimalista
@@ -541,23 +549,24 @@
   --font-display: var(--font-poppins);
 }
 
-/* ── Horizon UI signature shadow ── */
+/* ── Superfície aterrada (antes: sombra "horizon" com offset diagonal que fazia
+   tudo flutuar). Agora rasa e vertical — separação vem da borda + do fundo. ── */
 .shadow-horizon {
-  box-shadow: 14px 17px 40px 4px rgba(112, 144, 176, 0.08);
+  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.04);
 }
 .dark .shadow-horizon {
-  box-shadow: 14px 17px 40px 4px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255,255,255,0.05);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.40), inset 0 1px 0 rgba(255,255,255,0.04);
 }
 
-/* ── Card hover (subtle shadow lift) ── */
+/* ── Card hover: realça pela borda, sem levantar (sem float) ── */
 .card-hover {
-  transition: box-shadow 0.15s ease, transform 0.15s ease;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
 }
 .card-hover:hover {
-  box-shadow: 14px 17px 40px 4px rgba(112, 144, 176, 0.18) !important;
+  box-shadow: 0 2px 6px rgba(17, 24, 39, 0.06) !important;
 }
 .dark .card-hover:hover {
-  box-shadow: 14px 17px 40px 4px rgba(0, 0, 0, 0.50) !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.40) !important;
 }
 
 /* ============================================================
@@ -687,15 +696,15 @@ h1, h2, h3, h4, h5 {
 .animate-toast-out { animation: toast-slide-out 0.25s ease-in forwards; }
 
 /* Glassmorphism utilities */
+/* Antes: glassmorphism (branco translúcido + blur) — fazia tudo flutuar/parecer
+   "futurista demais". Agora superfície sólida aterrada, separação por borda fina. */
 .glass-panel {
-  background-color: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.6);
+  background-color: var(--dm-bg-surface);
+  border: 1px solid var(--dm-border-subtle);
 }
 .dark .glass-panel {
-  background-color: rgba(13, 14, 22, 0.92);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background-color: var(--dm-bg-surface);
+  border: 1px solid var(--dm-border-subtle);
 }
 
 /* Custom Scrollbar */
@@ -975,7 +984,7 @@ h1, h2, h3, h4, h5 {
   display:       flex;
   align-items:   center;
   gap:           20px;
-  box-shadow:    0 8px 32px rgba(0,0,0,0.12);
+  box-shadow:    0 1px 2px rgba(17,24,39,0.04);
 }
 .account-avatar {
   width:         112px;

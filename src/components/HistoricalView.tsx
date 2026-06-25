@@ -817,7 +817,7 @@ interface StatCardProps {
 function StatCard({ label, value, sub, icon: Icon }: StatCardProps) {
   return (
     <article
-      className="glass-panel rounded-3xl p-5 shadow-lg"
+      className="glass-panel rounded-2xl p-5"
     >
       <div className="flex items-start justify-between">
         <div>
@@ -1207,7 +1207,7 @@ export function HistoricalView({ selectedKind: propKind, onKindChange }: Histori
         {/* Kind tabs moved to sidebar — rendered by Dashboard.tsx */}
 
         {/* ── Dashboard header ── */}
-        <div className="glass-panel flex flex-wrap items-start justify-between gap-4 rounded-[2rem] px-5 py-5 sm:px-6 shadow-lg">
+        <div className="glass-panel flex flex-wrap items-start justify-between gap-4 rounded-2xl px-5 py-5 sm:px-6">
           <div>
             <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Histórico de Lançamentos</h2>
             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
@@ -1410,7 +1410,7 @@ export function HistoricalView({ selectedKind: propKind, onKindChange }: Histori
         {hasData && chartData.length > 0 && (
           <div className="grid gap-5 xl:grid-cols-5">
             {/* Monthly trend — takes 3 cols */}
-            <article className="glass-panel rounded-[2rem] p-5 shadow-lg xl:col-span-3">
+            <article className="glass-panel rounded-2xl p-5 xl:col-span-3">
               <h3 className="mb-4 text-sm font-semibold text-slate-800 dark:text-slate-200">Evolução Mensal</h3>
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
@@ -1446,7 +1446,7 @@ export function HistoricalView({ selectedKind: propKind, onKindChange }: Histori
 
             {/* Funnel — takes 2 cols */}
             {funnel.length > 0 && funnel[0].value > 0 && (
-              <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm xl:col-span-2 dark:border-slate-700 dark:bg-[#11131A]">
+              <article className="rounded-xl border border-slate-200 bg-white p-5 xl:col-span-2 dark:border-slate-700 dark:bg-[#11131A]">
                 <h3 className="mb-4 text-sm font-semibold text-slate-800 dark:text-slate-200">Funil de Conversão</h3>
                 <div className="space-y-3">
                   {funnel.map((stage, idx) => {
@@ -1478,7 +1478,7 @@ export function HistoricalView({ selectedKind: propKind, onKindChange }: Histori
 
         {/* ── META comparison ── */}
         {hasData && activeMeta && (
-          <article className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm dark:border-slate-700 dark:bg-[#11131A]">
+          <article className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 dark:border-slate-700 dark:bg-[#11131A]">
             <h3 className="mb-3 text-sm font-semibold text-slate-800 dark:text-slate-200">Comparativo vs META</h3>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
               {[
@@ -1512,7 +1512,7 @@ export function HistoricalView({ selectedKind: propKind, onKindChange }: Histori
 
         {/* ── Data table ── */}
         {hasData && (
-          <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-[#11131A]">
+          <article className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-[#11131A]">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">Dados Mensais Detalhados</h3>
               <div className="flex items-center gap-2">

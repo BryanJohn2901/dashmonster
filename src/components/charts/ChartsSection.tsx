@@ -23,7 +23,7 @@ interface ChartsSectionProps {
 // ── Data viz palette — minimalista, poucas cores
 // Regra: azul/roxo = dado principal; cinza = comparativo; verde/vermelho = semântico
 const PIE_COLORS_LIGHT = [
-  "#313491", "#4A4FCC", "#6E72FF", "#A5A8FF",
+  "#7C3AED", "#4A4FCC", "#6E72FF", "#A5A8FF",
   "#1FA971", "#F4A93C", "#E14D4D", "#8A8FAD",
   "#D6D8FF", "#6F7482", "#0891b2", "#A0A5B3",
 ];
@@ -43,10 +43,10 @@ function useChartTheme() {
     dark,
     pieColors:   dark ? PIE_COLORS_DARK : PIE_COLORS_LIGHT,
     /* Primary series: nova paleta minimalista */
-    c1: dark ? "#6C70FF" : "#313491",   /* chart-primary */
-    c2: dark ? "#8A8FAD" : "#A0A5B3",   /* chart-secondary (cinza — dado comparativo) */
-    c3: dark ? "#22C55E" : "#1FA971",   /* chart-success */
-    c4: dark ? "#EAB308" : "#F4A93C",   /* warning/investment */
+    c1: dark ? "#A78BFA" : "#7C3AED",   /* roxo — Vendas/Conversões (série accent) */
+    c2: dark ? "#8A8FAD" : "#A0A5B3",   /* cinza — Cliques (comparativo) */
+    c3: dark ? "#22C55E" : "#16A34A",   /* verde — Receita/Faturamento */
+    c4: dark ? "#64748B" : "#94A3B8",   /* neutro — Investimento (spec: investimento = neutro) */
     gridStroke:  dark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.05)",
     tickFill:    dark ? "#6F7686" : "#9CA3AF",
     tooltipStyle: {
@@ -127,7 +127,7 @@ function ToggleGroup<T extends string>({
 // ─── Card wrapper ─────────────────────────────────────────────────────────────
 
 function ChartCard({
-  title, subtitle, children, action, icon: Icon, iconColor = "#6366C8",
+  title, subtitle, children, action, icon: Icon, iconColor = "#7C3AED",
 }: {
   title: string;
   subtitle?: string;
@@ -252,8 +252,8 @@ export function ChartsSection({
             <stop offset="100%" stopColor={c2} stopOpacity={0.05} />
           </linearGradient>
           <linearGradient id="gradConv" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%"   stopColor={c3} stopOpacity={0.3} />
-            <stop offset="100%" stopColor={c3} stopOpacity={0.05} />
+            <stop offset="0%"   stopColor={c1} stopOpacity={0.3} />
+            <stop offset="100%" stopColor={c1} stopOpacity={0.05} />
           </linearGradient>
         </defs>
         <CartesianGrid {...GRID_PROPS} />
@@ -261,7 +261,7 @@ export function ChartsSection({
         <YAxis {...AXIS_STYLE} tickFormatter={(v) => formatNumber(Number(v))} width={48} />
         <Tooltip {...tooltipStyle} labelFormatter={(v) => formatDatePtBr(String(v))} formatter={(v, name) => [formatNumber(Number(v)), name]} />
         <Area type="monotone" dataKey="clicks"      name="Cliques"    stroke={c2} strokeWidth={3} fill="url(#gradClicks)" />
-        <Area type="monotone" dataKey="conversions" name="Conversões" stroke={c3} strokeWidth={3} fill="url(#gradConv)" />
+        <Area type="monotone" dataKey="conversions" name="Conversões" stroke={c1} strokeWidth={3} fill="url(#gradConv)" />
       </AreaChart>
     </ResponsiveContainer>
   ) : (
@@ -272,7 +272,7 @@ export function ChartsSection({
         <YAxis {...AXIS_STYLE} tickFormatter={(v) => formatNumber(Number(v))} width={48} />
         <Tooltip {...tooltipStyle} labelFormatter={(v) => formatDatePtBr(String(v))} formatter={(v, name) => [formatNumber(Number(v)), name]} />
         <Bar dataKey="clicks"      name="Cliques"    fill={c2} radius={[3, 3, 0, 0]} />
-        <Bar dataKey="conversions" name="Conversões" fill={c3} radius={[3, 3, 0, 0]} />
+        <Bar dataKey="conversions" name="Conversões" fill={c1} radius={[3, 3, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
   );
@@ -463,7 +463,7 @@ export function ChartsSection({
             />
             <YAxis {...AXIS_STYLE} tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`} width={52} />
             <Tooltip content={comparisonTooltip.content} cursor={tooltipStyle.cursor} />
-            <Bar dataKey="investment" name="Investimento" fill={c1} radius={[4, 4, 0, 0]} maxBarSize={groupedBarSize} />
+            <Bar dataKey="investment" name="Investimento" fill={c4} radius={[4, 4, 0, 0]} maxBarSize={groupedBarSize} />
             <Bar dataKey="revenue"    name="Receita"      fill={c3} radius={[4, 4, 0, 0]} maxBarSize={groupedBarSize} />
           </BarChart>
         </ResponsiveContainer>
@@ -484,7 +484,7 @@ export function ChartsSection({
             tickFormatter={(v: string) => v.length > 24 ? `${v.slice(0, 24)}…` : v}
           />
           <Tooltip content={comparisonTooltip.content} cursor={tooltipStyle.cursor} />
-          <Bar dataKey="investment" name="Investimento" fill={c1} radius={[0, 4, 4, 0]} maxBarSize={horizontalBarSize} />
+          <Bar dataKey="investment" name="Investimento" fill={c4} radius={[0, 4, 4, 0]} maxBarSize={horizontalBarSize} />
           <Bar dataKey="revenue"    name="Receita"      fill={c3} radius={[0, 4, 4, 0]} maxBarSize={horizontalBarSize} />
         </BarChart>
       </ResponsiveContainer>
@@ -516,7 +516,7 @@ export function ChartsSection({
           <DotLegend items={
             trendMode === "invest"
               ? [{ color: c4, label: "Investimento" }, { color: c2, label: "Cliques" }]
-              : [{ color: c2, label: "Cliques" }, { color: c3, label: "Conversões" }]
+              : [{ color: c2, label: "Cliques" }, { color: c1, label: "Conversões" }]
           } />
         </ChartCard>
       </div>
@@ -561,7 +561,7 @@ export function ChartsSection({
         >
           {comparisonChart}
           <DotLegend items={[
-            { color: c1, label: "Investimento" },
+            { color: c4, label: "Investimento" },
             { color: c3, label: "Receita" },
           ]} />
         </ChartCard>

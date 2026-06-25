@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ALL_METRIC_IDS, METRIC_LABELS, useMetricVisibility } from "@/hooks/useMetricVisibility";
+import { ALL_METRIC_IDS, useMetricVisibility } from "@/hooks/useMetricVisibility";
 import { useAvatarUrl, resolveAvatarSrc } from "@/hooks/useAvatarUrl";
 import { useDateRange } from "@/hooks/useDateRange";
 import {
@@ -39,7 +39,6 @@ import {
   aggregateByCampaign, aggregateTotals, applyOverrides, buildBudgetDistribution,
   buildCampaignComparison, buildDailyTrend, formatCurrency, formatDatePtBr, formatNumber, formatPercent,
 } from "@/utils/metrics";
-import { KpiCard } from "@/components/KpiCard";
 import { reportFunnelFromValues } from "@/components/FunnelCard";
 import { OverviewBento } from "@/components/OverviewBento";
 import { ExportReportButton } from "@/components/ExportReportButton";
@@ -61,10 +60,8 @@ import { DashMonsterLogo } from "@/components/DashMonsterLogo";
 import { DashboardWelcome } from "@/components/empty/DashboardWelcome";
 import { AnaliseEmpty } from "@/components/empty/AnaliseEmpty";
 import { CriativosEmpty } from "@/components/empty/CriativosEmpty";
-import { PixelFunnelSection } from "@/components/PixelFunnelSection";
 import { MyAccount, accountTabsForRole } from "@/components/MyAccount";
 import { EmpresaTab } from "@/components/EmpresaTab";
-import { DashboardSpotlight, type SpotlightMetric } from "@/components/DashboardSpotlight";
 import { toast } from "@/hooks/useToast";
 import { exportDashboardCsv } from "@/utils/exportCsv";
 import { useManualMetrics } from "@/hooks/useManualMetrics";
@@ -118,13 +115,12 @@ const DASH_SUB_TABS: Array<{ id: DashSubTab; label: string; icon: React.ElementT
   { id: "creatives", label: "Criativos",   icon: Sparkles },
 ];
 
-// Controle segmentado interno da Visão Geral — simplifica o scroll longo em 3 focos.
-type OverviewSegment = "indicators" | "campaigns" | "daily";
-const OVERVIEW_SEGMENT_KEY = "pta_overview_segment_v1";
-const OVERVIEW_SEGMENTS: Array<{ id: OverviewSegment; label: string; icon: React.ElementType }> = [
-  { id: "indicators", label: "Indicadores principais", icon: LayoutDashboard },
-  { id: "campaigns",  label: "Campanhas",              icon: Megaphone },
-  { id: "daily",      label: "Resumo diário",          icon: CalendarDays },
+// Bloco "Campanhas" da Visão Geral: tabela por campanha vs. resumo diário.
+type CampanhasView = "performance" | "daily";
+const CAMPANHAS_VIEW_KEY = "pta_campanhas_view_v1";
+const CAMPANHAS_VIEWS: Array<{ id: CampanhasView; label: string; icon: React.ElementType }> = [
+  { id: "performance", label: "Performance por Campanha", icon: Megaphone },
+  { id: "daily",       label: "Resumo diário",            icon: CalendarDays },
 ];
 
 type SortBy = "date-desc" | "date-asc" | "invest-desc" | "invest-asc" | "roas-desc" | "ctr-desc";
@@ -447,7 +443,7 @@ function GoalsPanel({
           </button>
           <button type="button" onClick={onClose}
             className="h-9 flex flex-1 items-center justify-center rounded-lg text-xs font-semibold text-white transition hover:opacity-90"
-            style={{ backgroundColor: "var(--dm-brand-500, #6366C8)" }}>
+            style={{ backgroundColor: "var(--dm-brand-500, #7C3AED)" }}>
             Concluído
           </button>
         </div>
@@ -1165,7 +1161,7 @@ function ContextPill({
       onClick={onClick}
       className="flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-semibold transition-all"
       style={{
-        background:   active || isOpen ? "rgba(49,52,145,0.12)" : "var(--dm-bg-elevated)",
+        background:   active || isOpen ? "rgba(124,58,237,0.12)" : "var(--dm-bg-elevated)",
         borderColor:  active || isOpen ? "rgba(91,96,210,0.35)"  : "var(--dm-border-default)",
         color:        active || isOpen ? "var(--dm-primary)"      : "var(--dm-text-secondary)",
       }}
@@ -1266,7 +1262,7 @@ function ContextBar({
                   style={{
                     fontWeight:   selectedGroup === "all" ? 600 : 400,
                     color:        selectedGroup === "all" ? "var(--dm-primary)" : "var(--dm-text-primary)",
-                    background:   selectedGroup === "all" ? "rgba(49,52,145,0.08)" : "transparent",
+                    background:   selectedGroup === "all" ? "rgba(124,58,237,0.08)" : "transparent",
                   }}
                 >
                   <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ background: selectedGroup === "all" ? "var(--dm-primary)" : "var(--dm-border-strong)" }} />
@@ -1291,7 +1287,7 @@ function ContextBar({
                           style={{
                             fontWeight: selectedGroup === g.id ? 600 : 400,
                             color:      selectedGroup === g.id ? "var(--dm-primary)" : "var(--dm-text-primary)",
-                            background: selectedGroup === g.id ? "rgba(49,52,145,0.08)" : "transparent",
+                            background: selectedGroup === g.id ? "rgba(124,58,237,0.08)" : "transparent",
                           }}
                         >
                           <g.icon size={13} className="flex-shrink-0" style={{ color: selectedGroup === g.id ? "var(--dm-primary)" : "var(--dm-text-tertiary)" } as React.CSSProperties} />
@@ -1351,7 +1347,7 @@ function ContextBar({
                   <label
                     key={c.id}
                     className="flex cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 transition"
-                    style={{ background: checked ? "rgba(49,52,145,0.06)" : "transparent" }}
+                    style={{ background: checked ? "rgba(124,58,237,0.06)" : "transparent" }}
                   >
                     <input
                       type="checkbox"
@@ -1920,15 +1916,14 @@ export function Dashboard({
     try { localStorage.setItem("dm_main_tab", tab); } catch {}
   }, []);
   const [dashSubTab, setDashSubTab]         = useState<DashSubTab>("overview");
-  // Segmento interno da Visão Geral (layout simplificado): Indicadores · Campanhas · Resumo diário.
-  const [overviewSegment, setOverviewSegment] = useState<OverviewSegment>(() => {
-    if (typeof window === "undefined") return "indicators";
-    const saved = localStorage.getItem(OVERVIEW_SEGMENT_KEY);
-    return saved === "campaigns" || saved === "daily" ? saved : "indicators";
+  // Bloco "Campanhas" da Visão Geral: Performance por Campanha vs. Resumo diário.
+  const [campanhasView, setCampanhasView] = useState<CampanhasView>(() => {
+    if (typeof window === "undefined") return "performance";
+    return localStorage.getItem(CAMPANHAS_VIEW_KEY) === "daily" ? "daily" : "performance";
   });
-  const selectOverviewSegment = useCallback((seg: OverviewSegment) => {
-    setOverviewSegment(seg);
-    try { localStorage.setItem(OVERVIEW_SEGMENT_KEY, seg); } catch {}
+  const selectCampanhasView = useCallback((v: CampanhasView) => {
+    setCampanhasView(v);
+    try { localStorage.setItem(CAMPANHAS_VIEW_KEY, v); } catch {}
   }, []);
   const [histKind, setHistKind]             = useState<HistoricalKind>("lancamento");
   const { company: activeCompany, isOwner } = useCompany();
@@ -1968,16 +1963,12 @@ export function Dashboard({
   }, [dbLeads, dateFrom, dateTo]);
 
   // ── Metric visibility — shared across all tabs ────────────────────────────
-  const { hidden: hiddenMetrics, toggle: toggleMetric, showAll: showAllMetrics, hideAll: hideAllMetrics, isVisible: isMetricVisible, allVisible: allMetricsVisible } = useMetricVisibility();
+  const { isVisible: isMetricVisible } = useMetricVisibility();
 
   // ── User avatar (photo or icon) ────────────────────────────────────────────
   const { avatarUrl } = useAvatarUrl();
   const { resolvedTheme } = useTheme();
   const resolvedAvatarSrc = resolveAvatarSrc(avatarUrl, resolvedTheme === "dark");
-  const [showKpiPanel, setShowKpiPanel] = useState(false);
-  const [pixelFunnelOpen, setPixelFunnelOpen] = useState(() => {
-    try { return localStorage.getItem("pta_pixel_funnel_open_v1") !== "0"; } catch { return true; }
-  });
   const [pickCategoryOpen, setPickCategoryOpen] = useState(false);
   const [searchCampaign, setSearchCampaign] = useState("");
   const [showImport, setShowImport]         = useState(false);
@@ -1991,9 +1982,12 @@ export function Dashboard({
   const [showMobileNav, setShowMobileNav]   = useState(false);
   const [showMobilePanel, setShowMobilePanel] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    try { return localStorage.getItem("dm_sidebar_collapsed") === "1"; } catch { return false; }
+    // Rail PipeFlow é o nav primário: colapsado por padrão (a não ser que o usuário expanda).
+    try { return localStorage.getItem("dm_sidebar_collapsed") !== "0"; } catch { return true; }
   });
   const [rightCollapsed, setRightCollapsed] = useState(false);
+  // Flyout do rail: sub-abas ancoradas ao ícone (mock PipeFlow).
+  const [railFlyout, setRailFlyout] = useState<{ tab: MainTab; top: number } | null>(null);
 
   const toggleSidebar = (next: boolean) => {
     setSidebarCollapsed(next);
@@ -2601,22 +2595,6 @@ export function Dashboard({
   const budgetDistribution = buildBudgetDistribution(filteredCampaigns);
   const aggregated         = useMemo(() => aggregateByCampaign(filteredCampaigns), [filteredCampaigns]);
 
-  // ── Spotlight: métricas em destaque (valor de `totals`, série diária do período) ──
-  const spotlightMetrics = useMemo<SpotlightMetric[]>(() => {
-    const revByDate = new Map<string, number>();
-    filteredCampaigns.forEach((c) => revByDate.set(c.date, (revByDate.get(c.date) ?? 0) + (c.revenue ?? 0)));
-    const revSeries    = dailyTrend.map((d) => revByDate.get(d.date) ?? 0);
-    const investSeries = dailyTrend.map((d) => d.investment ?? 0);
-    const convSeries   = dailyTrend.map((d) => d.conversions ?? 0);
-    const roasSeries   = dailyTrend.map((d, i) => (investSeries[i] > 0 ? revSeries[i] / investSeries[i] : 0));
-    return [
-      { id: "revenue",     label: "Receita no período",          value: formatCurrency(totals.totalRevenue),                       series: revSeries,    tone: "green"   },
-      { id: "roas",        label: "ROAS",                        value: `${totals.roas.toFixed(2)}x`,                              series: roasSeries,   tone: "primary" },
-      { id: "investment",  label: "Investimento",                value: formatCurrency(totals.totalInvestment),                    series: investSeries, tone: "amber"   },
-      { id: "conversions", label: intentResult?.label ?? "Conversões", value: formatNumber(intentResult?.value ?? effectiveConversions), series: convSeries,   tone: "violet"  },
-    ];
-  }, [filteredCampaigns, dailyTrend, totals, intentResult, effectiveConversions]);
-
   /**
    * Campaign ID filter passed to BestCreatives.
    *
@@ -2731,7 +2709,7 @@ export function Dashboard({
               borderRadius: "var(--dm-shape-sm)",
               paddingLeft:  8,
               paddingRight: 8,
-              background:   active ? "rgba(49,52,145,0.12)" : "transparent",
+              background:   active ? "rgba(124,58,237,0.12)" : "transparent",
               color:        active ? "var(--dm-primary)" : "var(--dm-text-tertiary)",
               fontWeight:   active ? 600 : 400,
               fontSize:     12,
@@ -2761,7 +2739,7 @@ export function Dashboard({
               borderRadius: "var(--dm-shape-sm)",
               paddingLeft:  8,
               paddingRight: 8,
-              background:   active ? "rgba(49,52,145,0.12)" : "transparent",
+              background:   active ? "rgba(124,58,237,0.12)" : "transparent",
               color:        active ? "var(--dm-primary)" : "var(--dm-text-tertiary)",
               fontWeight:   active ? 600 : 400,
               fontSize:     12,
@@ -2787,7 +2765,7 @@ export function Dashboard({
               borderRadius: "var(--dm-shape-sm)",
               paddingLeft:  8,
               paddingRight: 8,
-              background:   active ? "rgba(49,52,145,0.12)" : "transparent",
+              background:   active ? "rgba(124,58,237,0.12)" : "transparent",
               color:        active ? "var(--dm-primary)" : "var(--dm-text-tertiary)",
               fontWeight:   active ? 600 : 400,
               fontSize:     12,
@@ -2800,6 +2778,21 @@ export function Dashboard({
       });
     }
     return null;
+  };
+
+  // ── Itens do flyout do rail (sub-abas por seção) ────────────────────────────
+  const RAIL_FLYOUT_TABS: MainTab[] = ["overview", "history", "myaccount"];
+  const flyoutItemsFor = (tab: MainTab): { key: string; label: string; active: boolean; onSelect: () => void }[] => {
+    if (tab === "overview")
+      return DASH_SUB_TABS.map((t) => ({ key: t.id, label: t.label, active: dashSubTab === t.id, onSelect: () => { setMainTab("overview"); setDashSubTab(t.id); } }));
+    if (tab === "history")
+      return [
+        ...SIDEBAR_HISTORY_TABS.map((t) => ({ key: t.id, label: historyKindLabel(t.id, histLabels), active: histKind === t.id, onSelect: () => { setMainTab("history"); setHistKind(t.id); } })),
+        ...customHistTabs.map((t) => ({ key: t.id, label: t.label, active: histKind === (t.id as HistoricalKind), onSelect: () => { setMainTab("history"); setHistKind(t.id as HistoricalKind); } })),
+      ];
+    if (tab === "myaccount")
+      return SIDEBAR_ACCOUNT_TABS.filter((t) => visibleAccountTabIds.includes(t.id)).map((t) => ({ key: t.id, label: t.label, active: myAccountTab === t.id, onSelect: () => { setMainTab("myaccount"); setMyAccountTab(t.id); } }));
+    return [];
   };
 
   /* Nav items list — reutilizado dentro do card expandido */
@@ -2818,7 +2811,7 @@ export function Dashboard({
                 borderRadius: "var(--dm-shape-md)",
                 paddingLeft:  12,
                 paddingRight: 12,
-                background:   isActive ? "rgba(49,52,145,0.18)"          : "transparent",
+                background:   isActive ? "rgba(124,58,237,0.18)"          : "transparent",
                 border:       isActive ? "1px solid rgba(91,96,210,0.28)" : "1px solid transparent",
                 color:        isActive ? "var(--dm-nav-active-text)"      : "var(--dm-nav-default-text)",
                 fontWeight:   isActive ? 600 : 400,
@@ -2957,9 +2950,9 @@ export function Dashboard({
               aria-label="Expandir sidebar"
               data-tip="DashMonster"
               className="dm-sidebar-tooltip mb-3 flex h-11 w-11 items-center justify-center rounded-[10px] transition hover:opacity-80"
-              style={{ background: "#313491" }}
+              style={{ background: "#B6F500" }}
             >
-              <DashMonsterLogo size={20} className="text-white" />
+              <DashMonsterLogo size={20} className="text-[#0E1108]" />
             </button>
 
             <div className="mb-3 w-8 h-px" style={{ background: "var(--dm-border-default)" }} />
@@ -2969,12 +2962,19 @@ export function Dashboard({
               {visibleMainTabs.map(({ id, label, icon: Icon }) => (
                 <button
                   key={id}
-                  onClick={() => { setMainTab(id); setShowMobileNav(false); }}
+                  onClick={(e) => {
+                    if (RAIL_FLYOUT_TABS.includes(id)) {
+                      const top = e.currentTarget.getBoundingClientRect().top;
+                      setRailFlyout((prev) => (prev?.tab === id ? null : { tab: id, top }));
+                    } else {
+                      setMainTab(id); setRailFlyout(null); setShowMobileNav(false);
+                    }
+                  }}
                   aria-label={label}
                   data-tip={label}
                   className="dm-sidebar-tooltip flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-150"
                   style={mainTab === id
-                    ? { background: "rgba(49,52,145,0.24)", border: "1px solid rgba(91,96,210,0.32)", color: "var(--dm-nav-active-text)" }
+                    ? { background: "rgba(182,245,0,0.14)", border: "1px solid rgba(182,245,0,0.32)", color: "var(--dm-nav-active-text)" }
                     : { color: "var(--dm-nav-default-text)" }
                   }
                 >
@@ -3006,7 +3006,7 @@ export function Dashboard({
               <button
                 type="button"
                 className="flex h-10 w-10 items-center justify-center rounded-[10px] transition hover:opacity-80"
-                style={{ background: "#313491" }}
+                style={{ background: "#7C3AED" }}
                 title={campaigns.length > 0 ? `${campaigns.length.toLocaleString("pt-BR")} linhas carregadas` : "Sem dados — conecte uma fonte"}
               >
                 <span
@@ -3022,7 +3022,7 @@ export function Dashboard({
             {/* Brand glow (decorative) */}
             <div
               className="pointer-events-none absolute -left-14 -top-14 h-48 w-48 rounded-full"
-              style={{ background: "radial-gradient(circle, rgba(49,52,145,0.10) 0%, transparent 70%)" }}
+              style={{ background: "radial-gradient(circle, rgba(124,58,237,0.10) 0%, transparent 70%)" }}
             />
 
             {/* ── Brand row ── */}
@@ -3036,13 +3036,13 @@ export function Dashboard({
               >
                 <div
                   className="flex h-8 w-8 items-center justify-center rounded-[8px] flex-shrink-0"
-                  style={{ background: "#313491" }}
+                  style={{ background: "#B6F500" }}
                 >
-                  <DashMonsterLogo size={16} className="text-white" />
+                  <DashMonsterLogo size={16} className="text-[#0E1108]" />
                 </div>
                 <span
                   className="text-[14px] uppercase tracking-wide"
-                  style={{ fontFamily: "var(--font-poppins)", fontWeight: 700, color: "var(--dm-text-primary)" }}
+                  style={{ fontFamily: "var(--font-poppins)", fontWeight: 700, color: "#FFFFFF" }}
                 >
                   Dash<span style={{ fontWeight: 400 }}>Monster</span>
                 </span>
@@ -3130,7 +3130,7 @@ export function Dashboard({
             <div className="mx-3 mb-4 mt-3 flex-shrink-0">
               <div
                 className="rounded-2xl px-4 py-3"
-                style={{ background: "#313491" }}
+                style={{ background: "#7C3AED" }}
               >
                 <div className="flex items-center gap-2 mb-1">
                   <span
@@ -3174,6 +3174,33 @@ export function Dashboard({
           </>
         )}
       </aside>
+
+      {/* ── Flyout do rail (sub-abas ancoradas ao ícone) ── */}
+      {sidebarCollapsed && railFlyout && typeof document !== "undefined" && createPortal(
+        <>
+          <div className="fixed inset-0 z-[55]" onClick={() => setRailFlyout(null)} />
+          <div
+            className="fixed z-[56] rounded-xl border py-2 shadow-xl"
+            style={{ left: 76, top: Math.max(8, Math.min(railFlyout.top, (typeof window !== "undefined" ? window.innerHeight : 800) - 260)), minWidth: 196, background: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}
+          >
+            <p className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
+              {MAIN_TABS.find((t) => t.id === railFlyout.tab)?.label}
+            </p>
+            {flyoutItemsFor(railFlyout.tab).map((it) => (
+              <button
+                key={it.key}
+                type="button"
+                onClick={() => { it.onSelect(); setRailFlyout(null); setShowMobileNav(false); }}
+                className="flex w-full items-center px-3 py-2 text-left text-sm font-medium transition-colors hover:bg-[var(--dm-bg-elevated)]"
+                style={{ color: it.active ? "var(--dm-primary)" : "var(--dm-text-secondary)", background: it.active ? "var(--dm-primary-soft)" : "transparent" }}
+              >
+                {it.label}
+              </button>
+            ))}
+          </div>
+        </>,
+        document.body,
+      )}
 
       {/* ── Center ── */}
       <div className="flex flex-1 flex-col overflow-hidden">
@@ -3402,30 +3429,9 @@ export function Dashboard({
                 )}
 
                 {dashSubTab === "overview" && (<>
-                {/* ── Spotlight (métrica em destaque) + controle segmentado ── */}
+                {/* Indicadores → bento: funil + 4 cards editáveis (lápis) */}
                 {filteredCampaigns.length > 0 && (
-                  <DashboardSpotlight metrics={spotlightMetrics} />
-                )}
-                {filteredCampaigns.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-1 rounded-2xl border p-1"
-                    style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)", width: "fit-content" }}>
-                    {OVERVIEW_SEGMENTS.map(({ id, label, icon: Icon }) => {
-                      const on = overviewSegment === id;
-                      return (
-                        <button key={id} type="button" onClick={() => selectOverviewSegment(id)}
-                          aria-pressed={on}
-                          className="flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-[12.5px] font-semibold transition"
-                          style={{ background: on ? "rgba(99,102,200,0.12)" : "transparent", color: on ? "var(--dm-primary)" : "var(--dm-text-tertiary)" }}>
-                          <Icon size={14} /> <span className="hidden sm:inline">{label}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* Indicadores principais → Bento */}
-                {filteredCampaigns.length > 0 && overviewSegment === "indicators" && (
-                  <OverviewBento totals={totals} campaigns={campaignsWithOverrides} conversions={effectiveConversions} leadsByOrigin={leadsByOrigin} onManage={onOpenControlPanel} />
+                  <OverviewBento totals={totals} campaigns={campaignsWithOverrides} conversions={effectiveConversions} leadsByOrigin={leadsByOrigin} />
                 )}
 
                 {filteredCampaigns.length === 0 && (
@@ -3450,362 +3456,30 @@ export function Dashboard({
                     </div>
                   </div>
                 )}
-                {/* KPI block — Indicadores principais */}
-                {overviewSegment === "indicators" && (
-                <section className="space-y-3" aria-labelledby="kpi-section-title">
-                  <div className="relative flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-                    <div className="flex flex-wrap items-center gap-2 min-w-0">
-                      {/* Dynamic header — tags when filter active */}
-                      {selectedGroup !== "all" || checkedCampaignIds.length > 0 ? (
-                        <>
-                          {overviewSelectionSummary?.catName && (
-                            <span className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-bold"
-                              style={{ background: "rgba(49,52,145,0.12)", color: "var(--dm-primary)" }}>
-                              {overviewSelectionSummary.catName}
-                            </span>
-                          )}
-                          <h2 id="kpi-section-title" className="text-sm font-bold tracking-tight sm:text-base truncate max-w-xs" style={{ color: "var(--dm-text-primary)" }}>
-                            {selectedGroup !== "all"
-                              ? (allGroups.find(g => g.id === selectedGroup)?.label ?? selectedGroup)
-                              : `${checkedCampaignIds.length} campanha${checkedCampaignIds.length !== 1 ? "s" : ""}`}
-                          </h2>
-                        </>
-                      ) : (
-                        <h2 id="kpi-section-title" className="text-sm font-bold tracking-tight sm:text-base" style={{ color: "var(--dm-text-primary)" }}>
-                          Indicadores principais
-                        </h2>
-                      )}
-                    </div>
-                    <div className="sm:mb-0.5">
-                    <button
-                      type="button"
-                      onClick={() => setShowKpiPanel((v) => !v)}
-                      className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition hover:opacity-80"
-                      style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-secondary)" }}
-                    >
-                      <SlidersHorizontal size={11} aria-hidden /> Personalizar cartões
-                    </button>
-                    {showKpiPanel && typeof document !== "undefined" && createPortal(
-                      <>
-                        <div className="fixed inset-0 z-40 bg-black/30 backdrop-blur-[2px]" onClick={() => setShowKpiPanel(false)} />
-                        <div
-                          className="fixed inset-y-0 right-0 z-50 flex w-full flex-col overflow-hidden border-l shadow-2xl sm:max-w-[420px]"
-                          style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}
-                        >
-                          <div className="flex flex-shrink-0 items-center justify-between border-b px-6 py-4" style={{ borderColor: "var(--dm-border-default)" }}>
-                            <div>
-                              <h2 className="text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>Personalizar cartões</h2>
-                              <p className="mt-0.5 text-[11px]" style={{ color: "var(--dm-text-secondary)" }}>Ative ou desative as métricas do dashboard</p>
-                            </div>
-                            <button type="button" onClick={() => setShowKpiPanel(false)}
-                              className="rounded-lg p-1.5 transition hover:bg-[var(--dm-bg-elevated)]"
-                              style={{ color: "var(--dm-text-tertiary)" }}>
-                              <X size={16} />
+
+                {/* Campanhas — Performance por Campanha · Resumo diário */}
+                {filteredCampaigns.length > 0 && (
+                  <section className="space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h2 className="text-sm font-bold tracking-tight sm:text-base" style={{ color: "var(--dm-text-primary)" }}>Campanhas</h2>
+                      <div className="flex items-center gap-1 rounded-xl border p-1" style={{ borderColor: "var(--dm-border-subtle)", background: "var(--dm-bg-surface)" }}>
+                        {CAMPANHAS_VIEWS.map(({ id, label, icon: Icon }) => {
+                          const on = campanhasView === id;
+                          return (
+                            <button key={id} type="button" onClick={() => selectCampanhasView(id)} aria-pressed={on}
+                              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-semibold transition"
+                              style={{ background: on ? "var(--dm-primary-soft)" : "transparent", color: on ? "var(--dm-primary)" : "var(--dm-text-tertiary)" }}>
+                              <Icon size={13} /> <span className="hidden sm:inline">{label}</span>
                             </button>
-                          </div>
-                          <div className="flex-1 overflow-y-auto px-6 py-5">
-                            <div className="space-y-4">
-                              {([
-                                { label: "Financeiro",  ids: ["investment", "revenue", "roas", "roi"] as const },
-                                { label: "Vendas",      ids: ["sales_total", "sales_ingresso", "cpa_ingresso", "sales_pos", "cpa_pos", "cpa_venda"] as const },
-                                { label: "Eficiência",  ids: ["conversions", "leads", "cpa", "cpl", "ctr", "cpc", "cpm"] as const },
-                                { label: "Volume",      ids: ["clicks", "impressions"] as const },
-                              ] as const).map(({ label, ids }) => (
-                                <div key={label}>
-                                  <p className="mb-2 text-[10px] font-bold uppercase tracking-widest"
-                                    style={{ color: "var(--dm-text-tertiary)" }}>
-                                    {label}
-                                  </p>
-                                  <div className="space-y-1">
-                                    {ids.map((id) => {
-                                      const on = isMetricVisible(id);
-                                      return (
-                                        <label
-                                          key={id}
-                                          className="flex cursor-pointer items-center justify-between rounded-lg px-3 py-2.5 transition hover:bg-[var(--dm-bg-elevated)]"
-                                          style={{ border: `0.5px solid var(--dm-border-subtle)`, borderRadius: 8 }}
-                                        >
-                                          <p className="text-xs font-medium" style={{ color: "var(--dm-text-secondary)" }}>
-                                            {METRIC_LABELS[id]}
-                                          </p>
-                                          <span
-                                            className="relative ml-2 inline-flex h-5 w-9 flex-shrink-0 rounded-full transition-colors duration-200"
-                                            style={{ background: on ? "var(--dm-primary)" : "var(--dm-border-strong)" }}
-                                          >
-                                            <span
-                                              className="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform duration-200"
-                                              style={{ transform: on ? "translateX(16px)" : "translateX(2px)" }}
-                                            />
-                                            <input type="checkbox" checked={on} onChange={() => toggleMetric(id)} className="sr-only" />
-                                          </span>
-                                        </label>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                          <div className="sticky bottom-0 flex gap-3 border-t px-6 py-4" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
-                            <button
-                              type="button"
-                              onClick={allMetricsVisible ? hideAllMetrics : showAllMetrics}
-                              className="h-9 flex flex-1 items-center justify-center rounded-lg border text-xs font-semibold transition hover:opacity-80"
-                              style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)", backgroundColor: "var(--dm-bg-elevated)" }}
-                            >
-                              {allMetricsVisible ? "Ocultar todas" : "Mostrar todas"}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setShowKpiPanel(false)}
-                              className="h-9 flex flex-1 items-center justify-center rounded-lg text-xs font-semibold text-white transition hover:opacity-90"
-                              style={{ backgroundColor: "var(--dm-brand-500, #6366C8)" }}
-                            >
-                              Concluído
-                            </button>
-                          </div>
-                        </div>
-                      </>,
-                      document.body
-                    )}
-                  </div>
-                </div>
-
-                {/* ── KPI 3-Tier layout ── */}
-                {(() => {
-                  /* Tier 1 — Financeiro (Investido/Receita/ROAS agora no Bento do topo) */
-                  const tier1 = [
-                    isMetricVisible("sales_total") && (
-                      <KpiCard key="sales_total" tier={1}
-                        title="Vendas Total" value={formatNumber(eduzzTotals.salesTotal)}
-                        subtitle="Eduzz — manual"
-                        icon={GraduationCap} accentColor="green"
-                        editable={true}
-                        isManual={(manualOverrides[eduzzEditKey]?.salesTotal ?? 0) > 0}
-                        onEdit={(v) => eduzzEditKey && setManualOverride(eduzzEditKey, { salesTotal: v })}
-                        goalValue={goals.sales_total} goalLabel={goals.sales_total != null ? formatNumber(goals.sales_total) : undefined}
-                        goalPct={goals.sales_total != null ? (eduzzTotals.salesTotal / goals.sales_total) * 100 : null}
-                      />
-                    ),
-                  ].filter(Boolean);
-
-                  /* Tier 1.5 — Vendas Eduzz + CPAs derivados (auto-calculados) */
-                  const cpvEduzz     = eduzzTotals.salesTotal     > 0 ? totals.totalInvestment / eduzzTotals.salesTotal     : 0;
-                  const cpaIngresso  = eduzzTotals.salesIngresso  > 0 ? totals.totalInvestment / eduzzTotals.salesIngresso  : 0;
-                  const cpaPos       = eduzzTotals.salesPos       > 0 ? totals.totalInvestment / eduzzTotals.salesPos       : 0;
-                  const tierVendas = [
-                    isMetricVisible("sales_ingresso") && (
-                      <KpiCard key="sales_ingresso" tier={2}
-                        title="Vendas de Ingresso" value={formatNumber(eduzzTotals.salesIngresso)}
-                        subtitle="Eduzz — manual"
-                        icon={Ticket} accentColor="green"
-                        editable={true}
-                        isManual={(manualOverrides[eduzzEditKey]?.salesIngresso ?? 0) > 0}
-                        onEdit={(v) => eduzzEditKey && setManualOverride(eduzzEditKey, { salesIngresso: v })}
-                        goalValue={goals.sales_ingresso} goalLabel={goals.sales_ingresso != null ? formatNumber(goals.sales_ingresso) : undefined}
-                        goalPct={goals.sales_ingresso != null ? (eduzzTotals.salesIngresso / goals.sales_ingresso) * 100 : null}
-                      />
-                    ),
-                    isMetricVisible("cpa_ingresso") && (
-                      <KpiCard key="cpa_ingresso" tier={2}
-                        title="Custo p/ Venda de Ingresso" value={cpaIngresso > 0 ? formatCurrency(cpaIngresso) : "—"}
-                        subtitle="Investimento ÷ V. Ingresso"
-                        icon={BadgeDollarSign} accentColor="amber"
-                        invertTrend
-                        goalValue={goals.cpa_ingresso} goalLabel={goals.cpa_ingresso != null ? formatCurrency(goals.cpa_ingresso) : undefined}
-                        goalPct={goals.cpa_ingresso != null && cpaIngresso > 0 ? (goals.cpa_ingresso / cpaIngresso) * 100 : null}
-                        goalInvert
-                      />
-                    ),
-                    isMetricVisible("sales_pos") && (
-                      <KpiCard key="sales_pos" tier={2}
-                        title="Vendas de Pós" value={formatNumber(eduzzTotals.salesPos)}
-                        subtitle="Eduzz — manual"
-                        icon={GraduationCap} accentColor="green"
-                        editable={true}
-                        isManual={(manualOverrides[eduzzEditKey]?.salesPos ?? 0) > 0}
-                        onEdit={(v) => eduzzEditKey && setManualOverride(eduzzEditKey, { salesPos: v })}
-                        goalValue={goals.sales_pos} goalLabel={goals.sales_pos != null ? formatNumber(goals.sales_pos) : undefined}
-                        goalPct={goals.sales_pos != null ? (eduzzTotals.salesPos / goals.sales_pos) * 100 : null}
-                      />
-                    ),
-                    isMetricVisible("cpa_pos") && (
-                      <KpiCard key="cpa_pos" tier={2}
-                        title="Custo p/ Venda de Pós" value={cpaPos > 0 ? formatCurrency(cpaPos) : "—"}
-                        subtitle="Investimento ÷ V. de Pós"
-                        icon={BadgeDollarSign} accentColor="amber"
-                        invertTrend
-                        goalValue={goals.cpa_pos} goalLabel={goals.cpa_pos != null ? formatCurrency(goals.cpa_pos) : undefined}
-                        goalPct={goals.cpa_pos != null && cpaPos > 0 ? (goals.cpa_pos / cpaPos) * 100 : null}
-                        goalInvert
-                      />
-                    ),
-                    isMetricVisible("cpa_venda") && (
-                      <KpiCard key="cpa_venda" tier={2}
-                        title="Custo por Venda" value={cpvEduzz > 0 ? formatCurrency(cpvEduzz) : "—"}
-                        subtitle="Investimento ÷ Vendas Total"
-                        icon={BadgeDollarSign} accentColor="amber"
-                        invertTrend
-                        goalValue={goals.cpa_venda} goalLabel={goals.cpa_venda != null ? formatCurrency(goals.cpa_venda) : undefined}
-                        goalPct={goals.cpa_venda != null && cpvEduzz > 0 ? (goals.cpa_venda / cpvEduzz) * 100 : null}
-                        goalInvert
-                      />
-                    ),
-                  ].filter(Boolean);
-
-                  /* Tier 2 — Eficiência */
-                  const tier2 = [
-                    isMetricVisible("roi") && (
-                      <KpiCard key="roi" tier={2}
-                        title="ROI" value={formatPercent(totals.roi)}
-                        icon={TrendingUp} accentColor="primary"
-                        goalValue={goals.roi} goalLabel={goals.roi != null ? `${goals.roi.toFixed(0)}%` : undefined}
-                        goalPct={goals.roi != null ? (totals.roi / goals.roi) * 100 : null}
-                      />
-                    ),
-                    isMetricVisible("cpa") && (
-                      <KpiCard key="cpa" tier={2}
-                        title="CPA Médio" value={formatCurrency(totals.cpa)}
-                        icon={BadgeDollarSign} accentColor="amber" invertTrend
-                        goalValue={goals.cpa} goalLabel={goals.cpa != null ? formatCurrency(goals.cpa) : undefined}
-                        goalPct={goals.cpa != null && totals.cpa > 0 ? (goals.cpa / totals.cpa) * 100 : null}
-                        goalInvert
-                      />
-                    ),
-                    isMetricVisible("ctr") && (
-                      <KpiCard key="ctr" tier={2}
-                        title="CTR Médio" value={formatPercent(totals.ctr)}
-                        icon={MousePointerClick} accentColor="blue"
-                        goalValue={goals.ctr} goalLabel={goals.ctr != null ? `${goals.ctr.toFixed(1)}%` : undefined}
-                        goalPct={goals.ctr != null ? (totals.ctr / goals.ctr) * 100 : null}
-                      />
-                    ),
-                    isMetricVisible("cpc") && (
-                      <KpiCard key="cpc" tier={2}
-                        title="CPC Médio" value={formatCurrency(totals.cpc)}
-                        icon={BadgeDollarSign} accentColor="amber" invertTrend
-                        goalValue={goals.cpc} goalLabel={goals.cpc != null ? formatCurrency(goals.cpc) : undefined}
-                        goalPct={goals.cpc != null && totals.cpc > 0 ? (goals.cpc / totals.cpc) * 100 : null}
-                        goalInvert
-                      />
-                    ),
-                    isMetricVisible("conversions") && (
-                      <KpiCard key="conversions" tier={2}
-                        title={intentResult?.label ?? "Conversões"}
-                        value={formatNumber(intentResult?.value ?? effectiveConversions)}
-                        subtitle={intentResult?.sub ?? `Tx.: ${formatPercent(effectiveConvRate)}`}
-                        icon={Target} accentColor="green" isManual={!intentResult && usingManualConversions}
-                        goalValue={intentResult ? undefined : goals.conversions}
-                        goalLabel={!intentResult && goals.conversions != null ? formatNumber(goals.conversions) : undefined}
-                        goalPct={!intentResult && goals.conversions != null ? (effectiveConversions / goals.conversions) * 100 : null}
-                      />
-                    ),
-                  ].filter(Boolean);
-
-                  /* Tier 3 — Volume */
-                  const tier3 = [
-                    isMetricVisible("impressions") && (
-                      <KpiCard key="impressions" tier={3}
-                        title="Impressões" value={formatNumber(totals.totalImpressions)}
-                        icon={Activity} accentColor="blue"
-                        goalValue={goals.impressions} goalLabel={goals.impressions != null ? formatNumber(goals.impressions) : undefined}
-                        goalPct={goals.impressions != null ? (totals.totalImpressions / goals.impressions) * 100 : null}
-                      />
-                    ),
-                    isMetricVisible("clicks") && (
-                      <KpiCard key="clicks" tier={3}
-                        title="Cliques" value={formatNumber(totals.totalClicks)}
-                        subtitle={`CTR: ${formatPercent(totals.ctr)}`}
-                        icon={MousePointerClick} accentColor="primary"
-                        goalValue={goals.clicks} goalLabel={goals.clicks != null ? formatNumber(goals.clicks) : undefined}
-                        goalPct={goals.clicks != null ? (totals.totalClicks / goals.clicks) * 100 : null}
-                      />
-                    ),
-                    isMetricVisible("cpm") && (
-                      <KpiCard key="cpm" tier={3}
-                        title="CPM Médio" value={formatCurrency(totals.cpm)}
-                        icon={Zap} accentColor="amber" invertTrend
-                        goalValue={goals.cpm} goalLabel={goals.cpm != null ? formatCurrency(goals.cpm) : undefined}
-                        goalPct={goals.cpm != null && totals.cpm > 0 ? (goals.cpm / totals.cpm) * 100 : null}
-                        goalInvert
-                      />
-                    ),
-                    isMetricVisible("leads") && (
-                      <KpiCard key="leads" tier={3}
-                        title="Leads" value={formatNumber(totals.totalLeads)}
-                        subtitle={totals.totalLeads > 0 ? `CPL: ${formatCurrency(totals.cpl)}` : undefined}
-                        icon={Users} accentColor="violet"
-                        goalValue={goals.leads} goalLabel={goals.leads != null ? formatNumber(goals.leads) : undefined}
-                        goalPct={goals.leads != null ? (totals.totalLeads / goals.leads) * 100 : null}
-                      />
-                    ),
-                    isMetricVisible("cpl") && totals.totalLeads > 0 && (
-                      <KpiCard key="cpl" tier={3}
-                        title="CPL Médio" value={formatCurrency(totals.cpl)}
-                        icon={UserRound} accentColor="violet" invertTrend
-                        goalValue={goals.cpl} goalLabel={goals.cpl != null ? formatCurrency(goals.cpl) : undefined}
-                        goalPct={goals.cpl != null && totals.cpl > 0 ? (goals.cpl / totals.cpl) * 100 : null}
-                        goalInvert
-                      />
-                    ),
-                  ].filter(Boolean);
-
-                  const allCards = [...tier1, ...tierVendas, ...tier2, ...tier3].filter(Boolean);
-
-                  return allCards.length > 0 ? (
-                    <div className="grid grid-cols-2 gap-[10px] sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-                      {allCards}
+                          );
+                        })}
+                      </div>
                     </div>
-                  ) : (
-                    <div className="flex items-center justify-center rounded-xl border py-6"
-                      style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-tertiary)" }}>
-                      <p className="text-xs">
-                        Nenhuma métrica visível.{" "}
-                        <button className="underline" style={{ color: "var(--dm-primary)" }} onClick={showAllMetrics}>
-                          Mostrar todas
-                        </button>
-                      </p>
-                    </div>
-                  );
-                })()}
-                </section>
+                    {campanhasView === "performance"
+                      ? <CampaignTable campaigns={sortedCampaigns} isMetricVisible={isMetricVisible} />
+                      : <ChartsSection dailyTrend={dailyTrend} campaignComparison={campaignComparison} budgetDistribution={budgetDistribution} />}
+                  </section>
                 )}
-
-                {/* Campanhas → tabela (antes dominava o scroll, agora só neste segmento) */}
-                {overviewSegment === "campaigns" && (
-                  <CampaignTable campaigns={sortedCampaigns} isMetricVisible={isMetricVisible} />
-                )}
-
-                {/* Resumo diário → tendência diária + Funil do Pixel */}
-                {overviewSegment === "daily" && (<>
-                <ChartsSection dailyTrend={dailyTrend} campaignComparison={campaignComparison} budgetDistribution={budgetDistribution} />
-                {/* Funil do Pixel — collapsible */}
-                <div className="rounded-xl border overflow-hidden" style={{ borderColor: "var(--dm-border-default)" }}>
-                  <button
-                    type="button"
-                    onClick={() => setPixelFunnelOpen((prev) => {
-                      const next = !prev;
-                      try { localStorage.setItem("pta_pixel_funnel_open_v1", next ? "1" : "0"); } catch {}
-                      return next;
-                    })}
-                    className="flex w-full items-center justify-between px-4 py-3 text-sm font-semibold transition-colors hover:opacity-80"
-                    style={{ background: "var(--dm-bg-card)", color: "var(--dm-text-primary)" }}
-                  >
-                    <span className="flex items-center gap-2">
-                      <Target size={14} className="text-violet-500" />
-                      Funil do Pixel
-                    </span>
-                    {pixelFunnelOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                  </button>
-                  {pixelFunnelOpen && (
-                    <PixelFunnelSection
-                      adAccountId={selectedGroup !== "all" ? campaignConfigs[selectedGroup]?.adAccountId : undefined}
-                      dateFrom={dateFrom || undefined}
-                      dateTo={dateTo || undefined}
-                    />
-                  )}
-                </div>
-                </>)}
                 </>)}
 
                 {dashSubTab === "analysis" && (

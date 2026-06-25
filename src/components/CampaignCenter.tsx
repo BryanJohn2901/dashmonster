@@ -321,8 +321,8 @@ function ConnectDrawer({ onClose, onImport }: {
         {/* Header */}
         <div className="flex items-center justify-between border-b px-5 py-4" style={{ borderColor: "var(--dm-border-subtle)" }}>
           <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full" style={{ backgroundColor: "rgba(99,102,200,0.12)" }}>
-              <Plug size={16} style={{ color: "#6366C8" }} />
+            <div className="flex h-9 w-9 items-center justify-center rounded-full" style={{ backgroundColor: "rgba(124,58,237,0.12)" }}>
+              <Plug size={16} style={{ color: "#7C3AED" }} />
             </div>
             <div>
               <h3 className="text-sm font-bold" style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>
@@ -349,8 +349,8 @@ function ConnectDrawer({ onClose, onImport }: {
             <button key={t.id} type="button" onClick={() => setTab(t.id)}
               className="rounded-t-lg px-3 py-2 text-[11px] font-bold transition"
               style={{
-                color: tab === t.id ? "#6366C8" : "var(--dm-text-tertiary)",
-                borderBottom: tab === t.id ? "2px solid #6366C8" : "2px solid transparent",
+                color: tab === t.id ? "#7C3AED" : "var(--dm-text-tertiary)",
+                borderBottom: tab === t.id ? "2px solid #7C3AED" : "2px solid transparent",
               }}>
               {t.label}
             </button>
@@ -383,11 +383,11 @@ function ConnectDrawer({ onClose, onImport }: {
                     <button key={e.id} type="button" onClick={() => toggleLink(e.id)}
                       className="flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition"
                       style={{
-                        borderColor: isSel ? "#6366C8" : "var(--dm-border-default)",
-                        backgroundColor: isSel ? "rgba(99,102,200,0.08)" : "var(--dm-bg-elevated)",
+                        borderColor: isSel ? "#7C3AED" : "var(--dm-border-default)",
+                        backgroundColor: isSel ? "rgba(124,58,237,0.08)" : "var(--dm-bg-elevated)",
                       }}>
                       <CheckCircle2 size={15} className="flex-shrink-0"
-                        style={{ color: isSel ? "#6366C8" : "var(--dm-border-default)" }} />
+                        style={{ color: isSel ? "#7C3AED" : "var(--dm-border-default)" }} />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-[11px] font-semibold" style={{ color: "var(--dm-text-primary)" }}>
                           {e.label}
@@ -418,7 +418,7 @@ function ConnectDrawer({ onClose, onImport }: {
                 <button type="button" onClick={() => void loadAccounts(token)}
                   disabled={loading === "accounts"}
                   className="flex items-center gap-1.5 rounded-[10px] px-3 text-[11px] font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
-                  style={{ background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)" }}>
+                  style={{ background: "var(--dm-btn-primary-bg)" }}>
                   {loading === "accounts" ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
                   Buscar contas
                 </button>
@@ -429,7 +429,7 @@ function ConnectDrawer({ onClose, onImport }: {
           {tab === "new" && token && accounts.length === 0 && loading !== "accounts" && (
             <button type="button" onClick={() => void loadAccounts(token)}
               className="flex items-center justify-center gap-1.5 rounded-[10px] py-2 text-[11px] font-semibold text-white transition hover:opacity-90"
-              style={{ background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)" }}>
+              style={{ background: "var(--dm-btn-primary-bg)" }}>
               <Search size={12} /> Buscar contas com o token da empresa
             </button>
           )}
@@ -506,7 +506,7 @@ function ConnectDrawer({ onClose, onImport }: {
                 <button type="button"
                   onClick={() => setSelected(selected.size === filtered.length ? new Set() : new Set(filtered.map((c) => c.id)))}
                   className="text-[10px] font-semibold transition hover:opacity-70"
-                  style={{ color: "#6366C8" }}>
+                  style={{ color: "#7C3AED" }}>
                   {selected.size === filtered.length ? "Desmarcar todas" : "Marcar todas"}
                 </button>
               </div>
@@ -524,11 +524,11 @@ function ConnectDrawer({ onClose, onImport }: {
                     <button key={c.id} type="button" onClick={() => toggleSelect(c.id)}
                       className="flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition"
                       style={{
-                        borderColor: isSel ? "#6366C8" : "var(--dm-border-default)",
-                        backgroundColor: isSel ? "rgba(99,102,200,0.08)" : "var(--dm-bg-elevated)",
+                        borderColor: isSel ? "#7C3AED" : "var(--dm-border-default)",
+                        backgroundColor: isSel ? "rgba(124,58,237,0.08)" : "var(--dm-bg-elevated)",
                       }}>
                       <CheckCircle2 size={15} className="flex-shrink-0"
-                        style={{ color: isSel ? "#6366C8" : "var(--dm-border-default)" }} />
+                        style={{ color: isSel ? "#7C3AED" : "var(--dm-border-default)" }} />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-[11px] font-semibold" style={{ color: "var(--dm-text-primary)" }}>
                           {c.name}
@@ -563,14 +563,14 @@ function ConnectDrawer({ onClose, onImport }: {
           {tab === "linked" ? (
             <button type="button" onClick={handleLinkImport} disabled={selectedLinks.size === 0}
               className="w-full rounded-xl py-2.5 text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-40"
-              style={{ background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)" }}>
+              style={{ background: "var(--dm-btn-primary-bg)" }}>
               Linkar {linkedCampaignCount > 0 ? `${linkedCampaignCount} campanha${linkedCampaignCount !== 1 ? "s" : ""}` : "campanhas"} à Central
             </button>
           ) : (
             <button type="button" onClick={() => void handleImport()}
               disabled={selected.size === 0 || loading === "saving"}
               className="w-full rounded-xl py-2.5 text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-40"
-              style={{ background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)" }}>
+              style={{ background: "var(--dm-btn-primary-bg)" }}>
               {loading === "saving"
                 ? "Salvando configuração…"
                 : `Configurar ${selected.size > 0 ? `${selected.size} campanha${selected.size !== 1 ? "s" : ""}` : "campanhas"} de uma vez`}
@@ -674,7 +674,7 @@ export function CampaignCenter() {
           {!readOnly && (<>
           <button type="button" onClick={() => setShowConnect(true)}
             className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-semibold text-white transition hover:opacity-90"
-            style={{ background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)" }}>
+            style={{ background: "var(--dm-btn-primary-bg)" }}>
             <Plug size={12} /> Conectar conta
           </button>
           {entries.length > 0 && (
@@ -717,7 +717,7 @@ export function CampaignCenter() {
           <div className="flex items-center justify-center gap-2">
             <button type="button" onClick={() => setShowConnect(true)}
               className="inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-semibold text-white transition hover:opacity-90"
-              style={{ background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)" }}>
+              style={{ background: "var(--dm-btn-primary-bg)" }}>
               <Plug size={13} /> Conectar conta
             </button>
             <button type="button" onClick={seedMock}
@@ -789,7 +789,7 @@ export function CampaignCenter() {
                         )}
                         {entry.autoConfigured && (
                           <span className="rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase"
-                            style={{ backgroundColor: "rgba(99,102,200,0.12)", color: "#6366C8" }}>
+                            style={{ backgroundColor: "rgba(124,58,237,0.12)", color: "#7C3AED" }}>
                             auto
                           </span>
                         )}
@@ -979,7 +979,7 @@ export function AccountsHub(props: TabAccountsProps) {
     <div className="flex flex-col gap-4">
       {entries.length > 0 && (
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <StatCard icon={Layers}    label="Contas conectadas"   value={String(stats.accounts)}                            accent="#6366C8" />
+          <StatCard icon={Layers}    label="Contas conectadas"   value={String(stats.accounts)}                            accent="#7C3AED" />
           <StatCard icon={Megaphone} label="Campanhas ativas"    value={`${stats.active}/${entries.length}`}               accent="#05CD99" />
           <StatCard icon={Wallet}    label="Orçamento /mês"      value={stats.budget > 0 ? formatBRL(stats.budget) : "—"}  accent="#F4A60D" />
           <StatCard icon={Goal}      label="Com metas definidas" value={String(stats.withGoals)}                           accent="#e11d48" />

@@ -28,7 +28,7 @@ const ROLE_COLORS: Record<CompanyRole, string> = { owner: "#8b5cf6", manager: "#
 const HISTORY_KINDS: HistoricalKind[] = ["lancamento", "evento", "perpetuo", "instagram"];
 const MAX_HISTORY_TABS = 7;
 const isEmail = (e: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e);
-const BRAND = "#6366C8";
+const BRAND = "#7C3AED";
 
 export type SectionId = "identidade" | "conexao" | "tracking" | "contas" | "filtros" | "historico" | "equipe";
 
@@ -47,7 +47,7 @@ function Section({ id, icon: Icon, title, summary, status, open, onToggle, child
     return (
       <div id={`studio-section-${id}`} className="rounded-2xl border" style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
         <div className="flex items-center gap-3 px-5 pt-5 pb-3">
-          <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: "rgba(99,102,200,0.12)" }}>
+          <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: "rgba(124,58,237,0.12)" }}>
             <Icon size={17} style={{ color: BRAND }} />
           </div>
           <div className="min-w-0 flex-1">
@@ -68,8 +68,8 @@ function Section({ id, icon: Icon, title, summary, status, open, onToggle, child
   return (
     <div id={`studio-section-${id}`} className="rounded-2xl border transition-colors scroll-mt-4" style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: open ? BRAND : "var(--dm-border-default)" }}>
       <button type="button" onClick={() => onToggle(id)} aria-expanded={open}
-        className="flex w-full items-center gap-3 rounded-2xl px-5 py-4 text-left transition-colors hover:bg-black/[0.025] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6366C8] dark:hover:bg-white/[0.03]">
-        <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: "rgba(99,102,200,0.12)" }}>
+        className="flex w-full items-center gap-3 rounded-2xl px-5 py-4 text-left transition-colors hover:bg-black/[0.025] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7C3AED] dark:hover:bg-white/[0.03]">
+        <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: "rgba(124,58,237,0.12)" }}>
           <Icon size={17} style={{ color: BRAND }} />
         </div>
         <div className="min-w-0 flex-1">
@@ -95,9 +95,9 @@ function Section({ id, icon: Icon, title, summary, status, open, onToggle, child
 
 const inputCls = "h-11 rounded-xl border px-3.5 text-[13px] outline-none transition focus:ring-1";
 const inputStyle = { borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" } as React.CSSProperties;
-const btnPrimary = "flex items-center justify-center gap-1.5 rounded-xl px-4 text-xs font-bold text-white transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-40 disabled:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6366C8] focus-visible:ring-offset-1";
+const btnPrimary = "flex items-center justify-center gap-1.5 rounded-xl px-4 text-xs font-bold text-white transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-40 disabled:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7C3AED] focus-visible:ring-offset-1";
 const iconBtn = "flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors disabled:opacity-40";
-const btnPrimaryStyle = { background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)" } as React.CSSProperties;
+const btnPrimaryStyle = { background: "var(--dm-btn-primary-bg)" } as React.CSSProperties;
 
 // ─── Estúdio da Empresa ───────────────────────────────────────────────────────
 
@@ -166,7 +166,7 @@ export function CompanyStudio({ categories = [], onNavigate, focusSection }: {
   return (
     <div className="flex flex-col gap-4">
       {/* ── Header: seletor + prontidão ── */}
-      <div className="rounded-2xl border p-5" style={{ background: "linear-gradient(135deg, rgba(99,102,200,0.10), rgba(49,52,145,0.04))", borderColor: BRAND }}>
+      <div className="rounded-2xl border p-5" style={{ background: "linear-gradient(135deg, rgba(124,58,237,0.10), rgba(124,58,237,0.04))", borderColor: BRAND }}>
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl" style={{ backgroundColor: BRAND }}>
             <Building2 size={22} className="text-white" />

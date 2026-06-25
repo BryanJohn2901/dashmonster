@@ -6,7 +6,7 @@ import type { LucideIcon } from "lucide-react";
 export function SectionHeader({
   icon: Icon,
   title,
-  color = "#6366C8",
+  color = "#7C3AED",
   count,
   right,
 }: {

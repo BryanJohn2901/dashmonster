@@ -5,7 +5,7 @@ import type { TemplateId } from "@/lib/templates/types";
 import { ChevronDown, Settings2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-const BRAND_GRAD = "linear-gradient(135deg, #6366C8 0%, #313491 100%)";
+const BRAND_GRAD = "var(--dm-btn-primary-bg)";
 
 interface Props {
   current: TemplateId;
@@ -47,7 +47,7 @@ export function TemplateSelector({ current, onChange, variant = "dropdown", onOp
               style={{
                 backgroundColor: "var(--dm-bg-surface)",
                 border: isSelected ? `2px solid var(--dm-brand-500)` : "2px solid var(--dm-border-default)",
-                boxShadow: isSelected ? "0 4px 18px rgba(49,52,145,0.18)" : undefined,
+                boxShadow: isSelected ? "0 4px 18px rgba(124,58,237,0.18)" : undefined,
               }}
             >
               {/* Color accent bar */}
@@ -129,7 +129,7 @@ export function TemplateSelector({ current, onChange, variant = "dropdown", onOp
                       if (tpl.id === "personalizado" && onOpenBuilder) onOpenBuilder();
                     }}
                     className="flex w-full items-start gap-3 px-4 py-2.5 text-left text-xs transition hover:bg-[var(--dm-bg-elevated)]"
-                    style={isSelected ? { backgroundColor: "rgba(49,52,145,0.07)" } : {}}
+                    style={isSelected ? { backgroundColor: "rgba(124,58,237,0.07)" } : {}}
                   >
                     <span className="mt-1 h-2 w-2 flex-shrink-0 rounded-full" style={{ background: tpl.color }} />
                     <div className="min-w-0 flex-1">
@@ -161,9 +161,9 @@ export function TemplateSelector({ current, onChange, variant = "dropdown", onOp
           title="Configurar métricas do layout personalizado"
           className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-semibold transition"
           style={{
-            backgroundColor: "rgba(49,52,145,0.09)",
+            backgroundColor: "rgba(124,58,237,0.09)",
             color: "var(--dm-brand-500)",
-            border: "1px solid rgba(49,52,145,0.20)",
+            border: "1px solid rgba(124,58,237,0.20)",
           }}
         >
           <Settings2 size={11} /> Configurar

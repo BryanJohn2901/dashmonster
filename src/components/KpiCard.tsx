@@ -19,8 +19,8 @@ const NEUTRAL_ICON_BG   = "rgba(255,255,255,0.045)";
 const NEUTRAL_ICON_TEXT = "var(--dm-icon-primary, #C8CCD8)";
 
 const ACCENT: Record<AccentKey, AccentStyle> = {
-  primary: { iconBg: NEUTRAL_ICON_BG, iconText: NEUTRAL_ICON_TEXT, topBar: "#313491" },
-  blue:    { iconBg: NEUTRAL_ICON_BG, iconText: NEUTRAL_ICON_TEXT, topBar: "#313491" },
+  primary: { iconBg: NEUTRAL_ICON_BG, iconText: NEUTRAL_ICON_TEXT, topBar: "#7C3AED" },
+  blue:    { iconBg: NEUTRAL_ICON_BG, iconText: NEUTRAL_ICON_TEXT, topBar: "#7C3AED" },
   violet:  { iconBg: NEUTRAL_ICON_BG, iconText: NEUTRAL_ICON_TEXT, topBar: "#8B5CF6" },
   amber:   { iconBg: NEUTRAL_ICON_BG, iconText: NEUTRAL_ICON_TEXT, topBar: "#F59E0B" },
   // Semânticos: texto colorido, fundo ainda neutro

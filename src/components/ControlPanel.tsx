@@ -419,8 +419,8 @@ function AddEntryForm({
             style={{ borderColor: "var(--dm-border-subtle)", backgroundColor: "var(--dm-bg-elevated)" }}>
             <div className="flex items-center gap-2.5">
               <div className="flex h-9 w-9 items-center justify-center rounded-full"
-                style={{ backgroundColor: "rgba(99,102,200,0.12)" }}>
-                <Plus size={16} style={{ color: "#6366C8" }} />
+                style={{ backgroundColor: "rgba(124,58,237,0.12)" }}>
+                <Plus size={16} style={{ color: "#7C3AED" }} />
               </div>
               <div>
                 <h3 className="text-sm font-bold" style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>
@@ -437,7 +437,7 @@ function AddEntryForm({
                 <button type="button" onClick={() => setCampaignListOpen(true)}
                   title="Adicionar mais campanhas desta categoria"
                   className="flex h-7 w-7 items-center justify-center rounded-full transition hover:opacity-80"
-                  style={{ backgroundColor: "rgba(99,102,200,0.12)", color: "#6366C8" }}>
+                  style={{ backgroundColor: "rgba(124,58,237,0.12)", color: "#7C3AED" }}>
                   <Plus size={14} />
                 </button>
               )}
@@ -493,13 +493,13 @@ function AddEntryForm({
                       className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition hover:bg-black/5 dark:hover:bg-white/5"
                     >
                       {acc.suggested
-                        ? <span className="flex-shrink-0 text-[12px] leading-none" style={{ color: "#6366C8" }}>★</span>
+                        ? <span className="flex-shrink-0 text-[12px] leading-none" style={{ color: "#7C3AED" }}>★</span>
                         : <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-slate-300 dark:bg-slate-600" />}
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-[11px] font-semibold" style={{ color: "var(--dm-text-primary)" }}>{acc.name}</span>
                         <span className="block truncate font-mono text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>{acc.id}</span>
                       </span>
-                      {acc.suggested && <span className="flex-shrink-0 text-[9px] font-bold" style={{ color: "#6366C8" }}>registrada</span>}
+                      {acc.suggested && <span className="flex-shrink-0 text-[9px] font-bold" style={{ color: "#7C3AED" }}>registrada</span>}
                     </button>
                   ))}
                 </div>
@@ -881,8 +881,8 @@ function EditIntentGoalsModal({ entry, onClose }: { entry: UserAccountEntry; onC
             style={{ borderColor: "var(--dm-border-subtle)", backgroundColor: "var(--dm-bg-elevated)" }}>
             <div className="flex items-center gap-2.5">
               <div className="flex h-9 w-9 items-center justify-center rounded-full"
-                style={{ backgroundColor: "rgba(99,102,200,0.12)" }}>
-                <Target size={16} style={{ color: "#6366C8" }} />
+                style={{ backgroundColor: "rgba(124,58,237,0.12)" }}>
+                <Target size={16} style={{ color: "#7C3AED" }} />
               </div>
               <div>
                 <h3 className="text-sm font-bold" style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>
@@ -1116,7 +1116,7 @@ function EntryRow({ entry, categorySlug, onDeleted, onToggled, onUpdated }: Entr
         <button type="button" onClick={() => void handleToggle()} disabled={toggling}
           title={entry.isEnabled ? "Desativar" : "Ativar"}
           aria-label={`${entry.isEnabled ? "Desativar" : "Ativar"} ${entry.label}`} aria-pressed={entry.isEnabled}
-          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors hover:bg-black/5 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6366C8] disabled:opacity-50 dark:hover:bg-white/10">
+          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors hover:bg-black/5 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7C3AED] disabled:opacity-50 dark:hover:bg-white/10">
           {entry.isEnabled
             ? <Eye size={14} className="text-emerald-500" />
             : <EyeOff size={14} style={{ color: "var(--dm-text-tertiary)" }} />}
@@ -1141,7 +1141,7 @@ function EntryRow({ entry, categorySlug, onDeleted, onToggled, onUpdated }: Entr
         {campCount > 0 && (
           <button type="button" onClick={() => setExpanded(v => !v)} aria-expanded={expanded}
             aria-label={`${selCount} de ${campCount} campanhas — ${expanded ? "recolher" : "expandir"}`}
-            className="flex flex-shrink-0 items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold tabular-nums transition-all hover:opacity-80 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6366C8]"
+            className="flex flex-shrink-0 items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold tabular-nums transition-all hover:opacity-80 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7C3AED]"
             style={{ backgroundColor: "var(--dm-bg-surface)", color: "var(--dm-brand-500)",
               border: "1px solid var(--dm-brand-200)" }}>
             <Link2 size={8} />
@@ -1154,7 +1154,7 @@ function EntryRow({ entry, categorySlug, onDeleted, onToggled, onUpdated }: Entr
         {campCount > 0 && (
           <button type="button" onClick={() => setEditGoalsOpen(true)}
             title="Editar intenção, orçamento e metas das campanhas" aria-label={`Editar intenção e metas de ${entry.label}`}
-            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors hover:bg-indigo-100 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6366C8] dark:hover:bg-indigo-900/30"
+            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors hover:bg-indigo-100 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7C3AED] dark:hover:bg-indigo-900/30"
             style={{ color: "var(--dm-brand-500)" }}>
             <Pencil size={12} />
           </button>
@@ -1385,7 +1385,7 @@ function CategorySection({
               style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)", color: "var(--dm-text-primary)" }} />
             <button type="button" onClick={() => void handleSaveEdit()} disabled={savingEdit || !editName.trim()}
               className="flex h-8 items-center gap-1 rounded-lg px-2.5 text-[11px] font-bold text-white transition hover:opacity-90 disabled:opacity-40"
-              style={{ background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)" }}>
+              style={{ background: "var(--dm-btn-primary-bg)" }}>
               {savingEdit ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle2 size={11} />} Salvar
             </button>
             <button type="button" onClick={() => setEditing(false)}
@@ -1408,7 +1408,7 @@ function CategorySection({
 
             {/* Renomear filtro (por empresa) */}
             <button type="button" onClick={openEdit} title="Renomear filtro" aria-label={`Renomear filtro ${displayName}`}
-              className="flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-black/5 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6366C8] dark:hover:bg-white/10"
+              className="flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-black/5 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7C3AED] dark:hover:bg-white/10"
               style={{ color: "var(--dm-text-tertiary)" }}>
               <Pencil size={13} />
             </button>
@@ -1420,7 +1420,7 @@ function CategorySection({
           <button type="button" onClick={() => void handleToggle()} disabled={toggling}
             title={isEnabled ? "Desativar categoria" : "Ativar categoria"}
             aria-label={`${isEnabled ? "Desativar" : "Ativar"} filtro ${displayName}`} aria-pressed={isEnabled}
-            className={`flex h-6 items-center gap-1 rounded-full px-2 text-[10px] font-bold transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6366C8] disabled:opacity-50 ${
+            className={`flex h-6 items-center gap-1 rounded-full px-2 text-[10px] font-bold transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7C3AED] disabled:opacity-50 ${
               isEnabled
                 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
                 : "bg-slate-100 text-slate-400 dark:bg-slate-700 dark:text-slate-500"
@@ -1475,7 +1475,7 @@ function CategorySection({
           <button type="button"
             onClick={() => void ensureRecord().then(() => setShowAdd(true))}
             aria-label={`Adicionar conta em ${displayName}`}
-            className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed py-2.5 text-[11px] font-semibold transition-all hover:border-[#6366C8] hover:text-[#6366C8] active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6366C8]"
+            className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed py-2.5 text-[11px] font-semibold transition-all hover:border-[#7C3AED] hover:text-[#7C3AED] active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7C3AED]"
             style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>
             <Plus size={13} /> Adicionar conta
           </button>
@@ -2547,7 +2547,7 @@ export function ControlPanel({
 
   // ── Inline / bento mode (página Minha Conta) ────────────────────────────────
   if (inline) {
-    const BRAND_GRAD = "linear-gradient(135deg,#6366C8 0%,#313491 100%)";
+    const BRAND_GRAD = "var(--dm-btn-primary-bg)";
 
     const BentoCard = ({
       icon: BIcon, title, subtitle, children,

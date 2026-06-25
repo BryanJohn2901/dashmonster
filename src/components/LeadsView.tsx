@@ -20,7 +20,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 const CATEGORY_COLORS: Record<string, { bg: string; text: string }> = {
-  pos:      { bg: "rgba(49,52,145,0.12)",  text: "var(--dm-primary)" },
+  pos:      { bg: "rgba(124,58,237,0.12)",  text: "var(--dm-primary)" },
   eventos:  { bg: "rgba(245,158,11,0.12)", text: "#d97706" },
   perpetuo: { bg: "rgba(16,185,129,0.12)", text: "#059669" },
   ebooks:   { bg: "rgba(139,92,246,0.12)", text: "#7c3aed" },
@@ -75,7 +75,7 @@ function Chip({
       className="rounded-full border px-2.5 py-0.5 text-[10px] font-semibold transition-opacity hover:opacity-80"
       style={{
         borderColor: active ? "var(--dm-primary)"     : "var(--dm-border-default)",
-        background:  active ? "rgba(49,52,145,0.12)"  : "transparent",
+        background:  active ? "rgba(124,58,237,0.12)"  : "transparent",
         color:       active ? "var(--dm-primary)"     : "var(--dm-text-tertiary)",
       }}
     >

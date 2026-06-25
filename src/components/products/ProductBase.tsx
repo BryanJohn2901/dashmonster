@@ -10,7 +10,7 @@ import { useProductStore } from "@/hooks/useProductStore";
 import { ProductForm } from "./ProductForm";
 import { ProdutosEmpty } from "@/components/empty/ProdutosEmpty";
 
-const BRAND_GRAD = "linear-gradient(135deg, #6366C8 0%, #313491 100%)";
+const BRAND_GRAD = "var(--dm-btn-primary-bg)";
 
 // ─── Product card ─────────────────────────────────────────────────────────────
 
@@ -26,9 +26,9 @@ function ProductCard({ product: p, onView, onEdit, onDuplicate, onDelete }: Prod
   const isPos  = p.type === "pos";
   const course = COURSE_GROUPS_PRODUCT.find((g) => g.id === p.courseGroup);
 
-  const accent = isPos ? "#313491" : "#7C3AED";
-  const badgeBg = isPos ? "rgba(49,52,145,0.08)" : "rgba(124,58,237,0.08)";
-  const badgeColor = isPos ? "#313491" : "#7C3AED";
+  const accent = isPos ? "#7C3AED" : "#7C3AED";
+  const badgeBg = isPos ? "rgba(124,58,237,0.08)" : "rgba(124,58,237,0.08)";
+  const badgeColor = isPos ? "#7C3AED" : "#7C3AED";
 
   return (
     <article
@@ -151,10 +151,10 @@ function ProductViewer({ product: p, onEdit, onClose }: { product: ProductData; 
   const isPos   = p.type === "pos";
   const course  = COURSE_GROUPS_PRODUCT.find((g) => g.id === p.courseGroup);
   const heroGrad = isPos
-    ? "linear-gradient(135deg, #1a1f6e 0%, #313491 55%, #4d50aa 100%)"
+    ? "linear-gradient(135deg, #1a1f6e 0%, #7C3AED 55%, #4d50aa 100%)"
     : "linear-gradient(135deg, #3b0764 0%, #7c3aed 55%, #a78bfa 100%)";
-  const accentColor = isPos ? "#313491" : "#7C3AED";
-  const accentLight = isPos ? "rgba(49,52,145,0.08)" : "rgba(124,58,237,0.08)";
+  const accentColor = isPos ? "#7C3AED" : "#7C3AED";
+  const accentLight = isPos ? "rgba(124,58,237,0.08)" : "rgba(124,58,237,0.08)";
 
   const teamFields = [
     { label: "Expert",            value: p.expert },

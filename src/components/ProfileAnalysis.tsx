@@ -1212,16 +1212,16 @@ const OVERVIEW_FUNNEL_KEY = "pta_overview_funnel_v1";
 
 // Shared color maps (mirrors CampaignAnalysisPanel)
 const KPI_SOLID_OV: Record<string, string> = {
-  brand: "#6366C8", sky: "#0ea5e9", green: "#05CD99",
+  brand: "#7C3AED", sky: "#0ea5e9", green: "#05CD99",
   rose: "#EE5D50", amber: "#F4A60D", slate: "#64748b",
 };
 const KPI_BG_OV: Record<string, string> = {
-  brand: "rgba(99,102,200,0.12)", sky: "rgba(14,165,233,0.12)",
+  brand: "rgba(124,58,237,0.12)", sky: "rgba(14,165,233,0.12)",
   green: "rgba(5,205,153,0.12)", rose: "rgba(238,93,80,0.12)",
   amber: "rgba(244,166,13,0.12)", slate: "rgba(100,116,139,0.10)",
 };
 const FUNNEL_COLORS_OV: Record<string, string> = {
-  reach: "#6366C8", impressions: "#8b5cf6", clicks: "#0ea5e9",
+  reach: "#7C3AED", impressions: "#8b5cf6", clicks: "#0ea5e9",
   page_views: "#f59e0b", leads: "#e11d48", sales: "#05CD99",
 };
 
@@ -1516,7 +1516,7 @@ function ProfileOverviewPanel({
       {/* ── Badge + header ─────────────────────────────────────────────────── */}
       <div className="flex items-center gap-2">
         <span className="rounded-full px-3 py-1 text-[11px] font-semibold"
-          style={{ background: "rgba(99,102,200,0.12)", color: "var(--dm-brand-500)" }}>
+          style={{ background: "rgba(124,58,237,0.12)", color: "var(--dm-brand-500)" }}>
           {campaigns.length} campanha{campaigns.length !== 1 ? "s" : ""} · visão consolidada
         </span>
         <span className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
@@ -1536,7 +1536,7 @@ function ProfileOverviewPanel({
               onClick={() => setEditGoals((v) => !v)}
               className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-semibold transition"
               style={editGoals
-                ? { background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)", color: "#fff", boxShadow: "0 4px 12px rgba(49,52,145,0.30)" }
+                ? { background: "var(--dm-btn-primary-bg)", color: "#fff", boxShadow: "0 4px 12px rgba(124,58,237,0.30)" }
                 : { backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)", border: "1px solid var(--dm-border-default)" }}
             >
               <Target size={11} />
@@ -1556,8 +1556,8 @@ function ProfileOverviewPanel({
               : 0;
             const goalMet  = goalVal > 0 && (kpi.invert ? val <= goalVal : val >= goalVal);
             const goalColor = goalMet ? "#05CD99" : goalPct >= 75 ? "#F4A60D" : "#EE5D50";
-            const solid = KPI_SOLID_OV[kpi.color] ?? "#6366C8";
-            const bg    = KPI_BG_OV[kpi.color]    ?? "rgba(99,102,200,0.10)";
+            const solid = KPI_SOLID_OV[kpi.color] ?? "#7C3AED";
+            const bg    = KPI_BG_OV[kpi.color]    ?? "rgba(124,58,237,0.10)";
             const isOvEditable = (OV_EDITABLE_IDS as readonly string[]).includes(kpi.id);
             const isOvEditing  = editingOvId === kpi.id;
 
@@ -1665,14 +1665,14 @@ function ProfileOverviewPanel({
               style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)", padding: "18px" }}>
               <div className="mb-4 flex items-center justify-between gap-2">
                 <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full"
-                  style={{ backgroundColor: "rgba(99,102,200,0.10)" }}>
-                  <StickyNote size={18} style={{ color: "#6366C8" }} />
+                  style={{ backgroundColor: "rgba(124,58,237,0.10)" }}>
+                  <StickyNote size={18} style={{ color: "#7C3AED" }} />
                 </div>
                 <div className="flex items-center gap-1.5">
                   <button type="button"
                     onClick={() => setCardForm({ id: cc.id, title: cc.title, value: cc.value, note: cc.note ?? "" })}
                     className="flex h-6 w-6 items-center justify-center rounded-full transition hover:opacity-80"
-                    style={{ backgroundColor: "rgba(99,102,200,0.10)", color: "#6366C8" }} title="Editar card">
+                    style={{ backgroundColor: "rgba(124,58,237,0.10)", color: "#7C3AED" }} title="Editar card">
                     <Edit2 size={11} />
                   </button>
                   <button type="button"
@@ -1701,7 +1701,7 @@ function ProfileOverviewPanel({
           {/* Tile de criar/editar card personalizado */}
           {cardForm ? (
             <article className="flex flex-col gap-2 rounded-[20px] border-2 shadow-horizon"
-              style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "#6366C8", padding: "18px" }}>
+              style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "#7C3AED", padding: "18px" }}>
               <input autoFocus type="text" value={cardForm.title}
                 onChange={(e) => setCardForm({ ...cardForm, title: e.target.value })}
                 placeholder="Título (ex: Vendas WhatsApp)"
@@ -1737,7 +1737,7 @@ function ProfileOverviewPanel({
                     setCardForm(null);
                   }}
                   className="flex-1 rounded-lg py-1.5 text-[10px] font-bold text-white transition hover:opacity-90 disabled:opacity-40"
-                  style={{ background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)" }}>
+                  style={{ background: "var(--dm-btn-primary-bg)" }}>
                   Salvar card
                 </button>
               </div>
@@ -1773,7 +1773,7 @@ function ProfileOverviewPanel({
                 <button key={v} type="button" onClick={() => setFunnelView(v)}
                   className="flex items-center gap-1.5 rounded-[8px] px-3 py-1.5 text-[11px] font-semibold transition-all"
                   style={funnelView === v
-                    ? { background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)", color: "#fff", boxShadow: "0 2px 8px rgba(49,52,145,0.28)" }
+                    ? { background: "var(--dm-btn-primary-bg)", color: "#fff", boxShadow: "0 2px 8px rgba(124,58,237,0.28)" }
                     : { color: "var(--dm-text-tertiary)" }}>
                   {v === "bars" ? "Barras" : "Funil"}
                 </button>
@@ -1784,7 +1784,7 @@ function ProfileOverviewPanel({
               onClick={() => setShowFunnelPanel((v) => !v)}
               className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-semibold transition"
               style={showFunnelPanel
-                ? { background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)", color: "#fff", boxShadow: "0 4px 12px rgba(49,52,145,0.30)" }
+                ? { background: "var(--dm-btn-primary-bg)", color: "#fff", boxShadow: "0 4px 12px rgba(124,58,237,0.30)" }
                 : { backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-secondary)", border: "1px solid var(--dm-border-default)" }}
             >
               <SlidersHorizontal size={11} />
@@ -2040,7 +2040,7 @@ function ProfileOverviewPanel({
               {/* Totals row */}
               {campaigns.length > 1 && (
                 <tfoot>
-                  <tr style={{ background: "linear-gradient(135deg, rgba(49,52,145,0.06) 0%, rgba(99,102,200,0.04) 100%)", borderTop: "2px solid var(--dm-border-default)" }}>
+                  <tr style={{ background: "linear-gradient(135deg, rgba(124,58,237,0.06) 0%, rgba(124,58,237,0.04) 100%)", borderTop: "2px solid var(--dm-border-default)" }}>
                     <td className="px-4 py-3">
                       <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-brand-500)" }}>Total</span>
                     </td>
@@ -2322,7 +2322,7 @@ function CampaignAnalysisPanel({
 
   // Horizon-style color maps for KPI cards
   const KPI_SOLID: Record<string, string> = {
-    brand: "#6366C8",
+    brand: "#7C3AED",
     sky:   "#0ea5e9",
     green: "#05CD99",
     rose:  "#EE5D50",
@@ -2330,7 +2330,7 @@ function CampaignAnalysisPanel({
     slate: "#64748b",
   };
   const KPI_BG: Record<string, string> = {
-    brand: "rgba(99,102,200,0.12)",
+    brand: "rgba(124,58,237,0.12)",
     sky:   "rgba(14,165,233,0.12)",
     green: "rgba(5,205,153,0.12)",
     rose:  "rgba(238,93,80,0.12)",
@@ -2340,7 +2340,7 @@ function CampaignAnalysisPanel({
 
   // Funnel step colors — more saturated for professional look
   const FUNNEL_COLORS: Record<string, string> = {
-    reach:          "#6366C8",
+    reach:          "#7C3AED",
     impressions:    "#8b5cf6",
     clicks:         "#0ea5e9",
     page_views:     "#f59e0b",
@@ -2370,7 +2370,7 @@ function CampaignAnalysisPanel({
             <button key={id} type="button" onClick={() => setActiveTab(id as "kpis" | "conjunto" | "instagram")}
               className="flex-1 rounded-[10px] py-2 text-[13px] font-semibold transition-all"
               style={activeTab === id
-                ? { background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)", color: "#fff", boxShadow: "0 4px 12px rgba(49,52,145,0.28)" }
+                ? { background: "var(--dm-btn-primary-bg)", color: "#fff", boxShadow: "0 4px 12px rgba(124,58,237,0.28)" }
                 : { color: "var(--dm-text-tertiary)" }}>
               {label}
             </button>
@@ -2453,7 +2453,7 @@ function CampaignAnalysisPanel({
                           {/* Spend mini-bar */}
                           <div className="mt-1.5 h-1 overflow-hidden rounded-full w-full" style={{ backgroundColor: "var(--dm-bg-elevated)", maxWidth: "160px" }}>
                             <div className="h-full rounded-full"
-                              style={{ width: `${spendPct}%`, background: "linear-gradient(90deg,#6366C8 0%,#313491 100%)" }} />
+                              style={{ width: `${spendPct}%`, background: "linear-gradient(90deg,#7C3AED 0%,#7C3AED 100%)" }} />
                           </div>
                         </td>
 
@@ -2519,7 +2519,7 @@ function CampaignAnalysisPanel({
                   })}
 
                   {/* Totals row */}
-                  <tr style={{ background: "linear-gradient(135deg, rgba(49,52,145,0.06) 0%, rgba(99,102,200,0.04) 100%)", borderTop: "2px solid var(--dm-border-default)" }}>
+                  <tr style={{ background: "linear-gradient(135deg, rgba(124,58,237,0.06) 0%, rgba(124,58,237,0.04) 100%)", borderTop: "2px solid var(--dm-border-default)" }}>
                     <td className="px-4 py-3">
                       <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-brand-500)" }}>
                         Total
@@ -2595,7 +2595,7 @@ function CampaignAnalysisPanel({
               onClick={() => setEditGoals((v) => !v)}
               className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-semibold transition"
               style={editGoals
-                ? { background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)", color: "#fff", boxShadow: "0 4px 12px rgba(49,52,145,0.30)" }
+                ? { background: "var(--dm-btn-primary-bg)", color: "#fff", boxShadow: "0 4px 12px rgba(124,58,237,0.30)" }
                 : { backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)", border: "1px solid var(--dm-border-default)" }}
             >
               <Target size={11} />
@@ -2621,8 +2621,8 @@ function CampaignAnalysisPanel({
               : 0;
             const goalMet   = goalVal > 0 && (kpi.invert ? val <= goalVal : val >= goalVal);
             const goalColor = goalMet ? "#05CD99" : goalPct >= 75 ? "#F4A60D" : "#EE5D50";
-            const solid     = KPI_SOLID[kpi.color] ?? "#6366C8";
-            const bg        = KPI_BG[kpi.color]    ?? "rgba(99,102,200,0.10)";
+            const solid     = KPI_SOLID[kpi.color] ?? "#7C3AED";
+            const bg        = KPI_BG[kpi.color]    ?? "rgba(124,58,237,0.10)";
 
             const isEditable = (EDITABLE_KPI_IDS as readonly string[]).includes(kpi.id);
             const isEditing = editingKpiId === kpi.id;
@@ -2778,7 +2778,7 @@ function CampaignAnalysisPanel({
               <button key={v} type="button" onClick={() => setFunnelView(v)}
                 className="flex items-center gap-1.5 rounded-[8px] px-3 py-1.5 text-[11px] font-semibold transition-all"
                 style={funnelView === v
-                  ? { background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)", color: "#fff", boxShadow: "0 2px 8px rgba(49,52,145,0.28)" }
+                  ? { background: "var(--dm-btn-primary-bg)", color: "#fff", boxShadow: "0 2px 8px rgba(124,58,237,0.28)" }
                   : { color: "var(--dm-text-tertiary)" }}>
                 {v === "bars" ? "Barras" : "Funil"}
               </button>
@@ -2802,7 +2802,7 @@ function CampaignAnalysisPanel({
                     ? `${(rate / 100).toFixed(1)}x${stage.rateFromPrev ? ` ${stage.rateFromPrev}` : ""}`
                     : `${formatPercent(rate)}${stage.rateFromPrev ? ` ${stage.rateFromPrev}` : ""}`
                   : null;
-                const color   = FUNNEL_COLORS[stage.id] ?? "#6366C8";
+                const color   = FUNNEL_COLORS[stage.id] ?? "#7C3AED";
                 const pct     = maxVal > 0 ? (val / maxVal) * 100 : 0;
                 return (
                   <div key={stage.id} className="flex flex-col">
@@ -2859,7 +2859,7 @@ function CampaignAnalysisPanel({
                     ? `${(rate / 100).toFixed(1)}x${stage.rateFromPrev ? ` ${stage.rateFromPrev}` : ""}`
                     : `${formatPercent(rate)}${stage.rateFromPrev ? ` ${stage.rateFromPrev}` : ""}`
                   : null;
-                const color   = FUNNEL_COLORS[stage.id] ?? "#6366C8";
+                const color   = FUNNEL_COLORS[stage.id] ?? "#7C3AED";
                 // Taper from 100% → 50%
                 const widthPct = total > 1 ? 100 - (i / (total - 1)) * 50 : 88;
                 return (
@@ -3816,7 +3816,7 @@ function ProfileDetailView({
             onClick={() => setProfileTab(id as typeof profileTab)}
             className="flex-1 rounded-[10px] py-2 text-[13px] font-semibold transition-all"
             style={profileTab === id
-              ? { background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)", color: "#fff", boxShadow: "0 4px 12px rgba(49,52,145,0.28)" }
+              ? { background: "var(--dm-btn-primary-bg)", color: "#fff", boxShadow: "0 4px 12px rgba(124,58,237,0.28)" }
               : { color: "var(--dm-text-tertiary)" }}>
             {label}
           </button>

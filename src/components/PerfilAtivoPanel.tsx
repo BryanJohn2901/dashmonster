@@ -676,7 +676,7 @@ export function PerfilAtivoPanel({
                     onClick={() => { setTableStep(step); setTablePage(1); }}
                     className="rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors"
                     style={tableStep === step
-                      ? { background: "var(--dm-brand-500, #6366C8)", color: "#fff" }
+                      ? { background: "var(--dm-brand-500, #7C3AED)", color: "#fff" }
                       : { backgroundColor: "var(--dm-bg-surface)", color: "var(--dm-text-tertiary)", border: "1px solid var(--dm-border-subtle)" }}>
                     {label}
                   </button>
