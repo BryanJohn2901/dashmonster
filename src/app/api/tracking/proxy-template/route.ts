@@ -50,6 +50,14 @@ curl_setopt($ch, CURLOPT_TIMEOUT, 5); // hosts compartilhados tem max_execution_
 if ($body !== null) curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
 
 $response = curl_exec($ch);
+if ($response === false) {
+  $err = curl_error($ch);
+  curl_close($ch);
+  http_response_code(502);
+  header('Content-Type: application/json; charset=utf-8');
+  echo json_encode(['error' => 'dashmonster_unreachable', 'message' => $err]);
+  exit;
+}
 $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
 $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 curl_close($ch);
@@ -69,7 +77,7 @@ echo substr($response, $headerSize);
 }
 
 export async function GET(request: NextRequest) {
-  const dashmonsterBase = process.env.NEXT_PUBLIC_APP_URL ?? request.nextUrl.origin;
+  const dashmonsterBase = (process.env.NEXT_PUBLIC_APP_URL ?? request.nextUrl.origin).replace(/\/$/, "");
 
   return new Response(buildProxyPhp(dashmonsterBase), {
     status: 200,

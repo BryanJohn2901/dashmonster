@@ -5,7 +5,7 @@ import { Loader2, Save, Plus, Trash2, Star, Download, AlertTriangle, CheckCircle
 import { toast } from "@/hooks/useToast";
 import {
   fetchTrackingPixels, createTrackingPixel, updateTrackingPixel, deleteTrackingPixel, setDefaultTrackingPixel, verifyMetaToken, normalizeHostname,
-  type Company, type TrackingPixel,
+  authHeaders, type Company, type TrackingPixel,
 } from "@/hooks/useCompany";
 
 const BRAND = "#6366C8";
@@ -116,7 +116,8 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
 }) {
   const [name, setName] = useState(pixel.name);
   const [pixelId, setPixelId] = useState(pixel.metaPixelId);
-  const [capiToken, setCapiToken] = useState(pixel.metaCapiToken);
+  const [capiToken, setCapiToken] = useState("");
+  const [clearCapiToken, setClearCapiToken] = useState(false);
   const [dominio, setDominio] = useState(pixel.dominioAutorizado);
   const [testEventCode, setTestEventCode] = useState(pixel.metaTestEventCode);
   const [saving, setSaving] = useState(false);
@@ -127,10 +128,20 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<TestProxyResult | null>(null);
 
+  useEffect(() => {
+    setName(pixel.name);
+    setPixelId(pixel.metaPixelId);
+    setCapiToken("");
+    setClearCapiToken(false);
+    setDominio(pixel.dominioAutorizado);
+    setTestEventCode(pixel.metaTestEventCode);
+  }, [pixel.id, pixel.name, pixel.metaPixelId, pixel.dominioAutorizado, pixel.metaTestEventCode, pixel.hasMetaCapiToken]);
+
+  const tokenChanged = capiToken.trim().length > 0 || clearCapiToken;
   const dirty =
     name !== pixel.name ||
     pixelId !== pixel.metaPixelId ||
-    capiToken !== pixel.metaCapiToken ||
+    tokenChanged ||
     dominio !== pixel.dominioAutorizado ||
     testEventCode !== pixel.metaTestEventCode;
 
@@ -141,8 +152,8 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
   // assíncrono (mesma técnica do gtag/fbq). Só o track-event passa pelo
   // dm-proxy.php (1ª parte, é o que grava o cookie _dm_uid de 400 dias) — por
   // isso o arquivo PHP continua obrigatório, mesmo o script vindo daqui.
-  const appBase = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== "undefined" ? window.location.origin : "");
-  const snippet = `<script async src="${appBase}/api/tracking/pixel.js?via=proxy"></script>\n<script>window.dmq=window.dmq||[];dmq.push(["init","${company.slug}","${pixel.slug}"]);</script>`;
+  const appBase = (process.env.NEXT_PUBLIC_APP_URL || (typeof window !== "undefined" ? window.location.origin : "")).replace(/\/$/, "");
+  const snippet = `<script async src="${appBase}/api/tracking/pixel.js?via=proxy"></script>\n<script>window.dmq=window.dmq||[];dmq.push(["init",${JSON.stringify(company.slug)},${JSON.stringify(pixel.slug)}]);</script>`;
 
   const save = async () => {
     setSaving(true);
@@ -152,15 +163,28 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
       // usuário colou uma URL completa que o hook reduziu a hostname.
       const cleanDominio = normalizeHostname(dominio);
       if (cleanDominio !== dominio) setDominio(cleanDominio);
-      const patch = { name: name.trim(), metaPixelId: pixelId.trim(), metaCapiToken: capiToken.trim(), dominioAutorizado: cleanDominio, metaTestEventCode: testEventCode.trim() };
+      const nextToken = capiToken.trim();
+      const patch: {
+        name: string;
+        metaPixelId: string;
+        metaCapiToken?: string | null;
+        dominioAutorizado: string;
+        metaTestEventCode: string;
+      } = {
+        name: name.trim(),
+        metaPixelId: pixelId.trim(),
+        dominioAutorizado: cleanDominio,
+        metaTestEventCode: testEventCode.trim(),
+      };
+      if (nextToken || clearCapiToken) patch.metaCapiToken = nextToken;
 
       // Com Pixel ID + token preenchidos, confere com a Meta se o token autoriza
       // ESSE pixel antes de salvar — token de outro pixel é aceito pela Meta mas
       // o evento é descartado (problema silencioso). Bloqueia só em mismatch/token
       // inválido (certeza); "unknown" (não deu pra verificar) salva mesmo assim.
       let validated = false;
-      if (patch.metaPixelId && patch.metaCapiToken) {
-        const check = await verifyMetaToken(patch.metaPixelId, patch.metaCapiToken);
+      if (patch.metaPixelId && nextToken) {
+        const check = await verifyMetaToken(patch.metaPixelId, nextToken);
         if (check.status === "mismatch") {
           const autoriza = check.authorizedIds?.length ? ` Ele autoriza: ${check.authorizedIds.join(", ")}.` : "";
           toast.error(`Esse token NÃO pertence ao Pixel ${patch.metaPixelId}.${autoriza} Gere o token dentro do pixel certo (Events Manager → Configurações → Conversions API) e tente de novo.`);
@@ -173,8 +197,10 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
         validated = check.status === "match";
       }
 
-      await updateTrackingPixel(pixel.id, patch);
-      onSaved({ ...pixel, ...patch, name: patch.name || "Pixel sem nome" });
+      const updated = await updateTrackingPixel(pixel.id, patch);
+      setCapiToken("");
+      setClearCapiToken(false);
+      onSaved(updated);
       toast.success(validated ? "Pixel salvo — token validado com a Meta ✓" : "Pixel salvo!");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro ao salvar.");
@@ -223,7 +249,7 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
     try {
       const res = await fetch("/api/tracking/test-proxy", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(await authHeaders()) },
         body: JSON.stringify({ url: testUrl.trim(), companySlug: company.slug, pixelSlug: pixel.slug }),
       });
       const json = (await res.json()) as TestProxyResult | { error: string };
@@ -357,7 +383,7 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
             type={revealToken ? "text" : "password"}
             value={capiToken}
             disabled={!canEdit}
-            onChange={(e) => setCapiToken(e.target.value)}
+            onChange={(e) => { setCapiToken(e.target.value); setClearCapiToken(false); }}
             placeholder="EAAxxxx…"
             className={`flex-1 ${inputCls} h-10 font-mono disabled:opacity-60`}
             style={inputStyle}
@@ -365,7 +391,23 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
           {capiToken && (
             <button type="button" onClick={() => setRevealToken((v) => !v)} className="text-[10px] font-bold" style={{ color: BRAND }}>{revealToken ? "Ocultar" : "Revelar"}</button>
           )}
+          {pixel.hasMetaCapiToken && !capiToken && canEdit && (
+            <button
+              type="button"
+              onClick={() => setClearCapiToken((v) => !v)}
+              className="text-[10px] font-bold"
+              style={{ color: clearCapiToken ? "#F25767" : BRAND }}
+            >
+              {clearCapiToken ? "Manter" : "Remover"}
+            </button>
+          )}
         </div>
+        {pixel.hasMetaCapiToken && !clearCapiToken && (
+          <span className="text-[10px] font-semibold" style={{ color: "#05CD99" }}>Token CAPI configurado. O valor real fica somente no servidor.</span>
+        )}
+        {clearCapiToken && (
+          <span className="text-[10px] font-semibold" style={{ color: "#F25767" }}>O token salvo sera removido ao salvar.</span>
+        )}
         <span className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>Diferente do token de gestão de anúncios da Conexão Meta — gere em Events Manager → Configurações → Conversions API.</span>
       </label>
       <label className="flex flex-col gap-1">

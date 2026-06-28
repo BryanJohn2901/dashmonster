@@ -1,3 +1,5 @@
+import "server-only";
+
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 // ─── Cliente Supabase server-side com service_role ────────────────────────────

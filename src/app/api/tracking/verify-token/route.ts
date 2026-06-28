@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/trackingAuth";
 
 // Valida se um token da Conversions API realmente autoriza um Pixel ID antes
 // de salvar — evita o problema silencioso de um token de OUTRO pixel ser
@@ -23,6 +24,9 @@ interface DebugTokenResponse {
 }
 
 export async function POST(request: NextRequest) {
+  const auth = await requireAuth(request);
+  if (!auth.ok) return auth.response;
+
   let body: { pixelId?: string; token?: string };
   try {
     body = (await request.json()) as { pixelId?: string; token?: string };

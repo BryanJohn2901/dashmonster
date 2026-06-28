@@ -55,6 +55,11 @@ const UTM_COLUMNS: Record<string, string> = {
   utm_ad_id: "utm_ad_id",
 };
 
+const MAX_BODY_BYTES = 64 * 1024;
+const MAX_URL_LENGTH = 2048;
+const MAX_ID_LENGTH = 128;
+const MAX_EVENT_NAME_LENGTH = 64;
+
 // Anúncios (ex.: Meta) costumam montar a UTM a partir de um placeholder
 // ({{ad.name}} etc.) que já vem URL-encoded — somado ao encoding normal da
 // query string, o valor chega com 2 camadas (%2520, %252F, "+" literal...).
@@ -107,10 +112,10 @@ async function resolveCompanyAndPixel(
   db: ReturnType<typeof supabaseAdmin>,
   companySlug: string,
   pixelSlug: string | undefined,
-): Promise<{ resolved: ResolvedPixel | null; companyNotFound: boolean }> {
+): Promise<{ resolved: ResolvedPixel | null; companyNotFound: boolean; pixelNotFound: boolean }> {
   const companyRes = await db.from("companies").select("id").eq("slug", companySlug).single();
   if (companyRes.error || !companyRes.data) {
-    return { resolved: null, companyNotFound: true };
+    return { resolved: null, companyNotFound: true, pixelNotFound: false };
   }
   const companyId = companyRes.data.id as string;
 
@@ -126,6 +131,7 @@ async function resolveCompanyAndPixel(
     const legacy = await selectLegacyCompanyConfig(db, companyId);
     return {
       companyNotFound: false,
+      pixelNotFound: false,
       resolved: {
         companyId,
         pixelId: null,
@@ -138,16 +144,21 @@ async function resolveCompanyAndPixel(
   }
 
   if (!pixelRes.data) {
+    if (pixelSlug) {
+      return { companyNotFound: false, pixelNotFound: true, resolved: null };
+    }
     // pixel_slug não bateu com nenhum pixel, ou a empresa nunca criou um —
     // não é erro: evento é capturado sem CAPI e sem restrição de domínio.
     return {
       companyNotFound: false,
+      pixelNotFound: false,
       resolved: { companyId, pixelId: null, meta_pixel_id: null, meta_capi_token: null, dominio_autorizado: null, meta_test_event_code: null },
     };
   }
 
   return {
     companyNotFound: false,
+    pixelNotFound: false,
     resolved: {
       companyId,
       pixelId: pixelRes.data.id as string,
@@ -241,6 +252,80 @@ function withTrackingCookie(headers: HeadersInit, fingerprintId: string): Header
   };
 }
 
+function trimLimit(value: unknown, max: number): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  return trimmed.slice(0, max);
+}
+
+function validEventName(value: string): boolean {
+  return value.length <= MAX_EVENT_NAME_LENGTH && /^[A-Za-z][A-Za-z0-9_:-]*$/.test(value);
+}
+
+function validHttpUrl(value: string): boolean {
+  if (value.length > MAX_URL_LENGTH) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function safeIdentifier(value: unknown): string | undefined {
+  const v = trimLimit(value, MAX_ID_LENGTH);
+  if (!v || !/^[A-Za-z0-9._:-]+$/.test(v)) return undefined;
+  return v;
+}
+
+function safeUserData(input: TrackEventPayload["user_data"]): TrackEventPayload["user_data"] {
+  const out: NonNullable<TrackEventPayload["user_data"]> = {};
+  for (const key of ["em", "ph", "fn", "ln"] as const) {
+    const v = trimLimit(input?.[key], MAX_ID_LENGTH);
+    if (v) out[key] = v;
+  }
+  return out;
+}
+
+function safePii(input: TrackEventPayload["pii"]): TrackEventPayload["pii"] {
+  if (!input) return undefined;
+  const out: NonNullable<TrackEventPayload["pii"]> = {};
+  const email = trimLimit(input.email, 254);
+  const phone = trimLimit(input.phone, 64);
+  const name = trimLimit(input.name, 160);
+  if (email) out.email = email;
+  if (phone) out.phone = phone;
+  if (name) out.name = name;
+  const fields: Record<string, string> = {};
+  let count = 0;
+  for (const [rawKey, rawValue] of Object.entries(input.fields ?? {})) {
+    if (count >= 25) break;
+    const key = trimLimit(rawKey, 80);
+    const value = trimLimit(rawValue, 500);
+    if (!key || !value) continue;
+    fields[key] = value;
+    count++;
+  }
+  if (Object.keys(fields).length > 0) out.fields = fields;
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function safeCustomData(input: TrackEventPayload["custom_data"]): Record<string, unknown> {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return {};
+  const out: Record<string, unknown> = {};
+  let count = 0;
+  for (const [rawKey, value] of Object.entries(input)) {
+    if (count >= 50) break;
+    const key = trimLimit(rawKey, 80);
+    if (!key) continue;
+    if (typeof value === "string") out[key] = value.slice(0, 500);
+    else if (typeof value === "number" || typeof value === "boolean" || value === null) out[key] = value;
+    count++;
+  }
+  return out;
+}
+
 export async function OPTIONS(request: NextRequest) {
   return new Response(null, {
     status: 204,
@@ -254,6 +339,10 @@ export async function OPTIONS(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const origin = request.headers.get("origin");
   const headers = corsHeaders(origin);
+  const contentLength = Number(request.headers.get("content-length") ?? 0);
+  if (contentLength > MAX_BODY_BYTES) {
+    return NextResponse.json({ error: "Payload muito grande." }, { status: 413, headers });
+  }
 
   let payload: TrackEventPayload;
   try {
@@ -262,26 +351,44 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Payload inválido." }, { status: 400, headers });
   }
 
-  if (!payload.client_id || !payload.event_name) {
+  payload.client_id = trimLimit(payload.client_id, 100) ?? "";
+  payload.pixel_slug = trimLimit(payload.pixel_slug, 100);
+  payload.event_name = trimLimit(payload.event_name, MAX_EVENT_NAME_LENGTH) ?? "";
+  payload.event_url = trimLimit(payload.event_url, MAX_URL_LENGTH) ?? "";
+  payload.page_title = trimLimit(payload.page_title, 200);
+  payload.user_id = safeIdentifier(payload.user_id);
+  payload.event_id = safeIdentifier(payload.event_id);
+  payload.fbp = trimLimit(payload.fbp, 160);
+  payload.fbc = trimLimit(payload.fbc, 220);
+  payload.user_data = safeUserData(payload.user_data);
+  payload.pii = safePii(payload.pii);
+  payload.custom_data = safeCustomData(payload.custom_data);
+
+  if (!payload.client_id || !payload.event_name || !validEventName(payload.event_name)) {
     return NextResponse.json(
       { error: "client_id e event_name são obrigatórios." },
       { status: 400, headers },
     );
   }
 
+  if (!payload.ping && !validHttpUrl(payload.event_url)) {
+    return NextResponse.json({ error: "event_url valida e obrigatoria." }, { status: 400, headers });
+  }
+
   const db = supabaseAdmin();
 
-  const { resolved, companyNotFound } = await resolveCompanyAndPixel(db, payload.client_id, payload.pixel_slug);
+  const { resolved, companyNotFound, pixelNotFound } = await resolveCompanyAndPixel(db, payload.client_id, payload.pixel_slug);
 
   if (companyNotFound || !resolved) {
+    if (pixelNotFound) return NextResponse.json({ error: "Pixel nao encontrado." }, { status: 404, headers });
     return NextResponse.json({ error: "Cliente não encontrado." }, { status: 404, headers });
   }
 
   // Validação de domínio é checagem de aplicação, não de CORS — o preflight
   // sempre é permitido (não dá pra inspecionar o body antes dele), então é
   // aqui que `dominio_autorizado` realmente bloqueia clientes não autorizados.
-  // Origin ausente (alguns navegadores em modo privado omitem) é soft-fail:
-  // logamos e seguimos, em vez de derrubar o tracking silenciosamente.
+  // Com dominio_autorizado configurado, Origin/Referer ausente tambem bloqueia:
+  // sem uma origem verificavel nao ha como garantir que o cliente e autorizado.
   const requestHostname = hostnameOf(origin) ?? hostnameOf(request.headers.get("referer"));
   if (resolved.dominio_autorizado) {
     if (requestHostname && requestHostname !== resolved.dominio_autorizado) {
@@ -291,7 +398,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Domínio não autorizado." }, { status: 403, headers });
     }
     if (!requestHostname) {
-      console.warn(`[tracking] origem ausente para ${payload.client_id}, seguindo mesmo assim (MVP).`);
+      console.warn(`[tracking] origem ausente para ${payload.client_id}, bloqueada por dominio_autorizado.`);
+      return NextResponse.json({ error: "Origem ausente para dominio autorizado." }, { status: 403, headers });
     }
   }
 
@@ -309,6 +417,12 @@ export async function POST(request: NextRequest) {
     request.headers.get("x-real-ip") ??
     "unknown";
   const userAgent = request.headers.get("user-agent") ?? "unknown";
+
+  // Descarta bots/crawlers — UA com esses padrões nunca são visitantes reais.
+  // Sem isso, GoogleBot/Bingbot/Vercel preview aparecem como PageViews US no dashboard.
+  if (/bot|crawler|spider|scraper|headless|prerender|lighthouse|facebookexternalhit|Applebot|vercel-screenshot|vercel-healthcheck/i.test(userAgent)) {
+    return NextResponse.json({ received: true }, { status: 200, headers });
+  }
 
   // País/estado/cidade vêm de graça dos headers x-vercel-ip-* (rede da Vercel
   // já resolve geo-IP em toda requisição, sem chamada a API externa, sem custo,
@@ -418,8 +532,8 @@ export async function POST(request: NextRequest) {
             ph: payload.user_data?.ph,
             fn: payload.user_data?.fn,
             ln: payload.user_data?.ln,
-            client_ip_address: ip,
-            client_user_agent: userAgent,
+            client_ip_address: ip !== "unknown" ? ip : undefined,
+            client_user_agent: userAgent !== "unknown" ? userAgent : undefined,
             // fbp/fbc NÃO são hasheados (são identificadores de clique/browser,
             // não PII) — manda como string crua, é o que a Meta espera.
             fbp: payload.fbp || undefined,

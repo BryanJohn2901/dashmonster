@@ -302,14 +302,15 @@ export interface TrackingPixel {
   slug: string;
   name: string;
   metaPixelId: string;
-  metaCapiToken: string;
+  /** O token existe no banco, mas nunca volta para o browser. */
+  hasMetaCapiToken: boolean;
   dominioAutorizado: string;
   /** Código de "Eventos de teste" do Events Manager — opcional, só pra validar dedup Pixel+CAPI. Remover depois do teste. */
   metaTestEventCode: string;
   isDefault: boolean;
 }
 
-const TRACKING_PIXELS_SELECT = "id, slug, name, meta_pixel_id, meta_capi_token, dominio_autorizado, meta_test_event_code, is_default";
+const TRACKING_PIXELS_SELECT = "id, slug, name, meta_pixel_id, dominio_autorizado, meta_test_event_code, is_default";
 
 function rowToTrackingPixel(row: Record<string, unknown>): TrackingPixel {
   return {
@@ -317,15 +318,35 @@ function rowToTrackingPixel(row: Record<string, unknown>): TrackingPixel {
     slug: row.slug as string,
     name: row.name as string,
     metaPixelId: (row.meta_pixel_id as string) ?? "",
-    metaCapiToken: (row.meta_capi_token as string) ?? "",
+    hasMetaCapiToken: Boolean(row.hasMetaCapiToken),
     dominioAutorizado: (row.dominio_autorizado as string) ?? "",
     metaTestEventCode: (row.meta_test_event_code as string) ?? "",
     isDefault: Boolean(row.is_default),
   };
 }
 
-function randomSlug(): string {
-  return Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6);
+export async function authHeaders(): Promise<HeadersInit> {
+  if (!supabaseClient) throw new Error("Supabase nÃ£o configurado.");
+  const { data } = await supabaseClient.auth.getSession();
+  const token = data.session?.access_token;
+  if (!token) throw new Error("SessÃ£o expirada. Entre novamente.");
+  return { Authorization: `Bearer ${token}` };
+}
+
+async function trackingPixelsJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const headers = {
+    ...(await authHeaders()),
+    ...(init?.body ? { "Content-Type": "application/json" } : {}),
+    ...(init?.headers ?? {}),
+  };
+  const res = await fetch(url, { ...init, headers });
+  const json = await res.json().catch(() => null) as T | { error?: string } | null;
+  const errorMessage =
+    json && typeof json === "object" && "error" in json && typeof json.error === "string"
+      ? json.error
+      : "Erro na API de tracking.";
+  if (!res.ok) throw new Error(errorMessage);
+  return json as T;
 }
 
 /**
@@ -348,13 +369,12 @@ export function normalizeHostname(raw: string): string {
 /** Lista os pixels de tracking de uma empresa (mais antigo primeiro — o "Pixel principal" migrado vem primeiro). */
 export async function fetchTrackingPixels(companyId: string): Promise<TrackingPixel[]> {
   if (!supabaseClient) return [];
-  const { data, error } = await supabaseClient
-    .from("tracking_pixels")
-    .select(TRACKING_PIXELS_SELECT)
-    .eq("company_id", companyId)
-    .order("created_at", { ascending: true });
-  if (error || !data) return [];
-  return data.map(rowToTrackingPixel);
+  try {
+    const data = await trackingPixelsJson<{ pixels: TrackingPixel[] }>(`/api/tracking/pixels?companyId=${encodeURIComponent(companyId)}`);
+    return data.pixels;
+  } catch {
+    return [];
+  }
 }
 
 /** Cria um pixel novo (RLS: owner OU manager). Se for o 1º da empresa, já nasce padrão. */
@@ -363,13 +383,12 @@ export async function createTrackingPixel(
   input: { name: string; isFirst: boolean },
 ): Promise<TrackingPixel> {
   if (!supabaseClient) throw new Error("Supabase não configurado.");
-  const { data, error } = await supabaseClient
-    .from("tracking_pixels")
-    .insert({ company_id: companyId, slug: randomSlug(), name: input.name.trim() || "Novo pixel", is_default: input.isFirst })
-    .select(TRACKING_PIXELS_SELECT)
-    .single();
-  if (error || !data) throw new Error(error?.message ?? "Erro ao criar pixel.");
-  return rowToTrackingPixel(data);
+  void input.isFirst;
+  const data = await trackingPixelsJson<{ pixel: TrackingPixel }>("/api/tracking/pixels", {
+    method: "POST",
+    body: JSON.stringify({ companyId, name: input.name }),
+  });
+  return data.pixel;
 }
 
 export type VerifyTokenStatus = "match" | "mismatch" | "invalid" | "unknown" | "skipped";
@@ -390,7 +409,7 @@ export async function verifyMetaToken(pixelId: string, token: string): Promise<V
   try {
     const res = await fetch("/api/tracking/verify-token", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...(await authHeaders()) },
       body: JSON.stringify({ pixelId, token }),
     });
     return (await res.json()) as VerifyTokenResult;
@@ -402,37 +421,27 @@ export async function verifyMetaToken(pixelId: string, token: string): Promise<V
 /** Atualiza nome/credenciais de um pixel (RLS: owner OU manager). String vazia limpa o campo. */
 export async function updateTrackingPixel(
   pixelId: string,
-  patch: { name: string; metaPixelId: string; metaCapiToken: string; dominioAutorizado: string; metaTestEventCode: string },
-): Promise<void> {
-  if (!supabaseClient) throw new Error("Supabase não configurado.");
-  const { error } = await supabaseClient
-    .from("tracking_pixels")
-    .update({
-      name: patch.name.trim() || "Pixel sem nome",
-      meta_pixel_id: patch.metaPixelId.trim() || null,
-      meta_capi_token: patch.metaCapiToken.trim() || null,
-      // Normaliza pra hostname puro — senão URL completa colada vira 403 silencioso (ver normalizeHostname).
-      dominio_autorizado: normalizeHostname(patch.dominioAutorizado) || null,
-      meta_test_event_code: patch.metaTestEventCode.trim() || null,
-    })
-    .eq("id", pixelId);
-  if (error) throw new Error(error.message);
+  patch: { name: string; metaPixelId: string; metaCapiToken?: string | null; dominioAutorizado: string; metaTestEventCode: string },
+): Promise<TrackingPixel> {
+  const updated = await trackingPixelsJson<{ pixel: TrackingPixel }>("/api/tracking/pixels", {
+    method: "PATCH",
+    body: JSON.stringify({ action: "update", pixelId, ...patch }),
+  });
+  return updated.pixel;
 }
 
 /** Marca um pixel como padrão (snippet sem 2º argumento) e desmarca os outros da mesma empresa. */
 export async function setDefaultTrackingPixel(companyId: string, pixelId: string): Promise<void> {
-  if (!supabaseClient) throw new Error("Supabase não configurado.");
-  const { error: clearError } = await supabaseClient.from("tracking_pixels").update({ is_default: false }).eq("company_id", companyId);
-  if (clearError) throw new Error(clearError.message);
-  const { error } = await supabaseClient.from("tracking_pixels").update({ is_default: true }).eq("id", pixelId);
-  if (error) throw new Error(error.message);
+  void companyId;
+  await trackingPixelsJson<{ pixel: TrackingPixel }>("/api/tracking/pixels", {
+    method: "PATCH",
+    body: JSON.stringify({ action: "set-default", pixelId }),
+  });
 }
 
 /** Remove um pixel (RLS: owner OU manager). Não deixa remover o único pixel restante da empresa. */
 export async function deleteTrackingPixel(pixelId: string): Promise<void> {
-  if (!supabaseClient) throw new Error("Supabase não configurado.");
-  const { error } = await supabaseClient.from("tracking_pixels").delete().eq("id", pixelId);
-  if (error) throw new Error(error.message);
+  await trackingPixelsJson<{ ok: true }>(`/api/tracking/pixels?pixelId=${encodeURIComponent(pixelId)}`, { method: "DELETE" });
 }
 
 // ─── Catálogo Eduzz: produto → ofertas, pixel por produto (migration 050) ──
@@ -579,6 +588,147 @@ export async function deleteEduzzWebhookConfig(configId: string): Promise<void> 
   if (!supabaseClient) throw new Error("Supabase não configurado.");
   const { error } = await supabaseClient.from("eduzz_webhook_configs").delete().eq("id", configId);
   if (error) throw new Error(error.message);
+}
+
+// ─── Funis de campanha (migration 067) ───────────────────────────────────────
+// Agrupam eventos de tracking por "funil" (ex: "Perpetuo SM", "Lançamento Jul").
+// Cada funil define matchers: product_names (events_log.product_name), utm_campaigns
+// (events_log.utm_campaign) e url_patterns (events_log.event_url). Attribution:
+// 1º product_name → 2º utm_campaign → 3º url_pattern. Primeiro match vence.
+
+export interface TrackingFunnel {
+  id: string;
+  companyId: string;
+  label: string;
+  color: string;
+  pixelId: string | null;
+  productParentIds: string[];
+  productNames: string[];
+  utmCampaigns: string[];
+  urlPatterns: string[];
+  createdAt: string;
+}
+
+function rowToFunnel(row: Record<string, unknown>): TrackingFunnel {
+  return {
+    id: row.id as string,
+    companyId: row.company_id as string,
+    label: row.label as string,
+    color: (row.color as string) || "#6366f1",
+    pixelId: (row.pixel_id as string | null) ?? null,
+    productParentIds: (row.product_parent_ids as string[]) || [],
+    productNames: (row.product_names as string[]) || [],
+    utmCampaigns: (row.utm_campaigns as string[]) || [],
+    urlPatterns: (row.url_patterns as string[]) || [],
+    createdAt: row.created_at as string,
+  };
+}
+
+function cleanFunnelList(values: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of values) {
+    const value = raw.trim().slice(0, 160);
+    if (!value || seen.has(value.toLowerCase())) continue;
+    seen.add(value.toLowerCase());
+    out.push(value);
+    if (out.length >= 50) break;
+  }
+  return out;
+}
+
+function cleanFunnelColor(value: string): string {
+  return /^#[0-9A-Fa-f]{6}$/.test(value) ? value : "#6366f1";
+}
+
+export async function fetchTrackingFunnels(companyId: string): Promise<TrackingFunnel[]> {
+  if (!supabaseClient) return [];
+  const { data, error } = await supabaseClient
+    .from("tracking_funnels")
+    .select("id, company_id, label, color, pixel_id, product_parent_ids, product_names, utm_campaigns, url_patterns, created_at")
+    .eq("company_id", companyId)
+    .order("created_at", { ascending: true });
+  if (error?.message?.includes("pixel_id") || error?.message?.includes("product_parent_ids")) {
+    // Migration 068/070 ainda não rodou — busca sem as colunas novas.
+    const retry = await supabaseClient
+      .from("tracking_funnels")
+      .select("id, company_id, label, color, product_names, utm_campaigns, url_patterns, created_at")
+      .eq("company_id", companyId)
+      .order("created_at", { ascending: true });
+    if (retry.error) return [];
+    return (retry.data ?? []).map(rowToFunnel);
+  }
+  if (error) return [];
+  return (data ?? []).map(rowToFunnel);
+}
+
+export async function upsertTrackingFunnel(
+  companyId: string,
+  funnel: { id?: string; label: string; color: string; pixelId: string | null; productParentIds: string[]; productNames: string[]; utmCampaigns: string[]; urlPatterns: string[] },
+): Promise<TrackingFunnel> {
+  if (!supabaseClient) throw new Error("Supabase não configurado.");
+  const productParentIds = cleanFunnelList(funnel.productParentIds);
+  const productNames = cleanFunnelList(funnel.productNames);
+  const utmCampaigns = cleanFunnelList(funnel.utmCampaigns);
+  const urlPatterns = cleanFunnelList(funnel.urlPatterns);
+  if (productParentIds.length === 0 && productNames.length === 0 && utmCampaigns.length === 0 && urlPatterns.length === 0) {
+    throw new Error("Adicione pelo menos 1 matcher ao funil.");
+  }
+  const payload: Record<string, unknown> = {
+    company_id: companyId,
+    label: (funnel.label.trim() || "Funil sem nome").slice(0, 80),
+    color: cleanFunnelColor(funnel.color),
+    pixel_id: funnel.pixelId || null,
+    product_parent_ids: productParentIds,
+    product_names: productNames,
+    utm_campaigns: utmCampaigns,
+    url_patterns: urlPatterns,
+  };
+  const query = funnel.id
+    ? supabaseClient.from("tracking_funnels").update(payload).eq("id", funnel.id).eq("company_id", companyId)
+    : supabaseClient.from("tracking_funnels").insert(payload);
+  const result = await query
+    .select("id, company_id, label, color, pixel_id, product_parent_ids, product_names, utm_campaigns, url_patterns, created_at")
+    .single();
+  let data = result.data as Record<string, unknown> | null;
+  let error = result.error;
+  if (error?.message?.includes("pixel_id") || error?.message?.includes("product_parent_ids")) {
+    delete payload.pixel_id;
+    delete payload.product_parent_ids;
+    const retryQuery = funnel.id
+      ? supabaseClient.from("tracking_funnels").update(payload).eq("id", funnel.id).eq("company_id", companyId)
+      : supabaseClient.from("tracking_funnels").insert(payload);
+    const retry = await retryQuery
+      .select("id, company_id, label, color, product_names, utm_campaigns, url_patterns, created_at")
+      .single();
+    data = retry.data as Record<string, unknown> | null;
+    error = retry.error;
+  }
+  if (error || !data) throw new Error(error?.message ?? "Erro ao salvar funil.");
+  return rowToFunnel(data as Record<string, unknown>);
+}
+
+export async function deleteTrackingFunnel(id: string): Promise<void> {
+  if (!supabaseClient) throw new Error("Supabase não configurado.");
+  const { error } = await supabaseClient.from("tracking_funnels").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+/** Valores distintos de utm_campaign já capturados nos eventos desta empresa. */
+export async function fetchDistinctUtmCampaigns(companyId: string): Promise<string[]> {
+  if (!supabaseClient) return [];
+  const { data } = await supabaseClient
+    .from("events_log")
+    .select("utm_campaign")
+    .eq("company_id", companyId)
+    .not("utm_campaign", "is", null)
+    .limit(500);
+  const seen = new Set<string>();
+  for (const row of data ?? []) {
+    const v = (row as { utm_campaign: string | null }).utm_campaign;
+    if (v) seen.add(v);
+  }
+  return [...seen].sort();
 }
 
 // ─── Painel de super admin ────────────────────────────────────────────────────

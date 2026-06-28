@@ -458,7 +458,7 @@ describe("POST /api/tracking/track-event", () => {
     expect(mockInsert).toHaveBeenCalledWith(expect.objectContaining({ pixel_id: null }));
   });
 
-  it("segue mesmo sem Origin/Referer (soft-fail)", async () => {
+  it("bloqueia quando dominio_autorizado existe e a request vem sem Origin/Referer", async () => {
     mockHappyPath();
     const req = new NextRequest("http://localhost:3000/api/tracking/track-event", {
       method: "POST",
@@ -467,7 +467,7 @@ describe("POST /api/tracking/track-event", () => {
     });
 
     const res = await POST(req);
-    expect(res.status).toBe(200);
-    expect(mockInsert).toHaveBeenCalled();
+    expect(res.status).toBe(403);
+    expect(mockInsert).not.toHaveBeenCalled();
   });
 });

@@ -21,13 +21,14 @@ const mockConfigSelect = jest.fn(() => ({ eq: () => ({ maybeSingle: mockConfigMa
 // maybeSingle(), dá await direto na query (espera um array) — por isso tem
 // mock PRÓPRIO (mockEventsLogCount), pra não disputar a mesma fila do
 // maybeSingle (senão bagunçaria a ordem de TODOS os outros testes).
-const mockEventsLogMaybeSingle = jest.fn();
+const mockEventsLogMaybeSingle = jest.fn(() => Promise.resolve({ data: null, error: null }));
 const mockEventsLogCount = jest.fn((): Promise<{ data: unknown[]; error: { message: string } | null }> => Promise.resolve({ data: [], error: null }));
 function makeEventsLogQuery() {
-  const query: { eq: jest.Mock; ilike: jest.Mock; is: jest.Mock; order: jest.Mock; limit: jest.Mock; maybeSingle: () => unknown; then: (...args: never[]) => unknown } = {
+  const query: { eq: jest.Mock; ilike: jest.Mock; is: jest.Mock; gte: jest.Mock; order: jest.Mock; limit: jest.Mock; maybeSingle: () => unknown; then: (...args: never[]) => unknown } = {
     eq: jest.fn(),
     ilike: jest.fn(),
     is: jest.fn(),
+    gte: jest.fn(),
     order: jest.fn(),
     limit: jest.fn(),
     maybeSingle: () => mockEventsLogMaybeSingle(),
@@ -36,6 +37,7 @@ function makeEventsLogQuery() {
   query.eq.mockImplementation(() => query);
   query.ilike.mockImplementation(() => query);
   query.is.mockImplementation(() => query);
+  query.gte.mockImplementation(() => query);
   query.order.mockImplementation(() => query);
   query.limit.mockImplementation(() => query);
   return query;
@@ -54,12 +56,15 @@ function makeUpdateChain() {
   const chain = {
     eq: (...args: unknown[]) => { mockEq(...args); return chain; },
     is: () => chain,
+    not: () => chain,
+    lt: () => chain,
     then: resolved.then.bind(resolved),
     catch: resolved.catch.bind(resolved),
   };
   return chain;
 }
 const mockUpdate = jest.fn(() => makeUpdateChain());
+const mockDelete = jest.fn(() => makeUpdateChain());
 
 // tracking_pixels: mesma forma encadeada de tracking.test.ts.
 const mockPixelMaybeSingle = jest.fn();
@@ -158,7 +163,7 @@ const mockContractUpsert = jest.fn(
 const mockFrom = jest.fn((table: string) => {
   if (table === "eduzz_webhook_configs") return { select: mockConfigSelect };
   if (table === "tracking_pixels") return { select: mockPixelSelect };
-  if (table === "events_log") return { select: mockEventsLogSelect, insert: mockInsert, update: mockUpdate };
+  if (table === "events_log") return { select: mockEventsLogSelect, insert: mockInsert, update: mockUpdate, delete: mockDelete };
   if (table === "campaign_metrics") return { select: mockMetricsSelect, upsert: mockMetricsUpsert };
   if (table === "eduzz_products") return { select: mockProductsSelect, upsert: mockProductsUpsert };
   if (table === "eduzz_product_offers") return { upsert: mockOffersUpsert };

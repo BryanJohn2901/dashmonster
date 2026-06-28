@@ -1,16 +1,19 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
-import { Search, RefreshCw, Calendar, Radar, X, Mail, Phone, MapPin, User, Settings, ChevronDown, ShoppingBag, CreditCard, Hash, Smartphone, Monitor, Tablet } from "lucide-react";
+import { Search, RefreshCw, Calendar, Radar, X, Mail, Phone, MapPin, User, Settings, ChevronDown, ShoppingBag, CreditCard, Hash, Smartphone, Monitor, Tablet, BarChart3, Table2 } from "lucide-react";
 import { supabaseClient } from "@/lib/supabase";
-import { useCompany } from "@/hooks/useCompany";
+import { useCompany, fetchTrackingFunnels, type TrackingFunnel } from "@/hooks/useCompany";
 import { TrackingConfigPanel } from "@/components/TrackingConfigPanel";
 import { EduzzConfigPanel } from "@/components/EduzzConfigPanel";
+import { FunnelConfigSection } from "@/components/FunnelConfigSection";
+import { TrackingAnalytics } from "@/components/tracking/TrackingAnalytics";
+import { productBaseName, matchProductNames } from "@/lib/eduzz";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface TrackingEvent {
+export interface TrackingEvent {
   id: string;
   event_name: string;
   fingerprint_id: string;
@@ -61,10 +64,14 @@ interface TrackingEvent {
   client_user_agent: string | null;
   /** "proxy" | "direct" | null — migration 057. Mandado pelo pixel.js (PROXY_MODE, decidido no servidor); null em evento antigo ou venda Eduzz (não passa por aqui). */
   via: string | null;
+  /** UUID do pixel (tracking_pixels) que recebeu este evento — migration 037. */
+  pixel_id: string | null;
+  /** ID do produto pai Eduzz (eduzz_products.parent_id) — migration 048. */
+  product_parent_id: string | null;
   created_at: string;
 }
 
-interface Visitor {
+export interface Visitor {
   fingerprintId: string;
   events: TrackingEvent[]; // mais recente primeiro
   firstSeen: string;
@@ -92,7 +99,7 @@ interface Visitor {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const EVENT_LABELS: Record<string, string> = {
+export const EVENT_LABELS: Record<string, string> = {
   Lead: "Lead",
   Contact: "WhatsApp",
   Purchase: "Compra",
@@ -105,7 +112,7 @@ const EVENT_LABELS: Record<string, string> = {
   Installment: "Parcela",
 };
 
-const EVENT_COLORS: Record<string, { bg: string; text: string }> = {
+export const EVENT_COLORS: Record<string, { bg: string; text: string }> = {
   Lead: { bg: "rgba(49,52,145,0.12)", text: "var(--dm-primary)" },
   Contact: { bg: "rgba(16,185,129,0.12)", text: "#059669" },
   Purchase: { bg: "rgba(245,158,11,0.12)", text: "#d97706" },
@@ -150,14 +157,14 @@ const EVENTS_LIMIT = 1000;
 const EVENTS_SELECT =
   "id, event_name, fingerprint_id, event_url, page_title, user_data, lead_email, lead_phone, lead_name, extra_fields, country, country_region, city, event_id, " +
   "utm_source, utm_medium, utm_campaign, utm_content, utm_term, utm_placement, utm_campaign_id, utm_adset_id, utm_ad_id, " +
-  "value, currency, external_transaction_id, source, payment_method, installments, installment_number, installment_value, recurrence_key, product_name, is_order_bump, main_sale_transaction_id, client_user_agent, via, capi_status, capi_error, created_at";
+  "value, currency, external_transaction_id, source, payment_method, installments, installment_number, installment_value, recurrence_key, product_name, product_parent_id, is_order_bump, main_sale_transaction_id, client_user_agent, via, pixel_id, capi_status, capi_error, created_at";
 // Sem as colunas das migrations 033/034/036/038/039/040/043/044 — usado se alguma delas ainda não rodou
 // no banco, pra não derrubar a tela enquanto ela não é aplicada manualmente no Supabase.
 const EVENTS_SELECT_FALLBACK = "id, event_name, fingerprint_id, event_url, user_data, lead_email, lead_phone, capi_status, capi_error, created_at";
 
 // Bandeira a partir do código ISO (ex.: "BR" -> 🇧🇷) — calculada no client,
 // não precisa guardar emoji no banco.
-function flagEmoji(countryCode: string | null): string {
+export function flagEmoji(countryCode: string | null): string {
   if (!countryCode || !/^[A-Za-z]{2}$/.test(countryCode)) return "";
   return String.fromCodePoint(...[...countryCode.toUpperCase()].map((c) => 127397 + c.charCodeAt(0)));
 }
@@ -229,7 +236,7 @@ function parseUtmFromUrl(url: string | null): Record<string, string> {
 // captura) — usa ela quando existir. Reprocessa a event_url só pra eventos
 // antigos (capturados antes da migration) ou enquanto ela não rodou ainda,
 // mesmo padrão de resiliência das outras migrations desta tela.
-function resolveUtm(event: Pick<TrackingEvent, "event_url" | "utm_source" | "utm_medium" | "utm_campaign" | "utm_content" | "utm_term" | "utm_placement" | "utm_campaign_id" | "utm_adset_id" | "utm_ad_id">): Record<string, string> {
+export function resolveUtm(event: Pick<TrackingEvent, "event_url" | "utm_source" | "utm_medium" | "utm_campaign" | "utm_content" | "utm_term" | "utm_placement" | "utm_campaign_id" | "utm_adset_id" | "utm_ad_id">): Record<string, string> {
   const fromUrl = parseUtmFromUrl(event.event_url);
   const out: Record<string, string> = { ...fromUrl };
   for (const key of UTM_KEYS) {
@@ -252,7 +259,7 @@ function urlPath(url: string | null): string {
   }
 }
 
-function formatMoney(value: number | null, currency: string | null): string {
+export function formatMoney(value: number | null, currency: string | null): string {
   if (value == null) return "—";
   try {
     return new Intl.NumberFormat("pt-BR", { style: "currency", currency: currency || "BRL" }).format(value);
@@ -300,7 +307,7 @@ function installmentProgressLabel(installmentNumber: number | null, installments
 // vir com o modelo (ex.: "SM-G991B"). iPadOS 13+ por padrão finge ser
 // Macintosh/desktop Safari ("Solicitar site para desktop" ligado por padrão)
 // — nesse caso não tem como diferenciar de um Mac real só pelo UA.
-function parseUserAgent(ua: string | null): { device: "mobile" | "tablet" | "desktop"; label: string } | null {
+export function parseUserAgent(ua: string | null): { device: "mobile" | "tablet" | "desktop"; label: string } | null {
   if (!ua) return null;
 
   let m = ua.match(/iPad.*?OS (\d+)[_.](\d+)/);
@@ -373,6 +380,43 @@ function humanizeFieldKey(key: string): string {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
+// Extrai o nome base do produto a partir do nome bruto do Eduzz.
+// Eduzz retorna nomes de oferta com prefixos de código e texto de desconto:
+
+// Remove query string from URL (strips UTMs and other params before matching).
+function stripQueryString(url: string): string {
+  const idx = url.indexOf("?");
+  return idx >= 0 ? url.slice(0, idx) : url;
+}
+
+// Attribution: 1º product_name → 2º utm_campaign → 3º url_pattern.
+// Retorna o 1º funil cujo matcher casar com qualquer evento do visitante.
+// Verifica se um único evento pertence a um funil — base da atribuição multi-funil.
+// Pixel null no evento passa (evento capturado antes da migration 037).
+export function eventMatchesFunnel(e: TrackingEvent, funnel: TrackingFunnel): boolean {
+  // Produto tem prioridade — compras Eduzz chegam server-side sem pixel_id.
+  // Match por ID (confiável) ou por nome (fallback para eventos sem product_parent_id).
+  if (funnel.productParentIds.length > 0 && e.product_parent_id) {
+    if (funnel.productParentIds.includes(e.product_parent_id)) return true;
+  }
+  if (funnel.productNames.length > 0 && e.product_name) {
+    if (funnel.productNames.some((p) => matchProductNames(e.product_name!, p))) return true;
+  }
+  // Pixel guard se aplica ao match por URL/UTM
+  if (funnel.pixelId && e.pixel_id !== funnel.pixelId) return false;
+  const hasMatchers = funnel.productNames.length > 0 || funnel.utmCampaigns.length > 0 || funnel.urlPatterns.length > 0;
+  if (!hasMatchers) return !funnel.pixelId || e.pixel_id === funnel.pixelId;
+  const utmCamp = e.utm_campaign ?? parseUtmFromUrl(e.event_url).utm_campaign;
+  if (funnel.utmCampaigns.length > 0 && utmCamp) {
+    if (funnel.utmCampaigns.some((c) => utmCamp.toLowerCase() === c.toLowerCase())) return true;
+  }
+  if (funnel.urlPatterns.length > 0 && e.event_url) {
+    const baseUrl = stripQueryString(e.event_url).toLowerCase();
+    if (funnel.urlPatterns.some((p) => baseUrl.includes(p.toLowerCase()))) return true;
+  }
+  return false;
+}
+
 function groupByVisitor(events: TrackingEvent[]): Visitor[] {
   const map = new Map<string, TrackingEvent[]>();
   for (const e of events) {
@@ -404,7 +448,15 @@ function groupByVisitor(events: TrackingEvent[]): Visitor[] {
       lastUrl: sorted[0].event_url,
       lastPageTitle: sorted[0].page_title,
       lastUtm: resolveUtm(sorted[0]),
-      lastLocation: { country: sorted[0].country, countryRegion: sorted[0].country_region, city: sorted[0].city },
+      // Geo: prefere evento com cidade/estado (browser real) — evita que uma
+      // Purchase/Lead server-side (IP do servidor, geralmente US) sobrescreva
+      // a localização real do visitante que veio da PageView anterior.
+      lastLocation: (() => {
+        const withCity = sorted.find((e) => e.city || e.country_region);
+        const withCountry = sorted.find((e) => e.country);
+        const best = withCity ?? withCountry ?? sorted[0];
+        return { country: best.country, countryRegion: best.country_region, city: best.city };
+      })(),
       // Mais recente primeiro (sorted) — pega o 1º evento que TEM UA, não
       // necessariamente sorted[0] (ex.: a Purchase mais recente pode não ter
       // UA por não ter casado com nenhuma visita, mas a PageView anterior tem).
@@ -714,21 +766,28 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
 export function TrackingEventsView() {
   const { company, companyId, canWrite } = useCompany();
   const [events, setEvents] = useState<TrackingEvent[]>([]);
+  const [funnels, setFunnels] = useState<TrackingFunnel[]>([]);
   // true se PELO MENOS 1 pixel da empresa tem Pixel ID preenchido (banner "Meta não configurada").
   const [anyMetaConfigured, setAnyMetaConfigured] = useState(false);
+  // Mapa pixel UUID → nome do pixel (ex.: "Pixel principal", "LP Produto X")
+  const [pixelNameMap, setPixelNameMap] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [eventFilter, setEventFilter] = useState<string | null>(null);
   const [paymentMethodFilter, setPaymentMethodFilter] = useState<string | null>(null);
+  const [productFilter, setProductFilter] = useState<string | null>(null);
   const [deviceFilter, setDeviceFilter] = useState<"mobile" | "tablet" | "desktop" | null>(null);
+  const [funnelFilter, setFunnelFilter] = useState<string | null>(null); // funnel id ou "__none__"
   const [selectedVisitor, setSelectedVisitor] = useState<Visitor | null>(null);
 
   const [dateFrom, setDateFrom] = useState(() => new Date(Date.now() - 30 * 86400_000).toISOString().split("T")[0]);
   const [dateTo, setDateTo] = useState(() => new Date().toISOString().split("T")[0]);
 
   const [configOpen, setConfigOpen] = useState(false);
-  const [configTab, setConfigTab] = useState<"pixel" | "eduzz">("pixel");
+  const [configTab, setConfigTab] = useState<"pixel" | "eduzz" | "funnels">("pixel");
+  const [view, setView] = useState<"visitors" | "analytics">("visitors");
+  const fetchSeq = useRef(0);
 
   const fetchEvents = useCallback(async () => {
     if (!supabaseClient) {
@@ -742,20 +801,23 @@ export function TrackingEventsView() {
 
     setLoading(true);
     setError(null);
+    const requestId = ++fetchSeq.current;
 
+    try {
     const [eventsRes, pixelsRes] = await Promise.all([
       supabaseClient
         .from("events_log")
         .select(EVENTS_SELECT)
         .eq("company_id", companyId)
-        .neq("sale_confirmed", false)
+        .or("sale_confirmed.is.null,sale_confirmed.eq.true")
         .neq("event_name", "Renewal")
         .gte("created_at", `${dateFrom}T00:00:00`)
         .lte("created_at", `${dateTo}T23:59:59`)
         .order("created_at", { ascending: false })
         .limit(EVENTS_LIMIT),
-      supabaseClient.from("tracking_pixels").select("meta_pixel_id").eq("company_id", companyId),
+      supabaseClient.from("tracking_pixels").select("id, name, meta_pixel_id").eq("company_id", companyId),
     ]);
+    if (requestId !== fetchSeq.current) return;
 
     if (pixelsRes.error?.message?.includes("tracking_pixels")) {
       // Migration 037 ainda não rodou — cai pra coluna legada de companies (1 pixel só).
@@ -763,13 +825,18 @@ export function TrackingEventsView() {
       setAnyMetaConfigured(Boolean(legacy.data?.meta_pixel_id));
     } else if (!pixelsRes.error) {
       setAnyMetaConfigured((pixelsRes.data ?? []).some((p) => p.meta_pixel_id));
+      const nameMap = new Map<string, string>();
+      for (const p of pixelsRes.data ?? []) {
+        if (p.id && p.name) nameMap.set(p.id as string, p.name as string);
+      }
+      setPixelNameMap(nameMap);
     }
 
     const missingNewColumn = [
       "page_title", "extra_fields", "country", "country_region", "city", "event_id",
       "utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "utm_placement", "utm_campaign_id", "utm_adset_id", "utm_ad_id",
-      "lead_name", "value", "currency", "external_transaction_id", "source", "payment_method", "installments", "installment_number", "installment_value", "recurrence_key", "product_name",
-      "is_order_bump", "main_sale_transaction_id", "client_user_agent", "via", "sale_confirmed",
+      "lead_name", "value", "currency", "external_transaction_id", "source", "payment_method", "installments", "installment_number", "installment_value", "recurrence_key", "product_name", "product_parent_id",
+      "is_order_bump", "main_sale_transaction_id", "client_user_agent", "via", "pixel_id", "sale_confirmed",
     ].some((col) => eventsRes.error?.message?.includes(col));
     if (missingNewColumn) {
       // Migration 033/034/038/039/040 ainda não rodou no Supabase — busca sem as colunas novas em vez de quebrar a tela.
@@ -793,7 +860,11 @@ export function TrackingEventsView() {
       setEvents((eventsRes.data as unknown as TrackingEvent[]) ?? []);
     }
 
-    setLoading(false);
+    } catch (e) {
+      if (requestId === fetchSeq.current) setError(e instanceof Error ? e.message : "Erro ao buscar eventos.");
+    } finally {
+      if (requestId === fetchSeq.current) setLoading(false);
+    }
   }, [companyId, dateFrom, dateTo]);
 
   useEffect(() => {
@@ -801,14 +872,109 @@ export function TrackingEventsView() {
     fetchEvents();
   }, [fetchEvents]);
 
+  useEffect(() => {
+    if (!companyId) return;
+    let active = true;
+    void fetchTrackingFunnels(companyId)
+      .then((list) => { if (active) setFunnels(list); })
+      .catch((e) => { if (active) setError(e instanceof Error ? e.message : "Erro ao buscar funis."); });
+    return () => { active = false; };
+  }, [companyId]);
+
   // ── Derived ──────────────────────────────────────────────────────────────────
 
   const visitors = useMemo(() => groupByVisitor(events), [events]);
 
+  // fingerprintId → Set dos IDs de funil a que este visitante pertence (multi-funil).
+  // Um visitante pode pertencer a vários funis simultaneamente.
+  const visitorFunnelSetsMap = useMemo(() => {
+    const m = new Map<string, Set<string>>();
+    for (const v of visitors) {
+      const ids = new Set<string>();
+      for (const f of funnels) {
+        if (v.events.some((e) => eventMatchesFunnel(e, f))) ids.add(f.id);
+      }
+      m.set(v.fingerprintId, ids);
+    }
+    return m;
+  }, [visitors, funnels]);
+
+  // Analytics: filtra visitantes pelo funil conectado.
+  const analyticsVisitors = useMemo(() => {
+    if (!funnelFilter) return visitors;
+    return visitors.filter((v) => {
+      const ids = visitorFunnelSetsMap.get(v.fingerprintId) ?? new Set<string>();
+      if (funnelFilter === "__none__") return ids.size === 0;
+      return ids.has(funnelFilter);
+    });
+  }, [visitors, funnelFilter, visitorFunnelSetsMap]);
+
+  // Analytics: eventos scopados ao funil selecionado.
+  //
+  // Tráfego (PageView etc.): só eventos dos visitantes que tocaram o funil.
+  // Conversões (Lead/Purchase): dois modos dependendo da config do funil:
+  //
+  //   • Com productNames → filtra por produto em TODOS os visitantes do período.
+  //     Captura compradores que não passaram pela URL (ex.: direto pelo link de
+  //     checkout, e-mail, remarketing) — atribuição por produto, não por jornada.
+  //
+  //   • Sem productNames → inclui TODAS as conversões do período.
+  //     Compras Eduzz chegam server-side com fingerprint diferente do visitante
+  //     da LP; sem produto configurado é impossível filtrar. O usuário deve
+  //     adicionar nomes de produto ao funil para atribuição precisa.
+  const analyticsEvents = useMemo(() => {
+    const selectedFunnel = funnelFilter && funnelFilter !== "__none__"
+      ? funnels.find((f) => f.id === funnelFilter)
+      : null;
+    if (!selectedFunnel) return analyticsVisitors.flatMap((v) => v.events);
+
+    // Tráfego: eventos de visitantes que casam com o funil
+    const trafficEvents = analyticsVisitors.flatMap((v) =>
+      v.events.filter((e) => eventMatchesFunnel(e, selectedFunnel)),
+    );
+
+    // Conversões de visitantes fora do funil (fingerprint diferente da LP)
+    const seen = new Set(trafficEvents.map((e) => e.id));
+    let extraConversions: TrackingEvent[];
+    if (selectedFunnel.productNames.length > 0) {
+      // Com produto configurado: só compras desse produto de qualquer visitante
+      extraConversions = events.filter((e) => {
+        if (e.event_name !== "Lead" && e.event_name !== "Purchase") return false;
+        if (seen.has(e.id)) return false;
+        if (selectedFunnel.productParentIds.length > 0 && e.product_parent_id) {
+          return selectedFunnel.productParentIds.includes(e.product_parent_id);
+        }
+        if (!e.product_name) return false;
+        return selectedFunnel.productNames.some((p) => matchProductNames(e.product_name!, p));
+      });
+    } else {
+      // Sem produto: todas as conversões do período (fingerprint desconhecido)
+      extraConversions = [];
+    }
+
+    return [...trafficEvents, ...extraConversions];
+  }, [analyticsVisitors, events, funnelFilter, funnels]);
+
+  // Visitantes filtrados pelos filtros da tabela (exceto funil que já cobre o Analytics).
+  // Usado nas contagens dos chips de funil para que elas reflitam o mesmo conjunto da tabela.
+  const visitorsWithoutFunnelFilter = useMemo(() => visitors.filter((v) => {
+    if (eventFilter && !v.events.some((e) => e.event_name === eventFilter)) return false;
+    if (eventFilter === "Purchase" && paymentMethodFilter && !v.events.some((e) => e.event_name === "Purchase" && e.payment_method === paymentMethodFilter)) return false;
+    if (eventFilter === "Purchase" && productFilter && !v.events.some((e) => e.event_name === "Purchase" && e.product_name != null && productBaseName(e.product_name) === productFilter)) return false;
+    if (deviceFilter && parseUserAgent(v.lastUserAgent)?.device !== deviceFilter) return false;
+    return true;
+  }), [visitors, eventFilter, paymentMethodFilter, productFilter, deviceFilter]);
+
   const filteredVisitors = visitors.filter((v) => {
     if (eventFilter && !v.events.some((e) => e.event_name === eventFilter)) return false;
     if (eventFilter === "Purchase" && paymentMethodFilter && !v.events.some((e) => e.event_name === "Purchase" && e.payment_method === paymentMethodFilter)) return false;
+    if (eventFilter === "Purchase" && productFilter && !v.events.some((e) => e.event_name === "Purchase" && e.product_name != null && productBaseName(e.product_name) === productFilter)) return false;
     if (deviceFilter && parseUserAgent(v.lastUserAgent)?.device !== deviceFilter) return false;
+    if (funnelFilter) {
+      const ids = visitorFunnelSetsMap.get(v.fingerprintId) ?? new Set<string>();
+      if (funnelFilter === "__none__" && ids.size > 0) return false;
+      if (funnelFilter !== "__none__" && !ids.has(funnelFilter)) return false;
+    }
     if (search) {
       const q = search.toLowerCase();
       // Inclui OS/navegador/dispositivo (ex.: "iphone", "android", "chrome")
@@ -836,6 +1002,10 @@ export function TrackingEventsView() {
   // mostra o chip pra filtrar quando o usuário já está olhando "Compra" (filtro
   // secundário, igual ao padrão de eventTypes acima).
   const paymentMethods = [...new Set(events.filter((e) => e.event_name === "Purchase" && e.payment_method).map((e) => e.payment_method as string))];
+  const purchaseProducts = [...new Set(
+    events.filter((e) => e.event_name === "Purchase" && e.product_name)
+      .map((e) => productBaseName(e.product_name as string))
+  )].sort();
   // Categorias de dispositivo (Celular/Tablet/Desktop) realmente vistas no
   // período — mesmo padrão de eventTypes/paymentMethods acima.
   const deviceCategories = [...new Set(visitors.map((v) => parseUserAgent(v.lastUserAgent)?.device).filter((d): d is "mobile" | "tablet" | "desktop" => Boolean(d)))];
@@ -862,11 +1032,36 @@ export function TrackingEventsView() {
             Eventos de Tracking
           </h2>
           <p className="text-[11px] mt-0.5" style={{ color: "var(--dm-text-tertiary)" }}>
-            Pixel Server-Side · {filteredVisitors.length} visitante{filteredVisitors.length !== 1 ? "s" : ""} · {events.length} evento{events.length !== 1 ? "s" : ""}
+            Pixel Server-Side · {view === "analytics"
+              ? (funnelFilter
+                ? <><span style={{ color: "var(--dm-primary)" }}>{analyticsVisitors.length} no funil</span> · {visitors.length} total</>
+                : `${visitors.length} visitante${visitors.length !== 1 ? "s" : ""}`)
+              : `${filteredVisitors.length} visitante${filteredVisitors.length !== 1 ? "s" : ""}`
+            } · {events.length} evento{events.length !== 1 ? "s" : ""}
             {eventsCapped && <span style={{ color: "#d97706" }}> · mostrando os {EVENTS_LIMIT} mais recentes (estreite o período pra ver tudo)</span>}
           </p>
         </div>
         <div className="flex flex-shrink-0 items-center gap-2">
+          {/* Alternador Visitantes | Analytics */}
+          <div className="flex gap-0.5 rounded-lg border p-0.5" style={{ borderColor: "var(--dm-border-default)" }}>
+            {([
+              ["visitors", "Visitantes", Table2],
+              ["analytics", "Analytics", BarChart3],
+            ] as ["visitors" | "analytics", string, typeof Table2][]).map(([v, label, Icon]) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setView(v)}
+                className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-bold transition"
+                style={view === v
+                  ? { background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)", color: "#fff" }
+                  : { color: "var(--dm-text-tertiary)" }}
+              >
+                <Icon size={12} />
+                {label}
+              </button>
+            ))}
+          </div>
           <button
             type="button"
             onClick={() => setConfigOpen((v) => !v)}
@@ -901,7 +1096,8 @@ export function TrackingEventsView() {
             {([
               ["pixel", "Pixel (Meta Ads)"],
               ["eduzz", "Vendas (Eduzz)"],
-            ] as ["pixel" | "eduzz", string][]).map(([tab, label]) => (
+              ["funnels", "Funis / Campanhas"],
+            ] as ["pixel" | "eduzz" | "funnels", string][]).map(([tab, label]) => (
               <button
                 key={tab}
                 type="button"
@@ -915,8 +1111,15 @@ export function TrackingEventsView() {
           </div>
           {configTab === "pixel" ? (
             <TrackingConfigPanel company={company} canEdit={canWrite} />
-          ) : (
+          ) : configTab === "eduzz" ? (
             <EduzzConfigPanel company={company} canEdit={canWrite} />
+          ) : (
+            <FunnelConfigSection
+              company={company}
+              canEdit={canWrite}
+              onFunnelsChange={setFunnels}
+              onViewAnalytics={(id) => { setFunnelFilter(id); setView("analytics"); setConfigOpen(false); }}
+            />
           )}
         </div>
       )}
@@ -939,21 +1142,39 @@ export function TrackingEventsView() {
           className="rounded-lg border px-2 py-1 text-xs"
           style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)", color: "var(--dm-text-primary)" }}
         />
-        <div className="relative flex-1 min-w-[180px]">
-          <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: "var(--dm-text-tertiary)" }} />
-          <input
-            type="text"
-            placeholder="URL, e-mail, telefone, fingerprint, OS ou navegador..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-lg border pl-7 pr-3 py-1.5 text-xs"
-            style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)", color: "var(--dm-text-primary)" }}
-          />
-        </div>
+        {view === "visitors" ? (
+          <div className="relative flex-1 min-w-[180px]">
+            <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: "var(--dm-text-tertiary)" }} />
+            <input
+              type="text"
+              placeholder="URL, e-mail, telefone, fingerprint, OS ou navegador..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full rounded-lg border pl-7 pr-3 py-1.5 text-xs"
+              style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)", color: "var(--dm-text-primary)" }}
+            />
+          </div>
+        ) : (
+          // Analytics: "Conectar funil" — escopa todas as métricas/gráficos.
+          <div className="ml-auto flex items-center gap-1.5">
+            <BarChart3 size={13} className="flex-shrink-0" style={{ color: "var(--dm-text-tertiary)" }} />
+            <span className="text-xs" style={{ color: "var(--dm-text-tertiary)" }}>Conectar funil:</span>
+            <select
+              value={funnelFilter ?? ""}
+              onChange={(e) => setFunnelFilter(e.target.value || null)}
+              className="rounded-lg border px-2 py-1.5 text-xs font-semibold"
+              style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)", color: "var(--dm-text-primary)" }}
+            >
+              <option value="">Todos os funis</option>
+              {funnels.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
+              <option value="__none__">Sem funil</option>
+            </select>
+          </div>
+        )}
       </div>
 
       {/* Filter chips */}
-      {eventTypes.length > 0 && (
+      {view === "visitors" && eventTypes.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-1.5">
           {eventTypes.map((ev) => (
             <Chip
@@ -963,6 +1184,7 @@ export function TrackingEventsView() {
               onClick={() => {
                 setEventFilter(eventFilter === ev ? null : ev);
                 setPaymentMethodFilter(null);
+                setProductFilter(null);
               }}
             />
           ))}
@@ -970,7 +1192,7 @@ export function TrackingEventsView() {
       )}
 
       {/* Dispositivo (Celular/Tablet/Desktop) — inferido do User-Agent do evento mais recente */}
-      {deviceCategories.length > 1 && (
+      {view === "visitors" && deviceCategories.length > 1 && (
         <div className="mb-2 flex flex-wrap gap-1.5">
           {deviceCategories.map((d) => (
             <Chip key={d} label={DEVICE_LABELS[d]} active={deviceFilter === d} onClick={() => setDeviceFilter(deviceFilter === d ? null : d)} />
@@ -978,9 +1200,47 @@ export function TrackingEventsView() {
         </div>
       )}
 
+      {/* Funis — só aparece quando há funis configurados */}
+      {view === "visitors" && funnels.length > 0 && (
+        <div className="mb-2 flex flex-wrap items-center gap-1.5">
+          {funnels.map((f) => {
+            const count = visitorsWithoutFunnelFilter.filter((v) => visitorFunnelSetsMap.get(v.fingerprintId)?.has(f.id)).length;
+            return (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => setFunnelFilter(funnelFilter === f.id ? null : f.id)}
+                className="flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-semibold transition-opacity hover:opacity-80"
+                style={{
+                  borderColor: funnelFilter === f.id ? f.color : "var(--dm-border-default)",
+                  background: funnelFilter === f.id ? `${f.color}20` : "transparent",
+                  color: funnelFilter === f.id ? f.color : "var(--dm-text-tertiary)",
+                }}
+              >
+                <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ background: f.color }} />
+                {f.label}
+                <span className="opacity-60">({count})</span>
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            onClick={() => setFunnelFilter(funnelFilter === "__none__" ? null : "__none__")}
+            className="rounded-full border px-2.5 py-0.5 text-[10px] font-semibold transition-opacity hover:opacity-80"
+            style={{
+              borderColor: funnelFilter === "__none__" ? "var(--dm-text-tertiary)" : "var(--dm-border-default)",
+              background: funnelFilter === "__none__" ? "rgba(100,116,139,0.12)" : "transparent",
+              color: "var(--dm-text-tertiary)",
+            }}
+          >
+            Sem funil ({visitorsWithoutFunnelFilter.filter((v) => (visitorFunnelSetsMap.get(v.fingerprintId)?.size ?? 0) === 0).length})
+          </button>
+        </div>
+      )}
+
       {/* Forma de pagamento — só aparece com o filtro "Compra" ativo */}
-      {eventFilter === "Purchase" && paymentMethods.length > 0 && (
-        <div className="mb-4 flex flex-wrap items-center gap-1.5">
+      {view === "visitors" && eventFilter === "Purchase" && paymentMethods.length > 0 && (
+        <div className="mb-2 flex flex-wrap items-center gap-1.5">
           <CreditCard size={11} className="flex-shrink-0" style={{ color: "var(--dm-text-tertiary)" }} />
           {paymentMethods.map((method) => (
             <Chip
@@ -992,6 +1252,7 @@ export function TrackingEventsView() {
           ))}
         </div>
       )}
+
 
       {/* Meta CAPI não configurada (informativo, não bloqueia captura) */}
       {metaNotConfigured && (
@@ -1045,13 +1306,32 @@ export function TrackingEventsView() {
         </div>
       )}
 
+      {/* Analytics — painel agregado estilo GA conectável a funil */}
+      {view === "analytics" && !loading && !error && events.length > 0 && (
+        <TrackingAnalytics
+          visitors={analyticsVisitors}
+          events={analyticsEvents}
+          eventsCapped={eventsCapped}
+          funnelHasProductNames={
+            !funnelFilter || funnelFilter === "__none__"
+              ? true
+              : (funnels.find((f) => f.id === funnelFilter)?.productNames.length ?? 0) > 0
+          }
+        />
+      )}
+
       {/* Table — 1 linha por visitante */}
-      {filteredVisitors.length > 0 && (
+      {view === "visitors" && filteredVisitors.length > 0 && (
         <div className="overflow-x-auto rounded-2xl border" style={{ borderColor: "var(--dm-border-default)" }}>
           <table className="w-full min-w-[680px] text-xs">
             <thead>
               <tr style={{ borderBottom: "1px solid var(--dm-border-default)", background: "var(--dm-bg-elevated)" }}>
-                {["Visitante", "Última ação", "Eventos", "Origem / UTM", "Local", "OS", "Dispositivo", "Browser", "Via", "Conversão"].map((h) => (
+                {[
+                  "Visitante", "Última ação", "Eventos", "Origem / UTM", "Local", "OS", "Dispositivo", "Browser", "Via",
+                  ...(pixelNameMap.size > 1 ? ["Pixel"] : []),
+                  ...(funnels.length > 0 ? ["Funil"] : []),
+                  "Conversão",
+                ].map((h) => (
                   <th key={h} className="px-4 py-2.5 text-left font-semibold" style={{ color: "var(--dm-text-tertiary)" }}>
                     {h}
                   </th>
@@ -1121,6 +1401,35 @@ export function TrackingEventsView() {
                         <span style={{ color: "var(--dm-text-tertiary)" }}>—</span>
                       )}
                     </td>
+                    {pixelNameMap.size > 1 && (() => {
+                      const pixelId = visitor.events.find((e) => e.pixel_id)?.pixel_id ?? null;
+                      const pixelName = pixelId ? (pixelNameMap.get(pixelId) ?? null) : null;
+                      return (
+                        <td className="px-4 py-2.5 whitespace-nowrap text-[11px]" style={{ color: "var(--dm-text-secondary)" }}>
+                          {pixelName ?? <span style={{ color: "var(--dm-text-tertiary)" }}>—</span>}
+                        </td>
+                      );
+                    })()}
+                    {funnels.length > 0 && (() => {
+                      const ids = visitorFunnelSetsMap.get(visitor.fingerprintId) ?? new Set<string>();
+                      const matched = funnels.filter((f) => ids.has(f.id));
+                      return (
+                        <td className="px-4 py-2.5">
+                          {matched.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {matched.map((f) => (
+                                <span key={f.id} className="flex items-center gap-1 text-[10px] font-semibold whitespace-nowrap" style={{ color: f.color }}>
+                                  <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ background: f.color }} />
+                                  {f.label}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span style={{ color: "var(--dm-text-tertiary)" }}>—</span>
+                          )}
+                        </td>
+                      );
+                    })()}
                     <td className="px-4 py-2.5">
                       <div className="flex flex-wrap items-center gap-1">
                         {visitor.isLead && (

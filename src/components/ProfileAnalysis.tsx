@@ -1480,11 +1480,13 @@ function ProfileOverviewPanel({
           ? { ...k, label: `Resultados (${resultEventLabel})` }
           : k.id === "cpa" && resultEventLabel && template.id === "personalizado"
             ? { ...k, label: `Custo por Resultado (${resultEventLabel})` }
-            : k.id === "sales" && effectiveResultType && template.id !== "personalizado"
-              ? { ...k, label: RESULT_TYPE_LABELS[effectiveResultType] }
-              : k.id === "cpa" && effectiveResultType && template.id !== "personalizado"
-                ? { ...k, label: `Custo por ${RESULT_TYPE_LABELS[effectiveResultType]}` }
-                : k
+            : k.id === "cpa" && kpiValues.customResult > 0 && template.id !== "personalizado"
+              ? { ...k, label: "Custo por Resultado" }
+              : k.id === "sales" && effectiveResultType && template.id !== "personalizado"
+                ? { ...k, label: RESULT_TYPE_LABELS[effectiveResultType] }
+                : k.id === "cpa" && effectiveResultType && template.id !== "personalizado"
+                  ? { ...k, label: `Custo por ${RESULT_TYPE_LABELS[effectiveResultType]}` }
+                  : k
       ),
       kpiValues,
       goals,
@@ -1685,11 +1687,13 @@ function ProfileOverviewPanel({
                       ? `Resultados (${resultEventLabel})`
                       : kpi.id === "cpa" && resultEventLabel && template.id === "personalizado"
                         ? `Custo por Resultado (${resultEventLabel})`
-                        : kpi.id === "sales" && effectiveResultType && template.id !== "personalizado"
-                          ? RESULT_TYPE_LABELS[effectiveResultType]
-                          : kpi.id === "cpa" && effectiveResultType && template.id !== "personalizado"
-                            ? `Custo por ${RESULT_TYPE_LABELS[effectiveResultType]}`
-                            : kpi.label}
+                        : kpi.id === "cpa" && kpiValues.customResult > 0 && template.id !== "personalizado"
+                          ? `Custo por Resultado`
+                          : kpi.id === "sales" && effectiveResultType && template.id !== "personalizado"
+                            ? RESULT_TYPE_LABELS[effectiveResultType]
+                            : kpi.id === "cpa" && effectiveResultType && template.id !== "personalizado"
+                              ? `Custo por ${RESULT_TYPE_LABELS[effectiveResultType]}`
+                              : kpi.label}
                     {isOvEditable && val > 0 && (
                       <span className="ml-1.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase" style={{ backgroundColor: solid + "1a", color: solid }}>manual</span>
                     )}

@@ -30,7 +30,7 @@ export const posTemplate: Template = {
     ],
   },
   derive: (raw) => ({
-    cpa:  safeDivide(raw.spend,   raw.sales),
+    cpa:  safeDivide(raw.spend, raw.customResult || raw.sales),
     roas: safeDivide(raw.revenue, raw.spend),
   }),
 };

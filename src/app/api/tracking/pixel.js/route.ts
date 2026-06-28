@@ -50,6 +50,8 @@ function buildPixelScript(apiBase: string, proxyMode: boolean, serverGeoJson: st
   // Id do visitante memoizado por carga de página — ver getUserId().
   var cachedUserId = null;
   var inFlightForms = new WeakSet();
+  var initializedKeys = {};
+  var attachedFormKeys = {};
   // Qual pixel da empresa usar (migration 037, 1 por landing page/produto) —
   // omitido em Tracker.init() = usa o pixel "is_default" da empresa.
   var currentPixelSlug = null;
@@ -135,7 +137,12 @@ function buildPixelScript(apiBase: string, proxyMode: boolean, serverGeoJson: st
   }
 
   function safe(fn) {
-    try { fn(); } catch (err) { console.error("[Tracker]", err); }
+    try {
+      var result = fn();
+      if (result && typeof result.then === "function") {
+        result.catch(function (err) { console.error("[Tracker]", err); });
+      }
+    } catch (err) { console.error("[Tracker]", err); }
   }
 
   // ─── Identificador persistente (1ª parte, sobrevive entre páginas/sessões) ──
@@ -315,11 +322,15 @@ function buildPixelScript(apiBase: string, proxyMode: boolean, serverGeoJson: st
   var PHONE_RE = /^(phone|cel|celular|telefone?|fone|mobile|whatsapp|tel)$/i;
 
   function attachFormListener(clientId) {
+    var formKey = clientId + "|" + (currentPixelSlug || "");
+    if (attachedFormKeys[formKey]) return;
+    attachedFormKeys[formKey] = true;
     document.addEventListener(
       "submit",
       function (e) {
         var form = e.target;
         if (!(form instanceof HTMLFormElement) || inFlightForms.has(form)) return;
+        if (form.checkValidity && !form.checkValidity()) return;
         e.preventDefault();
         inFlightForms.add(form);
 
@@ -415,6 +426,9 @@ function buildPixelScript(apiBase: string, proxyMode: boolean, serverGeoJson: st
     // pixelSlug é opcional — cada landing page pode ter o seu pixel
     // (Estúdio > Tracking > Configuração); sem ele, usa o pixel padrão da empresa.
     init: function (clientId, pixelSlug) {
+      var initKey = clientId + "|" + (pixelSlug || "");
+      if (initializedKeys[initKey]) return;
+      initializedKeys[initKey] = true;
       currentPixelSlug = pixelSlug || null;
       pendingPageViewClientId = clientId;
       safe(function () { initMetaConfig(clientId); });
