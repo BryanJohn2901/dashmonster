@@ -6,15 +6,16 @@ import {
 } from "recharts";
 import {
   Users, Activity, UserCheck, ShoppingBag, DollarSign, TrendingUp,
-  Globe, Radio, Tag, Radar,
+  Globe, Tag, Radar, Monitor, Radio,
 } from "lucide-react";
 import { useChartTheme, shortDate, xInterval } from "@/components/charts/useChartTheme";
 import {
   EVENT_LABELS, EVENT_COLORS, flagEmoji, formatMoney, resolveUtm,
+  parseUserAgent, parseOS, parseBrowser,
   type Visitor, type TrackingEvent,
 } from "@/components/TrackingEventsView";
 
-// ─── Helpers de formatação ────────────────────────────────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 const intFmt = new Intl.NumberFormat("pt-BR");
 const fmtInt = (n: number) => intFmt.format(Math.round(n));
 const fmtPct = (n: number) => `${n.toFixed(n < 10 ? 1 : 0)}%`;
@@ -22,8 +23,6 @@ const fmtPct = (n: number) => `${n.toFixed(n < 10 ? 1 : 0)}%`;
 const DIRECT_LABEL = "Direto / Orgânico";
 const UNDEFINED_LABEL = "(não definido)";
 
-// UTM mais completa do visitante: varre os eventos (recente→antigo) e mantém o
-// 1º valor não-vazio de cada chave — mais robusto que olhar só o último evento.
 function visitorUtm(v: Visitor): Record<string, string> {
   const out: Record<string, string> = {};
   for (const e of v.events) {
@@ -33,7 +32,6 @@ function visitorUtm(v: Visitor): Record<string, string> {
   return out;
 }
 
-// Agrupa contagem por bucket e devolve top N ordenado + "outros" agregado.
 function topBuckets(
   counts: Map<string, number>, n: number,
 ): { label: string; value: number }[] {
@@ -45,7 +43,7 @@ function topBuckets(
   return head;
 }
 
-// ─── UI primitives ──────────────────────────────────────────────────────────
+// ─── UI primitives ────────────────────────────────────────────────────────────
 function Panel({ title, icon: Icon, action, children, className }: {
   title: string;
   icon?: typeof Users;
@@ -112,10 +110,11 @@ function ToggleGroup<T extends string>({ options, value, onChange }: {
   );
 }
 
-function BarList({ items, color, empty }: {
-  items: { key: string; label: React.ReactNode; value: number }[];
+function BarList({ items, color, empty, formatValue }: {
+  items: { key: string; label: React.ReactNode; value: number; sub?: string }[];
   color: string;
   empty: string;
+  formatValue?: (v: number) => string;
 }) {
   if (items.length === 0) return <EmptyHint text={empty} />;
   const max = Math.max(...items.map((i) => i.value), 1);
@@ -126,9 +125,12 @@ function BarList({ items, color, empty }: {
         <div key={it.key}>
           <div className="mb-0.5 flex items-center justify-between gap-2 text-[11px]">
             <span className="truncate" style={{ color: "var(--dm-text-secondary)" }}>{it.label}</span>
-            <span className="flex-shrink-0 tabular-nums" style={{ color: "var(--dm-text-tertiary)" }}>
-              <span className="font-semibold" style={{ color: "var(--dm-text-primary)" }}>{fmtInt(it.value)}</span>
-              {total > 0 && <span className="ml-1 opacity-70">{fmtPct((it.value / total) * 100)}</span>}
+            <span className="flex flex-shrink-0 items-center gap-1 tabular-nums" style={{ color: "var(--dm-text-tertiary)" }}>
+              {it.sub && <span className="opacity-60">{it.sub}</span>}
+              <span className="font-semibold" style={{ color: "var(--dm-text-primary)" }}>
+                {formatValue ? formatValue(it.value) : fmtInt(it.value)}
+              </span>
+              {!formatValue && total > 0 && <span className="opacity-70">{fmtPct((it.value / total) * 100)}</span>}
             </span>
           </div>
           <div className="h-1.5 w-full overflow-hidden rounded-full" style={{ background: "var(--dm-bg-elevated)" }}>
@@ -144,13 +146,16 @@ function EmptyHint({ text }: { text: string }) {
   return <p className="py-4 text-center text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>{text}</p>;
 }
 
-// ─── Componente principal ─────────────────────────────────────────────────────
+// ─── Tipos ───────────────────────────────────────────────────────────────────
 type TimelineMetric = "events" | "users" | "leads" | "sales";
 type GeoDim = "country" | "region" | "city";
+type GeoMode = "users" | "sales";
+type DeviceDim = "device" | "os" | "browser";
 type SourceDim = "utm_source" | "utm_medium";
-type UtmDim = "utm_campaign" | "utm_content" | "utm_term" | "utm_ad_id";
+type UtmDim = "utm_source" | "utm_medium" | "utm_campaign" | "utm_content" | "utm_term" | "utm_ad_id";
 type UtmSortCol = "users" | "leads" | "sales" | "revenue";
 
+// ─── Componente principal ─────────────────────────────────────────────────────
 export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasProductNames = true }: {
   visitors: Visitor[];
   events: TrackingEvent[];
@@ -160,19 +165,18 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
   const theme = useChartTheme();
   const [timelineMetric, setTimelineMetric] = useState<TimelineMetric>("events");
   const [geoDim, setGeoDim] = useState<GeoDim>("country");
+  const [geoMode, setGeoMode] = useState<GeoMode>("users");
   const [sourceDim, setSourceDim] = useState<SourceDim>("utm_source");
+  const [deviceDim, setDeviceDim] = useState<DeviceDim>("os");
   const [utmDim, setUtmDim] = useState<UtmDim>("utm_campaign");
   const [utmSort, setUtmSort] = useState<UtmSortCol>("revenue");
 
-  // Moeda dominante das vendas (default BRL).
   const currency = useMemo(
     () => events.find((e) => e.event_name === "Purchase" && e.currency)?.currency ?? "BRL",
     [events],
   );
 
   // ── Scorecards ──────────────────────────────────────────────────────────────
-  // Conversões calculadas a partir de `events` (já scopado ao funil) — garante que
-  // apenas leads/compras do produto/campanha/URL deste funil entram nos números.
   const totals = useMemo(() => {
     const uniqueUsers = visitors.length;
     const leadFps = new Set(events.filter((e) => e.event_name === "Lead").map((e) => e.fingerprint_id));
@@ -186,7 +190,7 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
     return { uniqueUsers, totalEvents: events.length, leads, customers, sales, revenue, convRate };
   }, [visitors, events]);
 
-  // ── Timeline (eventos/usuários/leads/vendas por dia) ──────────────────────────
+  // ── Timeline ────────────────────────────────────────────────────────────────
   const timeline = useMemo(() => {
     const ev = new Map<string, number>();
     const us = new Map<string, Set<string>>();
@@ -202,7 +206,6 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
     }
     const days = [...ev.keys()].sort();
     if (days.length === 0) return [];
-    // Preenche os buracos entre o 1º e o último dia (gráfico contínuo).
     const out: { date: string; events: number; users: number; leads: number; sales: number }[] = [];
     const cur = new Date(`${days[0]}T00:00:00Z`);
     const end = new Date(`${days[days.length - 1]}T00:00:00Z`);
@@ -214,32 +217,98 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
     return out;
   }, [events]);
 
-  // ── Eventos por tipo ──────────────────────────────────────────────────────────
+  // ── Eventos por tipo ────────────────────────────────────────────────────────
   const eventsByType = useMemo(() => {
     const m = new Map<string, number>();
     for (const e of events) m.set(e.event_name, (m.get(e.event_name) ?? 0) + 1);
     return [...m.entries()].sort((a, b) => b[1] - a[1]).map(([name, value]) => ({ name, value }));
   }, [events]);
 
-  // ── Geografia (usuários únicos por país/estado/cidade) ────────────────────────
+  // ── Compras por visitante (scoped ao funil) ─────────────────────────────────
+  // Usado tanto na tabela UTM quanto nos painéis de localização/origem de vendas.
+  const purchasesByFp = useMemo(() => {
+    const m = new Map<string, { sales: number; revenue: number }>();
+    for (const e of events) {
+      if (e.event_name !== "Purchase") continue;
+      const cur = m.get(e.fingerprint_id) ?? { sales: 0, revenue: 0 };
+      cur.sales += 1;
+      cur.revenue += e.value ?? 0;
+      m.set(e.fingerprint_id, cur);
+    }
+    return m;
+  }, [events]);
+
+  // Visitantes com pelo menos 1 compra no funil atual.
+  const buyerVisitors = useMemo(
+    () => visitors.filter((v) => (purchasesByFp.get(v.fingerprintId)?.sales ?? 0) > 0),
+    [visitors, purchasesByFp],
+  );
+
+  // ── Geografia ───────────────────────────────────────────────────────────────
   const geo = useMemo(() => {
-    const counts = new Map<string, number>();
+    if (geoMode === "users") {
+      const counts = new Map<string, number>();
+      const flags = new Map<string, string | null>();
+      for (const v of visitors) {
+        const loc = v.lastLocation;
+        const raw = geoDim === "country" ? loc.country : geoDim === "region" ? loc.countryRegion : loc.city;
+        const key = raw?.trim() || "Desconhecido";
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+        if (geoDim === "country" && !flags.has(key)) flags.set(key, loc.country);
+      }
+      return topBuckets(counts, 8).map((b) => ({
+        ...b,
+        flag: geoDim === "country" ? flagEmoji(flags.get(b.label) ?? null) : "",
+        sub: undefined as string | undefined,
+        formatValue: undefined as ((v: number) => string) | undefined,
+      }));
+    }
+    // Vendas: agrupa revenue por localização; value = revenue; sub = nº de vendas
+    const rev = new Map<string, number>();
+    const cnt = new Map<string, number>();
     const flags = new Map<string, string | null>();
-    for (const v of visitors) {
+    for (const v of buyerVisitors) {
       const loc = v.lastLocation;
       const raw = geoDim === "country" ? loc.country : geoDim === "region" ? loc.countryRegion : loc.city;
       const key = raw?.trim() || "Desconhecido";
-      counts.set(key, (counts.get(key) ?? 0) + 1);
+      const p = purchasesByFp.get(v.fingerprintId)!;
+      rev.set(key, (rev.get(key) ?? 0) + p.revenue);
+      cnt.set(key, (cnt.get(key) ?? 0) + p.sales);
       if (geoDim === "country" && !flags.has(key)) flags.set(key, loc.country);
     }
-    return topBuckets(counts, 8).map((b) => ({
+    return topBuckets(rev, 8).map((b) => ({
       ...b,
       flag: geoDim === "country" ? flagEmoji(flags.get(b.label) ?? null) : "",
+      sub: `${fmtInt(cnt.get(b.label) ?? 0)} venda${(cnt.get(b.label) ?? 0) !== 1 ? "s" : ""}`,
+      formatValue: (v: number) => formatMoney(v, currency),
     }));
-  }, [visitors, geoDim]);
+  }, [visitors, buyerVisitors, purchasesByFp, geoDim, geoMode, currency]);
 
-  // ── Origem (usuários por utm_source / utm_medium) ─────────────────────────────
-  const sources = useMemo(() => {
+  // ── Vendas por UTM Source (first-touch) ─────────────────────────────────────
+  // v.events é mais-recente-primeiro; iteramos ao contrário para pegar o UTM
+  // do evento mais antigo do visitante dentro do período (first-touch).
+  const salesBySource = useMemo(() => {
+    const rev = new Map<string, number>();
+    const cnt = new Map<string, number>();
+    for (const v of buyerVisitors) {
+      let firstSrc: string | null = null;
+      for (let i = v.events.length - 1; i >= 0; i--) {
+        const src = resolveUtm(v.events[i])["utm_source"]?.trim();
+        if (src) { firstSrc = src; break; }
+      }
+      const key = firstSrc ?? DIRECT_LABEL;
+      const p = purchasesByFp.get(v.fingerprintId)!;
+      rev.set(key, (rev.get(key) ?? 0) + p.revenue);
+      cnt.set(key, (cnt.get(key) ?? 0) + p.sales);
+    }
+    return topBuckets(rev, 8).map((b) => ({
+      ...b,
+      sub: `${fmtInt(cnt.get(b.label) ?? 0)} venda${(cnt.get(b.label) ?? 0) !== 1 ? "s" : ""}`,
+    }));
+  }, [buyerVisitors, purchasesByFp]);
+
+  // ── Usuários por origem (todos os visitantes) ────────────────────────────────
+  const usersBySource = useMemo(() => {
     const counts = new Map<string, number>();
     for (const v of visitors) {
       const key = visitorUtm(v)[sourceDim]?.trim() || DIRECT_LABEL;
@@ -248,9 +317,48 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
     return topBuckets(counts, 8);
   }, [visitors, sourceDim]);
 
-  // ── Eventos por UTM (usuários, leads, vendas, receita) ───────────────────────
+  // ── UTM final da venda (UTM diretamente no evento de compra) ─────────────────
+  // Diferente de salesBySource (que usa o histórico do visitante), aqui olhamos
+  // somente o utm_source que veio junto com o evento Purchase em si.
+  // Para vendas Eduzz server-side sem UTM, cai em "Sem UTM na venda".
+  const utmFinalDeSale = useMemo(() => {
+    const rev = new Map<string, number>();
+    const cnt = new Map<string, number>();
+    for (const e of events) {
+      if (e.event_name !== "Purchase") continue;
+      const utm = resolveUtm(e);
+      const src = utm["utm_source"]?.trim() || null;
+      const key = src ?? "Sem UTM na venda";
+      rev.set(key, (rev.get(key) ?? 0) + (e.value ?? 0));
+      cnt.set(key, (cnt.get(key) ?? 0) + 1);
+    }
+    return topBuckets(rev, 8).map((b) => ({
+      ...b,
+      sub: `${fmtInt(cnt.get(b.label) ?? 0)} venda${(cnt.get(b.label) ?? 0) !== 1 ? "s" : ""}`,
+    }));
+  }, [events]);
+
+  // ── Dispositivos ─────────────────────────────────────────────────────────────
+  const deviceStats = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const v of visitors) {
+      let key: string | null = null;
+      if (deviceDim === "device") {
+        const d = parseUserAgent(v.lastUserAgent);
+        key = d ? (d.device === "mobile" ? "Celular" : d.device === "tablet" ? "Tablet" : "Desktop") : null;
+      } else if (deviceDim === "os") {
+        key = parseOS(v.lastUserAgent);
+      } else {
+        key = parseBrowser(v.lastUserAgent);
+      }
+      const k = key ?? "Desconhecido";
+      counts.set(k, (counts.get(k) ?? 0) + 1);
+    }
+    return topBuckets(counts, 10);
+  }, [visitors, deviceDim]);
+
+  // ── Eventos por UTM (tabela) ─────────────────────────────────────────────────
   const utmRows = useMemo(() => {
-    // Conversões scopadas por fingerprint — só eventos que casam com o funil.
     const scopedConv = new Map<string, { leads: number; sales: number; revenue: number }>();
     for (const e of events) {
       if (e.event_name !== "Lead" && e.event_name !== "Purchase") continue;
@@ -259,11 +367,10 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
       if (e.event_name === "Lead") c.leads += 1;
       if (e.event_name === "Purchase") { c.sales += 1; c.revenue += e.value ?? 0; }
     }
-    // UTM attribution usa o histórico completo do visitante (melhor para encontrar
-    // a campanha que trouxe o visitante, mesmo quando o evento de conversão não tem UTM).
     const m = new Map<string, { users: number; leads: number; sales: number; revenue: number }>();
     for (const v of visitors) {
-      const key = visitorUtm(v)[utmDim]?.trim() || UNDEFINED_LABEL;
+      const rawKey = visitorUtm(v)[utmDim]?.trim();
+      const key = rawKey || UNDEFINED_LABEL;
       const cur = m.get(key) ?? { users: 0, leads: 0, sales: 0, revenue: 0 };
       const conv = scopedConv.get(v.fingerprintId) ?? { leads: 0, sales: 0, revenue: 0 };
       cur.users += 1;
@@ -284,12 +391,21 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
     [utmRows],
   );
 
-  // Funil de conversão: Visitantes → Leads → Compras
+  // ── Funil de conversão ──────────────────────────────────────────────────────
   const funnelSteps = [
     { label: "Visitantes", value: totals.uniqueUsers, color: theme.c1 },
     { label: "Leads", value: totals.leads, color: theme.c4 },
     { label: "Compras", value: totals.customers, color: theme.c3 },
   ];
+
+  const utmDimLabel: Record<UtmDim, string> = {
+    utm_source: "Origem",
+    utm_medium: "Mídia",
+    utm_campaign: "Campanha",
+    utm_content: "Conteúdo",
+    utm_term: "Termo",
+    utm_ad_id: "Anúncio",
+  };
 
   if (visitors.length === 0) {
     return (
@@ -300,8 +416,6 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
     );
   }
 
-  const timelineKey = timelineMetric;
-
   return (
     <div className="flex flex-col gap-4">
       {eventsCapped && (
@@ -311,7 +425,7 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
       )}
       {!funnelHasProductNames && (
         <div className="rounded-lg border px-3 py-2 text-[11px]" style={{ borderColor: "rgba(99,102,200,0.3)", background: "rgba(99,102,200,0.06)", color: "var(--dm-text-secondary)" }}>
-          <strong style={{ color: "var(--dm-text-primary)" }}>Atribuição limitada</strong> — funil sem produto configurado. Compras Eduzz chegam server-side e podem não carregar a mesma jornada da URL. Configure <strong>Nomes de Produto</strong> no funil para atribuição precisa.
+          <strong style={{ color: "var(--dm-text-primary)" }}>Atribuição limitada</strong> — funil sem produto configurado. Compras Eduzz chegam server-side e podem não carregar a mesma jornada da URL. Configure <strong>Produto</strong> no funil para atribuição precisa.
         </div>
       )}
 
@@ -360,7 +474,7 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
                 labelFormatter={(l) => shortDate(String(l))}
                 formatter={(val) => [fmtInt(Number(val)), ""]}
               />
-              <Area type="monotone" dataKey={timelineKey} stroke={theme.c1} strokeWidth={2} fill="url(#ta-area)" />
+              <Area type="monotone" dataKey={timelineMetric} stroke={theme.c1} strokeWidth={2} fill="url(#ta-area)" />
             </AreaChart>
           </ResponsiveContainer>
         ) : (
@@ -413,30 +527,42 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
         </Panel>
       </div>
 
-      {/* Geografia + Origem */}
+      {/* Localização (usuários/vendas) + Usuários por origem */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Panel
-          title="Usuários por localização"
+          title={geoMode === "users" ? "Usuários por localização" : "Vendas por localização"}
           icon={Globe}
           action={
-            <ToggleGroup
-              value={geoDim}
-              onChange={setGeoDim}
-              options={[
-                { value: "country", label: "País" },
-                { value: "region", label: "Estado" },
-                { value: "city", label: "Cidade" },
-              ]}
-            />
+            <div className="flex flex-wrap items-center gap-1.5">
+              <ToggleGroup
+                value={geoMode}
+                onChange={setGeoMode}
+                options={[
+                  { value: "users", label: "Usuários" },
+                  { value: "sales", label: "Vendas" },
+                ]}
+              />
+              <ToggleGroup
+                value={geoDim}
+                onChange={setGeoDim}
+                options={[
+                  { value: "country", label: "País" },
+                  { value: "region", label: "Estado" },
+                  { value: "city", label: "Cidade" },
+                ]}
+              />
+            </div>
           }
         >
           <BarList
-            color="#0891b2"
-            empty="Sem dados de localização."
+            color={geoMode === "users" ? "#0891b2" : "#059669"}
+            empty={geoMode === "users" ? "Sem dados de localização." : "Nenhuma venda com localização no período."}
+            formatValue={geo[0]?.formatValue}
             items={geo.map((g) => ({
               key: g.label,
               label: <span>{g.flag && <span className="mr-1">{g.flag}</span>}{g.label}</span>,
               value: g.value,
+              sub: g.sub,
             }))}
           />
         </Panel>
@@ -458,20 +584,85 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
           <BarList
             color="#7c3aed"
             empty="Sem dados de origem."
-            items={sources.map((s) => ({ key: s.label, label: s.label, value: s.value }))}
+            items={usersBySource.map((s) => ({ key: s.label, label: s.label, value: s.value }))}
           />
         </Panel>
       </div>
 
+      {/* Vendas por origem (last-touch) + UTM final da venda */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Panel
+          title="Vendas por origem (first-touch)"
+          icon={ShoppingBag}
+        >
+          <BarList
+            color="#059669"
+            empty="Nenhuma venda com UTM Source no período."
+            formatValue={(v) => formatMoney(v, currency)}
+            items={salesBySource.map((s) => ({
+              key: s.label,
+              label: s.label,
+              value: s.value,
+              sub: s.sub,
+            }))}
+          />
+        </Panel>
+
+        <Panel
+          title="UTM Source no momento da venda"
+          icon={Tag}
+        >
+          <BarList
+            color="#d97706"
+            empty="Nenhuma venda com UTM Source no evento."
+            formatValue={(v) => formatMoney(v, currency)}
+            items={utmFinalDeSale.map((s) => ({
+              key: s.label,
+              label: s.label,
+              value: s.value,
+              sub: s.sub,
+            }))}
+          />
+          <p className="mt-2 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+            UTM diretamente no evento de compra. Vendas Eduzz server-side sem UTM aparecem como "Sem UTM na venda".
+          </p>
+        </Panel>
+      </div>
+
+      {/* Dispositivos */}
+      <Panel
+        title="Dispositivos dos usuários"
+        icon={Monitor}
+        action={
+          <ToggleGroup
+            value={deviceDim}
+            onChange={setDeviceDim}
+            options={[
+              { value: "os", label: "Sistema Operacional" },
+              { value: "device", label: "Tipo" },
+              { value: "browser", label: "Navegador" },
+            ]}
+          />
+        }
+      >
+        <BarList
+          color="#7c3aed"
+          empty="Sem dados de dispositivo."
+          items={deviceStats.map((d) => ({ key: d.label, label: d.label, value: d.value }))}
+        />
+      </Panel>
+
       {/* Eventos por UTM */}
       <Panel
-        title="Eventos por UTM — Leads & Vendas"
+        title="Leads & Vendas por UTM"
         icon={Tag}
         action={
           <ToggleGroup
             value={utmDim}
             onChange={setUtmDim}
             options={[
+              { value: "utm_source", label: "Origem" },
+              { value: "utm_medium", label: "Mídia" },
               { value: "utm_campaign", label: "Campanha" },
               { value: "utm_content", label: "Conteúdo" },
               { value: "utm_term", label: "Termo" },
@@ -486,7 +677,7 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
               <thead>
                 <tr style={{ borderBottom: "1px solid var(--dm-border-default)" }}>
                   <th className="px-2 py-2 text-left font-semibold" style={{ color: "var(--dm-text-tertiary)" }}>
-                    {utmDim === "utm_campaign" ? "Campanha" : utmDim === "utm_content" ? "Conteúdo" : utmDim === "utm_term" ? "Termo" : "Anúncio"}
+                    {utmDimLabel[utmDim]}
                   </th>
                   {([["users", "Usuários"], ["leads", "Leads"], ["sales", "Vendas"], ["revenue", "Receita"]] as [UtmSortCol, string][]).map(([col, label]) => (
                     <th

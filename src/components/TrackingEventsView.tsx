@@ -345,7 +345,7 @@ export function parseUserAgent(ua: string | null): { device: "mobile" | "tablet"
 // Versão "crua" do sistema operacional pra coluna própria da tabela (OS), sem
 // misturar modelo de aparelho — diferente de `parseUserAgent` acima, que
 // monta um label combinado (OS + modelo) pra exibição no drawer do visitante.
-function parseOS(ua: string | null): string | null {
+export function parseOS(ua: string | null): string | null {
   const parsed = parseUserAgent(ua);
   if (!parsed) return null;
   // Remove o "· modelo" do label combinado (só existe pra Android) — sobra só o SO.
@@ -356,7 +356,7 @@ function parseOS(ua: string | null): string | null {
 // navegadores in-app (Facebook/Instagram) e baseados em Chromium (Edge, Opera,
 // Samsung Internet) incluem o token "Chrome"/"Safari" no próprio UA, então
 // teriam falso positivo se Chrome/Safari fossem checados primeiro.
-function parseBrowser(ua: string | null): string | null {
+export function parseBrowser(ua: string | null): string | null {
   if (!ua) return null;
   if (/FBAN|FBAV|FB_IAB/.test(ua)) return "Facebook (in-app)";
   if (/Instagram/.test(ua)) return "Instagram (in-app)";
@@ -368,6 +368,15 @@ function parseBrowser(ua: string | null): string | null {
   if (/FxiOS|Firefox/.test(ua)) return "Firefox";
   if (/Safari/.test(ua) && /Version\//.test(ua)) return "Safari";
   return null;
+}
+
+// Converte data YYYY-MM-DD para ISO UTC usando o timezone LOCAL do browser.
+// Garante que o filtro "até 27/06" inclua eventos até 23:59:59 BRT (= 02:59:59 UTC do dia 28).
+function localDayStart(dateStr: string): string {
+  return new Date(`${dateStr}T00:00:00`).toISOString();
+}
+function localDayEnd(dateStr: string): string {
+  return new Date(`${dateStr}T23:59:59.999`).toISOString();
 }
 
 // Builders de formulário (Elementor, WP Forms etc.) costumam nomear o input
@@ -811,8 +820,8 @@ export function TrackingEventsView() {
         .eq("company_id", companyId)
         .or("sale_confirmed.is.null,sale_confirmed.eq.true")
         .neq("event_name", "Renewal")
-        .gte("created_at", `${dateFrom}T00:00:00`)
-        .lte("created_at", `${dateTo}T23:59:59`)
+        .gte("created_at", localDayStart(dateFrom))
+        .lte("created_at", localDayEnd(dateTo))
         .order("created_at", { ascending: false })
         .limit(EVENTS_LIMIT),
       supabaseClient.from("tracking_pixels").select("id, name, meta_pixel_id").eq("company_id", companyId),
@@ -845,8 +854,8 @@ export function TrackingEventsView() {
         .select(EVENTS_SELECT_FALLBACK)
         .eq("company_id", companyId)
         .neq("event_name", "Renewal")
-        .gte("created_at", `${dateFrom}T00:00:00`)
-        .lte("created_at", `${dateTo}T23:59:59`)
+        .gte("created_at", localDayStart(dateFrom))
+        .lte("created_at", localDayEnd(dateTo))
         .order("created_at", { ascending: false })
         .limit(EVENTS_LIMIT);
       if (retry.error) {
