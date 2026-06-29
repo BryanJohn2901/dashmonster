@@ -6,7 +6,7 @@ import type { CompanyMembership, CompanyRole } from "@/hooks/useCompany";
 const ROLE_LABELS: Record<CompanyRole, string> = {
   owner: "Dono", manager: "Gestor de tráfego", viewer: "Visualização",
 };
-const ROLE_COLORS: Record<CompanyRole, string> = { owner: "#8b5cf6", manager: "#10b981", viewer: "#64748b" };
+const ROLE_COLORS: Record<CompanyRole, string> = { owner: "#22C55E", manager: "#10b981", viewer: "#64748b" };
 
 function initialsOf(name: string): string {
   return name.split(" ").filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? "").join("") || "?";
@@ -56,8 +56,8 @@ export function CompanySelectScreen({
                 className="group flex items-center gap-3.5 rounded-2xl border p-4 text-left transition-all hover:opacity-95 active:scale-[0.99]"
                 style={{
                   background: "var(--dm-bg-surface)",
-                  borderColor: active ? "#7C3AED" : "var(--dm-border-default)",
-                  boxShadow: active ? "0 0 0 3px rgba(124,58,237,0.15)" : "0 4px 16px rgba(0,0,0,0.08)",
+                  borderColor: active ? "#16A34A" : "var(--dm-border-default)",
+                  boxShadow: active ? "0 0 0 3px rgba(22,163,74,0.15)" : "0 4px 16px rgba(0,0,0,0.08)",
                 }}
               >
                 <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl text-base font-bold text-white"

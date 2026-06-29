@@ -560,7 +560,7 @@ export function PerfilAtivoPanel({
           sub={unfollowsAvailable ? "seguidores perdidos" : "indisponível na Meta"}
           color="#EE5D50" />
         <KpiTile icon={Activity}     label="Engajamento"        value={`${avgEngagement30}%`}        sub="média 30 dias"                      color="#F59E0B" />
-        <KpiTile icon={Eye}          label="Alcance médio/dia"  value={fmtNum(avgReachDay)}          sub="pessoas únicas"                     color="#A78BFA" />
+        <KpiTile icon={Eye}          label="Alcance médio/dia"  value={fmtNum(avgReachDay)}          sub="pessoas únicas"                     color="#4ADE80" />
         <KpiTile icon={BarChart2}    label="Impressões médio/d" value={fmtNum(avgImpDay)}            sub="média diária"                       color="#F97316" />
         <KpiTile icon={Image}        label="Views de perfil"    value={fmtNum(totalViews)}           sub="30 dias"                            color="#EC4899" />
       </div>
@@ -676,7 +676,7 @@ export function PerfilAtivoPanel({
                     onClick={() => { setTableStep(step); setTablePage(1); }}
                     className="rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors"
                     style={tableStep === step
-                      ? { background: "var(--dm-brand-500, #7C3AED)", color: "#fff" }
+                      ? { background: "var(--dm-brand-500, #16A34A)", color: "#fff" }
                       : { backgroundColor: "var(--dm-bg-surface)", color: "var(--dm-text-tertiary)", border: "1px solid var(--dm-border-subtle)" }}>
                     {label}
                   </button>

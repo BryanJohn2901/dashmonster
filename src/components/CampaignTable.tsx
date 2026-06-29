@@ -24,7 +24,7 @@ const ITEMS_PER_PAGE = 10;
 function RoasBadge({ value }: { value: number }) {
   const cls =
     value >= 3   ? "bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 ring-emerald-500/20"
-    : value >= 1.5 ? "bg-blue-500/10 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400 ring-blue-500/20"
+    : value >= 1.5 ? "bg-slate-500/10 text-slate-600 dark:bg-slate-500/20 dark:text-slate-300 ring-slate-500/20"
     : value >= 1   ? "bg-amber-500/10 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400 ring-amber-500/20"
     : "bg-red-500/10 text-red-600 dark:bg-red-500/20 dark:text-red-400 ring-red-500/20";
   return (
@@ -37,7 +37,7 @@ function RoasBadge({ value }: { value: number }) {
 function CtrBadge({ value }: { value: number }) {
   const cls =
     value >= 3   ? "bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400"
-    : value >= 1.5 ? "bg-blue-500/10 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400"
+    : value >= 1.5 ? "bg-slate-500/10 text-slate-600 dark:bg-slate-500/20 dark:text-slate-300"
     : value >= 0.5 ? "bg-slate-500/10 text-slate-600 dark:bg-slate-500/20 dark:text-slate-400"
     : "bg-red-500/10 text-red-600 dark:bg-red-500/20 dark:text-red-400";
   return (
@@ -115,7 +115,7 @@ function SingleCampaignView({ campaigns, isMetricVisible = () => true }: { campa
   const tooltipBg = dark ? "#1e293b" : "#ffffff";
   const tooltipBorder = dark ? "#334155" : "#e2e8f0";
 
-  // Color each bar by relative spend: top 25% → emerald, bottom 25% → red, rest → blue
+  // Color each bar by relative spend: top 25% → green, bottom 25% → red, rest → neutro (Calmo: azul sai)
   const investments = sorted.map((r) => r.investment);
   const maxInv = Math.max(...investments, 1);
   const minInv = Math.min(...investments.filter(v => v > 0), maxInv);
@@ -124,7 +124,7 @@ function SingleCampaignView({ campaigns, isMetricVisible = () => true }: { campa
     const pct = (v - minInv) / range;
     if (pct >= 0.75) return "#059669";
     if (pct <= 0.25) return "#ef4444";
-    return "#3b82f6";
+    return "#94a3b8";
   };
 
   return (
@@ -158,7 +158,7 @@ function SingleCampaignView({ campaigns, isMetricVisible = () => true }: { campa
           {[
             { label: "Total Investido", value: formatCurrency(totalInvestment), color: "text-slate-900 dark:text-slate-100" },
             { label: "Receita",         value: formatCurrency(totalRevenue),    color: "text-emerald-700 dark:text-emerald-400" },
-            { label: "Cliques",         value: formatNumber(totalClicks),       color: "text-blue-700 dark:text-blue-400" },
+            { label: "Cliques",         value: formatNumber(totalClicks),       color: "text-slate-700 dark:text-slate-300" },
             { label: "ROAS Médio",      value: `${avgRoas.toFixed(2)}x`,        color: avgRoas >= 1 ? "text-emerald-700 dark:text-emerald-400" : "text-red-600 dark:text-red-400" },
           ].map((kpi) => (
             <div key={kpi.label} className="rounded-lg border border-slate-100 px-3 py-2 dark:border-slate-700">
@@ -214,7 +214,7 @@ function SingleCampaignView({ campaigns, isMetricVisible = () => true }: { campa
         {/* Color legend */}
         <div className="mt-1 flex gap-4 text-[10px] text-slate-400 dark:text-slate-500">
           <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />Maior gasto</span>
-          <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-blue-500" />Médio</span>
+          <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-slate-400" />Médio</span>
           <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full bg-red-400" />Menor gasto</span>
         </div>
       </div>
@@ -253,7 +253,7 @@ function SingleCampaignView({ campaigns, isMetricVisible = () => true }: { campa
                 {isMetricVisible("investment")  && <td className="whitespace-nowrap px-3 py-3 text-right text-[13px] font-bold tabular-nums text-slate-800 dark:text-slate-200" style={{ fontFamily: "var(--font-display)" }}>{formatCurrency(row.investment)}</td>}
                 {isMetricVisible("revenue")     && <td className="whitespace-nowrap px-3 py-3 text-right text-[13px] font-bold tabular-nums text-emerald-600 dark:text-emerald-400" style={{ fontFamily: "var(--font-display)" }}>{formatCurrency(row.revenue)}</td>}
                 {isMetricVisible("clicks")      && <td className="whitespace-nowrap px-3 py-3 text-right text-[13px] tabular-nums text-slate-600 dark:text-slate-400" style={{ fontFamily: "var(--font-display)" }}>{formatNumber(row.clicks)}</td>}
-                {isMetricVisible("conversions") && <td className="whitespace-nowrap px-3 py-3 text-right text-[13px] font-semibold tabular-nums text-blue-600 dark:text-blue-400" style={{ fontFamily: "var(--font-display)" }}>{formatNumber(row.conversions)}</td>}
+                {isMetricVisible("conversions") && <td className="whitespace-nowrap px-3 py-3 text-right text-[13px] font-semibold tabular-nums text-slate-700 dark:text-slate-300" style={{ fontFamily: "var(--font-display)" }}>{formatNumber(row.conversions)}</td>}
                 {isMetricVisible("ctr")         && <td className="whitespace-nowrap px-3 py-3 text-center"><CtrBadge value={row.ctr} /></td>}
                 {isMetricVisible("cpc")         && <td className="whitespace-nowrap px-3 py-3 text-right text-[13px] tabular-nums text-slate-600 dark:text-slate-400" style={{ fontFamily: "var(--font-display)" }}>{formatCurrency(row.cpc)}</td>}
                 {isMetricVisible("roas")        && <td className="whitespace-nowrap px-3 py-3 text-center"><RoasBadge value={row.roas} /></td>}
@@ -275,7 +275,7 @@ function SingleCampaignView({ campaigns, isMetricVisible = () => true }: { campa
           </div>
           <div className="flex items-center gap-1">
             <span className="text-[11px] text-slate-400">Conversões</span>
-            <span className="text-xs font-bold text-blue-700 dark:text-blue-400">{formatNumber(totalConversions)}</span>
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-300">{formatNumber(totalConversions)}</span>
           </div>
           {/* Pagination */}
           {totalPages > 1 && (
@@ -366,7 +366,7 @@ function MultiCampaignView({ campaigns, isMetricVisible = () => true }: { campai
                 {isMetricVisible("investment")  && <td className="whitespace-nowrap px-5 py-3.5 text-right text-[13px] font-bold text-slate-700 dark:text-slate-300" style={{ fontFamily: "var(--font-display)" }}>{formatCurrency(row.investment)}</td>}
                 {isMetricVisible("revenue")     && <td className="whitespace-nowrap px-5 py-3.5 text-right text-[13px] font-bold text-emerald-600 dark:text-emerald-400" style={{ fontFamily: "var(--font-display)" }}>{formatCurrency(row.revenue)}</td>}
                 {isMetricVisible("clicks")      && <td className="whitespace-nowrap px-5 py-3.5 text-right text-[13px] text-slate-600 dark:text-slate-400" style={{ fontFamily: "var(--font-display)" }}>{formatNumber(row.clicks)}</td>}
-                {isMetricVisible("conversions") && <td className="whitespace-nowrap px-5 py-3.5 text-right text-[13px] font-semibold text-blue-600 dark:text-blue-400" style={{ fontFamily: "var(--font-display)" }}>{formatNumber(row.conversions)}</td>}
+                {isMetricVisible("conversions") && <td className="whitespace-nowrap px-5 py-3.5 text-right text-[13px] font-semibold text-slate-700 dark:text-slate-300" style={{ fontFamily: "var(--font-display)" }}>{formatNumber(row.conversions)}</td>}
                 {isMetricVisible("ctr")         && <td className="whitespace-nowrap px-5 py-3.5 text-center"><CtrBadge value={row.ctr} /></td>}
                 {isMetricVisible("cpc")         && <td className="whitespace-nowrap px-5 py-3.5 text-right text-[13px] text-slate-600 dark:text-slate-400" style={{ fontFamily: "var(--font-display)" }}>{formatCurrency(row.cpc)}</td>}
                 {isMetricVisible("cpa")         && <td className="whitespace-nowrap px-5 py-3.5 text-right text-[13px] text-slate-600 dark:text-slate-400" style={{ fontFamily: "var(--font-display)" }}>{formatCurrency(row.cpa)}</td>}
@@ -391,7 +391,7 @@ function MultiCampaignView({ campaigns, isMetricVisible = () => true }: { campai
               Receita: <span className="font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(campaigns.reduce((s, r) => s + r.revenue, 0))}</span>
             </span>
             <span className="text-slate-500 dark:text-slate-400">
-              Conversões: <span className="font-bold text-blue-700 dark:text-blue-400">{formatNumber(campaigns.reduce((s, r) => s + r.conversions, 0))}</span>
+              Conversões: <span className="font-bold text-slate-700 dark:text-slate-300">{formatNumber(campaigns.reduce((s, r) => s + r.conversions, 0))}</span>
             </span>
           </div>
         </div>

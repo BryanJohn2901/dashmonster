@@ -3,6 +3,7 @@ import { DM_Sans, Geist_Mono, Poppins } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { Toaster } from "@/components/Toaster";
+import { DevtoolsGuard } from "@/components/DevtoolsGuard";
 
 const dmSans = DM_Sans({
   variable: "--font-inter",
@@ -44,6 +45,7 @@ export default function RootLayout({
           <div className="app-grain-glow" aria-hidden="true" />
           {children}
           <Toaster />
+          <DevtoolsGuard />
         </ThemeProvider>
       </body>
     </html>

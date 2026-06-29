@@ -129,7 +129,7 @@ export function PersonalizadoBuilder({ config, onChange, onClose }: Props) {
               <span
                 className="rounded-full px-2.5 py-0.5 text-[10px] font-semibold"
                 style={{
-                  backgroundColor: atMax ? "rgba(124,58,237,0.1)" : "var(--dm-bg-elevated)",
+                  backgroundColor: atMax ? "rgba(22,163,74,0.1)" : "var(--dm-bg-elevated)",
                   color: atMax ? "var(--dm-brand-500)" : "var(--dm-text-tertiary)",
                 }}
               >
@@ -163,11 +163,11 @@ export function PersonalizadoBuilder({ config, onChange, onClose }: Props) {
                             className="flex items-center gap-2 rounded-[12px] px-3 py-2 text-left text-[12px] transition"
                             style={{
                               backgroundColor: selected
-                                ? "rgba(124,58,237,0.09)"
+                                ? "rgba(22,163,74,0.09)"
                                 : disabled
                                   ? "var(--dm-bg-elevated)"
                                   : "var(--dm-bg-elevated)",
-                              border: `1.5px solid ${selected ? "rgba(124,58,237,0.40)" : "var(--dm-border-default)"}`,
+                              border: `1.5px solid ${selected ? "rgba(22,163,74,0.40)" : "var(--dm-border-default)"}`,
                               color: selected
                                 ? "var(--dm-brand-500)"
                                 : disabled
@@ -264,7 +264,7 @@ export function PersonalizadoBuilder({ config, onChange, onClose }: Props) {
               onClick={handleSave}
               disabled={kpiIds.length === 0 || funnelIds.length === 0}
               className="rounded-[12px] px-5 py-2 text-[12px] font-bold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-              style={{ background: BRAND_GRAD, boxShadow: "0 4px 14px rgba(124,58,237,0.30)" }}
+              style={{ background: BRAND_GRAD, boxShadow: "0 4px 14px rgba(22,163,74,0.30)" }}
             >
               Aplicar Layout
             </button>

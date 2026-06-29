@@ -47,7 +47,7 @@ export function TemplateSelector({ current, onChange, variant = "dropdown", onOp
               style={{
                 backgroundColor: "var(--dm-bg-surface)",
                 border: isSelected ? `2px solid var(--dm-brand-500)` : "2px solid var(--dm-border-default)",
-                boxShadow: isSelected ? "0 4px 18px rgba(124,58,237,0.18)" : undefined,
+                boxShadow: isSelected ? "0 4px 18px rgba(22,163,74,0.18)" : undefined,
               }}
             >
               {/* Color accent bar */}
@@ -129,7 +129,7 @@ export function TemplateSelector({ current, onChange, variant = "dropdown", onOp
                       if (tpl.id === "personalizado" && onOpenBuilder) onOpenBuilder();
                     }}
                     className="flex w-full items-start gap-3 px-4 py-2.5 text-left text-xs transition hover:bg-[var(--dm-bg-elevated)]"
-                    style={isSelected ? { backgroundColor: "rgba(124,58,237,0.07)" } : {}}
+                    style={isSelected ? { backgroundColor: "rgba(22,163,74,0.07)" } : {}}
                   >
                     <span className="mt-1 h-2 w-2 flex-shrink-0 rounded-full" style={{ background: tpl.color }} />
                     <div className="min-w-0 flex-1">
@@ -161,9 +161,9 @@ export function TemplateSelector({ current, onChange, variant = "dropdown", onOp
           title="Configurar métricas do layout personalizado"
           className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-semibold transition"
           style={{
-            backgroundColor: "rgba(124,58,237,0.09)",
+            backgroundColor: "rgba(22,163,74,0.09)",
             color: "var(--dm-brand-500)",
-            border: "1px solid rgba(124,58,237,0.20)",
+            border: "1px solid rgba(22,163,74,0.20)",
           }}
         >
           <Settings2 size={11} /> Configurar

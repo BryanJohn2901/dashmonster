@@ -9,6 +9,7 @@ import { ControlPanel, type CPTab } from "@/components/ControlPanel";
 import { OnboardingTutorial } from "@/components/OnboardingTutorial";
 import { AuthScreen } from "@/components/AuthScreen";
 import { CompanySelectScreen } from "@/components/CompanySelectScreen";
+import { ProductSelectScreen } from "@/components/ProductSelectScreen";
 import { CampaignData } from "@/types/campaign";
 import { MOCK_CAMPAIGNS, MOCK_SOURCE_LABEL, seedDemoData } from "@/utils/mockData";
 import { fetchCampaignSheetData, parseCampaignCsvFile } from "@/utils/googleSheets";
@@ -264,6 +265,8 @@ export default function Home() {
     replaceUserAccountEntries([]);
     try { sessionStorage.removeItem(COMPANY_CHOSEN_KEY); } catch {}
     setCompanyChosen(false);
+    try { sessionStorage.removeItem(PRODUCT_CHOSEN_KEY); } catch {}
+    setProductChosen(false);
     setSession(null);
   };
 
@@ -432,6 +435,18 @@ export default function Home() {
     }
   };
 
+  const handleOAuth = async (provider: "google" | "github" | "discord"): Promise<void> => {
+    setAuthError(null);
+    if (!supabaseClient) return;
+    const { error: oauthError } = await supabaseClient.auth.signInWithOAuth({
+      provider,
+      options: { redirectTo: typeof window !== "undefined" ? window.location.origin : undefined },
+    });
+    if (oauthError) {
+      setAuthError(`Falha ao entrar com ${provider}: ${oauthError.message}`);
+    }
+  };
+
   const handleUpdateProfile = async (name: string): Promise<void> => {
     if (!supabaseClient) return;
     const { error: updateError } = await supabaseClient.auth.updateUser({
@@ -536,6 +551,12 @@ export default function Home() {
   const COMPANY_CHOSEN_KEY = "dm_company_chosen_v1";
   const [companyChosen, setCompanyChosen] = useState<boolean>(() => {
     try { return sessionStorage.getItem(COMPANY_CHOSEN_KEY) === "1"; } catch { return false; }
+  });
+
+  // Seletor de produto (Monster Hub): Dash vs PipeFlow, 1x por sessão.
+  const PRODUCT_CHOSEN_KEY = "dm_product_chosen_v1";
+  const [productChosen, setProductChosen] = useState<boolean>(() => {
+    try { return sessionStorage.getItem(PRODUCT_CHOSEN_KEY) === "1"; } catch { return false; }
   });
 
   useEffect(() => {
@@ -687,6 +708,7 @@ export default function Home() {
       <AuthScreen
         onSignIn={handleSignIn}
         onSignUp={handleSignUp}
+        onOAuth={handleOAuth}
         authError={authError}
         supabaseReady={isSupabaseConfigured}
       />
@@ -725,6 +747,24 @@ export default function Home() {
     }
   }
 
+  // ── Seletor de produto pós-login (Monster Hub): Dash vs PipeFlow ──────────────
+  if ((session || devBypass) && !productChosen) {
+    return (
+      <ProductSelectScreen
+        userName={currentUser.name || currentUser.email.split("@")[0]}
+        email={currentUser.email}
+        companyName={memberships.find((m) => m.company.id === activeCompanyId)?.company.name}
+        onOpenDash={() => {
+          try { sessionStorage.setItem(PRODUCT_CHOSEN_KEY, "1"); } catch {}
+          setProductChosen(true);
+        }}
+        onSignOut={handleSignOut}
+        onUpdateProfile={handleUpdateProfile}
+        categories={userCategories}
+      />
+    );
+  }
+
   return (
     <>
       {showOnboarding && (
@@ -750,6 +790,10 @@ export default function Home() {
         onRefresh={handleMetaAutoSync}
         onClearData={handleClearData}
         onSignOut={handleSignOut}
+        onBackToWorkspace={() => {
+          try { sessionStorage.removeItem(PRODUCT_CHOSEN_KEY); } catch {}
+          setProductChosen(false);
+        }}
         onUpdateProfile={handleUpdateProfile}
         onOpenControlPanel={() => {
           setControlPanelOpeningTab(undefined);

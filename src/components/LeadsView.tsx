@@ -20,10 +20,10 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 const CATEGORY_COLORS: Record<string, { bg: string; text: string }> = {
-  pos:      { bg: "rgba(124,58,237,0.12)",  text: "var(--dm-primary)" },
+  pos:      { bg: "rgba(22,163,74,0.12)",  text: "var(--dm-primary)" },
   eventos:  { bg: "rgba(245,158,11,0.12)", text: "#d97706" },
   perpetuo: { bg: "rgba(16,185,129,0.12)", text: "#059669" },
-  ebooks:   { bg: "rgba(139,92,246,0.12)", text: "#7c3aed" },
+  ebooks:   { bg: "rgba(34,197,94,0.12)", text: "#16A34A" },
   livros:   { bg: "rgba(236,72,153,0.12)", text: "#db2777" },
 };
 
@@ -75,7 +75,7 @@ function Chip({
       className="rounded-full border px-2.5 py-0.5 text-[10px] font-semibold transition-opacity hover:opacity-80"
       style={{
         borderColor: active ? "var(--dm-primary)"     : "var(--dm-border-default)",
-        background:  active ? "rgba(124,58,237,0.12)"  : "transparent",
+        background:  active ? "rgba(22,163,74,0.12)"  : "transparent",
         color:       active ? "var(--dm-primary)"     : "var(--dm-text-tertiary)",
       }}
     >
@@ -125,10 +125,8 @@ export function LeadsView() {
     return () => { void channel.unsubscribe(); };
   }, [loadDbLeads]);
 
-  const today = new Date().toISOString().split("T")[0];
-  const minus30 = new Date(Date.now() - 30 * 86400_000).toISOString().split("T")[0];
-  const [dateFrom, setDateFrom] = useState(minus30);
-  const [dateTo,   setDateTo]   = useState(today);
+  const [dateFrom, setDateFrom] = useState(() => new Date(Date.now() - 30 * 86400_000).toISOString().split("T")[0]);
+  const [dateTo,   setDateTo]   = useState(() => new Date().toISOString().split("T")[0]);
 
   const fetchLeads = useCallback(async () => {
     const { accessToken } = loadMetaCredentials();
@@ -373,7 +371,7 @@ export function LeadsView() {
             Nenhum lead encontrado no período.
           </p>
           <p className="text-[11px] mt-0.5 text-center max-w-sm" style={{ color: "var(--dm-text-tertiary)" }}>
-            Certifique-se de que suas campanhas usam o objetivo "Geração de Leads" no Meta.
+            Certifique-se de que suas campanhas usam o objetivo &quot;Geração de Leads&quot; no Meta.
           </p>
         </div>
       )}

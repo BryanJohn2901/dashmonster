@@ -49,7 +49,7 @@ const TYPE_LABEL: Record<MetaCampaignCreative["mediaType"], string> = {
 const TYPE_COLOR: Record<MetaCampaignCreative["mediaType"], { bg: string; text: string }> = {
   image:    { bg: "rgba(5,205,153,0.10)",  text: "#05CD99" },
   video:    { bg: "rgba(14,165,233,0.10)", text: "#0ea5e9" },
-  carousel: { bg: "rgba(139,92,246,0.10)", text: "#8B5CF6" },
+  carousel: { bg: "rgba(34,197,94,0.10)", text: "#22C55E" },
   unknown:  { bg: "var(--dm-bg-elevated)", text: "var(--dm-text-tertiary)" },
 };
 
@@ -669,10 +669,10 @@ const CHIP_STYLE = {
   green:  { background: "rgba(5,205,153,0.10)",  color: "#05CD99", border: "1px solid rgba(5,205,153,0.22)" },
   yellow: { background: "rgba(244,166,13,0.10)", color: "#F4A60D", border: "1px solid rgba(244,166,13,0.22)" },
   red:    { background: "rgba(238,93,80,0.10)",  color: "#EE5D50", border: "1px solid rgba(238,93,80,0.22)" },
-  blue:   { background: "rgba(124,58,237,0.10)", color: "#7C3AED", border: "1px solid rgba(124,58,237,0.22)" },
+  blue:   { background: "rgba(22,163,74,0.10)", color: "#16A34A", border: "1px solid rgba(22,163,74,0.22)" },
 } as const;
 
-const QUALITY_TOP = { good: "#05CD99", avg: "#F4A60D", bad: "#EE5D50", neutral: "#7C3AED" } as const;
+const QUALITY_TOP = { good: "#05CD99", avg: "#F4A60D", bad: "#EE5D50", neutral: "#16A34A" } as const;
 type Quality = keyof typeof QUALITY_TOP;
 
 function mq(metric: "ctr" | "cpl" | "roas" | "default", val: number): Quality {
@@ -955,7 +955,7 @@ function PreviewModal({
     : null;
 
   const score      = computeScore(insight);
-  const scoreColor = score === null ? "#7C3AED" : score >= 70 ? "#05CD99" : score >= 40 ? "#F4A60D" : "#EE5D50";
+  const scoreColor = score === null ? "#16A34A" : score >= 70 ? "#05CD99" : score >= 40 ? "#F4A60D" : "#EE5D50";
 
   const campaignPeers = useMemo(() =>
     allAds
@@ -1114,7 +1114,7 @@ function PreviewModal({
                 background: showIframe ? "var(--dm-bg-surface)" : DRAWER_GRAD,
                 color: showIframe ? "var(--dm-text-secondary)" : "#fff",
                 border: showIframe ? "1px solid var(--dm-border-default)" : "none",
-                boxShadow: showIframe ? "none" : "0 4px 14px rgba(124,58,237,0.28)",
+                boxShadow: showIframe ? "none" : "0 4px 14px rgba(22,163,74,0.28)",
               }}
             >
               {showIframe ? (
@@ -1305,7 +1305,7 @@ function PreviewModal({
             )}
             <a href={ad.adLink} target="_blank" rel="noopener noreferrer"
               className="flex flex-1 items-center justify-center gap-2 rounded-[9px] py-2.5 text-[12px] font-bold text-white transition hover:opacity-90"
-              style={{ background: DRAWER_GRAD, boxShadow: "0 4px 14px rgba(124,58,237,0.22)" }}>
+              style={{ background: DRAWER_GRAD, boxShadow: "0 4px 14px rgba(22,163,74,0.22)" }}>
               <ExternalLink size={12} /> Ver no Gerenciador de Anúncios
             </a>
           </div>
@@ -1400,7 +1400,7 @@ export function BestCreatives({
   const accessToken = loadMetaCredentials().accessToken;
   const { store, saveCreative } = useCreativeStore();
   const storeRef = useRef(store);
-  storeRef.current = store;
+  useEffect(() => { storeRef.current = store; }, [store]);
 
   const getIds = useCallback(() =>
     Array.isArray(adAccountId) ? adAccountId.filter(Boolean) : adAccountId ? [adAccountId] : []

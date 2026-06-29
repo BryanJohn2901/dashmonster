@@ -22,6 +22,7 @@ export function ReportModal({ data, fileName, onClose }: ReportModalProps) {
   const [busy, setBusy]     = useState(false);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [scale, setScale]   = useState(1);
+  const [previewH, setPreviewH] = useState<number | undefined>(undefined);
   const [capturing, setCapturing] = useState(false);
 
   const templateRef  = useRef<HTMLDivElement>(null);
@@ -40,17 +41,22 @@ export function ReportModal({ data, fileName, onClose }: ReportModalProps) {
     return out;
   }, [data]);
 
-  // Escala o template (largura fixa) para caber na área de prévia (só scroll vertical).
+  // Escala o template (largura fixa) para caber na área de prévia (só scroll vertical)
+  // e mede a altura natural para o wrapper colapsar junto com o scale.
   useEffect(() => {
     if (step !== "preview") return;
     const recompute = () => {
       const box = previewBoxRef.current;
       if (!box) return;
-      setScale(Math.min(1, (box.clientWidth - 24) / REPORT_WIDTH));
+      const s = Math.min(1, (box.clientWidth - 24) / REPORT_WIDTH);
+      setScale(s);
+      const tpl = templateRef.current;
+      setPreviewH(tpl ? tpl.offsetHeight * s : undefined);
     };
     recompute();
     const ro = new ResizeObserver(recompute);
     if (previewBoxRef.current) ro.observe(previewBoxRef.current);
+    if (templateRef.current) ro.observe(templateRef.current);
     return () => ro.disconnect();
   }, [step]);
 
@@ -77,7 +83,7 @@ export function ReportModal({ data, fileName, onClose }: ReportModalProps) {
     }
   };
 
-  const previewH = capturing ? undefined : (templateRef.current ? templateRef.current.offsetHeight * scale : undefined);
+  const effPreviewH = capturing ? undefined : previewH;
 
   const bodyEl = (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4"
@@ -103,14 +109,14 @@ export function ReportModal({ data, fileName, onClose }: ReportModalProps) {
             <button type="button" onClick={() => { setCustom(false); setStep("preview"); }}
               className="flex flex-col items-start gap-2 rounded-2xl border p-4 text-left transition hover:-translate-y-0.5"
               style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)" }}>
-              <Sparkles size={18} style={{ color: "var(--dm-brand-500, #7C3AED)" }} />
+              <Sparkles size={18} style={{ color: "var(--dm-brand-500, #16A34A)" }} />
               <span className="text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>Configuração atual</span>
               <span className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>Gera com todas as métricas e o funil.</span>
             </button>
             <button type="button" onClick={() => { setCustom(true); setStep("preview"); }}
               className="flex flex-col items-start gap-2 rounded-2xl border p-4 text-left transition hover:-translate-y-0.5"
               style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)" }}>
-              <Settings2 size={18} style={{ color: "var(--dm-brand-500, #7C3AED)" }} />
+              <Settings2 size={18} style={{ color: "var(--dm-brand-500, #16A34A)" }} />
               <span className="text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>Personalizar</span>
               <span className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>Escolha quais cards e etapas incluir.</span>
             </button>
@@ -125,7 +131,7 @@ export function ReportModal({ data, fileName, onClose }: ReportModalProps) {
               <button type="button" onClick={() => setCustom((v) => !v)}
                 className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-semibold"
                 style={custom
-                  ? { background: "var(--dm-brand-500, #7C3AED)", color: "#fff" }
+                  ? { background: "var(--dm-brand-500, #16A34A)", color: "#fff" }
                   : { backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)", border: "1px solid var(--dm-border-default)" }}>
                 <Settings2 size={12} /> Personalizar
               </button>
@@ -140,7 +146,7 @@ export function ReportModal({ data, fileName, onClose }: ReportModalProps) {
                 <div className="space-y-1">
                   {toggles.map((t) => (
                     <label key={t.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-[11px] transition hover:bg-white/5" style={{ color: "var(--dm-text-secondary)" }}>
-                      <input type="checkbox" checked={!hidden.has(t.id)} onChange={() => toggle(t.id)} className="h-3.5 w-3.5 accent-[var(--dm-brand-500,#7C3AED)]" />
+                      <input type="checkbox" checked={!hidden.has(t.id)} onChange={() => toggle(t.id)} className="h-3.5 w-3.5 accent-[var(--dm-brand-500,#16A34A)]" />
                       <span className="truncate">{t.label}</span>
                     </label>
                   ))}
@@ -149,7 +155,7 @@ export function ReportModal({ data, fileName, onClose }: ReportModalProps) {
             )}
 
             <div ref={previewBoxRef} className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-3" style={{ background: "var(--dm-bg-page, #0b1437)" }}>
-              <div style={{ height: previewH }}>
+              <div style={{ height: effPreviewH }}>
                 <div style={{ transform: capturing ? "none" : `scale(${scale})`, transformOrigin: "top left", width: REPORT_WIDTH }}>
                   <ReportTemplate innerRef={templateRef} data={data} hiddenIds={hidden} generatedAt={generatedAt} />
                 </div>
@@ -162,7 +168,7 @@ export function ReportModal({ data, fileName, onClose }: ReportModalProps) {
               {(["png", "pdf"] as const).map((f) => (
                 <button key={f} type="button" onClick={() => setFormat(f)}
                   className="flex items-center gap-1.5 rounded-[10px] px-3 py-1.5 text-[12px] font-semibold transition"
-                  style={format === f ? { background: "var(--dm-brand-500, #7C3AED)", color: "#fff" } : { color: "var(--dm-text-tertiary)" }}>
+                  style={format === f ? { background: "var(--dm-brand-500, #16A34A)", color: "#fff" } : { color: "var(--dm-text-tertiary)" }}>
                   {f === "png" ? <ImageIcon size={13} /> : <FileText size={13} />}{f.toUpperCase()}
                 </button>
               ))}

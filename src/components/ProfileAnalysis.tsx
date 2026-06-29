@@ -6,8 +6,8 @@ import {
   Area, AreaChart,
 } from "recharts";
 import {
-  Activity, AlertCircle, ArrowDown, ArrowLeft, ArrowUp, AtSign, BookMarked, CalendarDays,
-  CheckCircle2, Edit2, GraduationCap, Heart, Key, Loader2, MessageCircle, Plus, RefreshCw,
+  Activity, AlertCircle, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, AtSign, BookMarked, CalendarDays,
+  CheckCircle2, Edit2, GraduationCap, Heart, Key, Loader2, Megaphone, MessageCircle, Plus, RefreshCw,
   Repeat, Search, SlidersHorizontal, Star, StickyNote, Target, Trash2, TrendingDown, TrendingUp, Users, X, Zap,
 } from "lucide-react";
 import {
@@ -56,12 +56,12 @@ interface ProfileFunnelStep {
 
 const PROFILE_FUNNEL_STEPS: ProfileFunnelStep[] = [
   { id: "reach",          label: "Alcance",           color: "#3b82f6" },
-  { id: "impressions",    label: "Impressões",         color: "#8b5cf6", rateLabel: "Freq." },
+  { id: "impressions",    label: "Impressões",         color: "#22C55E", rateLabel: "Freq." },
   { id: "clicks",         label: "Cliques no link",    color: "#0891b2", rateLabel: "CTR" },
   { id: "page_views",     label: "Vis. de Página",     color: "#f59e0b", rateLabel: "Taxa LP" },
   { id: "leads",          label: "Leads",              color: "#e11d48", rateLabel: "Tx. Captura" },
   { id: "sales",          label: "Resultados",         color: "#10b981", rateLabel: "Tx. Venda" },
-  { id: "profile_visits", label: "Visitas ao Perfil",  color: "#8b5cf6", rateLabel: "Tx. Visita" },
+  { id: "profile_visits", label: "Visitas ao Perfil",  color: "#22C55E", rateLabel: "Tx. Visita" },
   { id: "new_followers",  label: "Novos Seguidores",   color: "#10b981", rateLabel: "Tx. Follow" },
 ];
 
@@ -173,6 +173,10 @@ interface ProfileAnalysisProps {
   campaignConfigs: Record<string, CampaignConfig>;
   /** When set, used as the default date range for profiles with no stored preference. */
   appliedDateRange?: { from: string; to: string };
+  /** Seleção do perfil aberto, controlada pelo Dashboard (mantém ao trocar de aba + nomeia a aba). */
+  viewId?: string | null;
+  onOpenProfile?: (p: AdvertiserProfile) => void;
+  onCloseProfile?: () => void;
 }
 
 // ─── Analysis helpers ─────────────────────────────────────────────────────────
@@ -797,7 +801,7 @@ function IgSelectedChip({
 
       {verifyState === "error" && (
         <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
-          Conta não encontrada via token atual. Use a lista "Buscar" para garantir acesso.
+          Conta não encontrada via token atual. Use a lista &quot;Buscar&quot; para garantir acesso.
         </p>
       )}
     </div>
@@ -1119,81 +1123,69 @@ function ProfileCard({
   onDelete: () => void;
 }) {
   const initials = profile.name.split(" ").slice(0, 2).map((w) => w[0]?.toUpperCase() ?? "").join("");
-  const [avatarCls, borderCls] = avatarStyle(profile.name);
+  const campaignCount = profile.campaigns.length;
 
   return (
     <div
       onClick={onSelect}
-      className="group relative cursor-pointer rounded-xl border shadow-sm transition-all hover:shadow-md"
-      style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => { if (e.key === "Enter") onSelect(); }}
+      className="group relative flex cursor-pointer flex-col gap-3 rounded-2xl border border-[color:var(--dm-border-default)] bg-[var(--dm-bg-surface)] p-4 transition-all hover:-translate-y-0.5 hover:border-[color:var(--dm-primary-border)] hover:shadow-lg"
     >
-      <div className="p-4">
-        <div className="flex items-start gap-3">
-          <div className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-sm font-bold ${avatarCls}`}>
-            {initials}
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>{profile.name}</p>
-            <p className="mt-0.5 truncate text-xs" style={{ color: "var(--dm-text-secondary)" }}>{profile.product}</p>
-          </div>
+      {/* Avatar + nome */}
+      <div className="flex items-start gap-3">
+        <div
+          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl text-sm font-bold"
+          style={{ background: "var(--dm-primary-soft)", color: "var(--dm-primary)", border: "1px solid var(--dm-primary-border)" }}
+        >
+          {initials}
         </div>
-
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {groupLabel && (
-            <span
-              className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
-              style={{ backgroundColor: "var(--dm-brand-50)", color: "var(--dm-brand-500)" }}
-            >
-              {groupLabel}
-            </span>
-          )}
-          <span
-            className="rounded-full px-2 py-0.5 font-mono text-[10px]"
-            style={{ backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)" }}
-          >
-            {profile.adAccountId}
-          </span>
+        <div className="min-w-0 flex-1 pr-12">
+          <p className="truncate text-[15px] font-bold" style={{ color: "var(--dm-text-primary)" }}>{profile.name}</p>
+          <p className="mt-0.5 truncate text-[12px]" style={{ color: "var(--dm-text-tertiary)" }}>{profile.product}</p>
         </div>
-
-        {/* Campaign badges */}
-        {profile.campaigns.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1">
-            {profile.campaigns.slice(0, 2).map((c) => (
-              <span key={c.id} className="flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
-                <span className="h-1 w-1 rounded-full bg-emerald-500" />
-                {c.name.length > 22 ? c.name.slice(0, 22) + "…" : c.name}
-              </span>
-            ))}
-            {profile.campaigns.length > 2 && (
-              <span
-                className="rounded-full px-2 py-0.5 text-[10px]"
-                style={{ backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)" }}
-              >
-                +{profile.campaigns.length - 2}
-              </span>
-            )}
-          </div>
-        )}
-
-        {profile.campaigns.length === 0 && (
-          <p className="mt-2 text-[10px] italic" style={{ color: "var(--dm-text-tertiary)" }}>Sem campanhas configuradas</p>
-        )}
-
       </div>
 
-      {/* Action buttons — shown on hover */}
+      {/* Chips: grupo + ACT */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        {groupLabel && (
+          <span className="rounded-md px-1.5 py-0.5 text-[10px] font-semibold"
+            style={{ backgroundColor: "var(--dm-primary-soft)", color: "var(--dm-primary)" }}>
+            {groupLabel}
+          </span>
+        )}
+        <span className="rounded-md px-1.5 py-0.5 font-mono text-[10px]"
+          style={{ backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)" }}>
+          {profile.adAccountId}
+        </span>
+      </div>
+
+      {/* Rodapé: campanhas + seta */}
+      <div className="mt-auto flex items-center justify-between border-t pt-3" style={{ borderColor: "var(--dm-border-subtle)" }}>
+        {campaignCount > 0 ? (
+          <span className="flex items-center gap-1.5 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
+            <Megaphone size={12} />
+            {campaignCount} campanha{campaignCount !== 1 ? "s" : ""}
+          </span>
+        ) : (
+          <span className="text-[11px] italic" style={{ color: "var(--dm-text-tertiary)" }}>Sem campanhas</span>
+        )}
+        <ArrowRight size={14} className="opacity-0 transition group-hover:opacity-100" style={{ color: "var(--dm-primary)" }} />
+      </div>
+
+      {/* Ações no hover */}
       <div className="absolute right-3 top-3 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
         <button type="button" onClick={(e) => { e.stopPropagation(); onEdit(); }}
-          className="flex h-6 w-6 items-center justify-center rounded-md border transition"
-          style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)" }}
+          className="flex h-7 w-7 items-center justify-center rounded-lg border transition hover:opacity-80"
+          style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-secondary)" }}
         >
-          <Edit2 size={11} />
+          <Edit2 size={12} />
         </button>
         <button type="button" onClick={(e) => { e.stopPropagation(); onDelete(); }}
-          className="flex h-6 w-6 items-center justify-center rounded-md border transition hover:border-red-300 hover:text-red-500"
-          style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)" }}
+          className="flex h-7 w-7 items-center justify-center rounded-lg border border-red-300/40 text-red-400 transition hover:bg-red-500/10"
         >
-          <Trash2 size={11} />
+          <Trash2 size={12} />
         </button>
       </div>
     </div>
@@ -1212,16 +1204,16 @@ const OVERVIEW_FUNNEL_KEY = "pta_overview_funnel_v1";
 
 // Shared color maps (mirrors CampaignAnalysisPanel)
 const KPI_SOLID_OV: Record<string, string> = {
-  brand: "#7C3AED", sky: "#0ea5e9", green: "#05CD99",
+  brand: "#16A34A", sky: "#0ea5e9", green: "#05CD99",
   rose: "#EE5D50", amber: "#F4A60D", slate: "#64748b",
 };
 const KPI_BG_OV: Record<string, string> = {
-  brand: "rgba(124,58,237,0.12)", sky: "rgba(14,165,233,0.12)",
+  brand: "rgba(22,163,74,0.12)", sky: "rgba(14,165,233,0.12)",
   green: "rgba(5,205,153,0.12)", rose: "rgba(238,93,80,0.12)",
   amber: "rgba(244,166,13,0.12)", slate: "rgba(100,116,139,0.10)",
 };
 const FUNNEL_COLORS_OV: Record<string, string> = {
-  reach: "#7C3AED", impressions: "#8b5cf6", clicks: "#0ea5e9",
+  reach: "#16A34A", impressions: "#22C55E", clicks: "#0ea5e9",
   page_views: "#f59e0b", leads: "#e11d48", sales: "#05CD99",
 };
 
@@ -1516,7 +1508,7 @@ function ProfileOverviewPanel({
       {/* ── Badge + header ─────────────────────────────────────────────────── */}
       <div className="flex items-center gap-2">
         <span className="rounded-full px-3 py-1 text-[11px] font-semibold"
-          style={{ background: "rgba(124,58,237,0.12)", color: "var(--dm-brand-500)" }}>
+          style={{ background: "rgba(22,163,74,0.12)", color: "var(--dm-brand-500)" }}>
           {campaigns.length} campanha{campaigns.length !== 1 ? "s" : ""} · visão consolidada
         </span>
         <span className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
@@ -1536,7 +1528,7 @@ function ProfileOverviewPanel({
               onClick={() => setEditGoals((v) => !v)}
               className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-semibold transition"
               style={editGoals
-                ? { background: "var(--dm-btn-primary-bg)", color: "#fff", boxShadow: "0 4px 12px rgba(124,58,237,0.30)" }
+                ? { background: "var(--dm-btn-primary-bg)", color: "#fff", boxShadow: "0 4px 12px rgba(22,163,74,0.30)" }
                 : { backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)", border: "1px solid var(--dm-border-default)" }}
             >
               <Target size={11} />
@@ -1556,8 +1548,8 @@ function ProfileOverviewPanel({
               : 0;
             const goalMet  = goalVal > 0 && (kpi.invert ? val <= goalVal : val >= goalVal);
             const goalColor = goalMet ? "#05CD99" : goalPct >= 75 ? "#F4A60D" : "#EE5D50";
-            const solid = KPI_SOLID_OV[kpi.color] ?? "#7C3AED";
-            const bg    = KPI_BG_OV[kpi.color]    ?? "rgba(124,58,237,0.10)";
+            const solid = KPI_SOLID_OV[kpi.color] ?? "#16A34A";
+            const bg    = KPI_BG_OV[kpi.color]    ?? "rgba(22,163,74,0.10)";
             const isOvEditable = (OV_EDITABLE_IDS as readonly string[]).includes(kpi.id);
             const isOvEditing  = editingOvId === kpi.id;
 
@@ -1665,14 +1657,14 @@ function ProfileOverviewPanel({
               style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)", padding: "18px" }}>
               <div className="mb-4 flex items-center justify-between gap-2">
                 <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full"
-                  style={{ backgroundColor: "rgba(124,58,237,0.10)" }}>
-                  <StickyNote size={18} style={{ color: "#7C3AED" }} />
+                  style={{ backgroundColor: "rgba(22,163,74,0.10)" }}>
+                  <StickyNote size={18} style={{ color: "#16A34A" }} />
                 </div>
                 <div className="flex items-center gap-1.5">
                   <button type="button"
                     onClick={() => setCardForm({ id: cc.id, title: cc.title, value: cc.value, note: cc.note ?? "" })}
                     className="flex h-6 w-6 items-center justify-center rounded-full transition hover:opacity-80"
-                    style={{ backgroundColor: "rgba(124,58,237,0.10)", color: "#7C3AED" }} title="Editar card">
+                    style={{ backgroundColor: "rgba(22,163,74,0.10)", color: "#16A34A" }} title="Editar card">
                     <Edit2 size={11} />
                   </button>
                   <button type="button"
@@ -1701,7 +1693,7 @@ function ProfileOverviewPanel({
           {/* Tile de criar/editar card personalizado */}
           {cardForm ? (
             <article className="flex flex-col gap-2 rounded-[20px] border-2 shadow-horizon"
-              style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "#7C3AED", padding: "18px" }}>
+              style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "#16A34A", padding: "18px" }}>
               <input autoFocus type="text" value={cardForm.title}
                 onChange={(e) => setCardForm({ ...cardForm, title: e.target.value })}
                 placeholder="Título (ex: Vendas WhatsApp)"
@@ -1773,7 +1765,7 @@ function ProfileOverviewPanel({
                 <button key={v} type="button" onClick={() => setFunnelView(v)}
                   className="flex items-center gap-1.5 rounded-[8px] px-3 py-1.5 text-[11px] font-semibold transition-all"
                   style={funnelView === v
-                    ? { background: "var(--dm-btn-primary-bg)", color: "#fff", boxShadow: "0 2px 8px rgba(124,58,237,0.28)" }
+                    ? { background: "var(--dm-btn-primary-bg)", color: "#fff", boxShadow: "0 2px 8px rgba(22,163,74,0.28)" }
                     : { color: "var(--dm-text-tertiary)" }}>
                   {v === "bars" ? "Barras" : "Funil"}
                 </button>
@@ -1784,7 +1776,7 @@ function ProfileOverviewPanel({
               onClick={() => setShowFunnelPanel((v) => !v)}
               className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-semibold transition"
               style={showFunnelPanel
-                ? { background: "var(--dm-btn-primary-bg)", color: "#fff", boxShadow: "0 4px 12px rgba(124,58,237,0.30)" }
+                ? { background: "var(--dm-btn-primary-bg)", color: "#fff", boxShadow: "0 4px 12px rgba(22,163,74,0.30)" }
                 : { backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-secondary)", border: "1px solid var(--dm-border-default)" }}
             >
               <SlidersHorizontal size={11} />
@@ -2040,7 +2032,7 @@ function ProfileOverviewPanel({
               {/* Totals row */}
               {campaigns.length > 1 && (
                 <tfoot>
-                  <tr style={{ background: "linear-gradient(135deg, rgba(124,58,237,0.06) 0%, rgba(124,58,237,0.04) 100%)", borderTop: "2px solid var(--dm-border-default)" }}>
+                  <tr style={{ background: "linear-gradient(135deg, rgba(22,163,74,0.06) 0%, rgba(22,163,74,0.04) 100%)", borderTop: "2px solid var(--dm-border-default)" }}>
                     <td className="px-4 py-3">
                       <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-brand-500)" }}>Total</span>
                     </td>
@@ -2322,7 +2314,7 @@ function CampaignAnalysisPanel({
 
   // Horizon-style color maps for KPI cards
   const KPI_SOLID: Record<string, string> = {
-    brand: "#7C3AED",
+    brand: "#16A34A",
     sky:   "#0ea5e9",
     green: "#05CD99",
     rose:  "#EE5D50",
@@ -2330,7 +2322,7 @@ function CampaignAnalysisPanel({
     slate: "#64748b",
   };
   const KPI_BG: Record<string, string> = {
-    brand: "rgba(124,58,237,0.12)",
+    brand: "rgba(22,163,74,0.12)",
     sky:   "rgba(14,165,233,0.12)",
     green: "rgba(5,205,153,0.12)",
     rose:  "rgba(238,93,80,0.12)",
@@ -2340,8 +2332,8 @@ function CampaignAnalysisPanel({
 
   // Funnel step colors — more saturated for professional look
   const FUNNEL_COLORS: Record<string, string> = {
-    reach:          "#7C3AED",
-    impressions:    "#8b5cf6",
+    reach:          "#16A34A",
+    impressions:    "#22C55E",
     clicks:         "#0ea5e9",
     page_views:     "#f59e0b",
     leads:          "#e11d48",
@@ -2370,7 +2362,7 @@ function CampaignAnalysisPanel({
             <button key={id} type="button" onClick={() => setActiveTab(id as "kpis" | "conjunto" | "instagram")}
               className="flex-1 rounded-[10px] py-2 text-[13px] font-semibold transition-all"
               style={activeTab === id
-                ? { background: "var(--dm-btn-primary-bg)", color: "#fff", boxShadow: "0 4px 12px rgba(124,58,237,0.28)" }
+                ? { background: "var(--dm-btn-primary-bg)", color: "#fff", boxShadow: "0 4px 12px rgba(22,163,74,0.28)" }
                 : { color: "var(--dm-text-tertiary)" }}>
               {label}
             </button>
@@ -2453,7 +2445,7 @@ function CampaignAnalysisPanel({
                           {/* Spend mini-bar */}
                           <div className="mt-1.5 h-1 overflow-hidden rounded-full w-full" style={{ backgroundColor: "var(--dm-bg-elevated)", maxWidth: "160px" }}>
                             <div className="h-full rounded-full"
-                              style={{ width: `${spendPct}%`, background: "linear-gradient(90deg,#7C3AED 0%,#7C3AED 100%)" }} />
+                              style={{ width: `${spendPct}%`, background: "linear-gradient(90deg,#16A34A 0%,#16A34A 100%)" }} />
                           </div>
                         </td>
 
@@ -2519,7 +2511,7 @@ function CampaignAnalysisPanel({
                   })}
 
                   {/* Totals row */}
-                  <tr style={{ background: "linear-gradient(135deg, rgba(124,58,237,0.06) 0%, rgba(124,58,237,0.04) 100%)", borderTop: "2px solid var(--dm-border-default)" }}>
+                  <tr style={{ background: "linear-gradient(135deg, rgba(22,163,74,0.06) 0%, rgba(22,163,74,0.04) 100%)", borderTop: "2px solid var(--dm-border-default)" }}>
                     <td className="px-4 py-3">
                       <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-brand-500)" }}>
                         Total
@@ -2595,7 +2587,7 @@ function CampaignAnalysisPanel({
               onClick={() => setEditGoals((v) => !v)}
               className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-semibold transition"
               style={editGoals
-                ? { background: "var(--dm-btn-primary-bg)", color: "#fff", boxShadow: "0 4px 12px rgba(124,58,237,0.30)" }
+                ? { background: "var(--dm-btn-primary-bg)", color: "#fff", boxShadow: "0 4px 12px rgba(22,163,74,0.30)" }
                 : { backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)", border: "1px solid var(--dm-border-default)" }}
             >
               <Target size={11} />
@@ -2621,8 +2613,8 @@ function CampaignAnalysisPanel({
               : 0;
             const goalMet   = goalVal > 0 && (kpi.invert ? val <= goalVal : val >= goalVal);
             const goalColor = goalMet ? "#05CD99" : goalPct >= 75 ? "#F4A60D" : "#EE5D50";
-            const solid     = KPI_SOLID[kpi.color] ?? "#7C3AED";
-            const bg        = KPI_BG[kpi.color]    ?? "rgba(124,58,237,0.10)";
+            const solid     = KPI_SOLID[kpi.color] ?? "#16A34A";
+            const bg        = KPI_BG[kpi.color]    ?? "rgba(22,163,74,0.10)";
 
             const isEditable = (EDITABLE_KPI_IDS as readonly string[]).includes(kpi.id);
             const isEditing = editingKpiId === kpi.id;
@@ -2778,7 +2770,7 @@ function CampaignAnalysisPanel({
               <button key={v} type="button" onClick={() => setFunnelView(v)}
                 className="flex items-center gap-1.5 rounded-[8px] px-3 py-1.5 text-[11px] font-semibold transition-all"
                 style={funnelView === v
-                  ? { background: "var(--dm-btn-primary-bg)", color: "#fff", boxShadow: "0 2px 8px rgba(124,58,237,0.28)" }
+                  ? { background: "var(--dm-btn-primary-bg)", color: "#fff", boxShadow: "0 2px 8px rgba(22,163,74,0.28)" }
                   : { color: "var(--dm-text-tertiary)" }}>
                 {v === "bars" ? "Barras" : "Funil"}
               </button>
@@ -2802,7 +2794,7 @@ function CampaignAnalysisPanel({
                     ? `${(rate / 100).toFixed(1)}x${stage.rateFromPrev ? ` ${stage.rateFromPrev}` : ""}`
                     : `${formatPercent(rate)}${stage.rateFromPrev ? ` ${stage.rateFromPrev}` : ""}`
                   : null;
-                const color   = FUNNEL_COLORS[stage.id] ?? "#7C3AED";
+                const color   = FUNNEL_COLORS[stage.id] ?? "#16A34A";
                 const pct     = maxVal > 0 ? (val / maxVal) * 100 : 0;
                 return (
                   <div key={stage.id} className="flex flex-col">
@@ -2859,7 +2851,7 @@ function CampaignAnalysisPanel({
                     ? `${(rate / 100).toFixed(1)}x${stage.rateFromPrev ? ` ${stage.rateFromPrev}` : ""}`
                     : `${formatPercent(rate)}${stage.rateFromPrev ? ` ${stage.rateFromPrev}` : ""}`
                   : null;
-                const color   = FUNNEL_COLORS[stage.id] ?? "#7C3AED";
+                const color   = FUNNEL_COLORS[stage.id] ?? "#16A34A";
                 // Taper from 100% → 50%
                 const widthPct = total > 1 ? 100 - (i / (total - 1)) * 50 : 88;
                 return (
@@ -3816,7 +3808,7 @@ function ProfileDetailView({
             onClick={() => setProfileTab(id as typeof profileTab)}
             className="flex-1 rounded-[10px] py-2 text-[13px] font-semibold transition-all"
             style={profileTab === id
-              ? { background: "var(--dm-btn-primary-bg)", color: "#fff", boxShadow: "0 4px 12px rgba(124,58,237,0.28)" }
+              ? { background: "var(--dm-btn-primary-bg)", color: "#fff", boxShadow: "0 4px 12px rgba(22,163,74,0.28)" }
               : { color: "var(--dm-text-tertiary)" }}>
             {label}
           </button>
@@ -3909,14 +3901,26 @@ function ProfileDetailView({
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function ProfileAnalysis({ campaignGroupOptions, campaignConfigs, appliedDateRange }: ProfileAnalysisProps) {
+export function ProfileAnalysis({ campaignGroupOptions, campaignConfigs, appliedDateRange, viewId, onOpenProfile, onCloseProfile }: ProfileAnalysisProps) {
   const { profiles, addProfile, updateProfile, deleteProfile, addCampaignToProfile, removeCampaignFromProfile } = useAdvertiserStore();
   const { customSections } = useCampaignStore();
-  const [view, setView]               = useState<"list" | "detail">("list");
+  const controlled = onOpenProfile !== undefined;
+  const [localView, setLocalView]       = useState<"list" | "detail">("list");
+  const [localSelectedId, setLocalSelectedId] = useState<string | null>(null);
   const [showForm, setShowForm]       = useState(false);
-  const [selectedId, setSelectedId]   = useState<string | null>(null);
   const [editingId, setEditingId]     = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  const selectedId = controlled ? (viewId ?? null) : localSelectedId;
+  const view: "list" | "detail" = controlled ? (viewId ? "detail" : "list") : localView;
+  const openProfile = (p: AdvertiserProfile) => {
+    if (controlled) onOpenProfile!(p);
+    else { setLocalSelectedId(p.id); setLocalView("detail"); }
+  };
+  const backToList = () => {
+    if (controlled) onCloseProfile!();
+    else { setLocalSelectedId(null); setLocalView("list"); }
+  };
 
   const selectedProfile = profiles.find((p) => p.id === selectedId);
   const editingProfile  = profiles.find((p) => p.id === editingId);
@@ -3946,7 +3950,7 @@ export function ProfileAnalysis({ campaignGroupOptions, campaignConfigs, applied
     if (confirmDeleteId === id) {
       deleteProfile(id);
       setConfirmDeleteId(null);
-      if (selectedId === id) { setSelectedId(null); setView("list"); }
+      if (selectedId === id) backToList();
     } else {
       setConfirmDeleteId(id);
       setTimeout(() => setConfirmDeleteId(null), 3000);
@@ -3972,7 +3976,7 @@ export function ProfileAnalysis({ campaignGroupOptions, campaignConfigs, applied
         key={selectedProfile.id}
         profile={selectedProfile}
         groupLabel={groupLabel(selectedProfile.groupId)}
-        onBack={() => { setView("list"); setSelectedId(null); }}
+        onBack={backToList}
         appliedDateRange={appliedDateRange}
         onAddCampaign={addCampaignToProfile}
         onRemoveCampaign={removeCampaignFromProfile}
@@ -4017,14 +4021,22 @@ export function ProfileAnalysis({ campaignGroupOptions, campaignConfigs, applied
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-base font-semibold" style={{ color: "var(--dm-text-primary)" }}>Perfis de Anunciantes</h2>
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ background: "var(--dm-primary-soft)", border: "1px solid var(--dm-primary-border)" }}>
+            <Target size={16} style={{ color: "var(--dm-primary)" }} />
+          </div>
+          <div>
+            <h1 className="text-lg font-bold" style={{ color: "var(--dm-text-primary)" }}>Perfis de Anunciantes</h1>
+            <p className="text-xs" style={{ color: "var(--dm-text-tertiary)" }}>
+              {profiles.length} perfil{profiles.length !== 1 ? "s" : ""} · contas de anúncio e campanhas vinculadas
+            </p>
+          </div>
         </div>
         <button type="button" onClick={() => { setEditingId(null); setShowForm(true); }}
-          className="flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold text-white transition hover:opacity-90"
-          style={{ backgroundColor: "var(--dm-brand-500)" }}
+          className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+          style={{ backgroundColor: "var(--dm-btn-primary-bg)" }}
         >
-          <Plus size={13} /> Novo Perfil
+          <Plus size={14} /> Novo Perfil
         </button>
       </div>
 
@@ -4038,12 +4050,11 @@ export function ProfileAnalysis({ campaignGroupOptions, campaignConfigs, applied
       {/* Profiles grouped by section (dynamic — works for built-in + custom sections) */}
       {profilesBySection.map(({ secId, meta, label, items }) => {
         const SectionIcon = meta?.icon ?? Users;
-        const colorCls   = meta?.color ?? "text-slate-500";
         return (
           <section key={secId}>
             <div className="mb-3 flex items-center gap-2 border-b pb-2" style={{ borderColor: "var(--dm-border-subtle)" }}>
-              <SectionIcon size={13} className={colorCls} />
-              <span className={`text-xs font-semibold ${colorCls}`}>{label}</span>
+              <SectionIcon size={14} style={{ color: "var(--dm-text-secondary)" }} />
+              <span className="text-xs font-semibold" style={{ color: "var(--dm-text-secondary)" }}>{label}</span>
               <span className="ml-auto text-[10px] font-medium" style={{ color: "var(--dm-text-tertiary)" }}>
                 {items.length} perfil{items.length !== 1 ? "s" : ""}
               </span>
@@ -4054,7 +4065,7 @@ export function ProfileAnalysis({ campaignGroupOptions, campaignConfigs, applied
                   <ProfileCard
                     profile={profile}
                     groupLabel={groupLabel(profile.groupId)}
-                    onSelect={() => { setSelectedId(profile.id); setView("detail"); }}
+                    onSelect={() => openProfile(profile)}
                     onEdit={() => handleEdit(profile.id)}
                     onDelete={() => handleDelete(profile.id)}
                   />
@@ -4093,7 +4104,7 @@ export function ProfileAnalysis({ campaignGroupOptions, campaignConfigs, applied
                 <ProfileCard
                   profile={profile}
                   groupLabel=""
-                  onSelect={() => { setSelectedId(profile.id); setView("detail"); }}
+                  onSelect={() => openProfile(profile)}
                   onEdit={() => handleEdit(profile.id)}
                   onDelete={() => handleDelete(profile.id)}
                 />

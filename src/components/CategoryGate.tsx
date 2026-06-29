@@ -132,7 +132,7 @@ export const ICON_MAP: Record<string, React.ElementType> = Object.fromEntries(
 const COLOR_OPTIONS: Array<{ key: ColorKey; hex: string; label: string }> = [
   { key: "blue",    hex: "#3b82f6", label: "Azul" },
   { key: "emerald", hex: "#10b981", label: "Verde" },
-  { key: "violet",  hex: "#8b5cf6", label: "Roxo" },
+  { key: "violet",  hex: "#22C55E", label: "Roxo" },
   { key: "amber",   hex: "#f59e0b", label: "Âmbar" },
   { key: "rose",    hex: "#f43f5e", label: "Rosa" },
   { key: "pink",    hex: "#ec4899", label: "Pink" },

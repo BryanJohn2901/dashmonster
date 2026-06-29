@@ -7,8 +7,8 @@
 }
 
 /* ============================================================
-   DASHMONSTER — SISTEMA DE CORES v3 (Dashfolio Neo)
-   Azul como única cor de destaque — WCAG 2.1 AA
+   DASHMONSTER — SISTEMA DE CORES v4 (Calmo)
+   Neutro ~90% · verde (ação/positivo) · roxo (seleção) — WCAG 2.1 AA
    ============================================================ */
 
 /* ============================================================
@@ -21,7 +21,8 @@
      ---------------------------------------------------------- */
   --dm-bg-page:          #F5F6F8;
   --dm-bg-surface:       #FFFFFF;
-  --dm-bg-sidebar:       #0E1108;   /* rail PipeFlow: ink escuro em qualquer tema */
+  --dm-bg-sidebar:       #0E1108;   /* rail flat escuro (mock DashMonster Calmo) */
+  --dm-rail-group-bg:    transparent;  /* mock: ícones soltos, sem sub-pill */
   --dm-bg-elevated:      #EEF0F3;
   --dm-bg-card-soft:     #EEF0F3;
   --dm-bg-surface-hover: #EEF0F3;
@@ -43,15 +44,15 @@
   /* ----------------------------------------------------------
      MARCA — Indigo DashMonster (#313491 Horizon-adapted)
      ---------------------------------------------------------- */
-  /* Marca = ROXO (seleção/accent secundário). Ação primária é VERDE (btn). */
-  --dm-brand-50:         #F5F3FF;
-  --dm-brand-100:        #EDE9FE;
-  --dm-brand-200:        #DDD6FE;
-  --dm-brand-400:        #A78BFA;
-  --dm-brand-500:        #7C3AED;
-  --dm-brand-600:        #6D28D9;
-  --dm-brand-700:        #5B21B6;
-  --dm-brand-900:        #4C1D95;
+  /* Marca = VERDE (seleção/accent). Ação primária também é VERDE (btn). */
+  --dm-brand-50:         #F0FDF4;
+  --dm-brand-100:        #DCFCE7;
+  --dm-brand-200:        #BBF7D0;
+  --dm-brand-400:        #4ADE80;
+  --dm-brand-500:        #16A34A;
+  --dm-brand-600:        #15803D;
+  --dm-brand-700:        #166534;
+  --dm-brand-900:        #14532D;
 
   /* PipeFlow: lime (logo + nav ativo) sobre ink (rail/superfície escura) */
   --dm-lime:             #B6F500;
@@ -61,6 +62,7 @@
   /* ----------------------------------------------------------
      NAV — ESTADOS
      ---------------------------------------------------------- */
+  /* Rail flat escuro (mock): ícone claro, ativo = lime + barra esquerda */
   --dm-nav-active-bg:    rgba(182,245,0,0.14);
   --dm-nav-active-text:  #B6F500;
   --dm-nav-active-dot:   #B6F500;
@@ -71,17 +73,17 @@
   /* ----------------------------------------------------------
      BOTÕES
      ---------------------------------------------------------- */
-  --dm-primary:          #7C3AED;   /* roxo = seleção/accent (texto branco passa AA) */
-  --dm-primary-hover:    #6D28D9;
-  --dm-primary-soft:     rgba(124,58,237,0.10);
-  --dm-primary-border:   rgba(124,58,237,0.22);
-  --dm-primary-vivid:    #8B5CF6;
+  --dm-primary:          #16A34A;   /* verde = seleção/accent (texto branco passa AA) */
+  --dm-primary-hover:    #15803D;
+  --dm-primary-soft:     rgba(22,163,74,0.10);
+  --dm-primary-border:   rgba(22,163,74,0.22);
+  --dm-primary-vivid:    #22C55E;
   --dm-btn-primary-bg:   #15803D;   /* verde = 1 CTA primário por tela */
   --dm-btn-primary-text: #FFFFFF;
   --dm-btn-primary-hover:#166534;
-  --dm-btn-ghost-bg:     rgba(49,52,145,0.10);
-  --dm-btn-ghost-text:   #313491;
-  --dm-btn-ghost-hover:  rgba(49,52,145,0.16);
+  --dm-btn-ghost-bg:     rgba(22,163,74,0.10);
+  --dm-btn-ghost-text:   #16A34A;
+  --dm-btn-ghost-hover:  rgba(22,163,74,0.16);
   --dm-btn-destructive-bg:   #E14D4D;
   --dm-btn-destructive-text: #FFFFFF;
   --dm-btn-destructive-hover:#C43A3A;
@@ -161,53 +163,54 @@
   /* ----------------------------------------------------------
      VALORES SEMÂNTICOS (4.3) — positivo / negativo / neutro
      ---------------------------------------------------------- */
-  --dm-value-positive:    #05CD99;
-  --dm-value-positive-bg: rgba(5,205,153,0.10);
-  --dm-value-negative:    #EE5D50;
-  --dm-value-negative-bg: rgba(238,93,80,0.10);
+  --dm-value-positive:    #16A34A;
+  --dm-value-positive-bg: rgba(22,163,74,0.10);
+  --dm-value-negative:    #DC2626;
+  --dm-value-negative-bg: rgba(220,38,38,0.10);
   --dm-value-neutral:     #A3AED0;
   --dm-value-neutral-bg:  rgba(163,174,208,0.12);
 
   /* ----------------------------------------------------------
      DATA VIZ
      ---------------------------------------------------------- */
-  --dm-delta-up:       #05CD99;
-  --dm-delta-up-bg:    rgba(5,205,153,0.10);
-  --dm-delta-down:     #EE5D50;
-  --dm-delta-down-bg:  rgba(238,93,80,0.10);
+  --dm-delta-up:       #16A34A;
+  --dm-delta-up-bg:    rgba(22,163,74,0.10);
+  --dm-delta-down:     #DC2626;
+  --dm-delta-down-bg:  rgba(220,38,38,0.10);
   --dm-delta-flat:     #A3AED0;
   --dm-delta-flat-bg:  rgba(163,174,208,0.12);
 
-  --dm-chart-1:  #313491;
-  --dm-chart-2:  #05CD99;
-  --dm-chart-3:  #FFB547;
-  --dm-chart-4:  #EE5D50;
-  --dm-chart-5:  #6366C8;
-  --dm-chart-6:  #17C1E8;
+  /* Calmo: faturamento=verde, vendas=roxo, resto neutro (máx 2 séries de marca) */
+  --dm-chart-1:  #16A34A;
+  --dm-chart-2:  #7C3AED;
+  --dm-chart-3:  #98A2B3;
+  --dm-chart-4:  #DC2626;
+  --dm-chart-5:  #C8CDD9;
+  --dm-chart-6:  #5B6470;
   --dm-chart-7:  #A3AED0;
 
   /* ----------------------------------------------------------
      DATA VIZ — paleta monocromática indigo + status
      Fonte: guia_visual_tema_my_account_graficos.docx §12
      ---------------------------------------------------------- */
-  --dm-data-1:       #313491;
-  --dm-data-2:       #575BDB;
-  --dm-data-3:       #7B7FF2;
-  --dm-data-4:       #A3A6FF;
-  --dm-data-5:       #D6D8FF;
-  --dm-data-success: #1FA971;
+  --dm-data-1:       #16A34A;
+  --dm-data-2:       #7C3AED;
+  --dm-data-3:       #98A2B3;
+  --dm-data-4:       #C8CDD9;
+  --dm-data-5:       #E4E7EC;
+  --dm-data-success: #16A34A;
   --dm-data-danger:  #E14D4D;
   --dm-data-warning: #F4A93C;
-  --dm-chart-grid:   rgba(49,52,145,0.08);
+  --dm-chart-grid:   rgba(16,24,40,0.08);
 
   /* ----------------------------------------------------------
      CHART TOKENS LIGHT
      ---------------------------------------------------------- */
-  --dm-chart-primary:       #313491;
-  --dm-chart-primary-muted: rgba(49,52,145,0.14);
+  --dm-chart-primary:       #16A34A;
+  --dm-chart-primary-muted: rgba(22,163,74,0.14);
   --dm-chart-secondary:     #A0A5B3;
-  --dm-chart-success:       #1FA971;
-  --dm-chart-danger:        #E14D4D;
+  --dm-chart-success:       #16A34A;
+  --dm-chart-danger:        #DC2626;
 
   /* ----------------------------------------------------------
      ICON TOKENS LIGHT
@@ -232,7 +235,7 @@
   /* ----------------------------------------------------------
      FOCO
      ---------------------------------------------------------- */
-  --dm-focus-ring: 0 0 0 3px rgba(49,52,145,0.25);
+  --dm-focus-ring: 0 0 0 3px rgba(22,163,74,0.25);
 
   /* ----------------------------------------------------------
      ALIASES LEGACY
@@ -260,7 +263,7 @@
      Fonte: m3.material.io/foundations/interaction/states
      RGB do primary para composição rgba()
      ========================================================== */
-  --dm-primary-rgb:    124, 58, 237;
+  --dm-primary-rgb:    22, 163, 74;
   --dm-state-hover:    rgba(var(--dm-primary-rgb), 0.08);
   --dm-state-focus:    rgba(var(--dm-primary-rgb), 0.12);
   --dm-state-pressed:  rgba(var(--dm-primary-rgb), 0.16);
@@ -284,7 +287,7 @@
 
 
 /* ============================================================
-   DARK MODE — Dashfolio Neo: preto profundo, cards elevados
+   DARK MODE — Calmo: slate neutro (não navy/preto), verde+roxo únicos saturados
    ============================================================ */
 [data-theme="dark"],
 .dark {
@@ -295,7 +298,8 @@
      ---------------------------------------------------------- */
   --dm-bg-page:          #15171C;
   --dm-bg-surface:       #1D2027;
-  --dm-bg-sidebar:       #0E1108;   /* rail PipeFlow: ink escuro */
+  --dm-bg-sidebar:       #0E1108;   /* rail flat escuro */
+  --dm-rail-group-bg:    transparent;
   --dm-bg-elevated:      #252932;
   --dm-bg-card-soft:     #252932;
   --dm-bg-surface-hover: #252932;
@@ -324,19 +328,20 @@
   /* ----------------------------------------------------------
      MARCA DARK — indigo vibrante sobre fundo escuro
      ---------------------------------------------------------- */
-  /* Marca = ROXO no dark (mais claro p/ contraste). Ação = verde (btn). */
-  --dm-brand-50:         #1A1530;
-  --dm-brand-100:        #2E1065;
-  --dm-brand-200:        #3B1F8C;
-  --dm-brand-400:        #8B5CF6;
-  --dm-brand-500:        #8B5CF6;
-  --dm-brand-600:        #A78BFA;
-  --dm-brand-700:        #C4B5FD;
-  --dm-brand-900:        #DDD6FE;
+  /* Marca = VERDE no dark (mais claro p/ contraste). Ação = verde (btn). */
+  --dm-brand-50:         #0C2818;
+  --dm-brand-100:        #14532D;
+  --dm-brand-200:        #166534;
+  --dm-brand-400:        #22C55E;
+  --dm-brand-500:        #22C55E;
+  --dm-brand-600:        #4ADE80;
+  --dm-brand-700:        #86EFAC;
+  --dm-brand-900:        #BBF7D0;
 
   /* ----------------------------------------------------------
      NAV DARK
      ---------------------------------------------------------- */
+  /* Rail flat escuro (mock): ícone claro, ativo = lime + barra esquerda */
   --dm-nav-active-bg:    rgba(182,245,0,0.14);
   --dm-nav-active-text:  #B6F500;
   --dm-nav-active-dot:   #B6F500;
@@ -347,17 +352,17 @@
   /* ----------------------------------------------------------
      BOTÕES DARK
      ---------------------------------------------------------- */
-  --dm-primary:          #8B5CF6;   /* roxo = seleção/accent no dark */
-  --dm-primary-hover:    #A78BFA;
-  --dm-primary-soft:     rgba(139,92,246,0.16);
-  --dm-primary-border:   rgba(139,92,246,0.28);
-  --dm-primary-vivid:    #A78BFA;
+  --dm-primary:          #22C55E;   /* verde = seleção/accent no dark */
+  --dm-primary-hover:    #4ADE80;
+  --dm-primary-soft:     rgba(34,197,94,0.16);
+  --dm-primary-border:   rgba(34,197,94,0.28);
+  --dm-primary-vivid:    #4ADE80;
   --dm-btn-primary-bg:   #15803D;   /* verde = CTA primário */
   --dm-btn-primary-text: #FFFFFF;
   --dm-btn-primary-hover:#166534;
-  --dm-btn-ghost-bg:     rgba(110,114,255,0.12);
-  --dm-btn-ghost-text:   #6E72FF;
-  --dm-btn-ghost-hover:  rgba(110,114,255,0.20);
+  --dm-btn-ghost-bg:     rgba(167,139,250,0.14);
+  --dm-btn-ghost-text:   #A78BFA;
+  --dm-btn-ghost-hover:  rgba(167,139,250,0.22);
   --dm-btn-destructive-bg:   #7F1D1D;
   --dm-btn-destructive-text: #FCA5A5;
   --dm-btn-destructive-hover:#991B1B;
@@ -437,45 +442,46 @@
   /* ----------------------------------------------------------
      VALORES SEMÂNTICOS DARK (4.3)
      ---------------------------------------------------------- */
-  --dm-value-positive:    #00C48C;
-  --dm-value-positive-bg: #00C48C20;
-  --dm-value-negative:    #FF4D4F;
-  --dm-value-negative-bg: #FF4D4F20;
+  --dm-value-positive:    #34D17F;
+  --dm-value-positive-bg: #34D17F20;
+  --dm-value-negative:    #F87171;
+  --dm-value-negative-bg: #F8717120;
   --dm-value-neutral:     #999999;
   --dm-value-neutral-bg:  #99999920;
 
   /* ----------------------------------------------------------
      DATA VIZ DARK
      ---------------------------------------------------------- */
-  --dm-delta-up:       #00C48C;
-  --dm-delta-up-bg:    #00C48C20;
-  --dm-delta-down:     #FF4D4F;
-  --dm-delta-down-bg:  #FF4D4F20;
+  --dm-delta-up:       #34D17F;
+  --dm-delta-up-bg:    #34D17F20;
+  --dm-delta-down:     #F87171;
+  --dm-delta-down-bg:  #F8717120;
   --dm-delta-flat:     #999999;
   --dm-delta-flat-bg:  #99999920;
 
-  --dm-chart-1:  #6366F1;
-  --dm-chart-2:  #34D399;
-  --dm-chart-3:  #FBBF24;
+  /* Calmo dark: faturamento=verde, vendas=roxo, resto neutro */
+  --dm-chart-1:  #34D17F;
+  --dm-chart-2:  #A78BFA;
+  --dm-chart-3:  #98A2B3;
   --dm-chart-4:  #F87171;
-  --dm-chart-5:  #A78BFA;
-  --dm-chart-6:  #38BDF8;
+  --dm-chart-5:  #667085;
+  --dm-chart-6:  #475467;
   --dm-chart-7:  #909090;
 
   /* ----------------------------------------------------------
      FOCO DARK
      ---------------------------------------------------------- */
-  --dm-focus-ring: 0 0 0 3px rgba(110,114,255,0.35);
+  --dm-focus-ring: 0 0 0 3px rgba(167,139,250,0.35);
 
   /* ----------------------------------------------------------
      DATA VIZ DARK — indigo luminoso para contraste
      ---------------------------------------------------------- */
-  --dm-data-1:       #6E72FF;
-  --dm-data-2:       #8A8DFF;
-  --dm-data-3:       #A7A9FF;
-  --dm-data-4:       #C5C6FF;
-  --dm-data-5:       rgba(108,112,255,0.18);
-  --dm-data-success: #22C55E;
+  --dm-data-1:       #34D17F;
+  --dm-data-2:       #A78BFA;
+  --dm-data-3:       #98A2B3;
+  --dm-data-4:       #667085;
+  --dm-data-5:       rgba(152,162,179,0.20);
+  --dm-data-success: #34D17F;
   --dm-data-danger:  #EF4444;
   --dm-data-warning: #EAB308;
   --dm-chart-grid:   rgba(255,255,255,0.07);
@@ -486,11 +492,11 @@
   /* ----------------------------------------------------------
      CHART TOKENS DARK — nova paleta minimalista
      ---------------------------------------------------------- */
-  --dm-chart-primary:       #6C70FF;
-  --dm-chart-primary-muted: rgba(108,112,255,0.20);
+  --dm-chart-primary:       #34D17F;
+  --dm-chart-primary-muted: rgba(52,209,127,0.20);
   --dm-chart-secondary:     #8A8FAD;
-  --dm-chart-success:       #22C55E;
-  --dm-chart-danger:        #EF4444;
+  --dm-chart-success:       #34D17F;
+  --dm-chart-danger:        #F87171;
 
   /* ----------------------------------------------------------
      ALIASES
@@ -521,20 +527,20 @@
   --dm-type-label-md:   11px;
   --dm-type-label-sm:   10px;
 
-  /* MD3 state layers — dark usa #6E72FF */
-  --dm-primary-rgb:   110, 114, 255;
+  /* MD3 state layers — dark usa verde */
+  --dm-primary-rgb:   34, 197, 94;
   --dm-state-hover:   rgba(var(--dm-primary-rgb), 0.08);
   --dm-state-focus:   rgba(var(--dm-primary-rgb), 0.12);
   --dm-state-pressed: rgba(var(--dm-primary-rgb), 0.16);
 }
 
-/* Sombras dark — navy Horizon palette */
-.dark .shadow-sm { box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.5), inset 0 1px 0 rgba(255,255,255,0.04); }
-.dark .shadow    { box-shadow: 0 2px 6px 0 rgb(0 0 0 / 0.55), inset 0 1px 0 rgba(255,255,255,0.04); }
-.dark .shadow-md { box-shadow: 0 4px 12px -2px rgb(0 0 0 / 0.6), inset 0 1px 0 rgba(255,255,255,0.05); }
-.dark .shadow-lg { box-shadow: 0 8px 20px -4px rgb(0 0 0 / 0.65), inset 0 1px 0 rgba(255,255,255,0.05); }
-.dark .shadow-xl { box-shadow: 0 16px 32px -6px rgb(0 0 0 / 0.7), inset 0 1px 0 rgba(255,255,255,0.06); }
-.dark .shadow-2xl{ box-shadow: 0 24px 48px -8px rgb(0 0 0 / 0.75), inset 0 1px 0 rgba(255,255,255,0.06); }
+/* Sombras dark — Calmo: uma sombra plana, sem glow nem inset highlight */
+.dark .shadow-sm { box-shadow: 0 1px 2px rgba(0,0,0,0.40); }
+.dark .shadow    { box-shadow: 0 1px 3px rgba(0,0,0,0.45); }
+.dark .shadow-md { box-shadow: 0 2px 6px rgba(0,0,0,0.45); }
+.dark .shadow-lg { box-shadow: 0 4px 12px rgba(0,0,0,0.50); }
+.dark .shadow-xl { box-shadow: 0 6px 16px rgba(0,0,0,0.55); }
+.dark .shadow-2xl{ box-shadow: 0 8px 24px rgba(0,0,0,0.55); }
 
 /* Category card hover */
 .dm-cat-card:hover { border-color: var(--dm-cat-card-hover-border) !important; }
@@ -570,6 +576,21 @@
 }
 
 /* ============================================================
+   RAIL FLUTUANTE — sidebar pill (desktop). !important p/ vencer
+   o -translate-x-full condicional e classes lg: que o Tailwind v4
+   não estava aplicando de forma confiável.
+   ============================================================ */
+@media (min-width: 1024px) {
+  /* Rail flat colado (mock): só garante visibilidade no desktop.
+     Tailwind v4: -translate-x-full usa a prop `translate`, não `transform`. */
+  .dm-rail {
+    position:  relative !important;
+    transform: none !important;
+    translate: none !important;
+  }
+}
+
+/* ============================================================
    CLASSES UTILITÁRIAS — Guia Visual §5, §11
    ============================================================ */
 
@@ -577,9 +598,9 @@
 .dm-card {
   background:    var(--dm-bg-surface);
   border:        1px solid var(--dm-border-default);
-  border-radius: 18px;
+  border-radius: 16px;
   box-shadow:    var(--dm-shadow-soft);
-  padding:       20px;
+  padding:       24px;
   color:         var(--dm-text-primary);
 }
 .dm-card-soft {
@@ -593,8 +614,8 @@
 .dm-chart-card {
   background:    var(--dm-bg-surface);
   border:        1px solid var(--dm-border-default);
-  border-radius: 22px;
-  padding:       22px;
+  border-radius: 16px;
+  padding:       24px;
   box-shadow:    var(--dm-shadow-soft);
   color:         var(--dm-text-primary);
 }
@@ -612,14 +633,14 @@
 
 /* Buttons — §11 */
 .btn-primary {
-  background:    linear-gradient(135deg, #313491, #4B50D9);
-  color:         #FFFFFF;
+  background:    var(--dm-btn-primary-bg);
+  color:         var(--dm-btn-primary-text);
   border:        none;
-  border-radius: var(--dm-shape-md);
+  border-radius: 10px;
   font-weight:   700;
   transition:    opacity 0.18s ease, transform 0.12s ease;
 }
-.btn-primary:hover  { opacity: 0.88; }
+.btn-primary:hover  { background: var(--dm-btn-primary-hover); }
 .btn-primary:active { transform: scale(0.97); }
 
 .btn-secondary {
@@ -766,13 +787,9 @@ h1, h2, h3, h4, h5 {
   color:        var(--dm-icon-primary, #6F7482);
 }
 .icon-box.active {
-  background:   rgba(49,52,145,0.22);
-  border-color: rgba(91,96,210,0.42);
-  color:        #FFFFFF;
-}
-.dark .icon-box.active {
-  background:   rgba(108,112,255,0.22);
-  border-color: rgba(108,112,255,0.40);
+  background:   var(--dm-primary-soft);
+  border-color: var(--dm-primary-border);
+  color:        var(--dm-primary);
 }
 .icon-box.success { color: var(--dm-chart-success); }
 .icon-box.danger  { color: var(--dm-chart-danger); }
@@ -784,8 +801,8 @@ h1, h2, h3, h4, h5 {
 .metric-card {
   background:    var(--dm-bg-surface);
   border:        1px solid var(--dm-border-default);
-  border-radius: 18px;
-  padding:       20px;
+  border-radius: 16px;
+  padding:       24px;
   box-shadow:    var(--dm-shadow-soft);
   position:      relative;
   overflow:      hidden;
@@ -801,7 +818,7 @@ h1, h2, h3, h4, h5 {
   background: rgba(255,255,255,0.08);
 }
 .metric-card.is-featured::before {
-  background: linear-gradient(90deg, transparent, rgba(91,96,210,0.85), transparent);
+  background: linear-gradient(90deg, transparent, var(--dm-btn-primary-bg), transparent);
 }
 
 /* ============================================================
@@ -825,13 +842,9 @@ h1, h2, h3, h4, h5 {
   border-color: rgba(0,0,0,0.07);
 }
 .dm-badge.active {
-  background:   rgba(49,52,145,0.18);
-  border-color: rgba(91,96,210,0.38);
-  color:        #FFFFFF;
-}
-.dark .dm-badge.active {
-  background:   rgba(108,112,255,0.18);
-  border-color: rgba(108,112,255,0.36);
+  background:   var(--dm-primary-soft);
+  border-color: var(--dm-primary-border);
+  color:        var(--dm-primary);
 }
 .dm-badge.success {
   border-color: rgba(34,197,94,0.28);
@@ -848,7 +861,7 @@ h1, h2, h3, h4, h5 {
 .dm-data-table {
   background:    var(--dm-bg-table);
   border:        1px solid var(--dm-border-default);
-  border-radius: 22px;
+  border-radius: 16px;
   overflow:      hidden;
   width:         100%;
 }
@@ -884,7 +897,7 @@ h1, h2, h3, h4, h5 {
 .dm-history-card {
   background:    var(--dm-bg-surface);
   border:        1px solid var(--dm-border-default);
-  border-radius: 22px;
+  border-radius: 16px;
 }
 .dm-history-row {
   background:   transparent;
@@ -918,24 +931,9 @@ h1, h2, h3, h4, h5 {
   mix-blend-mode: screen;
 }
 
+/* Calmo §5: glow removido — fundo plano. Layer mantida inerte p/ não quebrar markup. */
 .app-grain-glow {
-  position:       fixed;
-  inset:          0;
-  pointer-events: none;
-  z-index:        9998;
-  /* Light: glow muito suave */
-  opacity:        0.06;
-  background:
-    radial-gradient(ellipse at 12% 88%, rgba(49,52,145,0.20), transparent 40%),
-    radial-gradient(ellipse at 88% 8%,  rgba(49,52,145,0.10), transparent 32%);
-}
-.dark .app-grain-glow {
-  /* Dark: ponto de luz azul canto inferior-esquerdo, igual referência */
-  opacity:   1;
-  background:
-    radial-gradient(ellipse at 12% 90%, rgba(49,52,145,0.45) 0%, transparent 48%),
-    radial-gradient(ellipse at 88% 5%,  rgba(108,112,255,0.18) 0%, transparent 36%),
-    radial-gradient(ellipse at 50% 50%, rgba(49,52,145,0.08) 0%, transparent 70%);
+  display: none;
 }
 
 /* ============================================================
@@ -948,18 +946,11 @@ h1, h2, h3, h4, h5 {
   z-index:       0;
   overflow:      hidden;
   border:        1px solid var(--dm-border-default);
-  /* Base escuro fixo + acentos índigo suaves */
-  background:
-    radial-gradient(circle at 20% 60%, rgba(49,52,145,0.32) 0%, transparent 42%),
-    radial-gradient(circle at 80% 20%, rgba(108,112,255,0.20) 0%, transparent 40%),
-    radial-gradient(circle at 50% 100%, rgba(49,52,145,0.14) 0%, transparent 50%),
-    linear-gradient(135deg, #0E0F18 0%, #131525 100%);
+  /* Calmo §5: header plano, sem gradiente nem glow — slate neutro */
+  background:    var(--dm-ink);
 }
 :root .profile-banner {
-  background:
-    radial-gradient(circle at 20% 60%, rgba(49,52,145,0.22) 0%, transparent 42%),
-    radial-gradient(circle at 80% 20%, rgba(108,112,255,0.14) 0%, transparent 40%),
-    linear-gradient(135deg, #1a1d35 0%, #252952 100%);
+  background:    var(--dm-ink-soft);
 }
 .profile-banner-badge {
   position:        absolute;
@@ -990,8 +981,8 @@ h1, h2, h3, h4, h5 {
   width:         112px;
   height:        112px;
   border-radius: 9999px;
-  border:        2px solid rgba(49,52,145,0.35);
-  background:    #313491;
+  border:        2px solid var(--dm-primary-border);
+  background:    var(--dm-primary);
   color:         #FFFFFF;
   display:       grid;
   place-items:   center;
@@ -1145,14 +1136,14 @@ h1, h2, h3, h4, h5 {
   font-variant-numeric: tabular-nums;
 }
 
-/* dark: boost de legibilidade dos rótulos */
+/* dark: boost de legibilidade dos rótulos (neutro — sem tom azul) */
 .dark .dm-metric-label,
 .dark .dm-section-title,
 .dark .dm-table-header {
-  color: #8FA4D8;  /* mais visível que var(--dm-text-tertiary) em navy escuro */
+  color: #9BA3AF;  /* cinza neutro, mais visível que --dm-text-tertiary */
 }
 .dark .dm-table-cell {
-  color: #C8D4EE;  /* mais claro que --dm-text-secondary */
+  color: #D1D5DB;  /* cinza claro neutro */
 }
 
 /* ============================================================
@@ -1182,4 +1173,138 @@ h1, h2, h3, h4, h5 {
 }
 .dark .tiptap.ProseMirror p.is-editor-empty:first-child::before {
   color: #4a5568;
+}
+
+/* ── Monster Hub — cenas animadas do login (AuthScreen carousel) ──────────── */
+@keyframes dm-radar-spin { to { transform: rotate(360deg); } }
+@keyframes dm-ring-pulse {
+  0%   { transform: scale(0.6); opacity: 0.7; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+@keyframes dm-blip {
+  0%, 100% { opacity: 0.25; }
+  50%      { opacity: 1; }
+}
+@keyframes dm-bar-grow {
+  0%   { transform: scaleY(0.15); }
+  50%  { transform: scaleY(1); }
+  100% { transform: scaleY(0.35); }
+}
+@keyframes dm-spark-draw {
+  to { stroke-dashoffset: 0; }
+}
+@keyframes dm-count-float {
+  0%, 100% { transform: translateY(0);   opacity: 0.85; }
+  50%      { transform: translateY(-6px); opacity: 1; }
+}
+@keyframes dm-kenburns {
+  0%   { transform: scale(1.05) translate(0, 0); }
+  100% { transform: scale(1.22) translate(-2%, -3%); }
+}
+@keyframes dm-drift {
+  0%   { transform: translate(0,0); }
+  100% { transform: translate(14px, -18px); }
+}
+@keyframes dm-orbit {
+  to { transform: rotate(360deg); }
+}
+
+/* ─── DevtoolsGuard — overlay "sistema quebrando" ──────────────────────────── */
+.dtg-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  background: #05060a;
+  color: #e7faff;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  overflow: hidden;
+  animation: dtg-flicker 3.4s infinite steps(1);
+}
+.dtg-scanlines {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0) 0,
+    rgba(0, 0, 0, 0) 2px,
+    rgba(0, 0, 0, 0.35) 3px,
+    rgba(0, 0, 0, 0.35) 4px
+  );
+  mix-blend-mode: multiply;
+  animation: dtg-scan 7s linear infinite;
+}
+.dtg-shake { animation: dtg-shake 0.45s infinite; max-width: 720px; }
+.dtg-kicker {
+  font-size: 12px;
+  letter-spacing: 0.55em;
+  color: #ff2e63;
+  margin: 0 0 18px;
+  text-shadow: 0 0 12px rgba(255, 46, 99, 0.7);
+  animation: dtg-flicker 1.7s infinite steps(1);
+}
+.dtg-glitch {
+  position: relative;
+  font-size: clamp(26px, 5vw, 52px);
+  font-weight: 800;
+  line-height: 1.1;
+  margin: 0;
+  color: #f4ffff;
+  text-shadow: 0 0 18px rgba(0, 229, 255, 0.35);
+}
+.dtg-glitch::before,
+.dtg-glitch::after {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  clip-path: inset(0 0 0 0);
+}
+.dtg-glitch::before { color: #00e5ff; animation: dtg-glitch-x 2.1s infinite linear alternate-reverse; }
+.dtg-glitch::after  { color: #ff2e63; animation: dtg-glitch-y 1.4s infinite linear alternate-reverse; }
+.dtg-sub  { margin: 22px 0 0; font-size: 13px; color: #8aa0aa; letter-spacing: 0.04em; }
+.dtg-timer {
+  margin: 18px 0 6px;
+  font-size: clamp(40px, 9vw, 76px);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #00e5ff;
+  text-shadow: 0 0 24px rgba(0, 229, 255, 0.55);
+  animation: dtg-flicker 2.2s infinite steps(1);
+}
+.dtg-note { margin: 0; font-size: 11px; color: #5a6b73; letter-spacing: 0.06em; }
+
+@keyframes dtg-shake {
+  0%, 100% { transform: translate(0, 0); }
+  20% { transform: translate(-2px, 1px); }
+  40% { transform: translate(2px, -1px); }
+  60% { transform: translate(-1px, -2px); }
+  80% { transform: translate(1px, 2px); }
+}
+@keyframes dtg-scan { to { background-position: 0 200px; } }
+@keyframes dtg-flicker {
+  0%, 100% { opacity: 1; }
+  92% { opacity: 1; }
+  93% { opacity: 0.3; }
+  94% { opacity: 1; }
+  97% { opacity: 0.6; }
+  98% { opacity: 1; }
+}
+@keyframes dtg-glitch-x {
+  0%   { transform: translate(0, 0);   clip-path: inset(0 0 78% 0); }
+  25%  { transform: translate(-4px, 0); clip-path: inset(40% 0 35% 0); }
+  50%  { transform: translate(3px, 0);  clip-path: inset(70% 0 8% 0); }
+  75%  { transform: translate(-2px, 0); clip-path: inset(15% 0 60% 0); }
+  100% { transform: translate(2px, 0);  clip-path: inset(55% 0 20% 0); }
+}
+@keyframes dtg-glitch-y {
+  0%   { transform: translate(0, 0);   clip-path: inset(60% 0 18% 0); }
+  25%  { transform: translate(4px, 0);  clip-path: inset(10% 0 65% 0); }
+  50%  { transform: translate(-3px, 0); clip-path: inset(35% 0 40% 0); }
+  75%  { transform: translate(2px, 0);  clip-path: inset(80% 0 5% 0); }
+  100% { transform: translate(-2px, 0); clip-path: inset(25% 0 50% 0); }
 }

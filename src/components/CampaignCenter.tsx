@@ -321,8 +321,8 @@ function ConnectDrawer({ onClose, onImport }: {
         {/* Header */}
         <div className="flex items-center justify-between border-b px-5 py-4" style={{ borderColor: "var(--dm-border-subtle)" }}>
           <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full" style={{ backgroundColor: "rgba(124,58,237,0.12)" }}>
-              <Plug size={16} style={{ color: "#7C3AED" }} />
+            <div className="flex h-9 w-9 items-center justify-center rounded-full" style={{ backgroundColor: "rgba(22,163,74,0.12)" }}>
+              <Plug size={16} style={{ color: "#16A34A" }} />
             </div>
             <div>
               <h3 className="text-sm font-bold" style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>
@@ -349,8 +349,8 @@ function ConnectDrawer({ onClose, onImport }: {
             <button key={t.id} type="button" onClick={() => setTab(t.id)}
               className="rounded-t-lg px-3 py-2 text-[11px] font-bold transition"
               style={{
-                color: tab === t.id ? "#7C3AED" : "var(--dm-text-tertiary)",
-                borderBottom: tab === t.id ? "2px solid #7C3AED" : "2px solid transparent",
+                color: tab === t.id ? "#16A34A" : "var(--dm-text-tertiary)",
+                borderBottom: tab === t.id ? "2px solid #16A34A" : "2px solid transparent",
               }}>
               {t.label}
             </button>
@@ -383,11 +383,11 @@ function ConnectDrawer({ onClose, onImport }: {
                     <button key={e.id} type="button" onClick={() => toggleLink(e.id)}
                       className="flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition"
                       style={{
-                        borderColor: isSel ? "#7C3AED" : "var(--dm-border-default)",
-                        backgroundColor: isSel ? "rgba(124,58,237,0.08)" : "var(--dm-bg-elevated)",
+                        borderColor: isSel ? "#16A34A" : "var(--dm-border-default)",
+                        backgroundColor: isSel ? "rgba(22,163,74,0.08)" : "var(--dm-bg-elevated)",
                       }}>
                       <CheckCircle2 size={15} className="flex-shrink-0"
-                        style={{ color: isSel ? "#7C3AED" : "var(--dm-border-default)" }} />
+                        style={{ color: isSel ? "#16A34A" : "var(--dm-border-default)" }} />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-[11px] font-semibold" style={{ color: "var(--dm-text-primary)" }}>
                           {e.label}
@@ -506,7 +506,7 @@ function ConnectDrawer({ onClose, onImport }: {
                 <button type="button"
                   onClick={() => setSelected(selected.size === filtered.length ? new Set() : new Set(filtered.map((c) => c.id)))}
                   className="text-[10px] font-semibold transition hover:opacity-70"
-                  style={{ color: "#7C3AED" }}>
+                  style={{ color: "#16A34A" }}>
                   {selected.size === filtered.length ? "Desmarcar todas" : "Marcar todas"}
                 </button>
               </div>
@@ -524,11 +524,11 @@ function ConnectDrawer({ onClose, onImport }: {
                     <button key={c.id} type="button" onClick={() => toggleSelect(c.id)}
                       className="flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition"
                       style={{
-                        borderColor: isSel ? "#7C3AED" : "var(--dm-border-default)",
-                        backgroundColor: isSel ? "rgba(124,58,237,0.08)" : "var(--dm-bg-elevated)",
+                        borderColor: isSel ? "#16A34A" : "var(--dm-border-default)",
+                        backgroundColor: isSel ? "rgba(22,163,74,0.08)" : "var(--dm-bg-elevated)",
                       }}>
                       <CheckCircle2 size={15} className="flex-shrink-0"
-                        style={{ color: isSel ? "#7C3AED" : "var(--dm-border-default)" }} />
+                        style={{ color: isSel ? "#16A34A" : "var(--dm-border-default)" }} />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-[11px] font-semibold" style={{ color: "var(--dm-text-primary)" }}>
                           {c.name}
@@ -599,7 +599,7 @@ function CompanyBadge() {
       style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)", backgroundColor: "var(--dm-bg-elevated)" }}>
       {company.name}
       <span className="rounded-full px-1.5 py-px text-[9px] font-bold text-white"
-        style={{ backgroundColor: role === "owner" ? "#8b5cf6" : role === "manager" ? "#10b981" : "#64748b" }}>
+        style={{ backgroundColor: role === "owner" ? "#22C55E" : role === "manager" ? "#10b981" : "#64748b" }}>
         {ROLE_LABELS[role]}
       </span>
     </span>
@@ -789,7 +789,7 @@ export function CampaignCenter() {
                         )}
                         {entry.autoConfigured && (
                           <span className="rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase"
-                            style={{ backgroundColor: "rgba(124,58,237,0.12)", color: "#7C3AED" }}>
+                            style={{ backgroundColor: "rgba(22,163,74,0.12)", color: "#16A34A" }}>
                             auto
                           </span>
                         )}
@@ -979,7 +979,7 @@ export function AccountsHub(props: TabAccountsProps) {
     <div className="flex flex-col gap-4">
       {entries.length > 0 && (
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <StatCard icon={Layers}    label="Contas conectadas"   value={String(stats.accounts)}                            accent="#7C3AED" />
+          <StatCard icon={Layers}    label="Contas conectadas"   value={String(stats.accounts)}                            accent="#16A34A" />
           <StatCard icon={Megaphone} label="Campanhas ativas"    value={`${stats.active}/${entries.length}`}               accent="#05CD99" />
           <StatCard icon={Wallet}    label="Orçamento /mês"      value={stats.budget > 0 ? formatBRL(stats.budget) : "—"}  accent="#F4A60D" />
           <StatCard icon={Goal}      label="Com metas definidas" value={String(stats.withGoals)}                           accent="#e11d48" />

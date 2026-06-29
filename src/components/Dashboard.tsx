@@ -62,6 +62,7 @@ import { AnaliseEmpty } from "@/components/empty/AnaliseEmpty";
 import { CriativosEmpty } from "@/components/empty/CriativosEmpty";
 import { MyAccount, accountTabsForRole } from "@/components/MyAccount";
 import { EmpresaTab } from "@/components/EmpresaTab";
+import { HubSettings } from "@/components/hub/HubSettings";
 import { toast } from "@/hooks/useToast";
 import { exportDashboardCsv } from "@/utils/exportCsv";
 import { useManualMetrics } from "@/hooks/useManualMetrics";
@@ -90,6 +91,7 @@ interface DashboardProps {
   onRefresh?: () => Promise<void>;
   onClearData?: () => Promise<void>;
   onSignOut: () => Promise<void>;
+  onBackToWorkspace?: () => void;
   onUpdateProfile: (name: string) => Promise<void>;
   onOpenControlPanel?: () => void;
 }
@@ -443,7 +445,7 @@ function GoalsPanel({
           </button>
           <button type="button" onClick={onClose}
             className="h-9 flex flex-1 items-center justify-center rounded-lg text-xs font-semibold text-white transition hover:opacity-90"
-            style={{ backgroundColor: "var(--dm-brand-500, #7C3AED)" }}>
+            style={{ backgroundColor: "var(--dm-brand-500, #16A34A)" }}>
             Concluído
           </button>
         </div>
@@ -512,6 +514,27 @@ function SidebarThemeToggle() {
         <Sun size={14} />
       </button>
     </div>
+  );
+}
+
+/* Rail theme toggle — botão único (estilo mock) */
+function RailThemeToggle() {
+  const { resolvedTheme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => setMounted(true), []);
+  const isDark = mounted && resolvedTheme === "dark";
+  return (
+    <button
+      type="button"
+      onClick={() => setTheme(isDark ? "light" : "dark")}
+      aria-label="Alternar tema"
+      data-tip="Tema"
+      className="dm-sidebar-tooltip flex h-10 w-10 items-center justify-center rounded-xl transition-colors hover:bg-[var(--dm-nav-hover-bg)]"
+      style={{ color: "#8A8F84" }}
+    >
+      {isDark ? <Sun size={19} strokeWidth={1.9} /> : <Moon size={19} strokeWidth={1.9} />}
+    </button>
   );
 }
 
@@ -1161,7 +1184,7 @@ function ContextPill({
       onClick={onClick}
       className="flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-semibold transition-all"
       style={{
-        background:   active || isOpen ? "rgba(124,58,237,0.12)" : "var(--dm-bg-elevated)",
+        background:   active || isOpen ? "rgba(22,163,74,0.12)" : "var(--dm-bg-elevated)",
         borderColor:  active || isOpen ? "rgba(91,96,210,0.35)"  : "var(--dm-border-default)",
         color:        active || isOpen ? "var(--dm-primary)"      : "var(--dm-text-secondary)",
       }}
@@ -1262,7 +1285,7 @@ function ContextBar({
                   style={{
                     fontWeight:   selectedGroup === "all" ? 600 : 400,
                     color:        selectedGroup === "all" ? "var(--dm-primary)" : "var(--dm-text-primary)",
-                    background:   selectedGroup === "all" ? "rgba(124,58,237,0.08)" : "transparent",
+                    background:   selectedGroup === "all" ? "rgba(22,163,74,0.08)" : "transparent",
                   }}
                 >
                   <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ background: selectedGroup === "all" ? "var(--dm-primary)" : "var(--dm-border-strong)" }} />
@@ -1287,7 +1310,7 @@ function ContextBar({
                           style={{
                             fontWeight: selectedGroup === g.id ? 600 : 400,
                             color:      selectedGroup === g.id ? "var(--dm-primary)" : "var(--dm-text-primary)",
-                            background: selectedGroup === g.id ? "rgba(124,58,237,0.08)" : "transparent",
+                            background: selectedGroup === g.id ? "rgba(22,163,74,0.08)" : "transparent",
                           }}
                         >
                           <g.icon size={13} className="flex-shrink-0" style={{ color: selectedGroup === g.id ? "var(--dm-primary)" : "var(--dm-text-tertiary)" } as React.CSSProperties} />
@@ -1347,7 +1370,7 @@ function ContextBar({
                   <label
                     key={c.id}
                     className="flex cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 transition"
-                    style={{ background: checked ? "rgba(124,58,237,0.06)" : "transparent" }}
+                    style={{ background: checked ? "rgba(22,163,74,0.06)" : "transparent" }}
                   >
                     <input
                       type="checkbox"
@@ -1901,6 +1924,7 @@ export function Dashboard({
   onRefresh,
   onClearData,
   onSignOut,
+  onBackToWorkspace,
   onUpdateProfile,
   onOpenControlPanel,
 }: DashboardProps) {
@@ -1930,11 +1954,68 @@ export function Dashboard({
   // Usuário padrão (não-dono) só vê abas de conta pessoais na sidebar; o painel
   // de controle da empresa é exclusivo do dono. Mesma regra do MyAccount.
   const visibleAccountTabIds = accountTabsForRole(isOwner);
-  // A aba de topo "Empresa" só aparece para o dono (consistente com o badge).
-  const visibleMainTabs = MAIN_TABS.filter((t) => t.id !== "empresa" || isOwner);
+  // Conta + Empresa saíram do dash → centralizadas no modal de Configurações do hub.
+  const visibleMainTabs = MAIN_TABS.filter((t) => t.id !== "empresa" && t.id !== "myaccount");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  // Tab salvo (localStorage) pode apontar p/ empresa/myaccount removidos → cai p/ overview.
+  useEffect(() => {
+    if (mainTab === "empresa" || mainTab === "myaccount") setMainTab("overview");
+  }, [mainTab, setMainTab]);
   const histLabels = activeCompany?.settings?.[HISTORY_TAB_LABELS_KEY] as Record<string, string> | undefined;
   const customHistTabs = readCustomHistoryTabs(activeCompany?.settings);
   const [myAccountTab, setMyAccountTab]     = useState<MyAccountTabId>("profile");
+
+  // ── Sistema de abas (browser tabs) ─────────────────────────────────────────
+  // Cada aba = uma view (mainTab + sub). Trocar de aba reaplica a navegação.
+  type OpenTab = { id: string; label: string; baseLabel?: string; tab: MainTab; sub?: string };
+  const [openTabs, setOpenTabs] = useState<OpenTab[]>(() => (
+    [{ id: "tab-init", label: "Visão Geral", tab: "overview", sub: "overview" }]
+  ));
+  const [activeTabId, setActiveTabId] = useState("tab-init");
+
+  // Item aberto dentro da aba (produto/perfil) — fica salvo p/ navegação rápida.
+  const [productViewId, setProductViewId] = useState<string | null>(null);
+  const [profileViewId, setProfileViewId] = useState<string | null>(null);
+
+  // Renomeia a aba ATIVA p/ o nome do item aberto (e guarda o nome-base p/ restaurar).
+  const setActiveTabItem = (itemLabel: string | null) => {
+    setOpenTabs((prev) => prev.map((t) => {
+      if (t.id !== activeTabId) return t;
+      if (itemLabel) return { ...t, label: itemLabel, baseLabel: t.baseLabel ?? t.label };
+      return { ...t, label: t.baseLabel ?? t.label, baseLabel: undefined };
+    }));
+  };
+  const applyTabNav = (t: OpenTab) => {
+    setMainTab(t.tab);
+    if (t.tab === "overview") setDashSubTab((t.sub as DashSubTab) ?? "overview");
+    else if (t.tab === "history" && t.sub) setHistKind(t.sub as HistoricalKind);
+    else if (t.tab === "myaccount") setMyAccountTab((t.sub as MyAccountTabId) ?? "profile");
+  };
+  const openTab = (label: string, tab: MainTab, sub?: string) => {
+    const existing = openTabs.find((t) => t.label === label);
+    if (existing) { setActiveTabId(existing.id); applyTabNav(existing); return; }
+    const nt: OpenTab = { id: "tab-" + Date.now(), label, tab, sub };
+    setOpenTabs((p) => [...p, nt]);
+    setActiveTabId(nt.id);
+    applyTabNav(nt);
+  };
+  const activateTab = (id: string) => {
+    const t = openTabs.find((x) => x.id === id);
+    if (t) { setActiveTabId(id); applyTabNav(t); }
+  };
+  const closeTab = (id: string) => {
+    setOpenTabs((prev) => {
+      if (prev.length <= 1) return prev; // mantém ao menos 1 aba
+      const rest = prev.filter((t) => t.id !== id);
+      if (activeTabId === id) {
+        const nt = rest[rest.length - 1];
+        setActiveTabId(nt.id);
+        applyTabNav(nt);
+      }
+      return rest;
+    });
+  };
+
   const {
     dateFrom, dateTo,
     setDateFrom: setDateFromPersist,
@@ -1981,18 +2062,16 @@ export function Dashboard({
   };
   const [showMobileNav, setShowMobileNav]   = useState(false);
   const [showMobilePanel, setShowMobilePanel] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    // Rail PipeFlow é o nav primário: colapsado por padrão (a não ser que o usuário expanda).
-    try { return localStorage.getItem("dm_sidebar_collapsed") !== "0"; } catch { return true; }
-  });
+  // Rail fixo de ícones — NUNCA expande (decisão de design: largura constante).
+  const sidebarCollapsed = true;
   const [rightCollapsed, setRightCollapsed] = useState(false);
-  // Flyout do rail: sub-abas ancoradas ao ícone (mock PipeFlow).
+  // Flyout do rail: sub-abas ancoradas ao ícone, abertas no CLIQUE (mock).
   const [railFlyout, setRailFlyout] = useState<{ tab: MainTab; top: number } | null>(null);
+  // Launcher "Nova aba": menu de abertura rápida (seções, perfis, bases).
+  const [newTabOpen, setNewTabOpen] = useState(false);
 
-  const toggleSidebar = (next: boolean) => {
-    setSidebarCollapsed(next);
-    try { localStorage.setItem("dm_sidebar_collapsed", next ? "1" : "0"); } catch {}
-  };
+  // Expansão desabilitada — rail permanece sempre estreito.
+  const toggleSidebar = (_next: boolean) => {};
 
   const [sortBy, setSortBy] = useState<SortBy>("date-desc");
   const [checkedCampaignIds, setCheckedCampaignIds] = useState<string[]>([]);
@@ -2012,7 +2091,14 @@ export function Dashboard({
     setCampaignSelectionForGroup, clearCampaignSelectionForGroup, syncPanelConfig,
   } = useCampaignStore();
 
+  // Guard por assinatura de VALOR: categories/accountEntries podem receber nova
+  // referência a cada render (derivados sem memo). Sem isso, syncPanelConfig faz
+  // setState → re-render → nova ref → loop infinito ("Maximum update depth").
+  const lastSyncSig = useRef<string>("");
   useEffect(() => {
+    const sig = JSON.stringify([categories, accountEntries]);
+    if (sig === lastSyncSig.current) return;
+    lastSyncSig.current = sig;
     syncPanelConfig(categories, accountEntries);
   }, [accountEntries, categories, syncPanelConfig]);
 
@@ -2709,7 +2795,7 @@ export function Dashboard({
               borderRadius: "var(--dm-shape-sm)",
               paddingLeft:  8,
               paddingRight: 8,
-              background:   active ? "rgba(124,58,237,0.12)" : "transparent",
+              background:   active ? "rgba(22,163,74,0.12)" : "transparent",
               color:        active ? "var(--dm-primary)" : "var(--dm-text-tertiary)",
               fontWeight:   active ? 600 : 400,
               fontSize:     12,
@@ -2739,7 +2825,7 @@ export function Dashboard({
               borderRadius: "var(--dm-shape-sm)",
               paddingLeft:  8,
               paddingRight: 8,
-              background:   active ? "rgba(124,58,237,0.12)" : "transparent",
+              background:   active ? "rgba(22,163,74,0.12)" : "transparent",
               color:        active ? "var(--dm-primary)" : "var(--dm-text-tertiary)",
               fontWeight:   active ? 600 : 400,
               fontSize:     12,
@@ -2765,7 +2851,7 @@ export function Dashboard({
               borderRadius: "var(--dm-shape-sm)",
               paddingLeft:  8,
               paddingRight: 8,
-              background:   active ? "rgba(124,58,237,0.12)" : "transparent",
+              background:   active ? "rgba(22,163,74,0.12)" : "transparent",
               color:        active ? "var(--dm-primary)" : "var(--dm-text-tertiary)",
               fontWeight:   active ? 600 : 400,
               fontSize:     12,
@@ -2781,7 +2867,8 @@ export function Dashboard({
   };
 
   // ── Itens do flyout do rail (sub-abas por seção) ────────────────────────────
-  const RAIL_FLYOUT_TABS: MainTab[] = ["overview", "history", "myaccount"];
+  // Tabs com sub-abas: o flyout abre no HOVER do ícone (rail não expande).
+  const RAIL_FLYOUT_TABS: MainTab[] = ["overview", "history"];
   const flyoutItemsFor = (tab: MainTab): { key: string; label: string; active: boolean; onSelect: () => void }[] => {
     if (tab === "overview")
       return DASH_SUB_TABS.map((t) => ({ key: t.id, label: t.label, active: dashSubTab === t.id, onSelect: () => { setMainTab("overview"); setDashSubTab(t.id); } }));
@@ -2811,7 +2898,7 @@ export function Dashboard({
                 borderRadius: "var(--dm-shape-md)",
                 paddingLeft:  12,
                 paddingRight: 12,
-                background:   isActive ? "rgba(124,58,237,0.18)"          : "transparent",
+                background:   isActive ? "rgba(22,163,74,0.18)"          : "transparent",
                 border:       isActive ? "1px solid rgba(91,96,210,0.28)" : "1px solid transparent",
                 color:        isActive ? "var(--dm-nav-active-text)"      : "var(--dm-nav-default-text)",
                 fontWeight:   isActive ? 600 : 400,
@@ -2930,89 +3017,89 @@ export function Dashboard({
 
       {/* ── Left sidebar — NeuroBank style ── */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex flex-col shadow-horizon transition-all duration-300 w-[86vw] max-w-[280px] lg:relative lg:translate-x-0 lg:z-auto lg:max-w-none lg:flex-shrink-0 ${
+        className={`dm-rail fixed inset-y-0 left-0 z-50 flex flex-col transition-transform duration-300 w-[86vw] max-w-[280px] lg:relative lg:translate-x-0 lg:z-auto lg:max-w-none lg:flex-shrink-0 ${
           showMobileNav ? "translate-x-0 shadow-2xl" : "-translate-x-full"
         }`}
         style={{
           background:   "var(--dm-bg-sidebar)",
-          borderRight:  "1px solid var(--dm-border-default)",
-          width:         sidebarCollapsed ? 72 : 280,
+          boxShadow:    "0 8px 24px rgba(14,17,8,0.18)",
+          width:         sidebarCollapsed ? 74 : 280,
         }}
       >
         {sidebarCollapsed ? (
-          /* ══════════════ COLLAPSED ══════════════ */
-          <div className="flex flex-1 flex-col items-center py-4 overflow-y-auto overflow-x-hidden">
-            {/* Logo = clicar expande */}
+          /* ══════════════ RAIL FIXO (icon-only) ══════════════ */
+          <div className="flex flex-1 flex-col items-center py-4 overflow-visible">
+            {/* Logo lime = clicar volta ao hub de seleção (Workspace) */}
             <button
               type="button"
-              onClick={() => toggleSidebar(false)}
-              aria-expanded="false"
-              aria-label="Expandir sidebar"
-              data-tip="DashMonster"
-              className="dm-sidebar-tooltip mb-3 flex h-11 w-11 items-center justify-center rounded-[10px] transition hover:opacity-80"
+              onClick={() => { if (onBackToWorkspace) onBackToWorkspace(); else { openTab("Visão Geral", "overview", "overview"); setRailFlyout(null); } }}
+              aria-label="Voltar ao Workspace"
+              title="Voltar ao Workspace"
+              className="mb-2 flex h-9 w-9 items-center justify-center rounded-xl transition hover:opacity-80"
               style={{ background: "#B6F500" }}
             >
-              <DashMonsterLogo size={20} className="text-[#0E1108]" />
+              <DashMonsterLogo size={18} className="text-[#0E1108] dark:!text-[#0E1108]" />
             </button>
 
-            <div className="mb-3 w-8 h-px" style={{ background: "var(--dm-border-default)" }} />
-
-            {/* Icon-only nav — tooltips à direita */}
-            <div className="flex flex-col items-center gap-1 w-full px-2">
-              {visibleMainTabs.map(({ id, label, icon: Icon }) => (
-                <button
-                  key={id}
-                  onClick={(e) => {
-                    if (RAIL_FLYOUT_TABS.includes(id)) {
-                      const top = e.currentTarget.getBoundingClientRect().top;
-                      setRailFlyout((prev) => (prev?.tab === id ? null : { tab: id, top }));
-                    } else {
-                      setMainTab(id); setRailFlyout(null); setShowMobileNav(false);
+            {/* Nav centralizado — flyout no CLIQUE, ativo lime + barra esquerda */}
+            <div className="flex flex-1 flex-col justify-center gap-1.5">
+              {visibleMainTabs.map(({ id, label, icon: Icon }) => {
+                const hasFlyout = RAIL_FLYOUT_TABS.includes(id);
+                const active = mainTab === id;
+                return (
+                  <button
+                    key={id}
+                    onClick={(e) => {
+                      if (hasFlyout) {
+                        const top = e.currentTarget.getBoundingClientRect().top;
+                        setRailFlyout((prev) => (prev?.tab === id ? null : { tab: id, top }));
+                      } else {
+                        openTab(label, id); setRailFlyout(null); setShowMobileNav(false);
+                      }
+                    }}
+                    aria-label={label}
+                    data-tip={hasFlyout ? undefined : label}
+                    className={`${hasFlyout ? "" : "dm-sidebar-tooltip"} flex h-11 w-11 items-center justify-center rounded-xl transition-colors`}
+                    style={active
+                      ? { background: "var(--dm-nav-active-bg)", color: "var(--dm-nav-active-text)" }
+                      : { color: "var(--dm-nav-default-text)" }
                     }
-                  }}
-                  aria-label={label}
-                  data-tip={label}
-                  className="dm-sidebar-tooltip flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-150"
-                  style={mainTab === id
-                    ? { background: "rgba(182,245,0,0.14)", border: "1px solid rgba(182,245,0,0.32)", color: "var(--dm-nav-active-text)" }
-                    : { color: "var(--dm-nav-default-text)" }
-                  }
-                >
-                  <Icon size={18} />
-                </button>
-              ))}
+                  >
+                    <Icon size={20} strokeWidth={1.9} />
+                  </button>
+                );
+              })}
             </div>
 
-            {/* Perpétuo — collapsed icon */}
-            <div className="mt-2 w-full px-2 flex flex-col items-center gap-1">
-              <div className="w-7 h-px" style={{ background: "var(--dm-divider)" }} />
-              <Link
-                href="/produto/perpetuo"
-                aria-label="Perpétuo"
-                data-tip="Perpétuo"
-                className="dm-sidebar-tooltip flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-150 text-amber-500 hover:bg-[var(--dm-bg-surface-hover)]"
-              >
-                <RotateCcw size={18} />
-              </Link>
-            </div>
-
-            <div className="flex-1" />
-
-            {/* Divider */}
-            <div className="mx-2 h-px flex-shrink-0" style={{ background: "var(--dm-divider)" }} />
-
-            {/* CTA — collapsed: icon only */}
-            <div className="mb-4 mt-3 px-2 flex-shrink-0">
+            {/* Bottom — tema, configurações, avatar (mock) */}
+            <div className="flex flex-col items-center gap-1.5">
+              <RailThemeToggle />
               <button
                 type="button"
-                className="flex h-10 w-10 items-center justify-center rounded-[10px] transition hover:opacity-80"
-                style={{ background: "#7C3AED" }}
-                title={campaigns.length > 0 ? `${campaigns.length.toLocaleString("pt-BR")} linhas carregadas` : "Sem dados — conecte uma fonte"}
+                onClick={() => { setSettingsOpen(true); setRailFlyout(null); }}
+                aria-label="Configurações"
+                data-tip="Configurações"
+                className="dm-sidebar-tooltip flex h-10 w-10 items-center justify-center rounded-xl transition-colors hover:bg-[var(--dm-nav-hover-bg)]"
+                style={{ color: "#8A8F84" }}
               >
-                <span
-                  className="h-2 w-2 rounded-full"
-                  style={{ background: campaigns.length > 0 ? "#05CD99" : "rgba(255,255,255,0.4)" }}
-                />
+                <Settings2 size={19} strokeWidth={1.9} />
+              </button>
+              <button
+                type="button"
+                onClick={() => { setSettingsOpen(true); }}
+                aria-label="Meu perfil"
+                className="mt-1 flex h-8 w-8 items-center justify-center rounded-full overflow-hidden transition hover:opacity-85"
+                style={{ background: "var(--dm-primary)" }}
+              >
+                {resolvedAvatarSrc ? (
+                  <img src={resolvedAvatarSrc} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <span className="text-xs font-semibold text-white">
+                    {currentUser.name.trim()
+                      ? currentUser.name.trim().split(" ").filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("")
+                      : currentUser.email.slice(0, 2).toUpperCase()}
+                  </span>
+                )}
               </button>
             </div>
           </div>
@@ -3022,7 +3109,7 @@ export function Dashboard({
             {/* Brand glow (decorative) */}
             <div
               className="pointer-events-none absolute -left-14 -top-14 h-48 w-48 rounded-full"
-              style={{ background: "radial-gradient(circle, rgba(124,58,237,0.10) 0%, transparent 70%)" }}
+              style={{ background: "radial-gradient(circle, rgba(22,163,74,0.10) 0%, transparent 70%)" }}
             />
 
             {/* ── Brand row ── */}
@@ -3074,7 +3161,7 @@ export function Dashboard({
                 {/* Avatar */}
                 <button
                   type="button"
-                  onClick={() => { setMainTab("myaccount"); setMyAccountTab("profile"); }}
+                  onClick={() => { setSettingsOpen(true); }}
                   title="Ir para Meu perfil"
                   className="relative h-10 w-10 flex-shrink-0 rounded-full overflow-hidden transition hover:opacity-85"
                   style={{ boxShadow: "0 0 0 2px var(--dm-primary-soft)" }}
@@ -3130,7 +3217,7 @@ export function Dashboard({
             <div className="mx-3 mb-4 mt-3 flex-shrink-0">
               <div
                 className="rounded-2xl px-4 py-3"
-                style={{ background: "#7C3AED" }}
+                style={{ background: "#16A34A" }}
               >
                 <div className="flex items-center gap-2 mb-1">
                   <span
@@ -3180,19 +3267,21 @@ export function Dashboard({
         <>
           <div className="fixed inset-0 z-[55]" onClick={() => setRailFlyout(null)} />
           <div
-            className="fixed z-[56] rounded-xl border py-2 shadow-xl"
-            style={{ left: 76, top: Math.max(8, Math.min(railFlyout.top, (typeof window !== "undefined" ? window.innerHeight : 800) - 260)), minWidth: 196, background: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}
+            className="fixed z-[56] flex flex-col gap-0.5 rounded-2xl p-2"
+            style={{ left: 70, top: Math.max(8, Math.min(railFlyout.top, (typeof window !== "undefined" ? window.innerHeight : 800) - 280)), minWidth: 200, background: "var(--dm-bg-surface)", boxShadow: "0 8px 28px rgba(16,24,40,0.14)" }}
           >
-            <p className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
+            <p className="px-2.5 pt-1 pb-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
               {MAIN_TABS.find((t) => t.id === railFlyout.tab)?.label}
             </p>
             {flyoutItemsFor(railFlyout.tab).map((it) => (
               <button
                 key={it.key}
                 type="button"
-                onClick={() => { it.onSelect(); setRailFlyout(null); setShowMobileNav(false); }}
-                className="flex w-full items-center px-3 py-2 text-left text-sm font-medium transition-colors hover:bg-[var(--dm-bg-elevated)]"
+                onClick={() => { openTab(it.label, railFlyout.tab, it.key); setRailFlyout(null); setShowMobileNav(false); }}
+                className="flex w-full items-center rounded-lg px-2.5 py-2 text-left text-sm font-medium transition-colors"
                 style={{ color: it.active ? "var(--dm-primary)" : "var(--dm-text-secondary)", background: it.active ? "var(--dm-primary-soft)" : "transparent" }}
+                onMouseEnter={(e) => { if (!it.active) { e.currentTarget.style.background = "var(--dm-primary-soft)"; e.currentTarget.style.color = "var(--dm-primary)"; } }}
+                onMouseLeave={(e) => { if (!it.active) { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--dm-text-secondary)"; } }}
               >
                 {it.label}
               </button>
@@ -3205,123 +3294,207 @@ export function Dashboard({
       {/* ── Center ── */}
       <div className="flex flex-1 flex-col overflow-hidden">
 
-        {/* Top header — contexto em cima, acções agrupadas */}
-        {/* ── Frosted pill navbar — Horizon style ── */}
-        <header className="relative z-10 mx-4 mt-4 mb-1 flex-shrink-0 rounded-2xl border backdrop-blur-xl bg-white/80 dark:bg-[#0b143780] shadow-sm" style={{ borderColor: "var(--dm-border-default)" }}>
-          <div className={`flex min-h-[3.25rem] flex-row items-center justify-between gap-2 px-3 py-2 sm:gap-3 sm:px-4 md:px-6 ${mainTab === "profiles" ? "hidden" : ""}`}>
-            <div className="flex min-w-0 flex-1 items-center gap-3">
-              <button
-                onClick={() => setShowMobileNav(true)}
-                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-700 lg:hidden"
-                type="button"
-                aria-label="Abrir menu"
-              >
-                <Menu size={18} />
-              </button>
-
-              <div className="min-w-0 flex flex-wrap items-center gap-1.5 text-sm">
-                <button
-                  type="button"
-                  onClick={() => { setMainTab("overview"); }}
-                  className="flex items-center gap-1 text-slate-400 transition hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-300"
-                  title="Ir para Visão geral"
+        {/* ── Barra única: abas (esq) + categoria/ações (dir) ── */}
+        <div
+          className="flex-shrink-0 flex items-center justify-between gap-2 px-3 pt-2"
+          style={{ background: "var(--dm-bg-surface)", borderBottom: "1px solid var(--dm-border-default)" }}
+        >
+          {/* Esquerda — abas + Nova aba */}
+          <div className="flex min-w-0 items-center gap-1 overflow-x-auto">
+            <button
+              onClick={() => setShowMobileNav(true)}
+              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-700 lg:hidden"
+              type="button"
+              aria-label="Abrir menu"
+            >
+              <Menu size={18} />
+            </button>
+            {openTabs.map((t) => {
+              const on = t.id === activeTabId;
+              return (
+                <div
+                  key={t.id}
+                  onClick={() => activateTab(t.id)}
+                  className="group flex flex-shrink-0 items-center gap-2 pl-3 pr-2 py-2 rounded-t-lg cursor-pointer text-sm transition-colors"
+                  style={{
+                    background:  on ? "var(--dm-bg-page)" : "transparent",
+                    color:       on ? "var(--dm-text-primary)" : "var(--dm-text-secondary)",
+                    fontWeight:  on ? 600 : 500,
+                    borderTop:   on ? "2px solid var(--dm-primary)" : "2px solid transparent",
+                  }}
                 >
-                  <Home size={13} />
-                  <span className="hidden md:inline">Início</span>
-                </button>
-                <span className="text-slate-300 dark:text-slate-600" aria-hidden>/</span>
-                <span className="font-semibold text-slate-800 dark:text-slate-100">{currentTab.label}</span>
-
-                {needsCategory && campaigns.length > 0 && (
-                  selectedCategory ? (() => {
-                  const cat = selectedCategory as ProductCategory;
-                  const CatIcon = CATEGORY_ICON[cat] ?? Flag;
-                  const dot     = CATEGORY_DOT[cat] ?? "var(--dm-brand-500)";
-                  return (
-                    <button
-                      type="button"
-                      onClick={() => setSelectedCategory(null)}
-                      title="Escolher outra categoria"
-                      className="ml-0.5 flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-200 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
-                    >
-                      <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: dot }} />
-                      <CatIcon size={11} aria-hidden />
-                      <span className="hidden sm:inline">{getSectionLabel(String(cat), customSections, categories)}</span>
-                      <span className="sr-only">Trocar categoria</span>
-                      <X size={10} className="text-slate-400 dark:text-slate-500" aria-hidden />
-                    </button>
-                  );
-                })() : (
+                  <span className="whitespace-nowrap">{t.label}</span>
                   <button
                     type="button"
-                    onClick={() => setPickCategoryOpen(true)}
-                    title="Filtrar dados por área de negócio"
-                    className="ml-0.5 rounded-full border border-dashed border-slate-300 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-800/80 dark:text-slate-300 dark:hover:bg-slate-800"
+                    onClick={(e) => { e.stopPropagation(); closeTab(t.id); }}
+                    className="flex h-5 w-5 items-center justify-center rounded opacity-50 transition hover:opacity-100 hover:bg-[var(--dm-bg-surface-hover)]"
+                    style={{ color: "var(--dm-text-secondary)" }}
+                    aria-label="Fechar aba"
                   >
-                    Escolher categoria
+                    <X size={13} />
                   </button>
-                )
-                )}
-              </div>
-            </div>
+                </div>
+              );
+            })}
+            <div className="relative flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => setNewTabOpen((v) => !v)}
+                title="Nova aba"
+                aria-label="Nova aba"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-700"
+              >
+                <Plus size={16} />
+              </button>
+              {newTabOpen && (
+                <>
+                  <div className="fixed inset-0 z-[55]" onClick={() => setNewTabOpen(false)} />
+                  <div
+                    className="absolute left-0 top-full z-[56] mt-1 flex max-h-[72vh] w-64 flex-col gap-0.5 overflow-y-auto rounded-2xl p-2"
+                    style={{ background: "var(--dm-bg-surface)", boxShadow: "0 8px 28px rgba(16,24,40,0.14)", border: "1px solid var(--dm-border-default)" }}
+                  >
+                    {(() => {
+                      const NTGroup = ({ title }: { title: string }) => (
+                        <p className="px-2.5 pt-1.5 pb-1 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>{title}</p>
+                      );
+                      const NTItem = ({ label, run }: { label: string; run: () => void }) => (
+                        <button
+                          type="button"
+                          onClick={() => { run(); setNewTabOpen(false); }}
+                          className="flex w-full items-center rounded-lg px-2.5 py-2 text-left text-sm font-medium transition-colors"
+                          style={{ color: "var(--dm-text-secondary)" }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = "var(--dm-primary-soft)"; e.currentTarget.style.color = "var(--dm-primary)"; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--dm-text-secondary)"; }}
+                        >
+                          <span className="truncate">{label}</span>
+                        </button>
+                      );
+                      return (
+                        <>
+                          <NTGroup title="Sistema" />
+                          <NTItem label="Visão Geral" run={() => openTab("Visão Geral", "overview", "overview")} />
+                          <NTItem label="Análise" run={() => openTab("Análise", "overview", "analysis")} />
+                          <NTItem label="Criativos" run={() => openTab("Criativos", "overview", "creatives")} />
+                          <NTItem label="Histórico" run={() => openTab("Histórico", "history", "lancamento")} />
+                          <NTItem label="Tracking" run={() => openTab("Tracking", "tracking")} />
+                          <NTItem label="Perfil de Anunciantes" run={() => openTab("Perfil de Anunciantes", "profiles")} />
+                          <NTItem label="Base de Produtos" run={() => openTab("Base de Produtos", "products")} />
+                          <NTItem label="Configurações" run={() => setSettingsOpen(true)} />
 
-            <div className="flex flex-shrink-0 flex-wrap items-center justify-end gap-1.5 sm:gap-2">
-              {/* Mobile filter button removed — filters now accessible via context bar */}
-              {/* User account button removed — accessible via sidebar avatar */}
+                          {advertiserProfiles.length > 0 && (
+                            <>
+                              <NTGroup title="Perfis configurados" />
+                              {advertiserProfiles.map((p) => (
+                                <NTItem key={p.groupId || p.name} label={p.name} run={() => { if (p.groupId) setSelectedGroup(p.groupId); openTab(p.name, "profiles"); }} />
+                              ))}
+                            </>
+                          )}
 
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setShowGoals((v) => !v)}
-                  className={`flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition ${
-                    showGoals
-                      ? "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-                      : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
-                  }`}
-                >
-                  <Flag size={13} />
-                  <span className="hidden sm:inline">Metas</span>
-                </button>
-                {showGoals && (
-                  <GoalsPanel
-                    goals={goals}
-                    groupLabel={selectedGroup === "all" ? "Global" : (allGroups.find(g => g.id === selectedGroup)?.label ?? selectedGroup)}
-                    onSetGoal={(key, value) => setGoal(goalsGroupKey, key, value)}
-                    onReset={() => resetGoals(goalsGroupKey)}
-                    onClose={() => setShowGoals(false)}
-                  />
-                )}
-              </div>
-
-              <span className="hidden h-6 w-px self-center bg-slate-200 dark:bg-slate-600 sm:inline" aria-hidden />
-
-              {campaigns.length > 0 && (
-                <button
-                  type="button"
-                  title="Exportar campanhas filtradas como CSV"
-                  onClick={() => exportDashboardCsv({
-                    campaigns: campaignsWithOverrides,
-                    totals,
-                    dateFrom,
-                    dateTo,
-                    overrides: manualOverrides,
-                  })}
-                  className="flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-semibold transition border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
-                >
-                  <Download size={13} />
-                  <span className="hidden sm:inline">Exportar CSV</span>
-                </button>
-              )}
-              {campaigns.length > 0 && mainTab === "overview" && (
-                <ExportReportButton
-                  buildData={buildReportData}
-                  fileName={`relatorio_${selectedGroup}_${dateFrom}_${dateTo}`}
-                />
+                          {allGroups.length > 0 && (
+                            <>
+                              <NTGroup title="Bases" />
+                              {allGroups.map((g) => (
+                                <NTItem key={g.id} label={g.label} run={() => { setSelectedGroup(g.id); openTab(g.label, "overview", "overview"); }} />
+                              ))}
+                            </>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+                </>
               )}
             </div>
           </div>
 
-        </header>
+          {/* Direita — minimalista: só ícones (ghost); Relatório = único CTA */}
+          <div className="flex flex-shrink-0 items-center gap-1 pb-2">
+            {/* Categoria */}
+            {needsCategory && campaigns.length > 0 && (
+              selectedCategory ? (() => {
+                const cat = selectedCategory as ProductCategory;
+                const CatIcon = CATEGORY_ICON[cat] ?? Flag;
+                const dot     = CATEGORY_DOT[cat] ?? "var(--dm-brand-500)";
+                return (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCategory(null)}
+                    title={`${getSectionLabel(String(cat), customSections, categories)} — trocar categoria`}
+                    aria-label="Trocar categoria"
+                    className="flex h-8 items-center gap-1.5 rounded-lg px-2 text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-700"
+                  >
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: dot }} />
+                    <CatIcon size={15} aria-hidden />
+                  </button>
+                );
+              })() : (
+                <button
+                  type="button"
+                  onClick={() => setPickCategoryOpen(true)}
+                  title="Escolher categoria"
+                  aria-label="Escolher categoria"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-700"
+                >
+                  <SlidersHorizontal size={16} />
+                </button>
+              )
+            )}
+
+            {/* Metas */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowGoals((v) => !v)}
+                title="Metas"
+                aria-label="Metas"
+                className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${
+                  showGoals
+                    ? "bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400"
+                    : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-700"
+                }`}
+              >
+                <Flag size={16} />
+              </button>
+              {showGoals && (
+                <GoalsPanel
+                  goals={goals}
+                  groupLabel={selectedGroup === "all" ? "Global" : (allGroups.find(g => g.id === selectedGroup)?.label ?? selectedGroup)}
+                  onSetGoal={(key, value) => setGoal(goalsGroupKey, key, value)}
+                  onReset={() => resetGoals(goalsGroupKey)}
+                  onClose={() => setShowGoals(false)}
+                />
+              )}
+            </div>
+
+            {/* Exportar CSV */}
+            {campaigns.length > 0 && (
+              <button
+                type="button"
+                title="Exportar CSV"
+                aria-label="Exportar CSV"
+                onClick={() => exportDashboardCsv({
+                  campaigns: campaignsWithOverrides,
+                  totals,
+                  dateFrom,
+                  dateTo,
+                  overrides: manualOverrides,
+                })}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-700"
+              >
+                <Download size={16} />
+              </button>
+            )}
+
+            {/* Relatório — único CTA */}
+            {campaigns.length > 0 && mainTab === "overview" && (
+              <ExportReportButton
+                buildData={buildReportData}
+                fileName={`relatorio_${selectedGroup}_${dateFrom}_${dateTo}`}
+              />
+            )}
+          </div>
+
+        </div>
 
         {/* Main scrollable content */}
         <main className="flex-1 overflow-y-auto px-4 py-5 md:px-7 md:py-7">
@@ -3529,12 +3702,21 @@ export function Dashboard({
 
           {mainTab === "tracking" && <TrackingEventsView />}
 
-          {mainTab === "products"  && <ProductBase />}
+          {mainTab === "products"  && (
+            <ProductBase
+              viewId={productViewId}
+              onOpenView={(p) => { setProductViewId(p.id); setActiveTabItem(p.nome || "Produto"); }}
+              onCloseView={() => { setProductViewId(null); setActiveTabItem(null); }}
+            />
+          )}
           {mainTab === "profiles" && (
             <ProfileAnalysis
               campaignGroupOptions={allGroups.map((g) => ({ id: g.id, label: g.label, section: g.section }))}
               campaignConfigs={campaignConfigs}
               appliedDateRange={{ from: dateFrom, to: dateTo }}
+              viewId={profileViewId}
+              onOpenProfile={(p) => { setProfileViewId(p.id); setActiveTabItem(p.name || "Perfil"); }}
+              onCloseProfile={() => { setProfileViewId(null); setActiveTabItem(null); }}
             />
           )}
 
@@ -3568,6 +3750,16 @@ export function Dashboard({
       </div>
 
       {/* Right panel removed — campaigns filtered via context bar */}
+
+      <HubSettings
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        userName={currentUser.name}
+        email={currentUser.email}
+        onUpdateProfile={onUpdateProfile}
+        onSignOut={onSignOut}
+        categories={categories}
+      />
 
       {pickCategoryOpen && (
         <div

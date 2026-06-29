@@ -19,9 +19,9 @@ const NEUTRAL_ICON_BG   = "rgba(255,255,255,0.045)";
 const NEUTRAL_ICON_TEXT = "var(--dm-icon-primary, #C8CCD8)";
 
 const ACCENT: Record<AccentKey, AccentStyle> = {
-  primary: { iconBg: NEUTRAL_ICON_BG, iconText: NEUTRAL_ICON_TEXT, topBar: "#7C3AED" },
-  blue:    { iconBg: NEUTRAL_ICON_BG, iconText: NEUTRAL_ICON_TEXT, topBar: "#7C3AED" },
-  violet:  { iconBg: NEUTRAL_ICON_BG, iconText: NEUTRAL_ICON_TEXT, topBar: "#8B5CF6" },
+  primary: { iconBg: NEUTRAL_ICON_BG, iconText: NEUTRAL_ICON_TEXT, topBar: "#16A34A" },
+  blue:    { iconBg: NEUTRAL_ICON_BG, iconText: NEUTRAL_ICON_TEXT, topBar: "#16A34A" },
+  violet:  { iconBg: NEUTRAL_ICON_BG, iconText: NEUTRAL_ICON_TEXT, topBar: "#22C55E" },
   amber:   { iconBg: NEUTRAL_ICON_BG, iconText: NEUTRAL_ICON_TEXT, topBar: "#F59E0B" },
   // Semânticos: texto colorido, fundo ainda neutro
   green:   { iconBg: NEUTRAL_ICON_BG, iconText: "var(--dm-chart-success, #22C55E)", topBar: "#10B981" },
@@ -154,7 +154,7 @@ export function KpiCard({
 
       {/* Inline edit form */}
       {editing && (
-        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 rounded-[20px] bg-white/95 dark:bg-[#111c44]/95 p-4">
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 rounded-[20px] bg-white/95 dark:bg-[#1d2027]/95 p-4">
           <p className="text-xs font-semibold" style={{ color: "var(--dm-text-primary)" }}>
             Inserir valor manual
           </p>

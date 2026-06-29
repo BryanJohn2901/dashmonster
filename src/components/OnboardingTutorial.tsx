@@ -11,7 +11,7 @@ interface OnboardingTutorialProps {
   onLoadDemo?: () => void;
 }
 
-const BRAND_GRAD = "linear-gradient(135deg, #7C3AED 0%, #7C3AED 100%)";
+const BRAND_GRAD = "linear-gradient(135deg, #16A34A 0%, #16A34A 100%)";
 
 const SLIDES = [
   {
@@ -107,7 +107,7 @@ export function OnboardingTutorial({ onComplete, onLoadDemo }: OnboardingTutoria
           {/* Emoji icon */}
           <div
             className="mx-auto flex h-16 w-16 items-center justify-center rounded-[20px] text-3xl"
-            style={{ background: "rgba(124,58,237,0.08)" }}
+            style={{ background: "rgba(22,163,74,0.08)" }}
           >
             {slide.emoji}
           </div>
@@ -156,7 +156,7 @@ export function OnboardingTutorial({ onComplete, onLoadDemo }: OnboardingTutoria
                   type="button"
                   onClick={() => { onLoadDemo(); onComplete(); }}
                   className="flex w-full items-center justify-center gap-2 rounded-[14px] py-3 text-[14px] font-bold text-white transition hover:opacity-90"
-                  style={{ background: BRAND_GRAD, boxShadow: "0 4px 18px rgba(124,58,237,0.35)" }}
+                  style={{ background: BRAND_GRAD, boxShadow: "0 4px 18px rgba(22,163,74,0.35)" }}
                 >
                   <Zap size={16} />
                   Explorar com dados de demo
@@ -198,7 +198,7 @@ export function OnboardingTutorial({ onComplete, onLoadDemo }: OnboardingTutoria
             <button
               onClick={advance}
               className="flex items-center gap-1.5 rounded-xl px-5 py-2.5 text-sm font-bold text-white transition hover:opacity-90"
-              style={{ background: BRAND_GRAD, boxShadow: "0 4px 14px rgba(124,58,237,0.30)" }}
+              style={{ background: BRAND_GRAD, boxShadow: "0 4px 14px rgba(22,163,74,0.30)" }}
             >
               Próximo <ChevronRight size={13} />
             </button>

@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   ArrowLeft, BookOpen, CalendarDays, Copy, Edit3, ExternalLink,
   GraduationCap, Link2, Loader2, Package, Plus, Tag, Trash2, Users,
+  Layers, Gift, ArrowRight,
 } from "lucide-react";
 import { ProductData, ProductType, COURSE_GROUPS_PRODUCT } from "@/types/product";
 import { useProductStore } from "@/hooks/useProductStore";
@@ -26,104 +27,89 @@ function ProductCard({ product: p, onView, onEdit, onDuplicate, onDelete }: Prod
   const isPos  = p.type === "pos";
   const course = COURSE_GROUPS_PRODUCT.find((g) => g.id === p.courseGroup);
 
-  const accent = isPos ? "#7C3AED" : "#7C3AED";
-  const badgeBg = isPos ? "rgba(124,58,237,0.08)" : "rgba(124,58,237,0.08)";
-  const badgeColor = isPos ? "#7C3AED" : "#7C3AED";
+  const linkCount = p.linksVenda.length + (p.paginasVenda?.length ?? 0);
+  const delivCount = p.entregaveis?.length ?? 0;
+  // Preço de referência: último lote (padrão) ou valor base.
+  const refPrice = p.lotes.length > 0 ? p.lotes[p.lotes.length - 1].valor : p.valorBase;
+
+  // Ações de hover não devem disparar o clique do card.
+  const stop = (fn: () => void) => (e: React.MouseEvent) => { e.stopPropagation(); fn(); };
 
   return (
     <article
-      className="group relative flex flex-col border bg-white dark:bg-[#0F1020] shadow-horizon transition-all hover:-translate-y-0.5"
-      style={{ borderColor: "var(--dm-border-default)", borderLeftWidth: 3, borderLeftColor: accent, borderRadius: "var(--dm-shape-xl)" }}
+      onClick={onView}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => { if (e.key === "Enter") onView(); }}
+      className="group relative flex cursor-pointer flex-col gap-3 rounded-2xl border border-[color:var(--dm-border-default)] bg-[var(--dm-bg-surface)] p-4 transition-all hover:-translate-y-0.5 hover:border-[color:var(--dm-primary-border)] hover:shadow-lg"
     >
-      <div className="flex flex-col flex-1 p-4 gap-3">
-        {/* Badges + actions */}
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span
-              className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
-              style={{ background: badgeBg, color: badgeColor }}
-            >
-              {isPos ? "Pós Grad." : "Imersão"}
+      {/* Chips + ações de hover */}
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+            style={{ background: "var(--dm-primary-soft)", color: "var(--dm-primary)" }}>
+            {isPos ? "Pós Grad." : "Imersão"}
+          </span>
+          {course && (
+            <span className="rounded-md px-1.5 py-0.5 text-[10px] font-semibold"
+              style={{ background: "var(--dm-bg-elevated)", color: "var(--dm-text-secondary)" }}>
+              {course.label}
             </span>
-            {course && (
-              <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
-                style={{ background: "var(--dm-bg-elevated)", color: "var(--dm-text-secondary)" }}>
-                {course.label}
-              </span>
-            )}
-            {p.turmaVinculada && (
-              <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold text-[#05CD99]"
-                style={{ background: "rgba(5,205,153,0.10)" }}>
-                {p.turmaVinculada}
-              </span>
-            )}
-          </div>
-
-          {/* Hover actions */}
-          <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-            <button type="button" onClick={onEdit} title="Editar"
-              className="flex h-7 w-7 items-center justify-center rounded-lg border transition hover:opacity-80"
-              style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>
-              <Edit3 size={12} />
-            </button>
-            <button type="button" onClick={onDuplicate} title="Duplicar"
-              className="flex h-7 w-7 items-center justify-center rounded-lg border transition hover:bg-amber-50 hover:text-amber-600 dark:hover:bg-amber-900/20"
-              style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>
-              <Copy size={12} />
-            </button>
-            <button type="button" onClick={onDelete} title="Remover"
-              className="flex h-7 w-7 items-center justify-center rounded-lg border border-red-200 text-red-400 transition hover:bg-red-50 dark:border-red-800/50 dark:hover:bg-red-900/20">
-              <Trash2 size={12} />
-            </button>
-          </div>
-        </div>
-
-        {/* Nome + expert */}
-        <div>
-          <h3 className="text-sm font-bold leading-snug" style={{ color: "var(--dm-text-primary)" }}>
-            {p.nome || "Sem nome"}
-          </h3>
-          {p.expert && (
-            <p className="mt-0.5 text-xs" style={{ color: "var(--dm-text-tertiary)" }}>{p.expert}</p>
+          )}
+          {p.turmaVinculada && (
+            <span className="rounded-md px-1.5 py-0.5 text-[10px] font-semibold"
+              style={{ background: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)" }}>
+              {p.turmaVinculada}
+            </span>
           )}
         </div>
 
-        {/* Promessa */}
-        {p.promessa && (
-          <p className="line-clamp-2 text-[12px] leading-relaxed" style={{ color: "var(--dm-text-secondary)" }}>
-            {p.promessa}
-          </p>
-        )}
-
-        {/* Pills de contagem */}
-        <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t" style={{ borderColor: "var(--dm-border-subtle)" }}>
-          {p.lotes.length > 0 && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)" }}>
-              {p.lotes.length} lote{p.lotes.length !== 1 ? "s" : ""}
-            </span>
-          )}
-          {(p.linksVenda.length > 0 || (p.paginasVenda?.length ?? 0) > 0) && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)" }}>
-              {p.linksVenda.length + (p.paginasVenda?.length ?? 0)} link{(p.linksVenda.length + (p.paginasVenda?.length ?? 0)) !== 1 ? "s" : ""}
-            </span>
-          )}
-          {p.entregaveis?.length > 0 && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)" }}>
-              {p.entregaveis.length} entregável{p.entregaveis.length !== 1 ? "is" : ""}
-            </span>
-          )}
+        <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+          <button type="button" onClick={stop(onEdit)} title="Editar"
+            className="flex h-7 w-7 items-center justify-center rounded-lg border transition hover:opacity-80"
+            style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>
+            <Edit3 size={12} />
+          </button>
+          <button type="button" onClick={stop(onDuplicate)} title="Duplicar"
+            className="flex h-7 w-7 items-center justify-center rounded-lg border transition hover:opacity-80"
+            style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>
+            <Copy size={12} />
+          </button>
+          <button type="button" onClick={stop(onDelete)} title="Remover"
+            className="flex h-7 w-7 items-center justify-center rounded-lg border border-red-300/40 text-red-400 transition hover:bg-red-500/10">
+            <Trash2 size={12} />
+          </button>
         </div>
       </div>
 
-      {/* Botão Visualizar — separado do editar */}
-      <button
-        type="button"
-        onClick={onView}
-        className="flex w-full items-center justify-center gap-1.5 rounded-b-[20px] border-t py-2.5 text-[12px] font-semibold transition hover:opacity-90"
-        style={{ borderColor: "var(--dm-border-default)", background: BRAND_GRAD, color: "#fff" }}
-      >
-        Visualizar produto
-      </button>
+      {/* Nome + expert */}
+      <div>
+        <h3 className="text-[15px] font-bold leading-snug" style={{ color: "var(--dm-text-primary)" }}>
+          {p.nome || "Sem nome"}
+        </h3>
+        {p.expert && (
+          <p className="mt-0.5 text-[12px]" style={{ color: "var(--dm-text-tertiary)" }}>{p.expert}</p>
+        )}
+      </div>
+
+      {/* Promessa */}
+      {p.promessa && (
+        <p className="line-clamp-2 text-[12px] leading-relaxed" style={{ color: "var(--dm-text-secondary)" }}>
+          {p.promessa}
+        </p>
+      )}
+
+      {/* Rodapé: stats sutis + preço de referência */}
+      <div className="mt-auto flex items-center justify-between border-t pt-3" style={{ borderColor: "var(--dm-border-subtle)" }}>
+        <div className="flex items-center gap-3 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
+          <span className="flex items-center gap-1" title="Lotes"><Layers size={12} /> {p.lotes.length}</span>
+          <span className="flex items-center gap-1" title="Links de venda"><Link2 size={12} /> {linkCount}</span>
+          <span className="flex items-center gap-1" title="Entregáveis"><Gift size={12} /> {delivCount}</span>
+        </div>
+        {refPrice
+          ? <span className="text-[13px] font-bold" style={{ color: "var(--dm-primary)" }}>R$ {refPrice}</span>
+          : <ArrowRight size={14} className="opacity-0 transition group-hover:opacity-100" style={{ color: "var(--dm-primary)" }} />}
+      </div>
     </article>
   );
 }
@@ -150,11 +136,9 @@ function BentoLabel({ children }: { children: React.ReactNode }) {
 function ProductViewer({ product: p, onEdit, onClose }: { product: ProductData; onEdit: () => void; onClose: () => void }) {
   const isPos   = p.type === "pos";
   const course  = COURSE_GROUPS_PRODUCT.find((g) => g.id === p.courseGroup);
-  const heroGrad = isPos
-    ? "linear-gradient(135deg, #1a1f6e 0%, #7C3AED 55%, #4d50aa 100%)"
-    : "linear-gradient(135deg, #3b0764 0%, #7c3aed 55%, #a78bfa 100%)";
-  const accentColor = isPos ? "#7C3AED" : "#7C3AED";
-  const accentLight = isPos ? "rgba(124,58,237,0.08)" : "rgba(124,58,237,0.08)";
+  const heroGrad = "linear-gradient(135deg, #0B3D24 0%, #15803D 55%, #22C55E 100%)";
+  const accentColor = "#16A34A";
+  const accentLight = "rgba(22,163,74,0.08)";
 
   const teamFields = [
     { label: "Expert",            value: p.expert },
@@ -512,18 +496,19 @@ function ProductViewer({ product: p, onEdit, onClose }: { product: ProductData; 
 // ─── Section header ───────────────────────────────────────────────────────────
 
 function SectionHeader({
-  icon: Icon, title, count, color,
+  icon: Icon, title, count,
 }: {
-  icon: React.ElementType; title: string; count: number; color: string;
+  icon: React.ElementType; title: string; count: number;
 }) {
   return (
     <div className="mb-4 flex items-center gap-3">
-      <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${color}`}>
-        <Icon size={15} />
+      <div className="flex h-8 w-8 items-center justify-center rounded-lg"
+        style={{ background: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-default)" }}>
+        <Icon size={15} style={{ color: "var(--dm-text-secondary)" }} />
       </div>
       <div>
-        <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">{title}</h2>
-        <p className="text-[11px] text-slate-400 dark:text-slate-500">{count} produto{count !== 1 ? "s" : ""}</p>
+        <h2 className="text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>{title}</h2>
+        <p className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>{count} produto{count !== 1 ? "s" : ""}</p>
       </div>
     </div>
   );
@@ -534,22 +519,23 @@ function SectionHeader({
 function EmptyState({ type, onAdd }: { type: ProductType; onAdd: () => void }) {
   const isPos = type === "pos";
   return (
-    <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 py-10 text-center dark:border-slate-700 dark:bg-slate-800/40">
-      <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${isPos ? "bg-blue-50 dark:bg-blue-900/30" : "bg-violet-50 dark:bg-violet-900/30"}`}>
-        {isPos ? <GraduationCap size={20} className="text-blue-400" /> : <CalendarDays size={20} className="text-violet-400" />}
+    <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed py-10 text-center"
+      style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-elevated)" }}>
+      <div className="flex h-12 w-12 items-center justify-center rounded-xl" style={{ background: "var(--dm-primary-soft)" }}>
+        {isPos ? <GraduationCap size={20} style={{ color: "var(--dm-primary)" }} /> : <CalendarDays size={20} style={{ color: "var(--dm-primary)" }} />}
       </div>
       <div>
-        <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">
+        <p className="text-sm font-semibold" style={{ color: "var(--dm-text-secondary)" }}>
           Nenhuma {isPos ? "pós-graduação" : "imersão"} cadastrada
         </p>
-        <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">
+        <p className="mt-0.5 text-xs" style={{ color: "var(--dm-text-tertiary)" }}>
           Clique em <span className="font-semibold">+ Novo produto</span> para adicionar
         </p>
       </div>
       <button
         type="button"
         onClick={onAdd}
-        className={`mt-1 flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold text-white shadow-sm transition ${isPos ? "bg-brand hover:bg-brand-hover" : "bg-violet-600 hover:bg-violet-700"}`}
+        className="mt-1 flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-hover"
       >
         <Plus size={12} /> Adicionar {isPos ? "Pós Graduação" : "Imersão"}
       </button>
@@ -561,19 +547,37 @@ function EmptyState({ type, onAdd }: { type: ProductType; onAdd: () => void }) {
 
 type View = "list" | "add" | "edit" | "view";
 
-export function ProductBase() {
+interface ProductBaseProps {
+  // Seleção do produto aberto, controlada pelo Dashboard (mantém ao trocar de aba + nomeia a aba).
+  viewId?: string | null;
+  onOpenView?: (p: ProductData) => void;
+  onCloseView?: () => void;
+}
+
+export function ProductBase({ viewId, onOpenView, onCloseView }: ProductBaseProps = {}) {
+  const controlled = onOpenView !== undefined;
   const [view,    setView]    = useState<View>("list");
   const [editing, setEditing] = useState<ProductData | null>(null);
-  const [viewing, setViewing] = useState<ProductData | null>(null);
+  const [localViewId, setLocalViewId] = useState<string | null>(null);
 
   const { products, addProduct, updateProduct, deleteProduct, syncStatus } = useProductStore();
+
+  const effectiveViewId = controlled ? (viewId ?? null) : localViewId;
+  const viewing = effectiveViewId ? products.find((p) => p.id === effectiveViewId) ?? null : null;
 
   const posList     = products.filter((p) => p.type === "pos");
   const imersaoList = products.filter((p) => p.type === "imersao");
 
   const handleAdd = () => { setEditing(null); setView("add"); };
 
-  const handleView = (p: ProductData) => { setViewing(p); setView("view"); };
+  const handleView = (p: ProductData) => {
+    if (controlled) onOpenView!(p);
+    else setLocalViewId(p.id);
+  };
+  const handleCloseView = () => {
+    if (controlled) onCloseView!();
+    else setLocalViewId(null);
+  };
 
   const handleEdit = (p: ProductData) => { setEditing(p); setView("edit"); };
 
@@ -596,24 +600,24 @@ export function ProductBase() {
 
   const handleCancel = () => { setView("list"); setEditing(null); };
 
-  // ── Viewer (read-only) ────────────────────────────────────────────────────
-  if (view === "view" && viewing) {
-    return (
-      <ProductViewer
-        product={viewing}
-        onEdit={() => { setEditing(viewing); setView("edit"); }}
-        onClose={() => { setViewing(null); setView("list"); }}
-      />
-    );
-  }
-
-  // ── Form view ──────────────────────────────────────────────────────────────
+  // ── Form view (add/edit tem prioridade) ───────────────────────────────────
   if (view === "add" || view === "edit") {
     return (
       <ProductForm
         product={editing}
         onSave={handleSave}
         onCancel={handleCancel}
+      />
+    );
+  }
+
+  // ── Viewer (read-only) — controlado por viewId ────────────────────────────
+  if (viewing) {
+    return (
+      <ProductViewer
+        product={viewing}
+        onEdit={() => { setEditing(viewing); setView("edit"); }}
+        onClose={handleCloseView}
       />
     );
   }
@@ -683,7 +687,6 @@ export function ProductBase() {
           icon={GraduationCap}
           title="Pós Graduação"
           count={posList.length}
-          color="bg-blue-100 text-blue-600"
         />
         {posList.length === 0 ? (
           <EmptyState type="pos" onAdd={handleAdd} />
@@ -702,10 +705,11 @@ export function ProductBase() {
             <button
               type="button"
               onClick={handleAdd}
-              className="flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-200 py-8 text-center transition hover:border-blue-300 hover:bg-blue-50 dark:border-slate-700 dark:hover:border-blue-600 dark:hover:bg-blue-900/10"
+              className="flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed py-8 text-center transition hover:bg-[var(--dm-primary-soft)]"
+              style={{ borderColor: "var(--dm-border-default)" }}
             >
-              <Plus size={18} className="text-slate-300 dark:text-slate-600" />
-              <span className="text-xs font-semibold text-slate-400 dark:text-slate-500">Nova Pós Graduação</span>
+              <Plus size={18} style={{ color: "var(--dm-text-tertiary)" }} />
+              <span className="text-xs font-semibold" style={{ color: "var(--dm-text-tertiary)" }}>Nova Pós Graduação</span>
             </button>
           </div>
         )}
@@ -717,7 +721,6 @@ export function ProductBase() {
           icon={CalendarDays}
           title="Imersões"
           count={imersaoList.length}
-          color="bg-violet-100 text-violet-600"
         />
         {imersaoList.length === 0 ? (
           <EmptyState type="imersao" onAdd={handleAdd} />
@@ -736,10 +739,11 @@ export function ProductBase() {
             <button
               type="button"
               onClick={handleAdd}
-              className="flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-200 py-8 text-center transition hover:border-violet-300 hover:bg-violet-50 dark:border-slate-700 dark:hover:border-violet-600 dark:hover:bg-violet-900/10"
+              className="flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed py-8 text-center transition hover:bg-[var(--dm-primary-soft)]"
+              style={{ borderColor: "var(--dm-border-default)" }}
             >
-              <Plus size={18} className="text-slate-300 dark:text-slate-600" />
-              <span className="text-xs font-semibold text-slate-400 dark:text-slate-500">Nova Imersão</span>
+              <Plus size={18} style={{ color: "var(--dm-text-tertiary)" }} />
+              <span className="text-xs font-semibold" style={{ color: "var(--dm-text-tertiary)" }}>Nova Imersão</span>
             </button>
           </div>
         )}

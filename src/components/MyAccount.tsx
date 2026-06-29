@@ -35,7 +35,7 @@ export function accountTabsForRole(isOwner: boolean): AccountTab[] {
 const ACCOUNT_ROLE_LABELS: Record<CompanyRole, string> = {
   owner: "Dono", manager: "Gestor de tráfego", viewer: "Visualização",
 };
-const ACCOUNT_ROLE_COLORS: Record<CompanyRole, string> = { owner: "#8b5cf6", manager: "#10b981", viewer: "#64748b" };
+const ACCOUNT_ROLE_COLORS: Record<CompanyRole, string> = { owner: "#22C55E", manager: "#10b981", viewer: "#64748b" };
 
 interface MyAccountProps {
   userName:           string;
@@ -200,18 +200,18 @@ function TabPersonalization() {
       {/* ── Modo DEV — acesso total ── */}
       <div className="rounded-xl p-4"
         style={{
-          background: devActive ? "rgba(124,58,237,0.08)" : "var(--dm-bg-elevated)",
-          border: `1px solid ${devActive ? "#7C3AED" : "var(--dm-border-subtle)"}`,
+          background: devActive ? "rgba(22,163,74,0.08)" : "var(--dm-bg-elevated)",
+          border: `1px solid ${devActive ? "#16A34A" : "var(--dm-border-subtle)"}`,
         }}>
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-2.5">
             <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full"
-              style={{ backgroundColor: devActive ? "#7C3AED" : "rgba(124,58,237,0.12)" }}>
-              <KeyRound size={16} style={{ color: devActive ? "#fff" : "#7C3AED" }} />
+              style={{ backgroundColor: devActive ? "#16A34A" : "rgba(22,163,74,0.12)" }}>
+              <KeyRound size={16} style={{ color: devActive ? "#fff" : "#16A34A" }} />
             </div>
             <div>
               <p className="text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>
-                Modo DEV {devActive && <span className="ml-1 text-[11px] font-bold" style={{ color: "#7C3AED" }}>· ativo</span>}
+                Modo DEV {devActive && <span className="ml-1 text-[11px] font-bold" style={{ color: "#16A34A" }}>· ativo</span>}
               </p>
               <p className="mt-0.5 text-xs" style={{ color: "var(--dm-text-tertiary)" }}>
                 Acesso total: destrava a configuração de qualquer empresa, tokens e membros — você é tratado como dono em tudo.
@@ -331,7 +331,7 @@ export function MyAccount({
           style={{
             width: 320, height: 320,
             bottom: -120, right: -60,
-            background: "radial-gradient(circle, rgba(108,112,255,0.18) 0%, transparent 70%)",
+            background: "radial-gradient(circle, rgba(22,163,74,0.18) 0%, transparent 70%)",
           }}
         />
         <div
@@ -339,7 +339,7 @@ export function MyAccount({
           style={{
             width: 200, height: 200,
             top: -60, left: "30%",
-            background: "radial-gradient(circle, rgba(124,58,237,0.22) 0%, transparent 70%)",
+            background: "radial-gradient(circle, rgba(22,163,74,0.22) 0%, transparent 70%)",
           }}
         />
       </div>
@@ -356,7 +356,7 @@ export function MyAccount({
             onClick={() => setPickerOpen(true)}
             title="Alterar foto de perfil"
             className="account-avatar text-2xl overflow-hidden transition hover:opacity-85 focus:outline-none"
-            style={{ padding: 0, border: "2px solid rgba(124,58,237,0.35)" }}
+            style={{ padding: 0, border: "2px solid rgba(22,163,74,0.35)" }}
           >
             {resolvedAvatarSrc ? (
               <img src={resolvedAvatarSrc} alt="Avatar" className="h-full w-full object-cover" />
@@ -398,7 +398,7 @@ export function MyAccount({
             <div className="mt-2.5 flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold"
                 style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-elevated)", color: "var(--dm-text-secondary)" }}>
-                <Building2 size={12} style={{ color: "#7C3AED" }} />
+                <Building2 size={12} style={{ color: "#16A34A" }} />
                 {company.name}
                 {role && (
                   <span className="font-bold" style={{ color: ACCOUNT_ROLE_COLORS[role] }}>
@@ -410,7 +410,7 @@ export function MyAccount({
               {memberships.length > 1 && (
                 <label className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold cursor-pointer"
                   style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)", color: "var(--dm-text-secondary)" }}>
-                  <ArrowLeftRight size={12} style={{ color: "#7C3AED" }} />
+                  <ArrowLeftRight size={12} style={{ color: "#16A34A" }} />
                   <select value={company.id} onChange={(e) => switchCompany(e.target.value)} aria-label="Trocar empresa ativa"
                     className="cursor-pointer bg-transparent text-[11px] font-semibold outline-none" style={{ color: "var(--dm-text-secondary)" }}>
                     {memberships.map((m) => <option key={m.company.id} value={m.company.id}>{m.company.name}</option>)}

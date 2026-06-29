@@ -10,7 +10,7 @@ import {
   Upload, TrendingUp, ShoppingCart, DollarSign, Target,
   ArrowRight, CheckCircle2, XCircle, Plus, Pencil, Trash2, X, Copy,
   BarChart2, Package, Cloud, CloudOff, Loader2, CalendarDays, Camera, Repeat, Wallet,
-  ArrowUpDown, ArrowUp, ArrowDown, Tag,
+  ArrowUpDown, ArrowUp, ArrowDown, Tag, Layers, Filter, FileText,
 } from "lucide-react";
 import { HistoricoEmpty } from "@/components/empty/HistoricoEmpty";
 import {
@@ -317,6 +317,21 @@ const fmtNum = (n: number) =>
 
 // ─── Entry Form modal ─────────────────────────────────────────────────────────
 
+// Cabeçalho de seção estilo HubSettings: chip de ícone + título (+ subtítulo).
+function SectionHead({ icon: Icon, title, sub }: { icon: React.ElementType; title: string; sub?: string }) {
+  return (
+    <div className="mb-4 flex items-center gap-3">
+      <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl" style={{ background: "var(--dm-primary-soft)", border: "1px solid var(--dm-primary-border)" }}>
+        <Icon size={16} style={{ color: "var(--dm-primary)" }} />
+      </div>
+      <div>
+        <p className="text-sm font-bold leading-tight" style={{ color: "var(--dm-text-primary)" }}>{title}</p>
+        {sub && <p className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>{sub}</p>}
+      </div>
+    </div>
+  );
+}
+
 interface EntryFormProps {
   form: FormState; products: string[]; isEditing: boolean;
   customTags: string[];
@@ -394,46 +409,49 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
     };
   }, [form]);
 
-  const fieldCls = "h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-600 dark:bg-[#151821] dark:text-slate-200 dark:focus:border-blue-500";
-  const labelCls = "flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-slate-400";
+  const fieldCls = "h-9 w-full rounded-lg border px-3 text-sm outline-none transition focus:border-[color:var(--dm-primary)] focus:ring-2 focus:ring-[color:var(--dm-primary-soft)] border-[color:var(--dm-border-default)] bg-[var(--dm-bg-elevated)] text-[color:var(--dm-text-primary)]";
+  const labelCls = "flex flex-col gap-1 text-xs font-medium text-[color:var(--dm-text-secondary)]";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-8 sm:p-8">
-      <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl dark:bg-[#11131A]">
-        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-4 sm:px-6 dark:border-slate-700">
-          <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+    <div
+      className="fixed inset-0 z-[120] flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-md" />
+      <div
+        className="relative z-10 flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border shadow-2xl"
+        style={{ background: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex flex-shrink-0 items-center justify-between border-b px-5 py-4" style={{ borderColor: "var(--dm-border-default)" }}>
+          <h2 className="text-base font-bold" style={{ color: "var(--dm-text-primary)" }}>
             {isEditing ? "Editar Registro" : "Adicionar Registro"}
           </h2>
-          <button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-700 dark:hover:text-slate-300">
+          <button onClick={onClose} className="flex h-7 w-7 items-center justify-center rounded-lg transition hover:opacity-70" style={{ color: "var(--dm-text-tertiary)" }}>
             <X size={18} />
           </button>
         </div>
 
-        <form onSubmit={onSubmit} className="divide-y divide-slate-100 dark:divide-slate-700">
+        <form onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="flex-1 space-y-4 overflow-y-auto p-5">
           {/* Tipo de dado */}
-          <div className="px-4 py-4 sm:px-6">
-            <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Tipo de dado</p>
+          <div className="rounded-xl border border-[color:var(--dm-border-default)] bg-[var(--dm-bg-elevated)] p-5">
+            <SectionHead icon={Layers} title="Tipo de dado" sub="Escolha o que você está registrando" />
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {[
                 ...HISTORY_TABS.map((t) => ({ id: t.id as HistoricalKind, Icon: t.icon, label: historyKindLabel(t.id, histLabels), custom: false })),
                 ...customTabs.map((t) => ({ id: t.id as HistoricalKind, Icon: Tag, label: t.label, custom: true })),
               ].map(({ id, Icon, label, custom }) => {
                 const active = form.kind === id;
-                const builtinColors: Record<string, string> = {
-                  lancamento: active ? "border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" : "border-slate-200 text-slate-600 hover:border-blue-300 dark:border-slate-600 dark:text-slate-400",
-                  evento:     active ? "border-rose-500 bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300" : "border-slate-200 text-slate-600 hover:border-rose-300 dark:border-slate-600 dark:text-slate-400",
-                  perpetuo:   active ? "border-amber-500 bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" : "border-slate-200 text-slate-600 hover:border-amber-300 dark:border-slate-600 dark:text-slate-400",
-                  instagram:  active ? "border-violet-500 bg-violet-50 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300" : "border-slate-200 text-slate-600 hover:border-violet-300 dark:border-slate-600 dark:text-slate-400",
-                };
-                const customColor = active
-                  ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300"
-                  : "border-slate-200 text-slate-600 hover:border-indigo-300 dark:border-slate-600 dark:text-slate-400";
                 return (
                   <button
                     key={id}
                     type="button"
                     onClick={() => onChange({ ...form, kind: id, tag: "" })}
-                    className={`flex items-center justify-center gap-2 rounded-lg border-2 px-3 py-2.5 text-xs font-semibold transition ${custom ? customColor : builtinColors[id]}`}
+                    className="flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-xs font-semibold transition"
+                    style={active
+                      ? { borderColor: "var(--dm-primary)", background: "var(--dm-primary-soft)", color: "var(--dm-primary)" }
+                      : { borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}
                   >
                     <Icon size={14} />
                     {label}
@@ -443,8 +461,8 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
             </div>
           </div>
 
-          <div className="px-4 py-5 sm:px-6">
-            <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Identificação</p>
+          <div className="rounded-xl border border-[color:var(--dm-border-default)] bg-[var(--dm-bg-elevated)] p-5">
+            <SectionHead icon={FileText} title="Identificação" sub="Produto, turma e período" />
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <label className={`${labelCls} sm:col-span-2`}>
                 Produto / Campanha *
@@ -481,7 +499,7 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
           {/* ── Categoria / Tag ── */}
           {allTags.length > 0 || canAddTag ? (
             <div className="px-4 py-4 sm:px-6">
-              <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Categoria / Tag</p>
+              <SectionHead icon={Tag} title="Categoria / Tag" sub="Classifique o registro" />
               <div className="flex flex-wrap gap-2">
                 {allTags.map((t) => {
                   const active = form.tag === t;
@@ -490,11 +508,10 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
                       key={t}
                       type="button"
                       onClick={() => onChange({ ...form, tag: active ? "" : t })}
-                      className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition ${
-                        active
-                          ? "border-blue-500 bg-blue-50 text-blue-700 dark:border-blue-500 dark:bg-blue-900/30 dark:text-blue-300"
-                          : "border-slate-200 text-slate-600 hover:border-blue-300 dark:border-slate-600 dark:text-slate-400"
-                      }`}
+                      className="flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition"
+                      style={active
+                        ? { borderColor: "var(--dm-primary)", background: "var(--dm-primary-soft)", color: "var(--dm-primary)" }
+                        : { borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}
                     >
                       <Tag size={11} />
                       {t}
@@ -509,16 +526,17 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
                       onChange={(e) => setTagDraft(e.target.value)}
                       onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddTag(); } if (e.key === "Escape") { setShowTagInput(false); setTagDraft(""); } }}
                       placeholder="Nome da tag"
-                      className="h-7 w-32 rounded-full border border-blue-400 bg-white px-3 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-100 dark:bg-[#151821] dark:text-slate-200"
+                      className="h-7 w-32 rounded-full border px-3 text-xs outline-none focus:ring-2 focus:ring-[color:var(--dm-primary-soft)] border-[color:var(--dm-primary)] bg-[var(--dm-bg-elevated)] text-[color:var(--dm-text-primary)]"
                     />
-                    <button type="button" onClick={handleAddTag} className="rounded-full bg-blue-500 px-2 py-0.5 text-xs font-semibold text-white hover:bg-blue-600">OK</button>
-                    <button type="button" onClick={() => { setShowTagInput(false); setTagDraft(""); }} className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-400">✕</button>
+                    <button type="button" onClick={handleAddTag} className="rounded-full px-2 py-0.5 text-xs font-semibold text-white" style={{ background: "var(--dm-primary)" }}>OK</button>
+                    <button type="button" onClick={() => { setShowTagInput(false); setTagDraft(""); }} className="rounded-full border px-2 py-0.5 text-xs hover:opacity-80" style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-tertiary)" }}>✕</button>
                   </div>
                 ) : canAddTag ? (
                   <button
                     type="button"
                     onClick={() => setShowTagInput(true)}
-                    className="flex items-center gap-1 rounded-full border border-dashed border-slate-300 px-3 py-1 text-xs text-slate-400 transition hover:border-blue-400 hover:text-blue-500 dark:border-slate-600"
+                    className="flex items-center gap-1 rounded-full border border-dashed px-3 py-1 text-xs transition hover:border-[color:var(--dm-primary-border)] hover:text-[color:var(--dm-primary)]"
+                    style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-tertiary)" }}
                   >
                     <Plus size={11} /> Nova tag
                   </button>
@@ -530,8 +548,8 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
           {/* ── Kind-contextual fields ── */}
           {fk === "instagram" ? (
             /* Instagram: followers & engagement */
-            <div className="px-4 py-5 sm:px-6">
-              <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Dados do Perfil</p>
+            <div className="rounded-xl border border-[color:var(--dm-border-default)] bg-[var(--dm-bg-elevated)] p-5">
+              <SectionHead icon={Camera} title="Dados do Perfil" sub="Métricas do Instagram" />
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 <label className={labelCls}>Seguidores Ganhos *<input required value={form.followersGained} onChange={set("followersGained")} placeholder="340" className={fieldCls} /></label>
                 <label className={labelCls}>Seguidores Perdidos<input value={form.followersLost} onChange={set("followersLost")} placeholder="45" className={fieldCls} /></label>
@@ -544,17 +562,17 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
                 <label className={labelCls}>Compartilhamentos<input value={form.shares} onChange={set("shares")} placeholder="180" className={fieldCls} /></label>
               </div>
               {/* Instagram preview */}
-              <div className="mt-3 bg-slate-50 rounded-lg px-3 py-3 dark:bg-[#151821]/40">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Calculado automaticamente</p>
+              <div className="mt-3 rounded-lg px-3 py-3 border border-[color:var(--dm-border-subtle)] bg-[var(--dm-bg-surface)]">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-[color:var(--dm-text-tertiary)]">Calculado automaticamente</p>
                 <div className="flex flex-wrap gap-2">
                   {[
                     { label: "Saldo", val: `${p(form.followersGained) - p(form.followersLost) >= 0 ? "+" : ""}${p(form.followersGained) - p(form.followersLost)}` },
                     { label: "CTR Link", val: p(form.reach) > 0 ? `${((p(form.clicks)/p(form.reach))*100).toFixed(2)}%` : "—" },
                     { label: "Tx. Eng.", val: p(form.impressionsCount) > 0 ? `${(((p(form.likes)+p(form.comments)+p(form.shares))/p(form.impressionsCount))*100).toFixed(2)}%` : "—" },
                   ].map(({ label, val }) => (
-                    <div key={label} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 dark:border-slate-600 dark:bg-[#151821]">
-                      <p className="text-xs text-slate-400 dark:text-slate-500">{label}</p>
-                      <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{val}</p>
+                    <div key={label} className="rounded-lg border border-[color:var(--dm-border-default)] bg-[var(--dm-bg-elevated)] px-3 py-1.5">
+                      <p className="text-xs text-[color:var(--dm-text-tertiary)]">{label}</p>
+                      <p className="text-sm font-semibold text-[color:var(--dm-text-primary)]">{val}</p>
                     </div>
                   ))}
                 </div>
@@ -562,8 +580,8 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
             </div>
           ) : fk === "perpetuo" ? (
             /* Perpétuo: continuous product funnel */
-            <div className="px-4 py-5 sm:px-6">
-              <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Métricas do Mês</p>
+            <div className="rounded-xl border border-[color:var(--dm-border-default)] bg-[var(--dm-bg-elevated)] p-5">
+              <SectionHead icon={BarChart2} title="Métricas do Mês" sub="Resultados do período" />
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 <label className={labelCls}>Investimento (R$) *<input required value={form.investment} onChange={set("investment")} onBlur={blurMoney("investment")} placeholder="8.544,26" className={fieldCls} /></label>
                 <label className={labelCls}>CPM (R$)<input value={form.cpm} onChange={set("cpm")} onBlur={blurMoney("cpm")} placeholder="11,47" className={fieldCls} /></label>
@@ -575,8 +593,8 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
                 <label className={labelCls}>MRR (R$)<input value={form.mrr} onChange={set("mrr")} onBlur={blurMoney("mrr")} placeholder="16.309,00" className={fieldCls} /></label>
                 <label className={labelCls}>Churn (%)<input value={form.churn} onChange={set("churn")} placeholder="2.5" className={fieldCls} /></label>
               </div>
-              <div className="mt-3 bg-slate-50 rounded-lg px-3 py-3 dark:bg-[#151821]/40">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Calculado automaticamente</p>
+              <div className="mt-3 rounded-lg px-3 py-3 border border-[color:var(--dm-border-subtle)] bg-[var(--dm-bg-surface)]">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-[color:var(--dm-text-tertiary)]">Calculado automaticamente</p>
                 <div className="flex flex-wrap gap-2">
                   {[
                     { label: "CTR",      val: preview.ctr !== null ? `${preview.ctr.toFixed(2)}%` : "—" },
@@ -585,9 +603,9 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
                     { label: "CAC",      val: preview.cac !== null ? formatCurrency(preview.cac) : "—" },
                     { label: "ROAS",     val: preview.roas !== null ? `${preview.roas.toFixed(2)}x` : "—" },
                   ].map(({ label, val }) => (
-                    <div key={label} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 dark:border-slate-600 dark:bg-[#151821]">
-                      <p className="text-xs text-slate-400 dark:text-slate-500">{label}</p>
-                      <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{val}</p>
+                    <div key={label} className="rounded-lg border border-[color:var(--dm-border-default)] bg-[var(--dm-bg-elevated)] px-3 py-1.5">
+                      <p className="text-xs text-[color:var(--dm-text-tertiary)]">{label}</p>
+                      <p className="text-sm font-semibold text-[color:var(--dm-text-primary)]">{val}</p>
                     </div>
                   ))}
                 </div>
@@ -595,10 +613,10 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
             </div>
           ) : fk === "lancamento" ? (
             /* Lançamento: funil + breakdown imersão / pós */
-            <div className="px-4 py-5 sm:px-6 space-y-4">
+            <div className="rounded-xl border border-[color:var(--dm-border-default)] bg-[var(--dm-bg-elevated)] p-5 space-y-4">
               {/* Funil de tráfego */}
               <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Funil de tráfego</p>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-[color:var(--dm-text-tertiary)]">Funil de tráfego</p>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                   <label className={labelCls}>Investimento (R$) *<input required value={form.investment} onChange={set("investment")} onBlur={blurMoney("investment")} placeholder="185.665,00" className={fieldCls} /></label>
                   <label className={labelCls}>CPM (R$)<input value={form.cpm} onChange={set("cpm")} onBlur={blurMoney("cpm")} placeholder="11,47" className={fieldCls} /></label>
@@ -611,7 +629,7 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
 
               {/* Imersão */}
               <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-[color:var(--dm-text-tertiary)]">
                   Imersão{form.imersao ? ` — ${form.imersao}` : ""}
                 </p>
                 <div className="grid grid-cols-2 gap-3">
@@ -622,7 +640,7 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
 
               {/* Pós-graduação */}
               <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Pós-graduação</p>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-[color:var(--dm-text-tertiary)]">Pós-graduação</p>
                 <div className="grid grid-cols-2 gap-3">
                   <label className={labelCls}>Vendas de Pós *<input required value={form.vendasPos} onChange={set("vendasPos")} placeholder="93" className={fieldCls} /></label>
                   <label className={labelCls}>Faturamento do Pós (R$)<input value={form.faturamentoPos} onChange={set("faturamentoPos")} onBlur={blurMoney("faturamentoPos")} placeholder="16.503,00" className={fieldCls} /></label>
@@ -630,8 +648,8 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
               </div>
 
               {/* Calculado automaticamente */}
-              <div className="bg-slate-50 rounded-lg px-3 py-3 dark:bg-[#151821]/40">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Calculado automaticamente</p>
+              <div className="rounded-lg px-3 py-3 border border-[color:var(--dm-border-subtle)] bg-[var(--dm-bg-surface)]">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-[color:var(--dm-text-tertiary)]">Calculado automaticamente</p>
                 <div className="flex flex-wrap gap-2">
                   {[
                     { label: "CTR",          val: preview.ctr !== null           ? `${preview.ctr.toFixed(2)}%`           : "—" },
@@ -642,18 +660,18 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
                     { label: "CAC",         val: preview.cacLanc !== null         ? formatCurrency(preview.cacLanc)          : "—" },
                     { label: "ROAS",        val: preview.roasLanc !== null        ? `${preview.roasLanc.toFixed(2)}x`        : "—" },
                   ].map(({ label, val }) => (
-                    <div key={label} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 dark:border-slate-600 dark:bg-[#151821]">
-                      <p className="text-xs text-slate-400 dark:text-slate-500">{label}</p>
-                      <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{val}</p>
+                    <div key={label} className="rounded-lg border border-[color:var(--dm-border-default)] bg-[var(--dm-bg-elevated)] px-3 py-1.5">
+                      <p className="text-xs text-[color:var(--dm-text-tertiary)]">{label}</p>
+                      <p className="text-sm font-semibold text-[color:var(--dm-text-primary)]">{val}</p>
                     </div>
                   ))}
                   {/* Breakdown de faturamento */}
                   {(preview.fatIngresso !== null || preview.fatPos !== null) && (
                     <div className="w-full mt-1 flex flex-wrap gap-2">
                       {preview.fatIngresso !== null && (
-                        <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 dark:border-indigo-700 dark:bg-indigo-900/20">
-                          <p className="text-xs text-indigo-400 dark:text-indigo-400">Fat. Ingresso</p>
-                          <p className="text-sm font-semibold text-indigo-700 dark:text-indigo-300">{formatCurrency(preview.fatIngresso)}</p>
+                        <div className="rounded-lg border border-[color:var(--dm-border-default)] bg-[var(--dm-bg-elevated)] px-3 py-1.5">
+                          <p className="text-xs text-[color:var(--dm-text-tertiary)]">Fat. Ingresso</p>
+                          <p className="text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>{formatCurrency(preview.fatIngresso)}</p>
                         </div>
                       )}
                       {preview.fatPos !== null && (
@@ -663,8 +681,8 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
                         </div>
                       )}
                       {preview.fatIngresso !== null && preview.fatPos !== null && (
-                        <div className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 dark:border-slate-600 dark:bg-[#151821]">
-                          <p className="text-xs text-slate-400 dark:text-slate-500">Total</p>
+                        <div className="rounded-lg border border-[color:var(--dm-border-default)] bg-[var(--dm-bg-elevated)] px-3 py-1.5">
+                          <p className="text-xs text-[color:var(--dm-text-tertiary)]">Total</p>
                           <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{formatCurrency(preview.fatIngresso + preview.fatPos)}</p>
                         </div>
                       )}
@@ -675,8 +693,8 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
             </div>
           ) : (
             /* Evento: funil padrão */
-            <div className="px-4 py-5 sm:px-6">
-              <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Funil de tráfego</p>
+            <div className="rounded-xl border border-[color:var(--dm-border-default)] bg-[var(--dm-bg-elevated)] p-5">
+              <SectionHead icon={Filter} title="Funil de tráfego" sub="Investimento e métricas de mídia" />
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 <label className={labelCls}>Investimento (R$) *<input required value={form.investment} onChange={set("investment")} onBlur={blurMoney("investment")} placeholder="8.544,26" className={fieldCls} /></label>
                 <label className={labelCls}>CPM (R$)<input value={form.cpm} onChange={set("cpm")} onBlur={blurMoney("cpm")} placeholder="11,47" className={fieldCls} /></label>
@@ -691,8 +709,8 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
               </div>
 
               {/* Métricas personalizadas — livres, só desse registro */}
-              <div className="mt-3 bg-slate-50 rounded-lg px-3 py-3 dark:bg-[#151821]/40">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Métricas personalizadas</p>
+              <div className="mt-3 rounded-lg px-3 py-3 border border-[color:var(--dm-border-subtle)] bg-[var(--dm-bg-surface)]">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-[color:var(--dm-text-tertiary)]">Métricas personalizadas</p>
                 {form.customMetrics.length > 0 && (
                   <div className="mb-2 flex flex-col gap-2">
                     {form.customMetrics.map((m) => (
@@ -736,7 +754,8 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
                       key={s}
                       type="button"
                       onClick={() => addCustomMetric(s)}
-                      className="inline-flex items-center gap-1 rounded-full border border-dashed border-slate-300 px-2.5 py-1 text-[11px] font-medium text-slate-400 transition hover:border-blue-400 hover:text-blue-500 dark:border-slate-600 dark:text-slate-500 dark:hover:border-blue-500 dark:hover:text-blue-400"
+                      className="inline-flex items-center gap-1 rounded-full border border-dashed px-2.5 py-1 text-[11px] font-medium transition hover:border-[color:var(--dm-primary-border)] hover:text-[color:var(--dm-primary)]"
+                      style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-tertiary)" }}
                     >
                       <Plus size={10} /> {s}
                     </button>
@@ -744,15 +763,16 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
                   <button
                     type="button"
                     onClick={() => addCustomMetric()}
-                    className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-[#151821] dark:text-slate-300 dark:hover:bg-slate-700"
+                    className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition hover:opacity-80"
+                    style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-elevated)", color: "var(--dm-text-secondary)" }}
                   >
                     <Plus size={10} /> Campo personalizado
                   </button>
                 </div>
               </div>
 
-              <div className="mt-3 bg-slate-50 rounded-lg px-3 py-3 dark:bg-[#151821]/40">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Calculado automaticamente</p>
+              <div className="mt-3 rounded-lg px-3 py-3 border border-[color:var(--dm-border-subtle)] bg-[var(--dm-bg-surface)]">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-[color:var(--dm-text-tertiary)]">Calculado automaticamente</p>
                 <div className="flex flex-wrap gap-2">
                   {[
                     { label: "CTR",          val: preview.ctr !== null             ? `${preview.ctr.toFixed(2)}%`             : "—" },
@@ -762,9 +782,9 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
                     { label: "CAC",          val: preview.cac !== null              ? formatCurrency(preview.cac)              : "—" },
                     { label: "ROAS",         val: preview.roas !== null             ? `${preview.roas.toFixed(2)}x`            : "—" },
                   ].map(({ label, val }) => (
-                    <div key={label} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 dark:border-slate-600 dark:bg-[#151821]">
-                      <p className="text-xs text-slate-400 dark:text-slate-500">{label}</p>
-                      <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{val}</p>
+                    <div key={label} className="rounded-lg border border-[color:var(--dm-border-default)] bg-[var(--dm-bg-elevated)] px-3 py-1.5">
+                      <p className="text-xs text-[color:var(--dm-text-tertiary)]">{label}</p>
+                      <p className="text-sm font-semibold text-[color:var(--dm-text-primary)]">{val}</p>
                     </div>
                   ))}
                 </div>
@@ -772,11 +792,17 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
             </div>
           )}
 
-          <div className="flex flex-col-reverse justify-end gap-2 px-4 py-4 sm:flex-row sm:px-6">
-            <button type="button" onClick={onClose} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:bg-[#151821] dark:text-slate-300 dark:hover:bg-slate-600">
+          </div>
+
+          <div className="flex flex-shrink-0 flex-col-reverse justify-end gap-2 border-t px-5 py-4 sm:flex-row" style={{ borderColor: "var(--dm-border-default)" }}>
+            <button type="button" onClick={onClose}
+              className="rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80"
+              style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>
               Cancelar
             </button>
-            <button type="submit" className="rounded-lg bg-brand px-5 py-2 text-sm font-medium text-white transition hover:bg-brand-hover">
+            <button type="submit"
+              className="rounded-lg px-5 py-2 text-sm font-bold text-white transition hover:opacity-90"
+              style={{ background: "var(--dm-btn-primary-bg)" }}>
               {isEditing ? "Salvar alterações" : "Adicionar"}
             </button>
           </div>
@@ -1438,7 +1464,7 @@ export function HistoricalView({ selectedKind: propKind, onKindChange }: Histori
                     <Legend wrapperStyle={{ fontSize: 11 }} />
                     <Bar yAxisId="left" dataKey="investment" name="Investimento" fill="#2563eb" opacity={0.8} radius={[3, 3, 0, 0]} />
                     <Bar yAxisId="left" dataKey="revenue"    name="Faturamento"  fill="#059669" opacity={0.8} radius={[3, 3, 0, 0]} />
-                    <Line yAxisId="right" type="monotone" dataKey="sales" name="Vendas" stroke="#8b5cf6" strokeWidth={2} dot={{ r: 3, fill: "#8b5cf6" }} />
+                    <Line yAxisId="right" type="monotone" dataKey="sales" name="Vendas" stroke="#22C55E" strokeWidth={2} dot={{ r: 3, fill: "#22C55E" }} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
@@ -1542,7 +1568,7 @@ export function HistoricalView({ selectedKind: propKind, onKindChange }: Histori
                     </button>
                   ))}
                 </div>
-                <p className="text-xs text-slate-400 dark:text-slate-500">{sortedFiltered.length} registros</p>
+                <p className="text-xs text-[color:var(--dm-text-tertiary)]">{sortedFiltered.length} registros</p>
                 {Object.keys(colWidths).length > 0 && (
                   <button
                     type="button"
@@ -1690,7 +1716,7 @@ export function HistoricalView({ selectedKind: propKind, onKindChange }: Histori
                           <td className="whitespace-nowrap px-3 py-2">
                             <ProductCell product={r.product} turma={r.turma} tag={r.tag} />
                           </td>
-                          <td className="whitespace-nowrap px-3 py-2 max-w-[120px] truncate text-slate-400 dark:text-slate-500" title={imersao}>
+                          <td className="whitespace-nowrap px-3 py-2 max-w-[120px] truncate text-[color:var(--dm-text-tertiary)]" title={imersao}>
                             {imersao ?? "—"}
                           </td>
                           <td className="whitespace-nowrap px-3 py-2">{r.investment > 0 ? formatCurrency(r.investment) : "—"}</td>

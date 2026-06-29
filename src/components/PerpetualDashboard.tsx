@@ -161,7 +161,7 @@ function ProdutoCard({ id, data }: { id: ProdutoKey; data: ProdutoData }) {
   const mainColor = semColor(pctLeads);
 
   return (
-    <article className="rounded-[20px] border bg-white dark:bg-[#111c44] shadow-horizon overflow-hidden"
+    <article className="rounded-[20px] border bg-white dark:bg-[#1d2027] shadow-horizon overflow-hidden"
       style={{ borderColor: "var(--dm-border-default)" }}>
 
       {/* Header */}
@@ -407,7 +407,7 @@ export function PerpetualDashboard({ data, onRefresh, refreshing }: PerpetualDas
             { icon: Users,     label: "Total Leads",     value: n(totals.leads) },
             { icon: TrendingUp, label: "Total Vendas",   value: n(totals.vendas) },
           ].map(({ icon: Icon, label, value }) => (
-            <div key={label} className="rounded-[18px] border bg-white dark:bg-[#111c44] shadow-horizon p-4 flex items-center gap-3"
+            <div key={label} className="rounded-[18px] border bg-white dark:bg-[#1d2027] shadow-horizon p-4 flex items-center gap-3"
               style={{ borderColor: "var(--dm-border-default)" }}>
               <Icon size={16} className="text-violet-500 flex-shrink-0" />
               <div>

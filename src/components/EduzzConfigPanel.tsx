@@ -9,10 +9,10 @@ import {
   type Company, type EduzzWebhookConfig, type TrackingPixel, type EduzzProduct,
 } from "@/hooks/useCompany";
 
-const BRAND = "#7C3AED";
+const BRAND = "#16A34A";
 const inputCls = "h-11 rounded-xl border px-3.5 text-[13px] outline-none transition focus:ring-1";
 const inputStyle = { borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" } as React.CSSProperties;
-const btnPrimary = "flex items-center justify-center gap-1.5 rounded-xl px-4 text-xs font-bold text-white transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-40 disabled:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7C3AED] focus-visible:ring-offset-1";
+const btnPrimary = "flex items-center justify-center gap-1.5 rounded-xl px-4 text-xs font-bold text-white transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-40 disabled:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#16A34A] focus-visible:ring-offset-1";
 const btnPrimaryStyle = { background: "var(--dm-btn-primary-bg)" } as React.CSSProperties;
 
 type EduzzWebhookKind = "legacy" | "modern";

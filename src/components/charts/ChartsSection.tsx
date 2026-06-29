@@ -23,12 +23,12 @@ interface ChartsSectionProps {
 // ── Data viz palette — minimalista, poucas cores
 // Regra: azul/roxo = dado principal; cinza = comparativo; verde/vermelho = semântico
 const PIE_COLORS_LIGHT = [
-  "#7C3AED", "#4A4FCC", "#6E72FF", "#A5A8FF",
+  "#16A34A", "#4A4FCC", "#16A34A", "#A5A8FF",
   "#1FA971", "#F4A93C", "#E14D4D", "#8A8FAD",
   "#D6D8FF", "#6F7482", "#0891b2", "#A0A5B3",
 ];
 const PIE_COLORS_DARK = [
-  "#6C70FF", "#8A8FCC", "#A5A8FF", "#C4C6FF",
+  "#16A34A", "#8A8FCC", "#A5A8FF", "#C4C6FF",
   "#22C55E", "#EAB308", "#EF4444", "#8A8FAD",
   "#D6D8FF", "#6F7686", "#22D3EE", "#A0A5B3",
 ];
@@ -43,7 +43,7 @@ function useChartTheme() {
     dark,
     pieColors:   dark ? PIE_COLORS_DARK : PIE_COLORS_LIGHT,
     /* Primary series: nova paleta minimalista */
-    c1: dark ? "#A78BFA" : "#7C3AED",   /* roxo — Vendas/Conversões (série accent) */
+    c1: dark ? "#4ADE80" : "#16A34A",   /* roxo — Vendas/Conversões (série accent) */
     c2: dark ? "#8A8FAD" : "#A0A5B3",   /* cinza — Cliques (comparativo) */
     c3: dark ? "#22C55E" : "#16A34A",   /* verde — Receita/Faturamento */
     c4: dark ? "#64748B" : "#94A3B8",   /* neutro — Investimento (spec: investimento = neutro) */
@@ -127,7 +127,7 @@ function ToggleGroup<T extends string>({
 // ─── Card wrapper ─────────────────────────────────────────────────────────────
 
 function ChartCard({
-  title, subtitle, children, action, icon: Icon, iconColor = "#7C3AED",
+  title, subtitle, children, action, icon: Icon, iconColor = "#16A34A",
 }: {
   title: string;
   subtitle?: string;
@@ -226,8 +226,8 @@ export function ChartsSection({
       <ComposedChart data={dailyTrend} margin={{ top: 4, right: 52, bottom: 0, left: 0 }}>
         <defs>
           <linearGradient id="gradInvest" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%"   stopColor={c4} stopOpacity={0.3} />
-            <stop offset="100%" stopColor={c4} stopOpacity={0.05} />
+            <stop offset="0%"   stopColor={c4} stopOpacity={0.14} />
+            <stop offset="100%" stopColor={c4} stopOpacity={0} />
           </linearGradient>
         </defs>
         <CartesianGrid {...GRID_PROPS} />
@@ -248,12 +248,12 @@ export function ChartsSection({
       <AreaChart data={dailyTrend} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
         <defs>
           <linearGradient id="gradClicks" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%"   stopColor={c2} stopOpacity={0.3} />
-            <stop offset="100%" stopColor={c2} stopOpacity={0.05} />
+            <stop offset="0%"   stopColor={c2} stopOpacity={0.14} />
+            <stop offset="100%" stopColor={c2} stopOpacity={0} />
           </linearGradient>
           <linearGradient id="gradConv" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%"   stopColor={c1} stopOpacity={0.3} />
-            <stop offset="100%" stopColor={c1} stopOpacity={0.05} />
+            <stop offset="0%"   stopColor={c1} stopOpacity={0.14} />
+            <stop offset="100%" stopColor={c1} stopOpacity={0} />
           </linearGradient>
         </defs>
         <CartesianGrid {...GRID_PROPS} />
@@ -525,7 +525,7 @@ export function ChartsSection({
       <div className={comparisonMode === "horizontal" ? "xl:col-span-12" : "xl:col-span-4"}>
         <ChartCard
           icon={PieIcon}
-          iconColor="#8B5CF6"
+          iconColor="#22C55E"
           title="Distribuição de Orçamento"
           subtitle={budgetMode === "mensal" ? "Investimento mês a mês" : "Investimento por campanha"}
           action={

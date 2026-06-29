@@ -86,7 +86,15 @@
       "Bash(awk 'NR<=392 && /^\\(function|const [A-Z].*=|export function\\) /{f=$0; fl=NR} NR==392{print fl\": \"f}' src/components/HistoricalView.tsx)",
       "Bash(awk 'NR>=200 && NR<=270' supabase/migrations/021_companies_multi_tenant.sql)",
       "Bash(git stash *)",
-      "Bash(echo \"tsc exit: $?\")"
+      "Bash(echo \"tsc exit: $?\")",
+      "Bash(grep -iE \"src[\\\\\\\\\\\\\\\\/]|error\")",
+      "Bash(grep -oE \"@?[a-z@-]+/[a-z-]+/?[a-z-]*$\")",
+      "Bash(sed -E 's/^\\\\s+[0-9]+:[0-9]+\\\\s+error\\\\s+//')",
+      "Bash(grep -E \"\\(^[A-Z]:\\\\\\\\\\\\\\\\|^\\\\s+[0-9]+:[0-9]+\\\\s+error\\)\")",
+      "Bash(awk '/^[A-Z]:/{f=$0} /error/{print f\" :: \"$0}')",
+      "Bash(sed -E 's/G:\\\\\\\\CODEX\\\\\\\\dashmonster\\\\\\\\//')",
+      "Bash(grep -E \"\\(^[A-Z]:\\\\\\\\\\\\\\\\|^[[:space:]]+[0-9]+:[0-9]+[[:space:]]+error\\)\")",
+      "Bash(awk '/^[A-Z]:/{f=$0; gsub\\(/.*dashmonster.../,\"\",f\\)} /error/{print f\" :: \"$0}')"
     ]
   },
   "hooks": {

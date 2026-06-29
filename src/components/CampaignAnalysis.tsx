@@ -38,10 +38,10 @@ interface TaskSuggestion {
 
 const CATEGORY_META: Record<Category, { label: string; icon: React.ElementType; color: string; bg: string }> = {
   pausar:    { label: "Pausar",    icon: PauseCircle,   color: "#EF4444", bg: "rgba(239,68,68,0.12)" },
-  criativo:  { label: "Criativo",  icon: ImageIcon,     color: "#8B5CF6", bg: "rgba(139,92,246,0.12)" },
+  criativo:  { label: "Criativo",  icon: ImageIcon,     color: "#22C55E", bg: "rgba(34,197,94,0.12)" },
   landing:   { label: "Landing",   icon: Globe,         color: "#0ea5e9", bg: "rgba(14,165,233,0.12)" },
   orçamento: { label: "Orçamento", icon: DollarSign,    color: "#F59E0B", bg: "rgba(245,158,11,0.12)" },
-  targeting: { label: "Targeting", icon: Target,        color: "#7C3AED", bg: "rgba(124,58,237,0.12)" },
+  targeting: { label: "Targeting", icon: Target,        color: "#16A34A", bg: "rgba(22,163,74,0.12)" },
   escalar:   { label: "Escalar",   icon: TrendingUp,    color: "#05CD99", bg: "rgba(5,205,153,0.12)" },
 };
 
@@ -352,11 +352,11 @@ function TabOverview({ campaigns, selectedCategory }: { campaigns: AggregatedCam
     <div className="space-y-5 pt-4">
       {/* ── Summary tiles (linguagem do bento) ── */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatCard icon={DollarSign} label="Investimento Total" value={formatCurrency(totalInvest)} color="#7C3AED" />
+        <StatCard icon={DollarSign} label="Investimento Total" value={formatCurrency(totalInvest)} color="#16A34A" />
         <StatCard icon={TrendingUp} label="Receita Total"      value={formatCurrency(totalRevenue)} color="#05CD99" />
         <StatCard icon={Gauge}      label="ROAS Geral"         value={`${overallRoas.toFixed(2)}x`}
           color={overallRoas >= 2 ? "#05CD99" : overallRoas >= 1 ? "#F59E0B" : "#EF4444"} />
-        <StatCard icon={CheckCircle2} label="Campanhas Saudáveis" value={`${healthyCount}/${campaigns.length}`} color="#8B5CF6" />
+        <StatCard icon={CheckCircle2} label="Campanhas Saudáveis" value={`${healthyCount}/${campaigns.length}`} color="#22C55E" />
       </div>
 
       {/* Category roadmap */}
@@ -368,7 +368,7 @@ function TabOverview({ campaigns, selectedCategory }: { campaigns: AggregatedCam
         <div className="space-y-2">
           {top10.map((c, idx) => {
             const roasColor = c.roas >= 3 ? "#05CD99" : c.roas >= 1.5 ? "#0ea5e9" : c.roas >= 1 ? "#F59E0B" : "#EF4444";
-            const barColor  = c.roas >= 3 ? "#05CD99" : c.roas >= 1.5 ? "#7C3AED" : c.roas >= 1 ? "#F59E0B" : "#EF4444";
+            const barColor  = c.roas >= 3 ? "#05CD99" : c.roas >= 1.5 ? "#16A34A" : c.roas >= 1 ? "#F59E0B" : "#EF4444";
             const pct       = (c.investment / maxInv) * 100;
             return (
               <div
@@ -574,7 +574,7 @@ function TabPositive({ campaigns, isMetricVisible = () => true }: { campaigns: A
   const lists = [
     isMetricVisible("roas")        && topRoas.length > 0 && <TopList key="roas" title="Melhor ROAS" subtitle="Maior retorno sobre investimento (≥ 2x)" icon={TrendingUp} items={topRoas} metricLabel="ROAS" metricValue={(c) => `${c.roas.toFixed(2)}x`} color="text-emerald-700" bg="bg-emerald-50" />,
     isMetricVisible("revenue")     && topRev.length  > 0 && <TopList key="rev"  title="Maior Receita" subtitle="Campanhas com maior faturamento" icon={Award} items={topRev} metricLabel="Receita" metricValue={(c) => formatCurrency(c.revenue)} color="text-emerald-700" bg="bg-emerald-50" />,
-    isMetricVisible("ctr")         && topCtr.length  > 0 && <TopList key="ctr"  title="Melhor CTR" subtitle="Alta taxa de cliques — criativo engaja (≥ 1%)" icon={Zap} items={topCtr} metricLabel="CTR" metricValue={(c) => formatPercent(c.ctr)} color="text-blue-700" bg="bg-blue-50" />,
+    isMetricVisible("ctr")         && topCtr.length  > 0 && <TopList key="ctr"  title="Melhor CTR" subtitle="Alta taxa de cliques — criativo engaja (≥ 1%)" icon={Zap} items={topCtr} metricLabel="CTR" metricValue={(c) => formatPercent(c.ctr)} color="text-slate-700" bg="bg-slate-100" />,
     isMetricVisible("conversions") && topConv.length > 0 && <TopList key="conv" title="Melhor Conversão" subtitle="Cliques que viram compras (≥ 2%)" icon={Star} items={topConv} metricLabel="Conv." metricValue={(c) => formatPercent(c.conversionRate)} color="text-violet-700" bg="bg-violet-50" />,
   ].filter(Boolean);
 

@@ -71,11 +71,45 @@ function rowToCompany(raw: {
   };
 }
 
+// ─── Empresa DEMO ───────────────────────────────────────────────────────────────
+// Modo DEV sem Supabase (preview): injeta uma empresa fake só pra VER a UI
+// populada e como o contexto propaga no dashboard. Não persiste nada.
+const DEMO_COMPANIES: Company[] = [
+  {
+    id: "demo-1", name: "Personal Trainer Academy (Demo)", slug: "demo-pta", logoUrl: null,
+    settings: {
+      adAccountSuggestions: [
+        { id: "1860195434590", label: "Conta Principal" },
+        { id: "9087654321000", label: "Conta Secundária" },
+      ],
+      historyTabLabels: { lancamento: "Lançamentos", evento: "Eventos ao vivo" },
+      customHistoryTabs: [{ id: "ct_demo", label: "Mentorias", emoji: "🎓" }],
+    },
+  },
+  {
+    id: "demo-2", name: "Loja Fitness Online (Demo)", slug: "demo-loja", logoUrl: null,
+    settings: { adAccountSuggestions: [{ id: "5551234567890", label: "E-commerce" }] },
+  },
+  {
+    id: "demo-3", name: "Clínica Estética (Demo)", slug: "demo-clinica", logoUrl: null,
+    settings: {},
+  },
+];
+function demoState(): CompanyState {
+  const activeId = readActiveCompanyId();
+  const active = DEMO_COMPANIES.find((c) => c.id === activeId) ?? DEMO_COMPANIES[0];
+  return {
+    company: active, role: "owner",
+    memberships: DEMO_COMPANIES.map((c) => ({ role: "owner" as CompanyRole, company: c })),
+    isSuperAdmin: true, loading: false, migrationMissing: false,
+  };
+}
+
 async function fetchCompanyState(): Promise<CompanyState> {
   const base: CompanyState = {
     company: null, role: null, memberships: [], isSuperAdmin: false, loading: false, migrationMissing: false,
   };
-  if (!supabaseClient) return base;
+  if (!supabaseClient) return isDevModeActive() ? demoState() : base;
 
   const { data: auth } = await supabaseClient.auth.getUser();
   if (!auth.user) return base;
@@ -219,7 +253,11 @@ export interface CompanyMember {
 
 /** Lista os membros da empresa (RLS: qualquer membro enxerga). */
 export async function fetchCompanyMembers(companyId: string): Promise<CompanyMember[]> {
-  if (!supabaseClient) return [];
+  if (!supabaseClient) return isDevModeActive() ? [
+    { id: "m1", userId: "u1", email: "dono@ptacademy.com",   role: "owner",   createdAt: new Date().toISOString() },
+    { id: "m2", userId: "u2", email: "gestor@ptacademy.com", role: "manager", createdAt: new Date().toISOString() },
+    { id: "m3", userId: "u3", email: "social@ptacademy.com", role: "viewer",  createdAt: new Date().toISOString() },
+  ] : [];
   const { data, error } = await supabaseClient
     .from("company_members")
     .select("id, user_id, email, role, created_at")
@@ -266,9 +304,33 @@ export async function renameCompany(companyId: string, name: string): Promise<vo
   await refreshCompany();
 }
 
+/** Cria uma empresa nova e, opcionalmente, convida um e-mail como dono.
+ *  RLS: passa pela policy `companies_superadmin_all` (super admin). */
+export async function createCompany(name: string, ownerEmail?: string): Promise<Company> {
+  if (!supabaseClient) throw new Error("Supabase não configurado.");
+  const clean = name.trim();
+  if (!clean) throw new Error("Informe o nome da empresa.");
+  const slug =
+    clean.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) +
+    "-" + Math.random().toString(36).slice(2, 7);
+  const { data, error } = await supabaseClient
+    .from("companies")
+    .insert({ name: clean, slug })
+    .select("id, name, slug, logo_url, settings")
+    .single();
+  if (error) throw new Error(error.message);
+  const company = rowToCompany(data);
+  const email = ownerEmail?.trim().toLowerCase();
+  if (email && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    await inviteMemberByEmail(company.id, email, "owner");
+  }
+  await refreshCompany();
+  return company;
+}
+
 /** Lê o token Meta salvo de uma empresa específica (para o painel DEV). */
 export async function fetchCompanyToken(companyId: string): Promise<string> {
-  if (!supabaseClient) return "";
+  if (!supabaseClient) return isDevModeActive() ? "EAADEMOdemoTOKENexample1234567890abcdef" : "";
   const { data, error } = await supabaseClient
     .from("companies")
     .select("meta_access_token")
@@ -347,7 +409,10 @@ export function normalizeHostname(raw: string): string {
 
 /** Lista os pixels de tracking de uma empresa (mais antigo primeiro — o "Pixel principal" migrado vem primeiro). */
 export async function fetchTrackingPixels(companyId: string): Promise<TrackingPixel[]> {
-  if (!supabaseClient) return [];
+  if (!supabaseClient) return isDevModeActive() ? [
+    { id: "px1", slug: "principal", name: "Pixel Principal", metaPixelId: "1860195434590", metaCapiToken: "EAADEMOcapi123", dominioAutorizado: "ptacademy.com.br", metaTestEventCode: "", isDefault: true },
+    { id: "px2", slug: "lancamento", name: "Landing Lançamento", metaPixelId: "", metaCapiToken: "", dominioAutorizado: "", metaTestEventCode: "", isDefault: false },
+  ] : [];
   const { data, error } = await supabaseClient
     .from("tracking_pixels")
     .select(TRACKING_PIXELS_SELECT)

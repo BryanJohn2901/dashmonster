@@ -5,6 +5,8 @@ import { createPortal } from "react-dom";
 import { Search, RefreshCw, Calendar, Radar, X, Mail, Phone, MapPin, User, Settings, ChevronDown, ShoppingBag, CreditCard, Hash, Smartphone, Monitor, Tablet } from "lucide-react";
 import { supabaseClient } from "@/lib/supabase";
 import { useCompany } from "@/hooks/useCompany";
+import { isDevModeActive } from "@/hooks/useDevMode";
+import { DEMO_TRACKING_EVENTS } from "@/lib/demoTracking";
 import { TrackingConfigPanel } from "@/components/TrackingConfigPanel";
 import { EduzzConfigPanel } from "@/components/EduzzConfigPanel";
 
@@ -106,11 +108,11 @@ const EVENT_LABELS: Record<string, string> = {
 };
 
 const EVENT_COLORS: Record<string, { bg: string; text: string }> = {
-  Lead: { bg: "rgba(124,58,237,0.12)", text: "var(--dm-primary)" },
+  Lead: { bg: "rgba(22,163,74,0.12)", text: "var(--dm-primary)" },
   Contact: { bg: "rgba(16,185,129,0.12)", text: "#059669" },
   Purchase: { bg: "rgba(22,163,74,0.12)", text: "#15803D" },
   PageView: { bg: "rgba(100,116,139,0.12)", text: "#475569" },
-  AddToCart: { bg: "rgba(139,92,246,0.12)", text: "#7c3aed" },
+  AddToCart: { bg: "rgba(34,197,94,0.12)", text: "#16A34A" },
   Renewal: { bg: "rgba(22,163,74,0.12)", text: "#15803D" },
   Installment: { bg: "rgba(22,163,74,0.12)", text: "#15803D" },
 };
@@ -429,7 +431,7 @@ function Chip({ label, active, onClick }: { label: string; active: boolean; onCl
       className="rounded-full border px-2.5 py-0.5 text-[10px] font-semibold transition-opacity hover:opacity-80"
       style={{
         borderColor: active ? "var(--dm-primary)" : "var(--dm-border-default)",
-        background: active ? "rgba(124,58,237,0.12)" : "transparent",
+        background: active ? "rgba(22,163,74,0.12)" : "transparent",
         color: active ? "var(--dm-primary)" : "var(--dm-text-tertiary)",
       }}
     >
@@ -458,11 +460,12 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
   const timeline = [...visitor.events].reverse(); // ordem cronológica: o que ele fez primeiro até o último
 
   return createPortal(
-    <>
-      <div className="fixed inset-0 z-40 bg-black/30 backdrop-blur-[2px]" onClick={onClose} />
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-md" />
       <div
-        className="fixed inset-y-0 right-0 z-50 flex w-full flex-col overflow-hidden border-l shadow-2xl sm:max-w-[460px]"
+        className="relative z-10 flex max-h-[86vh] w-full max-w-[560px] flex-col overflow-hidden rounded-2xl border shadow-2xl"
         style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}
+        onClick={(e) => e.stopPropagation()}
       >
         <div className="flex flex-shrink-0 items-center justify-between border-b px-6 py-4" style={{ borderColor: "var(--dm-border-default)" }}>
           <div>
@@ -476,7 +479,7 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
 
         <div className="flex-1 overflow-y-auto px-6 py-5">
           {selectedLead && (
-            <div className="mb-5 rounded-xl border p-3" style={{ borderColor: "var(--dm-primary)", background: "rgba(124,58,237,0.06)" }}>
+            <div className="mb-5 rounded-xl border p-3" style={{ borderColor: "var(--dm-primary)", background: "rgba(22,163,74,0.06)" }}>
               <div className="mb-2 flex items-center justify-between gap-2">
                 <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-primary)" }}>
                   Dados capturados {selectedLead.id === leadEvents[0]?.id ? "(mais recente)" : ""}
@@ -542,7 +545,7 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
                   {p.is_order_bump && (
                     <span
                       className="rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
-                      style={{ background: "rgba(124,58,237,0.12)", color: "#7c3aed" }}
+                      style={{ background: "rgba(22,163,74,0.12)", color: "#16A34A" }}
                       title={p.main_sale_transaction_id ? `Order bump da venda #${p.main_sale_transaction_id}` : "Order bump"}
                     >
                       order bump
@@ -649,7 +652,7 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
                         {event.is_order_bump && (
                           <span
                             className="rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
-                            style={{ background: "rgba(124,58,237,0.12)", color: "#7c3aed" }}
+                            style={{ background: "rgba(22,163,74,0.12)", color: "#16A34A" }}
                             title={event.main_sale_transaction_id ? `Order bump da venda #${event.main_sale_transaction_id}` : "Order bump"}
                           >
                             order bump
@@ -704,7 +707,7 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
           </div>
         </div>
       </div>
-    </>,
+    </div>,
     document.body,
   );
 }
@@ -727,11 +730,16 @@ export function TrackingEventsView() {
   const [dateFrom, setDateFrom] = useState(() => new Date(Date.now() - 30 * 86400_000).toISOString().split("T")[0]);
   const [dateTo, setDateTo] = useState(() => new Date().toISOString().split("T")[0]);
 
-  const [configOpen, setConfigOpen] = useState(false);
-  const [configTab, setConfigTab] = useState<"pixel" | "eduzz">("pixel");
 
   const fetchEvents = useCallback(async () => {
     if (!supabaseClient) {
+      // Sem backend: em modo DEV mostra dados demo pra visualizar a tela populada.
+      if (isDevModeActive()) {
+        setEvents(DEMO_TRACKING_EVENTS as unknown as TrackingEvent[]);
+        setAnyMetaConfigured(true);
+        setError(null);
+        return;
+      }
       setError("Supabase não configurado.");
       return;
     }
@@ -869,20 +877,6 @@ export function TrackingEventsView() {
         <div className="flex flex-shrink-0 items-center gap-2">
           <button
             type="button"
-            onClick={() => setConfigOpen((v) => !v)}
-            aria-expanded={configOpen}
-            className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-opacity hover:opacity-70"
-            style={{
-              borderColor: configOpen ? "var(--dm-primary)" : "var(--dm-border-default)",
-              color: configOpen ? "var(--dm-primary)" : "var(--dm-text-secondary)",
-            }}
-          >
-            <Settings size={11} />
-            Configuração
-            <ChevronDown size={12} className="transition-transform duration-200" style={{ transform: configOpen ? "rotate(180deg)" : "rotate(0deg)" }} />
-          </button>
-          <button
-            type="button"
             onClick={fetchEvents}
             disabled={loading}
             className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-opacity hover:opacity-70 disabled:opacity-40"
@@ -894,104 +888,96 @@ export function TrackingEventsView() {
         </div>
       </div>
 
-      {/* Config — pixel próprio (instalação/Meta CAPI) e venda externa (Eduzz) que vira Purchase */}
-      {configOpen && company && (
-        <div className="mb-5 rounded-2xl border p-4" style={{ borderColor: "var(--dm-primary)", backgroundColor: "var(--dm-bg-surface)" }}>
-          <div className="mb-4 flex gap-1 rounded-xl border p-0.5" style={{ borderColor: "var(--dm-border-default)" }}>
-            {([
-              ["pixel", "Pixel (Meta Ads)"],
-              ["eduzz", "Vendas (Eduzz)"],
-            ] as ["pixel" | "eduzz", string][]).map(([tab, label]) => (
-              <button
-                key={tab}
-                type="button"
-                onClick={() => setConfigTab(tab)}
-                className="h-9 flex-1 rounded-lg text-xs font-bold transition"
-                style={configTab === tab ? { background: "var(--dm-btn-primary-bg)", color: "#fff" } : { color: "var(--dm-text-tertiary)" }}
-              >
-                {label}
-              </button>
-            ))}
+      {/* ── Painel de filtros ─────────────────────────────────────────────── */}
+      {(() => {
+        // Presets rápidos de período (Hoje / 7 / 15 / 30 dias).
+        const setRangeDays = (n: number) => {
+          const today = new Date();
+          const from = n === 0 ? today : new Date(today.getTime() - n * 86400_000);
+          setDateFrom(from.toISOString().split("T")[0]);
+          setDateTo(today.toISOString().split("T")[0]);
+        };
+        const filtersActive = Boolean(eventFilter || deviceFilter || paymentMethodFilter || search.trim());
+        const clearAll = () => { setEventFilter(null); setDeviceFilter(null); setPaymentMethodFilter(null); setSearch(""); };
+        const PRESETS: [string, number][] = [["Hoje", 0], ["7 dias", 7], ["15 dias", 15], ["30 dias", 30]];
+        return (
+          <div className="mb-4 rounded-2xl border p-4" style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)" }}>
+            {/* Período + busca + limpar */}
+            <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
+              <div>
+                <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Período</label>
+                <div className="flex items-center gap-2">
+                  <Calendar size={13} className="flex-shrink-0" style={{ color: "var(--dm-text-tertiary)" }} />
+                  <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
+                    className="rounded-lg border px-2 py-1.5 text-xs" style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }} />
+                  <span className="text-xs" style={{ color: "var(--dm-text-tertiary)" }}>até</span>
+                  <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
+                    className="rounded-lg border px-2 py-1.5 text-xs" style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }} />
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {PRESETS.map(([label, n]) => (
+                  <button key={label} type="button" onClick={() => setRangeDays(n)}
+                    className="rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition hover:border-[color:var(--dm-primary-border)] hover:text-[color:var(--dm-primary)]"
+                    style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="relative min-w-[200px] flex-1">
+                <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: "var(--dm-text-tertiary)" }} />
+                <input type="text" placeholder="URL, e-mail, telefone, fingerprint, OS ou navegador…" value={search} onChange={(e) => setSearch(e.target.value)}
+                  className="w-full rounded-lg border py-2 pl-7 pr-3 text-xs" style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }} />
+              </div>
+              {filtersActive && (
+                <button type="button" onClick={clearAll}
+                  className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-semibold transition hover:opacity-80"
+                  style={{ color: "var(--dm-text-tertiary)" }}>
+                  <X size={12} /> Limpar
+                </button>
+              )}
+            </div>
+
+            {/* Grupos de filtro rotulados */}
+            {eventTypes.length > 0 && (
+              <div className="mt-4 border-t pt-3" style={{ borderColor: "var(--dm-border-subtle)" }}>
+                <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Tipo de evento</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {eventTypes.map((ev) => (
+                    <Chip key={ev} label={EVENT_LABELS[ev] ?? ev} active={eventFilter === ev}
+                      onClick={() => { setEventFilter(eventFilter === ev ? null : ev); setPaymentMethodFilter(null); }} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {deviceCategories.length > 1 && (
+              <div className="mt-3">
+                <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Dispositivo</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {deviceCategories.map((d) => (
+                    <Chip key={d} label={DEVICE_LABELS[d]} active={deviceFilter === d} onClick={() => setDeviceFilter(deviceFilter === d ? null : d)} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {eventFilter === "Purchase" && paymentMethods.length > 0 && (
+              <div className="mt-3">
+                <p className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
+                  <CreditCard size={11} /> Forma de pagamento
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {paymentMethods.map((method) => (
+                    <Chip key={method} label={PAYMENT_METHOD_LABELS[method] ?? method} active={paymentMethodFilter === method}
+                      onClick={() => setPaymentMethodFilter(paymentMethodFilter === method ? null : method)} />
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
-          {configTab === "pixel" ? (
-            <TrackingConfigPanel company={company} canEdit={canWrite} />
-          ) : (
-            <EduzzConfigPanel company={company} canEdit={canWrite} />
-          )}
-        </div>
-      )}
-
-      {/* Date + Search row */}
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <Calendar size={13} className="flex-shrink-0" style={{ color: "var(--dm-text-tertiary)" }} />
-        <input
-          type="date"
-          value={dateFrom}
-          onChange={(e) => setDateFrom(e.target.value)}
-          className="rounded-lg border px-2 py-1 text-xs"
-          style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)", color: "var(--dm-text-primary)" }}
-        />
-        <span className="text-xs" style={{ color: "var(--dm-text-tertiary)" }}>até</span>
-        <input
-          type="date"
-          value={dateTo}
-          onChange={(e) => setDateTo(e.target.value)}
-          className="rounded-lg border px-2 py-1 text-xs"
-          style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)", color: "var(--dm-text-primary)" }}
-        />
-        <div className="relative flex-1 min-w-[180px]">
-          <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: "var(--dm-text-tertiary)" }} />
-          <input
-            type="text"
-            placeholder="URL, e-mail, telefone, fingerprint, OS ou navegador..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-lg border pl-7 pr-3 py-1.5 text-xs"
-            style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)", color: "var(--dm-text-primary)" }}
-          />
-        </div>
-      </div>
-
-      {/* Filter chips */}
-      {eventTypes.length > 0 && (
-        <div className="mb-2 flex flex-wrap gap-1.5">
-          {eventTypes.map((ev) => (
-            <Chip
-              key={ev}
-              label={EVENT_LABELS[ev] ?? ev}
-              active={eventFilter === ev}
-              onClick={() => {
-                setEventFilter(eventFilter === ev ? null : ev);
-                setPaymentMethodFilter(null);
-              }}
-            />
-          ))}
-        </div>
-      )}
-
-      {/* Dispositivo (Celular/Tablet/Desktop) — inferido do User-Agent do evento mais recente */}
-      {deviceCategories.length > 1 && (
-        <div className="mb-2 flex flex-wrap gap-1.5">
-          {deviceCategories.map((d) => (
-            <Chip key={d} label={DEVICE_LABELS[d]} active={deviceFilter === d} onClick={() => setDeviceFilter(deviceFilter === d ? null : d)} />
-          ))}
-        </div>
-      )}
-
-      {/* Forma de pagamento — só aparece com o filtro "Compra" ativo */}
-      {eventFilter === "Purchase" && paymentMethods.length > 0 && (
-        <div className="mb-4 flex flex-wrap items-center gap-1.5">
-          <CreditCard size={11} className="flex-shrink-0" style={{ color: "var(--dm-text-tertiary)" }} />
-          {paymentMethods.map((method) => (
-            <Chip
-              key={method}
-              label={PAYMENT_METHOD_LABELS[method] ?? method}
-              active={paymentMethodFilter === method}
-              onClick={() => setPaymentMethodFilter(paymentMethodFilter === method ? null : method)}
-            />
-          ))}
-        </div>
-      )}
+        );
+      })()}
 
       {/* Meta CAPI não configurada (informativo, não bloqueia captura) */}
       {metaNotConfigured && (
@@ -1000,14 +986,9 @@ export function TrackingEventsView() {
           style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)" }}
         >
           <span>Eventos sendo capturados normalmente. Envio pra Meta Conversions API está desligado (Pixel ID/Token não configurados).</span>
-          <button
-            type="button"
-            onClick={() => setConfigOpen(true)}
-            className="flex-shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-bold transition-opacity hover:opacity-80"
-            style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-primary)" }}
-          >
-            Configurar Meta →
-          </button>
+          <span className="flex-shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-bold" style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>
+            Configure no Hub → Configurações → Tracking
+          </span>
         </div>
       )}
 
@@ -1037,8 +1018,8 @@ export function TrackingEventsView() {
             Nenhum evento capturado no período.
           </p>
           <p className="text-[11px] mt-0.5 text-center max-w-sm" style={{ color: "var(--dm-text-tertiary)" }}>
-            Suba o <code>dm-proxy.php</code> na raiz do domínio do cliente e cole o snippet (em{" "}
-            <strong>Configuração</strong>) nas páginas — ele chama{" "}
+            Suba o <code>dm-proxy.php</code> na raiz do domínio do cliente e cole o snippet do pixel
+            (no Hub → <strong>Configurações → Tracking</strong>) nas páginas — ele chama{" "}
             <code>Tracker.init(&quot;slug-da-empresa&quot;, &quot;slug-do-pixel&quot;)</code> via{" "}
             <code>/dm-proxy.php?ep=pixel</code>.
           </p>

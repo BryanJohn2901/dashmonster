@@ -15,9 +15,9 @@ import { SectionHeader } from "@/components/ui/SectionHeader";
 
 // ─── Cores por canal (dentro do sistema, sem pastel) ──────────────────────────
 const ORIGIN_COLORS: Record<string, string> = {
-  "Meta Ads": "#7C3AED", "Google": "#0ea5e9", "Orgânico": "#05CD99", "Eduzz": "#f59e0b", "Planilha": "#8B5CF6",
+  "Meta Ads": "#16A34A", "Google": "#0ea5e9", "Orgânico": "#05CD99", "Eduzz": "#f59e0b", "Planilha": "#22C55E",
 };
-const ORIGIN_FALLBACK = ["#7C3AED", "#0ea5e9", "#05CD99", "#f59e0b", "#8B5CF6", "#e11d48"];
+const ORIGIN_FALLBACK = ["#16A34A", "#0ea5e9", "#05CD99", "#f59e0b", "#22C55E", "#e11d48"];
 const originColor = (origem: string, index: number): string =>
   ORIGIN_COLORS[origem] ?? ORIGIN_FALLBACK[index % ORIGIN_FALLBACK.length];
 
@@ -45,7 +45,7 @@ function FunnelTile({ stages }: { stages: { label: string; value: number; color:
   return (
     <div className="flex h-full flex-col gap-3 rounded-2xl border p-5"
       style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-subtle)" }}>
-      <SectionHeader icon={Filter} title="Funil de conversão" color="#7C3AED" />
+      <SectionHeader icon={Filter} title="Funil de conversão" color="#16A34A" />
       <div className="flex flex-1 flex-col justify-center gap-2.5">
         {stages.map((s, i) => {
           const prev = i > 0 ? stages[i - 1].value : null;
@@ -57,7 +57,7 @@ function FunnelTile({ stages }: { stages: { label: string; value: number; color:
                 <span className="font-semibold" style={{ color: "var(--dm-text-secondary)" }}>{s.label}</span>
                 <span className="flex items-center gap-2">
                   {conv != null && (
-                    <span className="rounded-full px-1.5 py-0.5 text-[9px] font-bold tabular-nums" style={{ color: "#7C3AED", backgroundColor: "rgba(124,58,237,0.12)" }}>
+                    <span className="rounded-full px-1.5 py-0.5 text-[9px] font-bold tabular-nums" style={{ color: "#16A34A", backgroundColor: "rgba(22,163,74,0.12)" }}>
                       {conv.toFixed(1)}%
                     </span>
                   )}
@@ -187,19 +187,19 @@ export function OverviewBento({ totals, campaigns, conversions, leadsByOrigin }:
 
   // ── Catálogo (ordem = ordem no picker) ──────────────────────────────────────
   const catalog: BentoMetric[] = useMemo(() => [
-    { id: "investment",  label: "Investido",        value: formatBRL(totals.totalInvestment),   data: series.inv,  color: "#7C3AED", icon: Wallet,            invertDelta: true,  breakdown: sel((b) => b.investment, formatBRL), sub: `CTR ${formatPercent(totals.ctr)}` },
-    { id: "revenue",     label: "Receita",          value: formatBRL(totals.totalRevenue),      data: series.rev,  color: "#05CD99", icon: Coins,             breakdown: sel((b) => b.revenue, formatBRL) },
-    { id: "results",     label: "Resultados",       value: formatInt(conversions),              data: series.conv, color: "#05CD99", icon: Target,            breakdown: sel((b) => b.conversions, formatInt) },
+    { id: "investment",  label: "Investido",        value: formatBRL(totals.totalInvestment),   data: series.inv,  color: "#16A34A", icon: Wallet,            invertDelta: true,  breakdown: sel((b) => b.investment, formatBRL), sub: `CTR ${formatPercent(totals.ctr)}` },
+    { id: "revenue",     label: "Receita",          value: formatBRL(totals.totalRevenue),      data: series.rev,  color: "#16A34A", icon: Coins,             breakdown: sel((b) => b.revenue, formatBRL) },
+    { id: "results",     label: "Resultados",       value: formatInt(conversions),              data: series.conv, color: "#16A34A", icon: Target,            breakdown: sel((b) => b.conversions, formatInt) },
     { id: "roas",        label: "ROAS",             value: `${totals.roas.toFixed(2)}x`,        data: series.roas, color: "#e11d48", icon: Gauge,             sub: totals.totalRevenue > 0 ? `Receita ${formatBRL(totals.totalRevenue)}` : "sem receita" },
     { id: "cpa",         label: "Custo / Resultado",value: cpa > 0 ? formatBRL(cpa) : "—",       data: series.cpa,  color: "#f59e0b", icon: Coins,             invertDelta: true, sub: "CPA médio" },
-    { id: "roi",         label: "ROI",              value: formatPercent(totals.roi),           data: series.roi,  color: "#7C3AED", icon: TrendingUp },
-    { id: "ctr",         label: "CTR Médio",        value: formatPercent(totals.ctr),           data: series.ctr,  color: "#0ea5e9", icon: MousePointerClick },
+    { id: "roi",         label: "ROI",              value: formatPercent(totals.roi),           data: series.roi,  color: "#16A34A", icon: TrendingUp },
+    { id: "ctr",         label: "CTR Médio",        value: formatPercent(totals.ctr),           data: series.ctr,  color: "#94a3b8", icon: MousePointerClick },
     { id: "cpc",         label: "CPC Médio",        value: formatBRL(totals.cpc),               data: series.cpc,  color: "#f59e0b", icon: BadgeDollarSign,   invertDelta: true },
     { id: "cpm",         label: "CPM Médio",        value: formatBRL(totals.cpm),               data: series.cpm,  color: "#f59e0b", icon: Zap,               invertDelta: true },
-    { id: "clicks",      label: "Cliques",          value: formatInt(totals.totalClicks),       data: series.clk,  color: "#7C3AED", icon: MousePointerClick, sub: `CTR ${formatPercent(totals.ctr)}` },
-    { id: "impressions", label: "Impressões",       value: formatInt(totals.totalImpressions),  data: series.imp,  color: "#0ea5e9", icon: Activity },
-    { id: "leads",       label: "Leads",            value: formatInt(totals.totalLeads),        color: "#8B5CF6", icon: Users,              sub: totals.totalLeads > 0 ? `CPL ${formatBRL(totals.cpl)}` : undefined, breakdown: leadsChips },
-    { id: "cpl",         label: "CPL Médio",        value: totals.totalLeads > 0 ? formatBRL(totals.cpl) : "—", color: "#8B5CF6", icon: UserRound, invertDelta: true },
+    { id: "clicks",      label: "Cliques",          value: formatInt(totals.totalClicks),       data: series.clk,  color: "#16A34A", icon: MousePointerClick, sub: `CTR ${formatPercent(totals.ctr)}` },
+    { id: "impressions", label: "Impressões",       value: formatInt(totals.totalImpressions),  data: series.imp,  color: "#94a3b8", icon: Activity },
+    { id: "leads",       label: "Leads",            value: formatInt(totals.totalLeads),        color: "#22C55E", icon: Users,              sub: totals.totalLeads > 0 ? `CPL ${formatBRL(totals.cpl)}` : undefined, breakdown: leadsChips },
+    { id: "cpl",         label: "CPL Médio",        value: totals.totalLeads > 0 ? formatBRL(totals.cpl) : "—", color: "#22C55E", icon: UserRound, invertDelta: true },
     // eslint-disable-next-line react-hooks/exhaustive-deps
   ], [totals, conversions, series, leadsChips]);
 
@@ -207,8 +207,8 @@ export function OverviewBento({ totals, campaigns, conversions, leadsByOrigin }:
   const cards = selected.map((id) => byId.get(id)).filter((m): m is BentoMetric => !!m);
 
   const stages = [
-    { label: "Impressões", value: totals.totalImpressions, color: "#7C3AED" },
-    { label: "Cliques",    value: totals.totalClicks,      color: "#0ea5e9" },
+    { label: "Impressões", value: totals.totalImpressions, color: "#16A34A" },
+    { label: "Cliques",    value: totals.totalClicks,      color: "#94a3b8" },
     ...(totalLeads > 0 ? [{ label: "Leads", value: totalLeads, color: "#f59e0b", breakdown: leadsChips }] : []),
     { label: "Resultados", value: conversions,             color: "#05CD99" },
   ];

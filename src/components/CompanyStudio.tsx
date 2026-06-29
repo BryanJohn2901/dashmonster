@@ -24,11 +24,11 @@ import type { UserCategory } from "@/types/userConfig";
 const ROLE_LABELS: Record<CompanyRole, string> = {
   owner: "Dono", manager: "Gestor de tráfego", viewer: "Visualização",
 };
-const ROLE_COLORS: Record<CompanyRole, string> = { owner: "#8b5cf6", manager: "#10b981", viewer: "#64748b" };
+const ROLE_COLORS: Record<CompanyRole, string> = { owner: "#22C55E", manager: "#10b981", viewer: "#64748b" };
 const HISTORY_KINDS: HistoricalKind[] = ["lancamento", "evento", "perpetuo", "instagram"];
 const MAX_HISTORY_TABS = 7;
 const isEmail = (e: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e);
-const BRAND = "#7C3AED";
+const BRAND = "#16A34A";
 
 export type SectionId = "identidade" | "conexao" | "tracking" | "contas" | "filtros" | "historico" | "equipe";
 
@@ -47,8 +47,8 @@ function Section({ id, icon: Icon, title, summary, status, open, onToggle, child
     return (
       <div id={`studio-section-${id}`} className="rounded-2xl border" style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
         <div className="flex items-center gap-3 px-5 pt-5 pb-3">
-          <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: "rgba(124,58,237,0.12)" }}>
-            <Icon size={17} style={{ color: BRAND }} />
+          <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-default)" }}>
+            <Icon size={17} style={{ color: "var(--dm-text-secondary)" }} />
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-bold" style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>{title}</p>
@@ -68,8 +68,8 @@ function Section({ id, icon: Icon, title, summary, status, open, onToggle, child
   return (
     <div id={`studio-section-${id}`} className="rounded-2xl border transition-colors scroll-mt-4" style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: open ? BRAND : "var(--dm-border-default)" }}>
       <button type="button" onClick={() => onToggle(id)} aria-expanded={open}
-        className="flex w-full items-center gap-3 rounded-2xl px-5 py-4 text-left transition-colors hover:bg-black/[0.025] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7C3AED] dark:hover:bg-white/[0.03]">
-        <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: "rgba(124,58,237,0.12)" }}>
+        className="flex w-full items-center gap-3 rounded-2xl px-5 py-4 text-left transition-colors hover:bg-black/[0.025] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#16A34A] dark:hover:bg-white/[0.03]">
+        <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: "rgba(22,163,74,0.12)" }}>
           <Icon size={17} style={{ color: BRAND }} />
         </div>
         <div className="min-w-0 flex-1">
@@ -95,7 +95,7 @@ function Section({ id, icon: Icon, title, summary, status, open, onToggle, child
 
 const inputCls = "h-11 rounded-xl border px-3.5 text-[13px] outline-none transition focus:ring-1";
 const inputStyle = { borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" } as React.CSSProperties;
-const btnPrimary = "flex items-center justify-center gap-1.5 rounded-xl px-4 text-xs font-bold text-white transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-40 disabled:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7C3AED] focus-visible:ring-offset-1";
+const btnPrimary = "flex items-center justify-center gap-1.5 rounded-xl px-4 text-xs font-bold text-white transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-40 disabled:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#16A34A] focus-visible:ring-offset-1";
 const iconBtn = "flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors disabled:opacity-40";
 const btnPrimaryStyle = { background: "var(--dm-btn-primary-bg)" } as React.CSSProperties;
 
@@ -166,7 +166,7 @@ export function CompanyStudio({ categories = [], onNavigate, focusSection }: {
   return (
     <div className="flex flex-col gap-4">
       {/* ── Header: seletor + prontidão ── */}
-      <div className="rounded-2xl border p-5" style={{ background: "linear-gradient(135deg, rgba(124,58,237,0.10), rgba(124,58,237,0.04))", borderColor: BRAND }}>
+      <div className="rounded-2xl border p-5" style={{ background: "linear-gradient(135deg, rgba(22,163,74,0.10), rgba(22,163,74,0.04))", borderColor: BRAND }}>
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl" style={{ backgroundColor: BRAND }}>
             <Building2 size={22} className="text-white" />
