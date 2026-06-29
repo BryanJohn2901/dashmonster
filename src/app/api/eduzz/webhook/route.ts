@@ -308,7 +308,13 @@ export async function upsertContractInfo(db: SupabaseClient, companyId: string, 
 
   // Race invoice_paid → contract_created: confirma venda pendente se houver.
   // Roda depois do backfill para metrics/Meta usarem o valor cheio corrigido.
+  // Se a ficha chega já dizendo cobrança > 1, a "primeira" venda capturada
+  // era na verdade uma assinatura madura entrando tarde; a pendente deve sumir.
   if (isCreatedEvent) {
+    if (current && current > 1) {
+      await discardPendingSubscription(db, companyId, contract.id);
+      return;
+    }
     await confirmPendingSubscription(db, companyId, contract.id);
   }
 }
@@ -608,6 +614,20 @@ async function findContractInfo(
     // venda normalmente; pendente só quando a ficha diz explicitamente false.
     createdReceived: typeof createdReceived === "boolean" ? createdReceived : null,
   };
+}
+
+async function discardPendingSubscription(db: SupabaseClient, companyId: string, contractId: string): Promise<void> {
+  const cutoffIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { error } = await db
+    .from("events_log")
+    .delete()
+    .eq("company_id", companyId)
+    .eq("recurrence_key", contractId)
+    .eq("sale_confirmed", false)
+    .gte("created_at", cutoffIso);
+  if (error && !error.message?.includes("sale_confirmed")) {
+    console.error("[eduzz webhook] discardPendingSubscription:", error.message);
+  }
 }
 
 // "Cura" de venda recorrente que chegou ÓRFÃ — a Eduzz às vezes manda
@@ -1057,14 +1077,18 @@ export async function recordSale(db: SupabaseClient, companyId: string, sale: Sa
     : { total: null, current: null, chargeValue: null, createdReceived: null };
   if (sale.recurrenceKey) {
     const chargeNumber = sale.installmentNumber ?? contractInfo.current ?? 1;
+    const hasContractShape =
+      contractInfo.total != null ||
+      contractInfo.current != null ||
+      contractInfo.chargeValue != null ||
+      contractInfo.createdReceived === true;
     if (chargeNumber > 1) {
       return { excluded: "late_subscription" };
     }
-    // invoice_paid chegou antes do contract_created: grava como pendente só
-    // quando a ficha existe e marca created_received=false. Sem ficha ou sem
-    // coluna created_received (migration pendente), mantém o comportamento
-    // histórico: registra a venda com o valor dessa cobrança.
-    if (contractInfo.createdReceived === false) {
+    // Sem ficha confiável ainda, não arrisca gravar uma cobrança recorrente
+    // como Purchase. Espera o contract_created/updated confirmar se é mesmo a
+    // 1ª cobrança e qual o valor cheio correto.
+    if (contractInfo.createdReceived === false || !hasContractShape) {
       return await recordPendingSale(db, companyId, sale);
     }
   }
