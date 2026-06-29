@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Search, RefreshCw, Calendar, Radar, X, Mail, Phone, MapPin, User, Settings, ChevronDown, ShoppingBag, CreditCard, Hash, Smartphone, Monitor, Tablet, BarChart3, Table2 } from "lucide-react";
 import { supabaseClient } from "@/lib/supabase";
+import { isDevModeActive } from "@/hooks/useDevMode";
+import { DEMO_TRACKING_EVENTS } from "@/lib/demoTracking";
 import { useCompany, fetchTrackingFunnels, type TrackingFunnel } from "@/hooks/useCompany";
 import { TrackingConfigPanel } from "@/components/TrackingConfigPanel";
 import { EduzzConfigPanel } from "@/components/EduzzConfigPanel";
@@ -113,13 +115,13 @@ export const EVENT_LABELS: Record<string, string> = {
 };
 
 export const EVENT_COLORS: Record<string, { bg: string; text: string }> = {
-  Lead: { bg: "rgba(49,52,145,0.12)", text: "var(--dm-primary)" },
+  Lead: { bg: "rgba(22,163,74,0.12)", text: "var(--dm-primary)" },
   Contact: { bg: "rgba(16,185,129,0.12)", text: "#059669" },
-  Purchase: { bg: "rgba(245,158,11,0.12)", text: "#d97706" },
+  Purchase: { bg: "rgba(22,163,74,0.12)", text: "#15803D" },
   PageView: { bg: "rgba(100,116,139,0.12)", text: "#475569" },
-  AddToCart: { bg: "rgba(139,92,246,0.12)", text: "#7c3aed" },
-  Renewal: { bg: "rgba(245,158,11,0.12)", text: "#d97706" },
-  Installment: { bg: "rgba(245,158,11,0.12)", text: "#d97706" },
+  AddToCart: { bg: "rgba(34,197,94,0.12)", text: "#16A34A" },
+  Renewal: { bg: "rgba(22,163,74,0.12)", text: "#15803D" },
+  Installment: { bg: "rgba(22,163,74,0.12)", text: "#15803D" },
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -490,7 +492,7 @@ function Chip({ label, active, onClick }: { label: string; active: boolean; onCl
       className="rounded-full border px-2.5 py-0.5 text-[10px] font-semibold transition-opacity hover:opacity-80"
       style={{
         borderColor: active ? "var(--dm-primary)" : "var(--dm-border-default)",
-        background: active ? "rgba(49,52,145,0.12)" : "transparent",
+        background: active ? "rgba(22,163,74,0.12)" : "transparent",
         color: active ? "var(--dm-primary)" : "var(--dm-text-tertiary)",
       }}
     >
@@ -519,11 +521,12 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
   const timeline = [...visitor.events].reverse(); // ordem cronológica: o que ele fez primeiro até o último
 
   return createPortal(
-    <>
-      <div className="fixed inset-0 z-40 bg-black/30 backdrop-blur-[2px]" onClick={onClose} />
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-md" />
       <div
-        className="fixed inset-y-0 right-0 z-50 flex w-full flex-col overflow-hidden border-l shadow-2xl sm:max-w-[460px]"
+        className="relative z-10 flex max-h-[86vh] w-full max-w-[560px] flex-col overflow-hidden rounded-2xl border shadow-2xl"
         style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}
+        onClick={(e) => e.stopPropagation()}
       >
         <div className="flex flex-shrink-0 items-center justify-between border-b px-6 py-4" style={{ borderColor: "var(--dm-border-default)" }}>
           <div>
@@ -537,7 +540,7 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
 
         <div className="flex-1 overflow-y-auto px-6 py-5">
           {selectedLead && (
-            <div className="mb-5 rounded-xl border p-3" style={{ borderColor: "var(--dm-primary)", background: "rgba(49,52,145,0.06)" }}>
+            <div className="mb-5 rounded-xl border p-3" style={{ borderColor: "var(--dm-primary)", background: "rgba(22,163,74,0.06)" }}>
               <div className="mb-2 flex items-center justify-between gap-2">
                 <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-primary)" }}>
                   Dados capturados {selectedLead.id === leadEvents[0]?.id ? "(mais recente)" : ""}
@@ -580,7 +583,7 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
           )}
 
           {purchaseEvents.length > 0 && (
-            <div className="mb-5 rounded-xl border p-3" style={{ borderColor: EVENT_COLORS.Purchase.text, background: "rgba(245,158,11,0.06)" }}>
+            <div className="mb-5 rounded-xl border p-3" style={{ borderColor: EVENT_COLORS.Purchase.text, background: "rgba(22,163,74,0.06)" }}>
               <div className="mb-2 flex items-center justify-between gap-2">
                 <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider" style={{ color: EVENT_COLORS.Purchase.text }}>
                   <ShoppingBag size={12} /> {purchaseEvents.length > 1 ? `${purchaseEvents.length} compras` : "Compra"}
@@ -603,7 +606,7 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
                   {p.is_order_bump && (
                     <span
                       className="rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
-                      style={{ background: "rgba(124,58,237,0.12)", color: "#7c3aed" }}
+                      style={{ background: "rgba(22,163,74,0.12)", color: "#16A34A" }}
                       title={p.main_sale_transaction_id ? `Order bump da venda #${p.main_sale_transaction_id}` : "Order bump"}
                     >
                       order bump
@@ -690,7 +693,7 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
                     </div>
                   )}
                   {(event.event_name === "Purchase" || event.event_name === "Renewal" || event.event_name === "Installment") && (
-                    <div className="mt-1.5 rounded-lg border p-2" style={{ borderColor: EVENT_COLORS.Purchase.text, background: "rgba(245,158,11,0.06)" }}>
+                    <div className="mt-1.5 rounded-lg border p-2" style={{ borderColor: EVENT_COLORS.Purchase.text, background: "rgba(22,163,74,0.06)" }}>
                       <div className="flex items-center gap-1.5">
                         <p className="text-sm font-bold" style={{ color: EVENT_COLORS.Purchase.text }}>{formatMoney(event.value, event.currency)}</p>
                         {event.installment_value != null && event.installment_value !== event.value && (
@@ -701,7 +704,7 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
                         {event.event_name !== "Purchase" && (
                           <span
                             className="rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
-                            style={{ background: "rgba(245,158,11,0.12)", color: "#d97706" }}
+                            style={{ background: "rgba(22,163,74,0.12)", color: "#15803D" }}
                             title={event.main_sale_transaction_id ? `Venda principal #${event.main_sale_transaction_id}` : undefined}
                           >
                             {event.event_name === "Renewal" ? "cobrança recorrente" : "parcela"}
@@ -710,7 +713,7 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
                         {event.is_order_bump && (
                           <span
                             className="rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
-                            style={{ background: "rgba(124,58,237,0.12)", color: "#7c3aed" }}
+                            style={{ background: "rgba(22,163,74,0.12)", color: "#16A34A" }}
                             title={event.main_sale_transaction_id ? `Order bump da venda #${event.main_sale_transaction_id}` : "Order bump"}
                           >
                             order bump
@@ -765,7 +768,7 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
           </div>
         </div>
       </div>
-    </>,
+    </div>,
     document.body,
   );
 }
@@ -800,6 +803,13 @@ export function TrackingEventsView() {
 
   const fetchEvents = useCallback(async () => {
     if (!supabaseClient) {
+      // Sem backend: em modo DEV mostra dados demo pra visualizar a tela populada.
+      if (isDevModeActive()) {
+        setEvents(DEMO_TRACKING_EVENTS as unknown as TrackingEvent[]);
+        setAnyMetaConfigured(true);
+        setError(null);
+        return;
+      }
       setError("Supabase não configurado.");
       return;
     }
@@ -1063,7 +1073,7 @@ export function TrackingEventsView() {
                 onClick={() => setView(v)}
                 className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-bold transition"
                 style={view === v
-                  ? { background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)", color: "#fff" }
+                  ? { background: "linear-gradient(135deg,#22C55E 0%,#16A34A 100%)", color: "#fff" }
                   : { color: "var(--dm-text-tertiary)" }}
               >
                 <Icon size={12} />
@@ -1112,7 +1122,7 @@ export function TrackingEventsView() {
                 type="button"
                 onClick={() => setConfigTab(tab)}
                 className="h-9 flex-1 rounded-lg text-xs font-bold transition"
-                style={configTab === tab ? { background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)", color: "#fff" } : { color: "var(--dm-text-tertiary)" }}
+                style={configTab === tab ? { background: "linear-gradient(135deg,#22C55E 0%,#16A34A 100%)", color: "#fff" } : { color: "var(--dm-text-tertiary)" }}
               >
                 {label}
               </button>
