@@ -285,6 +285,9 @@ export async function upsertContractInfo(db: SupabaseClient, companyId: string, 
     starts_at: startsAt,
     finishes_at: finishesAt,
   };
+  if (isCreatedEvent) {
+    contractRow.created_received = true;
+  }
   let { error } = await db.from("eduzz_contracts").upsert(contractRow, { onConflict: "company_id,contract_id" });
   // migrations 055/056 podem ainda não ter rodado no Supabase — mesmo padrão
   // de resiliência de insertEventsLogRow: regrava sem a(s) coluna(s) nova(s)
@@ -299,30 +302,21 @@ export async function upsertContractInfo(db: SupabaseClient, companyId: string, 
   }
   if (error) console.error("[eduzz webhook] falha ao gravar eduzz_contracts:", error.message);
 
-  // Marca created_received = true SOMENTE no contract_created, nunca no
-  // contract_updated (não rebaixa o flag se já estava true de um created
-  // anterior). UPDATE separado pós-upsert evita que o upsert genérico
-  // sobrescreva o flag com false (PostgREST não tem COALESCE nativo em upsert).
-  if (isCreatedEvent && !error) {
-    const { error: flagErr } = await db
-      .from("eduzz_contracts")
-      .update({ created_received: true })
-      .eq("company_id", companyId)
-      .eq("contract_id", contract.id);
-    if (flagErr && !flagErr.message?.includes("created_received")) {
-      console.error("[eduzz webhook] falha ao marcar created_received:", flagErr.message);
-    }
-  }
-
-  // Race invoice_paid → contract_created: confirma venda pendente se houver.
-  // Só no contract_created — backfill de valores roda pra ambos os eventos.
-  if (isCreatedEvent) {
-    await confirmPendingSubscription(db, companyId, contract.id);
-  }
-
   // Race genérico (contract_created/updated chegou depois do invoice_paid
   // normal — já confirmado): corrige valor/installments retroativamente.
   await backfillContractValues(db, companyId, contract.id, total, isFinite, current, chargeValue, customerEmail, productId, startsAt, finishesAt);
+
+  // Race invoice_paid → contract_created: confirma venda pendente se houver.
+  // Roda depois do backfill para metrics/Meta usarem o valor cheio corrigido.
+  // Se a ficha chega já dizendo cobrança > 1, a "primeira" venda capturada
+  // era na verdade uma assinatura madura entrando tarde; a pendente deve sumir.
+  if (isCreatedEvent) {
+    if (current && current > 1) {
+      await discardPendingSubscription(db, companyId, contract.id);
+      return;
+    }
+    await confirmPendingSubscription(db, companyId, contract.id);
+  }
 }
 
 // Confirma uma venda de assinatura que chegou ANTES do contract_created
@@ -593,7 +587,7 @@ async function findContractInfo(
   db: SupabaseClient,
   companyId: string,
   contractId: string,
-): Promise<{ total: number | null; current: number | null; chargeValue: number | null; createdReceived: boolean }> {
+): Promise<{ total: number | null; current: number | null; chargeValue: number | null; createdReceived: boolean | null }> {
   let { data, error } = await db
     .from("eduzz_contracts")
     .select("total_installments, is_finite, current_charge, charge_value, created_received")
@@ -610,16 +604,30 @@ async function findContractInfo(
       .eq("contract_id", contractId)
       .maybeSingle());
   }
-  if (error || !data) return { total: null, current: null, chargeValue: null, createdReceived: false };
+  if (error || !data) return { total: null, current: null, chargeValue: null, createdReceived: null };
+  const createdReceived = (data as { created_received?: boolean | null }).created_received;
   return {
     total: data.is_finite && data.total_installments ? (data.total_installments as number) : null,
     current: (data as { current_charge?: number | null }).current_charge ?? null,
     chargeValue: (data as { charge_value?: number | null }).charge_value ?? null,
-    // Se a coluna ainda não existe (migration 064 pendente), `data` não tem o
-    // campo → undefined → cai pra false (assume "não confirmado ainda").
-    // Comportamento conservador: venda pode ficar pendente até a migration rodar.
-    createdReceived: Boolean((data as { created_received?: boolean | null }).created_received),
+    // null = coluna ausente ou ficha inexistente. Nesse caso processamos a
+    // venda normalmente; pendente só quando a ficha diz explicitamente false.
+    createdReceived: typeof createdReceived === "boolean" ? createdReceived : null,
   };
+}
+
+async function discardPendingSubscription(db: SupabaseClient, companyId: string, contractId: string): Promise<void> {
+  const cutoffIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { error } = await db
+    .from("events_log")
+    .delete()
+    .eq("company_id", companyId)
+    .eq("recurrence_key", contractId)
+    .eq("sale_confirmed", false)
+    .gte("created_at", cutoffIso);
+  if (error && !error.message?.includes("sale_confirmed")) {
+    console.error("[eduzz webhook] discardPendingSubscription:", error.message);
+  }
 }
 
 // "Cura" de venda recorrente que chegou ÓRFÃ — a Eduzz às vezes manda
@@ -1066,16 +1074,21 @@ export async function recordSale(db: SupabaseClient, companyId: string, sale: Sa
   // cobrança (melhor esforço — não dá pra saber que é tarde sem a ficha).
   const contractInfo = sale.recurrenceKey
     ? await findContractInfo(db, companyId, sale.recurrenceKey)
-    : { total: null, current: null, chargeValue: null, createdReceived: false };
+    : { total: null, current: null, chargeValue: null, createdReceived: null };
   if (sale.recurrenceKey) {
     const chargeNumber = sale.installmentNumber ?? contractInfo.current ?? 1;
+    const hasContractShape =
+      contractInfo.total != null ||
+      contractInfo.current != null ||
+      contractInfo.chargeValue != null ||
+      contractInfo.createdReceived === true;
     if (chargeNumber > 1) {
       return { excluded: "late_subscription" };
     }
-    // invoice_paid chegou antes do contract_created: grava como pendente.
-    // A linha fica sale_confirmed=false — não vai pra dashboard nem pra Meta
-    // até o contract_created confirmar (ou expirar em 24h).
-    if (!contractInfo.createdReceived) {
+    // Sem ficha confiável ainda, não arrisca gravar uma cobrança recorrente
+    // como Purchase. Espera o contract_created/updated confirmar se é mesmo a
+    // 1ª cobrança e qual o valor cheio correto.
+    if (contractInfo.createdReceived === false || !hasContractShape) {
       return await recordPendingSale(db, companyId, sale);
     }
   }

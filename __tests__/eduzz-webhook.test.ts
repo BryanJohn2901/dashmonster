@@ -21,13 +21,14 @@ const mockConfigSelect = jest.fn(() => ({ eq: () => ({ maybeSingle: mockConfigMa
 // maybeSingle(), dá await direto na query (espera um array) — por isso tem
 // mock PRÓPRIO (mockEventsLogCount), pra não disputar a mesma fila do
 // maybeSingle (senão bagunçaria a ordem de TODOS os outros testes).
-const mockEventsLogMaybeSingle = jest.fn();
+const mockEventsLogMaybeSingle = jest.fn(() => Promise.resolve({ data: null, error: null }));
 const mockEventsLogCount = jest.fn((): Promise<{ data: unknown[]; error: { message: string } | null }> => Promise.resolve({ data: [], error: null }));
 function makeEventsLogQuery() {
-  const query: { eq: jest.Mock; ilike: jest.Mock; is: jest.Mock; order: jest.Mock; limit: jest.Mock; maybeSingle: () => unknown; then: (...args: never[]) => unknown } = {
+  const query: { eq: jest.Mock; ilike: jest.Mock; is: jest.Mock; gte: jest.Mock; order: jest.Mock; limit: jest.Mock; maybeSingle: () => unknown; then: (...args: never[]) => unknown } = {
     eq: jest.fn(),
     ilike: jest.fn(),
     is: jest.fn(),
+    gte: jest.fn(),
     order: jest.fn(),
     limit: jest.fn(),
     maybeSingle: () => mockEventsLogMaybeSingle(),
@@ -36,6 +37,7 @@ function makeEventsLogQuery() {
   query.eq.mockImplementation(() => query);
   query.ilike.mockImplementation(() => query);
   query.is.mockImplementation(() => query);
+  query.gte.mockImplementation(() => query);
   query.order.mockImplementation(() => query);
   query.limit.mockImplementation(() => query);
   return query;
@@ -54,12 +56,16 @@ function makeUpdateChain() {
   const chain = {
     eq: (...args: unknown[]) => { mockEq(...args); return chain; },
     is: () => chain,
+    gte: () => chain,
+    not: () => chain,
+    lt: () => chain,
     then: resolved.then.bind(resolved),
     catch: resolved.catch.bind(resolved),
   };
   return chain;
 }
 const mockUpdate = jest.fn(() => makeUpdateChain());
+const mockDelete = jest.fn(() => makeUpdateChain());
 
 // tracking_pixels: mesma forma encadeada de tracking.test.ts.
 const mockPixelMaybeSingle = jest.fn();
@@ -158,7 +164,7 @@ const mockContractUpsert = jest.fn(
 const mockFrom = jest.fn((table: string) => {
   if (table === "eduzz_webhook_configs") return { select: mockConfigSelect };
   if (table === "tracking_pixels") return { select: mockPixelSelect };
-  if (table === "events_log") return { select: mockEventsLogSelect, insert: mockInsert, update: mockUpdate };
+  if (table === "events_log") return { select: mockEventsLogSelect, insert: mockInsert, update: mockUpdate, delete: mockDelete };
   if (table === "campaign_metrics") return { select: mockMetricsSelect, upsert: mockMetricsUpsert };
   if (table === "eduzz_products") return { select: mockProductsSelect, upsert: mockProductsUpsert };
   if (table === "eduzz_product_offers") return { upsert: mockOffersUpsert };
@@ -490,6 +496,7 @@ describe("POST /api/eduzz/webhook", () => {
     mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
     mockNotYetProcessed();
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // isKnownRecurrence: 1ª cobrança, sem renovação anterior
+    mockContractMaybeSingle.mockResolvedValueOnce({ data: { total_installments: 12, is_finite: true, current_charge: 1, created_received: true }, error: null });
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por email
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por telefone
     mockProductPixelConfigured();
@@ -531,8 +538,8 @@ describe("POST /api/eduzz/webhook", () => {
     };
     const res = await POST(buildRequest(payload));
     expect(res.status).toBe(200);
-
-    expect(mockInsert).toHaveBeenCalledWith(expect.objectContaining({ value: 970, recurrence_key: "sub-1" }));
+    expect(await res.json()).toEqual(expect.objectContaining({ pending: true }));
+    expect(mockInsert).toHaveBeenCalledWith(expect.objectContaining({ value: 970, recurrence_key: "sub-1", sale_confirmed: false }));
   });
 
   it("renovação de assinatura (recurrence_key já visto): DESCARTADA — não grava, não soma receita, não vai pra Meta", async () => {
@@ -719,6 +726,46 @@ describe("POST /api/eduzz/webhook", () => {
     await POST(buildRequest(payload));
 
     expect(mockUpdate).not.toHaveBeenCalledWith({ recurrence_key: "ct-ambiguo-1" });
+  });
+
+  it("contract_created apaga venda pendente quando a ficha revela cobrança tardia (>1), em vez de confirmar como Purchase", async () => {
+    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({
+      data: {
+        id: "evt-pendente-tardia",
+        value: 229,
+        installment_value: 229,
+        currency: "BRL",
+        product_name: "Curso Z",
+        created_at: "2026-06-28T18:28:00.000Z",
+        pixel_id: null,
+        event_id: "TX-LATE-1",
+        recurrence_key: "sub-late-1",
+        lead_email: "joao@teste.com",
+        lead_phone: null,
+        lead_name: "Joao",
+        fingerprint_id: "fp-1",
+        fbp: null,
+        fbc: null,
+        country: null,
+        country_region: null,
+        city: null,
+        postal_code: null,
+        client_ip_address: null,
+        client_user_agent: null,
+      },
+      error: null,
+    });
+
+    const payload = {
+      event: "myeduzz.contract_created",
+      data: { contract: { id: "sub-late-1", recurrence: { isFinite: true, price: { value: 229 }, charges: { current: 8, total: 12 } } } },
+    };
+    const res = await POST(buildRequest(payload));
+
+    expect((await res.json()).received).toBe(true);
+    expect(mockDelete).toHaveBeenCalled();
+    expect(mockUpdate).not.toHaveBeenCalledWith({ sale_confirmed: true });
   });
 
   it("contract_updated corrige installment_number desatualizado da linha mais recente usando charges.current (renovações perdidas no caminho)", async () => {

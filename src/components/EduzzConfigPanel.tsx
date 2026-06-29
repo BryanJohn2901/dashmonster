@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Loader2, Save, Plus, Trash2, ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "@/hooks/useToast";
+import { productBaseName } from "@/lib/eduzz";
 import {
   fetchEduzzWebhookConfigs, createEduzzWebhookConfig, renameEduzzWebhookConfig, deleteEduzzWebhookConfig,
   fetchTrackingPixels, fetchEduzzCatalog, upsertEduzzProduct, setEduzzProductPixel,
@@ -216,7 +217,7 @@ function ProductPixelMapSection({ company, canEdit }: { company: Company; canEdi
                             title={p.name}
                           >
                             {p.offers.length > 0 && (expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />)}
-                            <span style={{ color: "var(--dm-text-primary)" }}>{p.name}</span>
+                            <span style={{ color: "var(--dm-text-primary)" }}>{productBaseName(p.name)}</span>
                             <span className="font-mono text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>#{p.parentId}</span>
                             {p.offers.length > 0 && (
                               <span className="rounded-full px-1.5 py-0.5 text-[9px] font-semibold" style={{ background: "rgba(100,116,139,0.12)", color: "var(--dm-text-tertiary)" }}>

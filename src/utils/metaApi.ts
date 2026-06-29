@@ -49,6 +49,32 @@ export async function fetchMetaCampaigns(
   return body as MetaCampaign[];
 }
 
+// ─── Objetivo real das campanhas (optimization_goal + promoted_object) ─────────
+
+import type { CampaignGoal } from "@/lib/resultDetection";
+
+/**
+ * Busca o objetivo REAL de cada campanha (o que a Meta otimiza) → mapa campaignId→goal.
+ * Usado para contar o "Resultado" igual à coluna Resultados da Meta, sem chute.
+ * Falha silenciosa (devolve {}) — o auto-detect cobre quando o objetivo não vem.
+ */
+export async function fetchCampaignGoals(
+  adAccountId: string,
+  accessToken: string,
+  campaignIds?: string[],
+): Promise<Record<string, CampaignGoal>> {
+  if (!adAccountId || !accessToken) return {};
+  try {
+    const params = new URLSearchParams({ adAccountId, accessToken });
+    if (campaignIds && campaignIds.length > 0) params.set("campaignIds", campaignIds.join(","));
+    const res = await fetch(`/api/meta/adset-goals?${params}`);
+    if (!res.ok) return {};
+    return (await res.json()) as Record<string, CampaignGoal>;
+  } catch {
+    return {};
+  }
+}
+
 // ─── Ad Accounts ──────────────────────────────────────────────────────────────
 
 export interface MetaAdAccount {

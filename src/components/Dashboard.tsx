@@ -3714,9 +3714,6 @@ export function Dashboard({
               campaignGroupOptions={allGroups.map((g) => ({ id: g.id, label: g.label, section: g.section }))}
               campaignConfigs={campaignConfigs}
               appliedDateRange={{ from: dateFrom, to: dateTo }}
-              viewId={profileViewId}
-              onOpenProfile={(p) => { setProfileViewId(p.id); setActiveTabItem(p.name || "Perfil"); }}
-              onCloseProfile={() => { setProfileViewId(null); setActiveTabItem(null); }}
             />
           )}
 

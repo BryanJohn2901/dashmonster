@@ -1,4 +1,9 @@
 import { NextRequest } from "next/server";
+
+jest.mock("@/lib/trackingAuth", () => ({
+  requireAuth: jest.fn(() => Promise.resolve({ ok: true, userId: "user-1", db: {} })),
+}));
+
 import { POST } from "@/app/api/tracking/verify-token/route";
 
 function req(body: unknown) {

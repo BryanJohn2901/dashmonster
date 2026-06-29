@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireCompanyAccess } from "@/lib/trackingAuth";
 
 // Botão "Testar" do modo proxy em TrackingConfigPanel.tsx — confere de ponta a
 // ponta se a instalação do dm-proxy.php no domínio do CLIENTE está funcionando,
@@ -53,11 +54,18 @@ function normalizeUrl(raw: string): URL | null {
   }
 }
 
-async function fetchWithTimeout(url: string, init?: RequestInit): Promise<Response> {
+async function fetchWithTimeout(url: URL, init?: RequestInit, redirects = 0): Promise<Response> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    return await fetch(url, { ...init, signal: controller.signal, redirect: "follow" });
+    const res = await fetch(url, { ...init, signal: controller.signal, redirect: "manual" });
+    if (res.status >= 300 && res.status < 400 && res.headers.get("location")) {
+      if (redirects >= 5) throw new Error("redirecionamentos demais");
+      const next = normalizeUrl(new URL(res.headers.get("location")!, url).toString());
+      if (!next) throw new Error("redirect para URL nao permitida");
+      return fetchWithTimeout(next, init, redirects + 1);
+    }
+    return res;
   } finally {
     clearTimeout(timeout);
   }
@@ -83,13 +91,17 @@ export async function POST(request: NextRequest) {
   const origin = target.origin;
   const companySlug = body.companySlug.trim();
   const pixelSlug = body.pixelSlug?.trim() || undefined;
+  const access = await requireCompanyAccess(request, { companySlug, write: true });
+  if (!access.ok) return access.response;
+
   const configQs = `client_id=${encodeURIComponent(companySlug)}${pixelSlug ? `&pixel_slug=${encodeURIComponent(pixelSlug)}` : ""}`;
+  const httpsOk = target.protocol === "https:";
 
   // 1) A página tem o snippet certo?
   let scriptFound = false;
   let pageError: string | null = null;
   try {
-    const pageRes = await fetchWithTimeout(target.toString());
+    const pageRes = await fetchWithTimeout(target);
     if (!pageRes.ok) {
       pageError = `Página respondeu ${pageRes.status}.`;
     } else {
@@ -98,8 +110,11 @@ export async function POST(request: NextRequest) {
       // dmq.push(["init", ...]), carregado async) e o legado (dm-proxy.php?ep=pixel
       // + Tracker.init(...)). Os dois resultam no mesmo modo proxy/cookie.
       const hasScript = html.includes("pixel.js?via=proxy") || html.includes("dm-proxy.php?ep=pixel");
-      const hasInit = html.includes(`Tracker.init("${companySlug}"`) || html.includes(`"init","${companySlug}"`);
-      scriptFound = hasScript && hasInit;
+      const hasInit =
+        html.includes(`Tracker.init("${companySlug}"`) ||
+        html.includes(`"init","${companySlug}"`);
+      const hasPixelSlug = !pixelSlug || html.includes(`"${pixelSlug}"`) || html.includes(`'${pixelSlug}'`);
+      scriptFound = hasScript && hasInit && hasPixelSlug;
       if (!scriptFound) pageError = "Página acessível, mas não achei o script do pixel (ou o init com o slug da empresa) nela.";
     }
   } catch {
@@ -110,7 +125,7 @@ export async function POST(request: NextRequest) {
   let configOk = false;
   let configError: string | null = null;
   try {
-    const configRes = await fetchWithTimeout(`${origin}/dm-proxy.php?ep=config&${configQs}`);
+    const configRes = await fetchWithTimeout(new URL(`/dm-proxy.php?ep=config&${configQs}`, origin));
     if (configRes.ok) {
       const json = (await configRes.json().catch(() => null)) as Record<string, unknown> | null;
       configOk = Boolean(json && "metaPixelId" in json);
@@ -126,15 +141,16 @@ export async function POST(request: NextRequest) {
   let cookieOk = false;
   let cookieError: string | null = null;
   try {
-    const trackRes = await fetchWithTimeout(`${origin}/dm-proxy.php?ep=track`, {
+    const trackRes = await fetchWithTimeout(new URL("/dm-proxy.php?ep=track", origin), {
       method: "POST",
       headers: { "Content-Type": "application/json", Referer: `${origin}/` },
       body: JSON.stringify({ client_id: companySlug, pixel_slug: pixelSlug, event_name: "ProxyTest", ping: true }),
     });
     const setCookie = trackRes.headers.get("set-cookie");
-    cookieOk = trackRes.ok && Boolean(setCookie?.includes("_dm_uid="));
+    cookieOk = httpsOk && trackRes.ok && Boolean(setCookie?.includes("_dm_uid="));
     if (!cookieOk) {
-      cookieError = trackRes.ok
+      if (!httpsOk) cookieError = "O site precisa estar em HTTPS para o navegador aceitar o cookie Secure.";
+      else cookieError = trackRes.ok
         ? "dm-proxy.php respondeu, mas o cookie _dm_uid não voltou no Set-Cookie — a hospedagem pode estar removendo esse header."
         : `dm-proxy.php?ep=track respondeu ${trackRes.status}.`;
     }
@@ -149,6 +165,7 @@ export async function POST(request: NextRequest) {
     configError,
     cookieOk,
     cookieError,
+    httpsOk,
     allOk: scriptFound && configOk && cookieOk,
   });
 }
