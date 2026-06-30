@@ -312,7 +312,7 @@ export async function upsertContractInfo(db: SupabaseClient, companyId: string, 
   // era na verdade uma assinatura madura entrando tarde; a pendente deve sumir.
   if (isCreatedEvent) {
     if (current && current > 1) {
-      await discardPendingSubscription(db, companyId, contract.id);
+      await discardLateSubscriptionPurchases(db, companyId, contract.id);
       return;
     }
     await confirmPendingSubscription(db, companyId, contract.id);
@@ -616,17 +616,15 @@ async function findContractInfo(
   };
 }
 
-async function discardPendingSubscription(db: SupabaseClient, companyId: string, contractId: string): Promise<void> {
-  const cutoffIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+async function discardLateSubscriptionPurchases(db: SupabaseClient, companyId: string, contractId: string): Promise<void> {
   const { error } = await db
     .from("events_log")
     .delete()
     .eq("company_id", companyId)
     .eq("recurrence_key", contractId)
-    .eq("sale_confirmed", false)
-    .gte("created_at", cutoffIso);
+    .eq("event_name", "Purchase");
   if (error && !error.message?.includes("sale_confirmed")) {
-    console.error("[eduzz webhook] discardPendingSubscription:", error.message);
+    console.error("[eduzz webhook] discardLateSubscriptionPurchases:", error.message);
   }
 }
 
@@ -721,6 +719,7 @@ export function parseFlatModernPayloadAllItems(body: RawPayload): (SaleEvent | {
   const bankSlip = body.bankSlipInstallment as { installmentNumber?: number; totalInstallments?: number } | null;
   const priceObj = body.price as { value?: number; currency?: string } | null;
   const paidObj = body.paid as { value?: number; currency?: string } | null;
+  const rawInstallments = typeof body.installments === "number" ? body.installments : null;
   const paidAt = (body.paidAt as string | undefined) ?? null;
   const paymentMethod = (body.paymentMethod as string | null) ?? null;
   const mainTransactionId = transaction?.id || transaction?.key || `flat-${Date.now()}`;
@@ -756,7 +755,7 @@ export function parseFlatModernPayloadAllItems(body: RawPayload): (SaleEvent | {
       mainSaleTransactionId: orderBump?.mainSaleId != null ? String(orderBump.mainSaleId) : null,
       items: [{ productId: null, parentId: null, name: "Eduzz", value: fallbackValue }],
       productParentId: null,
-      totalInstallmentsRaw: (body.installments as number | null) ?? null,
+      totalInstallmentsRaw: rawInstallments,
       contractUnlimitedInstallments: contract?.isUnlimitedInstallments ?? null,
     }];
   }
@@ -792,7 +791,7 @@ export function parseFlatModernPayloadAllItems(body: RawPayload): (SaleEvent | {
       mainSaleTransactionId: isBump ? mainTransactionId : null,
       items: [{ productId: item.productId ?? null, parentId: item.parentId ?? null, name: productName, value: itemValue }],
       productParentId: item.parentId ?? null,
-      totalInstallmentsRaw: null,
+      totalInstallmentsRaw: rawInstallments,
       contractUnlimitedInstallments: contract?.isUnlimitedInstallments ?? null,
     };
   });

@@ -15,6 +15,7 @@ import {
 } from "@/hooks/useCompany";
 import { saveMetaCredentials } from "@/utils/metaApi";
 import { TrackingConfigPanel } from "@/components/TrackingConfigPanel";
+import { EduzzConfigPanel } from "@/components/EduzzConfigPanel";
 import {
   HISTORICAL_KIND_LABELS, HISTORY_TAB_LABELS_KEY, CUSTOM_HISTORY_TABS_KEY,
   readCustomHistoryTabs, type CustomHistoryTab, type HistoricalKind,
@@ -307,8 +308,15 @@ export function TrackingSection({ company, canEdit, open, onToggle, variant }: {
   company: Company; canEdit: boolean; open: boolean; onToggle: (id: SectionId) => void; variant?: "accordion" | "panel";
 }) {
   return (
-    <Section id="tracking" icon={Radar} title="Tracking Pixel" summary="1 pixel por landing page/produto" status="ok" open={open} onToggle={onToggle} variant={variant}>
-      <TrackingConfigPanel company={company} canEdit={canEdit} />
+    <Section id="tracking" icon={Radar} title="Tracking" summary="Pixel server-side e conexão Eduzz" status="ok" open={open} onToggle={onToggle} variant={variant}>
+      <div className="space-y-2">
+        <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Pixel server-side</p>
+        <TrackingConfigPanel company={company} canEdit={canEdit} />
+      </div>
+      <div className="border-t pt-4" style={{ borderColor: "var(--dm-border-default)" }}>
+        <p className="mb-3 text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Conexão Eduzz</p>
+        <EduzzConfigPanel company={company} canEdit={canEdit} />
+      </div>
     </Section>
   );
 }

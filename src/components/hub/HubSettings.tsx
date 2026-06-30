@@ -43,7 +43,7 @@ const NAV: { group: string; items: { id: NavId; label: string; icon: typeof User
     { id: "instagram",  label: "Instagram", icon: Camera, sub: "Conta IG desta empresa" },
     { id: "filtros",    label: "Filtros",   icon: SlidersHorizontal, sub: "Filtros ativos do dashboard" },
     { id: "historico",  label: "Histórico", icon: History,          sub: "Sub-abas e layout de dados" },
-    { id: "tracking",      label: "Tracking",      icon: Radar,  sub: "Pixel server-side" },
+    { id: "tracking",      label: "Tracking",      icon: Radar,  sub: "Pixel server-side e Eduzz" },
     { id: "colaboradores", label: "Colaboradores", icon: Users,  sub: "Membros e papéis da empresa" },
   ]},
   { group: "Avançado", items: [

@@ -756,7 +756,7 @@ describe("POST /api/eduzz/webhook", () => {
     expect(mockUpdate).not.toHaveBeenCalledWith({ recurrence_key: "ct-ambiguo-1" });
   });
 
-  it("contract_created apaga venda pendente quando a ficha revela cobrança tardia (>1), em vez de confirmar como Purchase", async () => {
+  it("contract_created apaga Purchase da assinatura quando a ficha revela cobrança tardia (>1), em vez de confirmar como compra", async () => {
     mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
     mockEventsLogMaybeSingle.mockResolvedValueOnce({
       data: {
@@ -793,6 +793,7 @@ describe("POST /api/eduzz/webhook", () => {
 
     expect((await res.json()).received).toBe(true);
     expect(mockDelete).toHaveBeenCalled();
+    expect(mockEq).toHaveBeenCalledWith("event_name", "Purchase");
     expect(mockUpdate).not.toHaveBeenCalledWith({ sale_confirmed: true });
   });
 
@@ -1088,6 +1089,36 @@ describe("POST /api/eduzz/webhook", () => {
       expect.objectContaining({ onConflict: "company_id,product_id" }),
     );
     expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("formato flat moderno preserva installments raiz para calcular valor cheio de assinatura", async () => {
+    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockNotYetProcessed();
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por email
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por telefone
+
+    const payload = {
+      status: "paid",
+      buyer: { name: "Maria Silva", email: "maria@teste.com" },
+      transaction: { id: "TX-FLAT-ASSINATURA" },
+      paidAt: "2026-06-18T12:00:00Z",
+      paid: { value: 229, currency: "BRL" },
+      price: { value: 229, currency: "BRL" },
+      contract: { id: "sub-flat-1" },
+      installments: 19,
+      items: [{ productId: "P-FLAT", parentId: "curso-flat", name: "Curso Flat", price: { value: 229, currency: "BRL" } }],
+    };
+    const res = await POST(buildRequest(payload));
+
+    expect(res.status).toBe(200);
+    expect(mockInsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        value: 4351,
+        installment_value: 229,
+        installments: 19,
+        recurrence_key: "sub-flat-1",
+      }),
+    );
   });
 
   it("produto sem pixel escolhido nunca manda pra Meta, mesmo com visita correlacionada (decisão: só envia o que for configurado)", async () => {
