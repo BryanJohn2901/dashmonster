@@ -44,3 +44,15 @@ export function matchProductNames(a: string, b: string): boolean {
   const baseB = productBaseName(b).toLowerCase();
   return baseA.includes(baseB) || baseB.includes(baseA);
 }
+
+/**
+ * Tenta inferir o total de parcelas a partir do código bruto da oferta.
+ * Fallback de último recurso quando a ficha do contrato ainda não chegou.
+ * Ex.: "[BM9-19x197-C] ..." -> 19
+ */
+export function inferInstallmentsFromProductName(raw: string): number | null {
+  const match = raw.match(/^\s*\[[^\]]*?(\d+)x\d+[^\]]*\]/i);
+  if (!match) return null;
+  const installments = Number(match[1]);
+  return Number.isFinite(installments) && installments > 1 ? installments : null;
+}

@@ -1030,6 +1030,33 @@ describe("POST /api/eduzz/webhook", () => {
     expect(mockInsert).toHaveBeenCalledWith(expect.objectContaining({ value: 10, recurrence_key: "sub-psl-novo" }));
   });
 
+  it("assinatura sem ficha mas com código da oferta 19x197 infere o total pelo nome e mostra o valor cheio", async () => {
+    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // isKnownRecurrence: 1ª cobrança
+    mockNotYetProcessed();
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por email
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por telefone
+
+    const payload = {
+      ...MODERN_PAYLOAD,
+      data: {
+        ...MODERN_PAYLOAD.data,
+        paid: { value: 197, currency: "BRL" },
+        contract: { id: "sub-19x197" },
+        items: [{ name: "[BM9-19x197-C] 30/05 - Pós-graduação em biomecânica, musculação e reabilitação musculoesquelética", parentId: "curso-pai-19x197", productId: "PROD-19X197" }],
+      },
+    };
+    await POST(buildRequest(payload));
+
+    expect(mockInsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        value: 3743,
+        installments: 19,
+        recurrence_key: "sub-19x197",
+      }),
+    );
+  });
+
   it("reembolso (invoice_refunded) marca a venda já gravada como status=refunded", async () => {
     mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
 

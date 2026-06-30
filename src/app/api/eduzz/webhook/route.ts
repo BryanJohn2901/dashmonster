@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { hashLower, hashPhone, hashNormalized } from "@/lib/metaHash";
 import { insertEventsLogRow } from "@/lib/eventsLogInsert";
 import { sendMetaCapiEvent } from "@/lib/metaCapi";
+import { inferInstallmentsFromProductName } from "@/lib/eduzz";
 import { resolvePixelById, type ResolvedPixel } from "@/lib/resolvePixel";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
@@ -1128,7 +1129,10 @@ export async function recordSale(db: SupabaseClient, companyId: string, sale: Sa
   // cai pro valor normal — comportamento de sempre, sem inventar total.
   const contractTotalInstallments =
     contractInfo.total ??
-    (sale.recurrenceKey && sale.totalInstallmentsRaw && sale.totalInstallmentsRaw > 1 ? sale.totalInstallmentsRaw : null);
+    (sale.recurrenceKey && sale.totalInstallmentsRaw && sale.totalInstallmentsRaw > 1 ? sale.totalInstallmentsRaw : null) ??
+    // Último fallback: alguns nomes de oferta já trazem o padrão "[...-19x197-...]".
+    // Só usamos quando é assinatura e a ficha ainda não chegou, pra não mexer em venda única.
+    (sale.recurrenceKey ? inferInstallmentsFromProductName(sale.productName) : null);
   // Bug real confirmado em produção: ofertas com "1ª parcela com desconto"
   // (ex.: 50% off só na 1ª) têm `sale.value` (valor cobrado AGORA) diferente
   // do `charge_value` da ficha (preço normal das demais parcelas) —
