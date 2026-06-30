@@ -538,8 +538,36 @@ describe("POST /api/eduzz/webhook", () => {
     };
     const res = await POST(buildRequest(payload));
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual(expect.objectContaining({ pending: true }));
-    expect(mockInsert).toHaveBeenCalledWith(expect.objectContaining({ value: 970, recurrence_key: "sub-1", sale_confirmed: false }));
+    expect(mockInsert).toHaveBeenCalledWith(expect.objectContaining({ value: 970, recurrence_key: "sub-1" }));
+    expect(mockInsert).not.toHaveBeenCalledWith(expect.objectContaining({ sale_confirmed: false }));
+  });
+
+  it("assinatura sem ficha mas com data.installments usa esse total como fallback para valor cheio", async () => {
+    mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // isKnownRecurrence: 1ª cobrança
+    mockNotYetProcessed();
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por email
+    mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por telefone
+
+    const payload = {
+      ...MODERN_PAYLOAD,
+      data: {
+        ...MODERN_PAYLOAD.data,
+        paid: { value: 229, currency: "BRL" },
+        installments: 19,
+        contract: { id: "sub-sem-ficha-com-total" },
+      },
+    };
+    await POST(buildRequest(payload));
+
+    expect(mockInsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        value: 4351,
+        installment_value: 229,
+        installments: 19,
+        recurrence_key: "sub-sem-ficha-com-total",
+      }),
+    );
   });
 
   it("renovação de assinatura (recurrence_key já visto): DESCARTADA — não grava, não soma receita, não vai pra Meta", async () => {

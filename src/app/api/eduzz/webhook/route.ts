@@ -1077,18 +1077,12 @@ export async function recordSale(db: SupabaseClient, companyId: string, sale: Sa
     : { total: null, current: null, chargeValue: null, createdReceived: null };
   if (sale.recurrenceKey) {
     const chargeNumber = sale.installmentNumber ?? contractInfo.current ?? 1;
-    const hasContractShape =
-      contractInfo.total != null ||
-      contractInfo.current != null ||
-      contractInfo.chargeValue != null ||
-      contractInfo.createdReceived === true;
     if (chargeNumber > 1) {
       return { excluded: "late_subscription" };
     }
-    // Sem ficha confiável ainda, não arrisca gravar uma cobrança recorrente
-    // como Purchase. Espera o contract_created/updated confirmar se é mesmo a
-    // 1ª cobrança e qual o valor cheio correto.
-    if (contractInfo.createdReceived === false || !hasContractShape) {
+    // Se existe ficha parcial marcada explicitamente como "created ainda nao
+    // recebido" e sem nenhum total para precificar, espera o contract_created.
+    if (contractInfo.createdReceived === false && !contractInfo.total && !sale.totalInstallmentsRaw) {
       return await recordPendingSale(db, companyId, sale);
     }
   }
@@ -1133,7 +1127,9 @@ export async function recordSale(db: SupabaseClient, companyId: string, sale: Sa
   // parcelas pra calcular um valor cheio SÓ pra exibição/Meta — sem tocar na
   // receita mensal (campaign_metrics usa sale.value cru). Sem ficha conhecida,
   // cai pro valor normal — comportamento de sempre, sem inventar total.
-  const contractTotalInstallments = contractInfo.total;
+  const contractTotalInstallments =
+    contractInfo.total ??
+    (sale.recurrenceKey && sale.totalInstallmentsRaw && sale.totalInstallmentsRaw > 1 ? sale.totalInstallmentsRaw : null);
   // Bug real confirmado em produção: ofertas com "1ª parcela com desconto"
   // (ex.: 50% off só na 1ª) têm `sale.value` (valor cobrado AGORA) diferente
   // do `charge_value` da ficha (preço normal das demais parcelas) —
