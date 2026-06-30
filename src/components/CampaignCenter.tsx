@@ -18,6 +18,7 @@ import {
   type MetaCampaign, type MetaAdAccount,
 } from "@/utils/metaApi";
 import { TabAccounts, type TabAccountsProps } from "@/components/ControlPanel";
+import { CampaignWizard } from "@/components/CampaignWizard";
 import {
   fetchUserAccountEntries, fetchUserCategories,
   upsertUserCategory, upsertUserAccountEntry,
@@ -73,6 +74,10 @@ const UNIT_PLACEHOLDER: Record<string, string> = {
 
 type ConnectTab = "linked" | "new";
 
+// ponytail: fluxo Meta antigo (drawer lateral) — substituído pelo CampaignWizard
+// inline. Mantido temporariamente; remover junto dos imports só-dele (createPortal,
+// fetchMeta*, loadMeta*, etc.) quando o wizard estiver validado em produção.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function ConnectDrawer({ onClose, onImport }: {
   onClose: () => void;
   onImport: (entries: CampaignCenterEntry[]) => void;
@@ -658,6 +663,16 @@ export function CampaignCenter() {
     });
   };
 
+  // Conectar conta → wizard inline ocupando a janela (substitui o drawer lateral)
+  if (showConnect) {
+    return (
+      <CampaignWizard
+        onClose={() => setShowConnect(false)}
+        onSave={(entry) => upsertEntries([entry])}
+      />
+    );
+  }
+
   return (
     <div className="flex flex-col gap-5">
       {/* Header */}
@@ -930,10 +945,6 @@ export function CampaignCenter() {
           })}
         </div>
       ))}
-
-      {showConnect && (
-        <ConnectDrawer onClose={() => setShowConnect(false)} onImport={upsertEntries} />
-      )}
     </div>
   );
 }
