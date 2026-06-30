@@ -427,6 +427,15 @@ export function eventMatchesFunnel(e: TrackingEvent, funnel: TrackingFunnel): bo
   return false;
 }
 
+function isVisibleTrackingEvent(e: TrackingEvent): boolean {
+  if (e.event_name === "Renewal" || e.event_name === "Installment") return false;
+  if (e.event_name !== "Purchase") return true;
+  if (!e.recurrence_key) return true;
+  if (e.installments != null && e.installments <= 1) return false;
+  if (e.value == null || e.installment_value == null) return false;
+  return e.value !== e.installment_value;
+}
+
 function groupByVisitor(events: TrackingEvent[]): Visitor[] {
   const map = new Map<string, TrackingEvent[]>();
   for (const e of events) {
@@ -900,7 +909,8 @@ export function TrackingEventsView() {
 
   // ── Derived ──────────────────────────────────────────────────────────────────
 
-  const visitors = useMemo(() => groupByVisitor(events), [events]);
+  const visibleEvents = useMemo(() => events.filter(isVisibleTrackingEvent), [events]);
+  const visitors = useMemo(() => groupByVisitor(visibleEvents), [visibleEvents]);
 
   // fingerprintId → Set dos IDs de funil a que este visitante pertence (multi-funil).
   // Um visitante pode pertencer a vários funis simultaneamente.
@@ -970,7 +980,7 @@ export function TrackingEventsView() {
     }
 
     return [...trafficEvents, ...extraConversions];
-  }, [analyticsVisitors, events, funnelFilter, funnels]);
+  }, [analyticsVisitors, visibleEvents, funnelFilter, funnels]);
 
   // Visitantes filtrados pelos filtros da tabela (exceto funil que já cobre o Analytics).
   // Usado nas contagens dos chips de funil para que elas reflitam o mesmo conjunto da tabela.
@@ -1014,13 +1024,13 @@ export function TrackingEventsView() {
     return true;
   });
 
-  const eventTypes = [...new Set(events.map((e) => e.event_name))];
+  const eventTypes = [...new Set(visibleEvents.map((e) => e.event_name))];
   // Formas de pagamento das vendas (Purchase) realmente vistas no período — só
   // mostra o chip pra filtrar quando o usuário já está olhando "Compra" (filtro
   // secundário, igual ao padrão de eventTypes acima).
-  const paymentMethods = [...new Set(events.filter((e) => e.event_name === "Purchase" && e.payment_method).map((e) => e.payment_method as string))];
+  const paymentMethods = [...new Set(visibleEvents.filter((e) => e.event_name === "Purchase" && e.payment_method).map((e) => e.payment_method as string))];
   const purchaseProducts = [...new Set(
-    events.filter((e) => e.event_name === "Purchase" && e.product_name)
+    visibleEvents.filter((e) => e.event_name === "Purchase" && e.product_name)
       .map((e) => productBaseName(e.product_name as string))
   )].sort();
   // Categorias de dispositivo (Celular/Tablet/Desktop) realmente vistas no
@@ -1054,7 +1064,7 @@ export function TrackingEventsView() {
                 ? <><span style={{ color: "var(--dm-primary)" }}>{analyticsVisitors.length} no funil</span> · {visitors.length} total</>
                 : `${visitors.length} visitante${visitors.length !== 1 ? "s" : ""}`)
               : `${filteredVisitors.length} visitante${filteredVisitors.length !== 1 ? "s" : ""}`
-            } · {events.length} evento{events.length !== 1 ? "s" : ""}
+            } · {visibleEvents.length} evento{visibleEvents.length !== 1 ? "s" : ""}
             {eventsCapped && <span style={{ color: "#d97706" }}> · mostrando os {EVENTS_LIMIT} mais recentes (estreite o período pra ver tudo)</span>}
           </p>
         </div>
@@ -1319,7 +1329,7 @@ export function TrackingEventsView() {
       )}
 
       {/* Loading */}
-      {loading && events.length === 0 && (
+      {loading && visibleEvents.length === 0 && (
         <div className="flex flex-1 items-center justify-center gap-2" style={{ color: "var(--dm-text-tertiary)" }}>
           <RefreshCw size={14} className="animate-spin" />
           <span className="text-sm">Buscando eventos…</span>
@@ -1327,7 +1337,7 @@ export function TrackingEventsView() {
       )}
 
       {/* Empty */}
-      {!loading && events.length === 0 && !error && (
+      {!loading && visibleEvents.length === 0 && !error && (
         <div className="flex flex-1 flex-col items-center justify-center gap-2">
           <Radar size={28} style={{ color: "var(--dm-text-tertiary)" }} />
           <p className="text-sm" style={{ color: "var(--dm-text-tertiary)" }}>
@@ -1343,7 +1353,7 @@ export function TrackingEventsView() {
       )}
 
       {/* Analytics — painel agregado estilo GA conectável a funil */}
-      {view === "analytics" && !loading && !error && events.length > 0 && (
+      {view === "analytics" && !loading && !error && visibleEvents.length > 0 && (
         <TrackingAnalytics
           visitors={analyticsVisitors}
           events={analyticsEvents}
