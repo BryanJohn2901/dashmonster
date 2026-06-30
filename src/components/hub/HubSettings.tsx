@@ -18,6 +18,7 @@ import { readCustomHistoryTabs } from "@/types/historical";
 import {
   IdentidadeSection, ConexaoSection, ContasSection, HistoricoSection, TrackingSection, EquipeSection,
 } from "@/components/CompanyStudio";
+import { CampaignCenter } from "@/components/CampaignCenter";
 import type { UserCategory } from "@/types/userConfig";
 
 type NavId = "perfil" | "identidade" | "conexao" | "contas" | "instagram" | "filtros" | "historico" | "tracking" | "colaboradores" | "devacesso" | "criarempresa";
@@ -614,7 +615,18 @@ function EmpresaSections({ nav, categories }: { nav: NavId; categories: UserCate
           </div>
         );
       case "contas":
-        return <ContasSection company={company} canEdit={isOwner} suggestions={suggestions} open onToggle={noop} variant="panel" />;
+        return (
+          <div className="space-y-4">
+            <ContasSection company={company} canEdit={isOwner} suggestions={suggestions} open onToggle={noop} variant="panel" />
+            <div className="rounded-2xl border p-5" style={{ background: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
+              <p className="mb-1 text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>Acoplar conta a um filtro</p>
+              <p className="mb-4 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                Em <strong style={{ color: "var(--dm-text-secondary)" }}>Conectar conta</strong> você liga o ACT a um filtro (existente ou novo) junto com nome e campanhas — tudo de uma vez.
+              </p>
+              <CampaignCenter />
+            </div>
+          </div>
+        );
       case "instagram":
         return <InstagramShell />;
       case "historico":
