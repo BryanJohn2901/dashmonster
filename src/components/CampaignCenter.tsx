@@ -19,6 +19,7 @@ import {
 } from "@/utils/metaApi";
 import { TabAccounts, type TabAccountsProps } from "@/components/ControlPanel";
 import { CampaignWizard } from "@/components/CampaignWizard";
+import { useUserConfig } from "@/hooks/useUserConfig";
 import {
   fetchUserAccountEntries, fetchUserCategories,
   upsertUserCategory, upsertUserAccountEntry,
@@ -625,13 +626,13 @@ export function CampaignCenter({ onConnectingChange }: { onConnectingChange?: (c
   // Avisa o pai (Configurações) p/ esconder o resto e o wizard ocupar a janela.
   useEffect(() => { onConnectingChange?.(showConnect); }, [showConnect, onConnectingChange]);
 
-  // Grupos = filtros/categorias do Painel (mesmo setup, sem retrabalho)
-  const [categoryGroups, setCategoryGroups] = useState<string[]>([]);
-  useEffect(() => {
-    void fetchUserCategories()
-      .then((cats) => setCategoryGroups(cats.filter((c) => c.isEnabled).map((c) => c.slug)))
-      .catch(() => {});
-  }, []);
+  // Grupos = filtros/categorias do Painel (mesmo setup, sem retrabalho).
+  // Store global → atualiza ao vivo quando um filtro é criado em qualquer tela.
+  const { categories: liveCategories } = useUserConfig();
+  const categoryGroups = useMemo(
+    () => liveCategories.filter((c) => c.isEnabled).map((c) => c.slug),
+    [liveCategories],
+  );
   const groupOptions = useMemo(() => {
     const set = new Set<string>(categoryGroups);
     entries.forEach((e) => { if (e.groupId) set.add(e.groupId); });

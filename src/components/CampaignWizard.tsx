@@ -10,7 +10,7 @@
 // (PTA_PAINEL_SAVE_NAV_EVENT) — o listener do Dashboard registra a campanha no
 // FILTRO certo (Biomecânica, Mentoria…) e puxa as métricas. É o caminho provado.
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ArrowLeft, ArrowRight, Check, Loader2, Plug, Target, X, Plus, Search } from "lucide-react";
 import {
   INTENT_META, INTENT_OPTIONS,
@@ -19,7 +19,8 @@ import {
 import type { ResultType } from "@/hooks/useAdvertiserStore";
 import { RESULT_TYPE_OPTIONS } from "@/components/ProfileAnalysis";
 import { useCompany, readAdAccountSuggestions } from "@/hooks/useCompany";
-import { fetchUserCategories, upsertUserCategory, upsertUserAccountEntry, fetchUserAccountEntries } from "@/utils/supabaseCategories";
+import { upsertUserCategory, upsertUserAccountEntry } from "@/utils/supabaseCategories";
+import { useUserConfig } from "@/hooks/useUserConfig";
 import {
   getInternalFiltersForCategorySlug,
   createCustomInternalFilterId,
@@ -34,7 +35,6 @@ import {
   mapPainelInternalFilterToDashboardGroupId,
 } from "@/utils/painelDashboardNavigation";
 import { FIXED_CATEGORIES } from "@/types/userConfig";
-import type { UserCategory, UserAccountEntry } from "@/types/userConfig";
 
 const FIXED_SLUGS = new Set(FIXED_CATEGORIES.map((c) => c.slug));
 
@@ -64,10 +64,9 @@ export function CampaignWizard({ onClose, onSave, nameSuggestions = [] }: {
   const { company } = useCompany();
   const suggested = useMemo(() => readAdAccountSuggestions(company?.settings), [company?.settings]);
 
-  const [cats, setCats] = useState<UserCategory[]>([]);
-  useEffect(() => {
-    void fetchUserCategories().then((all) => setCats(all.filter((c) => c.isEnabled))).catch(() => {});
-  }, []);
+  // Store global → categorias e contas em tempo real (sem fetch só no mount).
+  const { categories: allCats, accountEntries } = useUserConfig();
+  const cats = useMemo(() => allCats.filter((c) => c.isEnabled), [allCats]);
 
   const [step, setStep] = useState<1 | 2>(1);
   const [name, setName] = useState("");
@@ -77,10 +76,6 @@ export function CampaignWizard({ onClose, onSave, nameSuggestions = [] }: {
   const [internalFilter, setInternalFilter] = useState(""); // filtro específico do dashboard (bm, mentoria-scala…)
   const [creatingFilter, setCreatingFilter] = useState(false);
   const [newFilter, setNewFilter] = useState("");
-  const [accountEntries, setAccountEntries] = useState<UserAccountEntry[]>([]);
-  useEffect(() => {
-    void fetchUserAccountEntries().then(setAccountEntries).catch(() => {});
-  }, []);
   const [actId, setActId] = useState("");
   const [intent, setIntent] = useState<CampaignIntent>(INTENT_OPTIONS[0].value);
   const [resultType, setResultType] = useState<ResultType>(INTENT_META[INTENT_OPTIONS[0].value].defaultResultTypes[0]);
