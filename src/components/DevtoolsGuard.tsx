@@ -101,14 +101,18 @@ export function DevtoolsGuard() {
 
   if (remaining <= 0) return null;
 
+  const pct = Math.max(0, Math.min(100, (remaining / LOCK_MS) * 100));
+
   return (
     <div className="dtg-overlay" role="alertdialog" aria-label="Acesso bloqueado">
-      <div className="dtg-scanlines" aria-hidden="true" />
-      <div className="dtg-shake">
-        <p className="dtg-kicker" data-text="SYSTEM BREACH">SYSTEM BREACH</p>
-        <h1 className="dtg-glitch" data-text={MESSAGE}>{MESSAGE}</h1>
+      <div className="dtg-aura" aria-hidden="true" />
+      <div className="dtg-grid" aria-hidden="true" />
+      <div className="dtg-card">
+        <p className="dtg-kicker">SYSTEM BREACH</p>
+        <h1 className="dtg-title">{MESSAGE}</h1>
         <p className="dtg-sub">Sessão encerrada. Acesso bloqueado por segurança.</p>
         <div className="dtg-timer" aria-live="polite">{fmt(remaining)}</div>
+        <div className="dtg-bar" aria-hidden="true"><span style={{ width: `${pct}%` }} /></div>
         <p className="dtg-note">Aguarde o fim da contagem para voltar.</p>
       </div>
     </div>

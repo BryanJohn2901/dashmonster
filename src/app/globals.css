@@ -1229,92 +1229,107 @@ h1, h2, h3, h4, h5 {
   justify-content: center;
   padding: 24px;
   text-align: center;
-  background: #05060a;
-  color: #e7faff;
+  color: #e6f3ec;
   font-family: var(--font-geist-mono), ui-monospace, monospace;
   overflow: hidden;
-  animation: dtg-flicker 3.4s infinite steps(1);
+  background:
+    radial-gradient(120% 85% at 80% 12%, rgba(34, 197, 94, 0.18), transparent 55%),
+    radial-gradient(90% 70% at 8% 105%, rgba(22, 163, 74, 0.12), transparent 60%),
+    #04070a;
 }
-.dtg-scanlines {
+/* Aura verde respirando — eco do "particle cloud" da referência */
+.dtg-aura {
+  position: absolute;
+  top: -12%;
+  right: -6%;
+  width: 62vmax;
+  height: 62vmax;
+  pointer-events: none;
+  background: radial-gradient(circle, rgba(34, 197, 94, 0.22), rgba(34, 197, 94, 0.05) 42%, transparent 70%);
+  filter: blur(36px);
+  animation: dtg-breathe 6.5s ease-in-out infinite;
+}
+/* Grade técnica sutil, esmaecida pelas bordas */
+.dtg-grid {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: repeating-linear-gradient(
-    to bottom,
-    rgba(0, 0, 0, 0) 0,
-    rgba(0, 0, 0, 0) 2px,
-    rgba(0, 0, 0, 0.35) 3px,
-    rgba(0, 0, 0, 0.35) 4px
-  );
-  mix-blend-mode: multiply;
-  animation: dtg-scan 7s linear infinite;
+  opacity: 0.5;
+  background-image:
+    linear-gradient(rgba(34, 197, 94, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(34, 197, 94, 0.05) 1px, transparent 1px);
+  background-size: 46px 46px;
+  -webkit-mask-image: radial-gradient(72% 60% at 50% 44%, #000 28%, transparent 80%);
+  mask-image: radial-gradient(72% 60% at 50% 44%, #000 28%, transparent 80%);
 }
-.dtg-shake { animation: dtg-shake 0.45s infinite; max-width: 720px; }
+.dtg-card { position: relative; z-index: 1; max-width: 660px; }
 .dtg-kicker {
-  font-size: 12px;
-  letter-spacing: 0.55em;
-  color: #ff2e63;
-  margin: 0 0 18px;
-  text-shadow: 0 0 12px rgba(255, 46, 99, 0.7);
-  animation: dtg-flicker 1.7s infinite steps(1);
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 26px;
+  font-size: 11px;
+  letter-spacing: 0.5em;
+  text-transform: uppercase;
+  color: #22c55e;
 }
-.dtg-glitch {
-  position: relative;
-  font-size: clamp(26px, 5vw, 52px);
-  font-weight: 800;
-  line-height: 1.1;
+.dtg-kicker::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #22c55e;
+  box-shadow: 0 0 12px rgba(34, 197, 94, 0.9);
+  animation: dtg-pulse 1.6s ease-in-out infinite;
+}
+.dtg-title {
   margin: 0;
-  color: #f4ffff;
-  text-shadow: 0 0 18px rgba(0, 229, 255, 0.35);
+  font-family: var(--font-poppins), system-ui, sans-serif;
+  font-size: clamp(30px, 5.4vw, 58px);
+  font-weight: 700;
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+  background: linear-gradient(180deg, #ffffff 0%, #b8f0cf 125%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
-.dtg-glitch::before,
-.dtg-glitch::after {
-  content: attr(data-text);
-  position: absolute;
-  inset: 0;
-  clip-path: inset(0 0 0 0);
-}
-.dtg-glitch::before { color: #00e5ff; animation: dtg-glitch-x 2.1s infinite linear alternate-reverse; }
-.dtg-glitch::after  { color: #ff2e63; animation: dtg-glitch-y 1.4s infinite linear alternate-reverse; }
-.dtg-sub  { margin: 22px 0 0; font-size: 13px; color: #8aa0aa; letter-spacing: 0.04em; }
+.dtg-sub { margin: 26px 0 0; font-size: 13px; color: #7c9488; letter-spacing: 0.03em; }
 .dtg-timer {
-  margin: 18px 0 6px;
-  font-size: clamp(40px, 9vw, 76px);
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  color: #00e5ff;
-  text-shadow: 0 0 24px rgba(0, 229, 255, 0.55);
-  animation: dtg-flicker 2.2s infinite steps(1);
+  margin: 32px 0 16px;
+  font-size: clamp(44px, 9vw, 80px);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: #eafff2;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 30px rgba(34, 197, 94, 0.35);
 }
-.dtg-note { margin: 0; font-size: 11px; color: #5a6b73; letter-spacing: 0.06em; }
+.dtg-bar {
+  width: min(280px, 70%);
+  height: 3px;
+  margin: 0 auto;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.dtg-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #16a34a, #22c55e);
+  box-shadow: 0 0 12px rgba(34, 197, 94, 0.7);
+  transition: width 0.3s linear;
+}
+.dtg-note { margin: 18px 0 0; font-size: 11px; color: #4f6258; letter-spacing: 0.06em; }
 
-@keyframes dtg-shake {
-  0%, 100% { transform: translate(0, 0); }
-  20% { transform: translate(-2px, 1px); }
-  40% { transform: translate(2px, -1px); }
-  60% { transform: translate(-1px, -2px); }
-  80% { transform: translate(1px, 2px); }
+@keyframes dtg-breathe {
+  0%, 100% { transform: scale(1); opacity: 0.82; }
+  50% { transform: scale(1.12); opacity: 1; }
 }
-@keyframes dtg-scan { to { background-position: 0 200px; } }
-@keyframes dtg-flicker {
+@keyframes dtg-pulse {
   0%, 100% { opacity: 1; }
-  92% { opacity: 1; }
-  93% { opacity: 0.3; }
-  94% { opacity: 1; }
-  97% { opacity: 0.6; }
-  98% { opacity: 1; }
+  50% { opacity: 0.32; }
 }
-@keyframes dtg-glitch-x {
-  0%   { transform: translate(0, 0);   clip-path: inset(0 0 78% 0); }
-  25%  { transform: translate(-4px, 0); clip-path: inset(40% 0 35% 0); }
-  50%  { transform: translate(3px, 0);  clip-path: inset(70% 0 8% 0); }
-  75%  { transform: translate(-2px, 0); clip-path: inset(15% 0 60% 0); }
-  100% { transform: translate(2px, 0);  clip-path: inset(55% 0 20% 0); }
-}
-@keyframes dtg-glitch-y {
-  0%   { transform: translate(0, 0);   clip-path: inset(60% 0 18% 0); }
-  25%  { transform: translate(4px, 0);  clip-path: inset(10% 0 65% 0); }
-  50%  { transform: translate(-3px, 0); clip-path: inset(35% 0 40% 0); }
-  75%  { transform: translate(2px, 0);  clip-path: inset(80% 0 5% 0); }
-  100% { transform: translate(-2px, 0); clip-path: inset(25% 0 50% 0); }
+@media (prefers-reduced-motion: reduce) {
+  .dtg-aura, .dtg-kicker::before { animation: none; }
 }
