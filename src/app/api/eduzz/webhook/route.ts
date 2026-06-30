@@ -991,9 +991,10 @@ function computeFingerprintId(match: VisitMatch | null, sale: SaleEvent): string
   );
 }
 
-// Grava venda de assinatura como pendente (sale_confirmed=false) quando o
-// contract_created ainda não chegou. Não soma receita nem vai pra Meta —
-// confirmPendingSubscription() faz isso quando o contract_created chegar.
+// Grava venda de assinatura como pendente (sale_confirmed=false) quando a
+// assinatura ainda não foi confirmada por `contract_created`. Não soma receita
+// nem vai pra Meta — `confirmPendingSubscription()` faz isso quando o
+// contract_created chegar.
 async function recordPendingSale(db: SupabaseClient, companyId: string, sale: SaleEvent): Promise<{ pending?: boolean }> {
   const match = await resolveVisitMatch(db, companyId, sale);
   const fingerprintId = computeFingerprintId(match, sale);
@@ -1070,8 +1071,7 @@ export async function recordSale(db: SupabaseClient, companyId: string, sale: Sa
   // cobrança que recebemos já NÃO é a nº 1 (contrato maduro, capturado tarde —
   // ex.: "13 de 18"), DESCARTA: não grava, não soma receita, não vai pra Meta.
   // Usa a ficha do contrato (findContractInfo) — mesma consulta que o cálculo
-  // de valor cheio já faria, sem 2ª query. Sem ficha (current=null), assume 1ª
-  // cobrança (melhor esforço — não dá pra saber que é tarde sem a ficha).
+  // de valor cheio já faria, sem 2ª query.
   const contractInfo = sale.recurrenceKey
     ? await findContractInfo(db, companyId, sale.recurrenceKey)
     : { total: null, current: null, chargeValue: null, createdReceived: null };
@@ -1080,9 +1080,9 @@ export async function recordSale(db: SupabaseClient, companyId: string, sale: Sa
     if (chargeNumber > 1) {
       return { excluded: "late_subscription" };
     }
-    // Se existe ficha parcial marcada explicitamente como "created ainda nao
-    // recebido" e sem nenhum total para precificar, espera o contract_created.
-    if (contractInfo.createdReceived === false && !contractInfo.total && !sale.totalInstallmentsRaw) {
+    // Se ainda não temos `contract_created`, a cobrança fica pendente até a
+    // ficha do contrato chegar. Isso cobre a ordem A→B e B→A.
+    if (contractInfo.createdReceived !== true) {
       return await recordPendingSale(db, companyId, sale);
     }
   }
