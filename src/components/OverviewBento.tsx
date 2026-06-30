@@ -15,9 +15,9 @@ import { SectionHeader } from "@/components/ui/SectionHeader";
 
 // ─── Cores por canal (dentro do sistema, sem pastel) ──────────────────────────
 const ORIGIN_COLORS: Record<string, string> = {
-  "Meta Ads": "#16A34A", "Google": "#0ea5e9", "Orgânico": "#05CD99", "Eduzz": "#f59e0b", "Planilha": "#22C55E",
+  "Meta Ads": "#16A34A", "Google": "#0D9488", "Orgânico": "#05CD99", "Eduzz": "#f59e0b", "Planilha": "#22C55E",
 };
-const ORIGIN_FALLBACK = ["#16A34A", "#0ea5e9", "#05CD99", "#f59e0b", "#22C55E", "#e11d48"];
+const ORIGIN_FALLBACK = ["#16A34A", "#0D9488", "#05CD99", "#f59e0b", "#22C55E", "#e11d48"];
 const originColor = (origem: string, index: number): string =>
   ORIGIN_COLORS[origem] ?? ORIGIN_FALLBACK[index % ORIGIN_FALLBACK.length];
 

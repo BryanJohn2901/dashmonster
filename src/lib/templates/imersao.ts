@@ -5,7 +5,7 @@ export const imersaoTemplate: Template = {
   id: "imersao",
   label: "Imersão",
   description: "Eventos presenciais com venda de ingresso",
-  color: "#0EA5E9",
+  color: "#0D9488",
   kpis: [
     { id: "spend",      label: "Investimento",      format: formatBRL, color: "brand" },
     { id: "tickets",    label: "Ingressos vendidos", format: formatInt, color: "green" },
@@ -14,10 +14,10 @@ export const imersaoTemplate: Template = {
     { id: "revenue",    label: "Faturamento",       format: formatBRL, color: "green" },
   ],
   funnel: [
-    { id: "reach",       label: "Alcance",                bg: "#ECFEFF" },
-    { id: "impressions", label: "Impressões",             bg: "#CFFAFE" },
-    { id: "clicks",      label: "Cliques no link",        bg: "#A5F3FC", rateFromPrev: "CTR" },
-    { id: "page_views",  label: "Visualização de página", bg: "#67E8F9", rateFromPrev: "Tx. Visita" },
+    { id: "reach",       label: "Alcance",                bg: "#ECFDF5" },
+    { id: "impressions", label: "Impressões",             bg: "#D1FAE5" },
+    { id: "clicks",      label: "Cliques no link",        bg: "#A7F3D0", rateFromPrev: "CTR" },
+    { id: "page_views",  label: "Visualização de página", bg: "#5EEAD4", rateFromPrev: "Tx. Visita" },
     { id: "leads",       label: "Lead",                   bg: "#FEF9C3", rateFromPrev: "Tx. Captura" },
     { id: "tickets",     label: "Vendas (ingressos)",     bg: "#D1FAE5", rateFromPrev: "Tx. Conversão" },
   ],

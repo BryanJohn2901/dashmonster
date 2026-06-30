@@ -11,7 +11,7 @@ import { AuthScreen } from "@/components/AuthScreen";
 import { CompanySelectScreen } from "@/components/CompanySelectScreen";
 import { ProductSelectScreen } from "@/components/ProductSelectScreen";
 import { CampaignData } from "@/types/campaign";
-import { MOCK_CAMPAIGNS, MOCK_SOURCE_LABEL, seedDemoData } from "@/utils/mockData";
+import { getCompanyDataset, seedDemoData } from "@/utils/mockData";
 import { fetchCampaignSheetData, parseCampaignCsvFile } from "@/utils/googleSheets";
 import { isSupabaseConfigured, supabaseClient } from "@/lib/supabase";
 import {
@@ -96,10 +96,11 @@ export default function Home() {
     setShowControlPanel(true);
   };
 
-  const handleLoadDemo = () => {
-    seedDemoData();
-    setCampaigns(MOCK_CAMPAIGNS);
-    setDataSource({ type: "meta", label: MOCK_SOURCE_LABEL });
+  const handleLoadDemo = (companyId?: string | null) => {
+    const ds = getCompanyDataset(companyId);
+    seedDemoData(companyId);
+    setCampaigns(ds.campaigns);
+    setDataSource({ type: "meta", label: ds.sourceLabel });
   };
 
   const closeRealtimeChannels = () => {
@@ -515,15 +516,12 @@ export default function Home() {
     if (syncStatus.error) toast.error(syncStatus.error);
   }, [syncStatus.error]);
 
-  // Modo dev sem Supabase — carrega dados demo automaticamente e mostra onboarding na primeira visita
+  // Modo dev sem Supabase — onboarding na primeira visita (o seed por empresa
+  // é feito no effect dedicado abaixo, que reage à empresa ativa).
   useEffect(() => {
     if (isSupabaseConfigured) return;
     try {
       const onboarded = localStorage.getItem("pta_onboarding_v1");
-      // Auto-seed demo data if no campaigns loaded yet (dev preview)
-      if (campaigns.length === 0) {
-        handleLoadDemo();
-      }
       if (!onboarded) setShowOnboarding(true);
     } catch {}
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -545,6 +543,20 @@ export default function Home() {
   // Empresa ativa (multi-empresa / super admin) — usada para recarregar ao trocar.
   const { companyId: activeCompanyId, memberships, loading: companyLoading, switchCompany } = useCompany();
   const companyLoadedRef = useRef<string | null>(null);
+
+  // Dev mode (sem Supabase): cada empresa demo tem dataset próprio. Re-semeia o
+  // localStorage e remonta o Dashboard (via demoKey) sempre que a empresa muda.
+  const [demoKey, setDemoKey] = useState(0);
+  const demoSeededRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (isSupabaseConfigured) return;
+    const cid = activeCompanyId ?? "demo-1";
+    if (demoSeededRef.current === cid) return;
+    demoSeededRef.current = cid;
+    handleLoadDemo(cid);
+    setDemoKey((k) => k + 1);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCompanyId]);
 
   // Seletor de empresa pós-login: a flag de sessão zera no logout, então uma
   // nova autenticação volta a perguntar qual empresa abrir (só se houver 2+).
@@ -697,7 +709,7 @@ export default function Home() {
   if (isSupabaseConfigured && !authReady) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-slate-50 dark:bg-[#0C0C0C] px-4">
-        <div className="h-9 w-9 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" aria-hidden />
+        <div className="h-9 w-9 animate-spin rounded-full border-2 border-[#16A34A] border-t-transparent" aria-hidden />
         <p className="text-sm text-slate-600 dark:text-slate-400">A preparar sessão…</p>
       </div>
     );
@@ -725,7 +737,7 @@ export default function Home() {
     if (companyLoading) {
       return (
         <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-slate-50 dark:bg-[#0C0C0C] px-4">
-          <div className="h-9 w-9 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" aria-hidden />
+          <div className="h-9 w-9 animate-spin rounded-full border-2 border-[#16A34A] border-t-transparent" aria-hidden />
           <p className="text-sm text-slate-600 dark:text-slate-400">A carregar empresas…</p>
         </div>
       );
@@ -770,11 +782,12 @@ export default function Home() {
       {showOnboarding && (
         <OnboardingTutorial
           onComplete={handleOnboardingComplete}
-          onLoadDemo={handleLoadDemo}
+          onLoadDemo={() => handleLoadDemo(activeCompanyId)}
         />
       )}
 
       <Dashboard
+        key={`dash-${demoKey}`}
         campaigns={campaigns}
         dataSource={dataSource}
         syncStatus={syncStatus}

@@ -1,244 +1,225 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Calendar, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Calendar, ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Date helpers (local-time, sem armadilha de UTC) ─────────────────────────────
 
-/** YYYY-MM-DD → DD/MM/AAAA */
-export function isoToBR(iso: string): string {
-  if (!iso) return "";
-  const [y, m, d] = iso.split("-");
-  if (!y || !m || !d) return "";
-  return `${d}/${m}/${y}`;
+/** YYYY-MM-DD a partir de ano/mês(1-based)/dia. */
+function iso(y: number, m: number, d: number): string {
+  return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
 
-/** DD/MM/AAAA → YYYY-MM-DD (returns "" if invalid) */
-function brToIso(br: string): string {
-  const digits = br.replace(/\D/g, "");
-  if (digits.length !== 8) return "";
-  const d = digits.slice(0, 2);
-  const m = digits.slice(2, 4);
-  const y = digits.slice(4, 8);
-  const date = new Date(`${y}-${m}-${d}`);
-  if (isNaN(date.getTime())) return "";
-  if (date.getDate() !== Number(d)) return ""; // catch month roll-over (e.g. 31/02)
-  return `${y}-${m}-${d}`;
+function parseIso(s: string): { y: number; m: number; d: number } | null {
+  const [y, m, d] = s.split("-").map(Number);
+  if (!y || !m || !d) return null;
+  return { y, m, d };
 }
 
-/** Auto-insert slashes as user types */
-function applyMask(prev: string, next: string): string {
-  const digits = next.replace(/\D/g, "").slice(0, 8);
-  let result = "";
-  for (let i = 0; i < digits.length; i++) {
-    if (i === 2 || i === 4) result += "/";
-    result += digits[i];
-  }
-  return result;
+/** YYYY-MM-DD → DD/MM/AAAA (curto: DD/MM/AA). */
+export function isoToBR(s: string, short = false): string {
+  const p = parseIso(s);
+  if (!p) return "";
+  const yy = short ? String(p.y).slice(-2) : String(p.y);
+  return `${String(p.d).padStart(2, "0")}/${String(p.m).padStart(2, "0")}/${yy}`;
 }
 
-function localToday(): string {
+function todayIso(): string {
   const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return iso(d.getFullYear(), d.getMonth() + 1, d.getDate());
 }
 
-function daysAgo(n: number): string {
+function daysAgoIso(n: number): string {
   const d = new Date();
   d.setDate(d.getDate() - n);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return iso(d.getFullYear(), d.getMonth() + 1, d.getDate());
 }
 
-function firstOfMonth(): string {
+function firstOfMonthIso(): string {
   const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+  return iso(d.getFullYear(), d.getMonth() + 1, 1);
 }
 
-// ─── BRDateInput ──────────────────────────────────────────────────────────────
-
-interface BRDateInputProps {
-  label: string;
-  value: string;        // YYYY-MM-DD
-  onChange: (v: string) => void;
-  changed?: boolean;
+/** Grade do mês: células com dia (ou null pra espaços), semana começando segunda. */
+function monthGrid(year: number, month: number): (number | null)[] {
+  const firstDow = (new Date(year, month - 1, 1).getDay() + 6) % 7; // 0 = segunda
+  const daysIn = new Date(year, month, 0).getDate();
+  const cells: (number | null)[] = [];
+  for (let i = 0; i < firstDow; i++) cells.push(null);
+  for (let d = 1; d <= daysIn; d++) cells.push(d);
+  return cells;
 }
 
-function BRDateInput({ label, value, onChange, changed }: BRDateInputProps) {
-  const [text, setText] = useState(isoToBR(value));
-  const nativeRef = useRef<HTMLInputElement>(null);
-
-  // Sync display when value changes externally (preset clicked, filter cleared)
-  useEffect(() => { setText(isoToBR(value)); }, [value]);
-
-  const handleTextChange = (raw: string) => {
-    const masked = applyMask(text, raw);
-    setText(masked);
-    const iso = brToIso(masked);
-    if (iso) onChange(iso);
-  };
-
-  const handleNativePick = (iso: string) => {
-    onChange(iso);
-    setText(isoToBR(iso));
-  };
-
-  return (
-    <label className="flex flex-col gap-1">
-      <span className="text-[10px] font-medium" style={{ color: "var(--dm-text-tertiary)" }}>{label}</span>
-      <div className="relative">
-        <input
-          type="text"
-          value={text}
-          onChange={(e) => handleTextChange(e.target.value)}
-          placeholder="DD/MM/AAAA"
-          maxLength={10}
-          className="h-9 w-full rounded-lg border px-2 pr-8 text-xs outline-none transition focus:ring-1"
-          style={{
-            borderColor: changed ? "var(--dm-brand-400)" : "var(--dm-border-default)",
-            backgroundColor: "var(--dm-bg-elevated)",
-            color: "var(--dm-text-primary)",
-          }}
-        />
-        {/* Native date picker hidden behind the calendar icon for accessibility */}
-        <input
-          ref={nativeRef}
-          type="date"
-          value={value}
-          onChange={(e) => handleNativePick(e.target.value)}
-          tabIndex={-1}
-          aria-hidden
-          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-          style={{ fontSize: 0 }}
-        />
-        <Calendar
-          size={13}
-          className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2"
-          style={{ color: "var(--dm-text-tertiary)" }}
-        />
-      </div>
-    </label>
-  );
-}
-
-// ─── Preset definitions ───────────────────────────────────────────────────────
+const WEEKDAYS = ["S", "T", "Q", "Q", "S", "S", "D"];
+const MONTHS = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
 interface Preset { label: string; from: () => string; to: () => string }
-
 const PRESETS: Preset[] = [
-  { label: "Hoje",     from: localToday,         to: localToday },
-  { label: "7 dias",   from: () => daysAgo(6),   to: localToday },
-  { label: "30 dias",  from: () => daysAgo(29),  to: localToday },
-  { label: "Mês",      from: firstOfMonth,        to: localToday },
+  { label: "Hoje",    from: todayIso,         to: todayIso },
+  { label: "7 dias",  from: () => daysAgoIso(6),  to: todayIso },
+  { label: "15 dias", from: () => daysAgoIso(14), to: todayIso },
+  { label: "30 dias", from: () => daysAgoIso(29), to: todayIso },
+  { label: "Mês",     from: firstOfMonthIso,  to: todayIso },
 ];
 
-// ─── DateRangePicker ──────────────────────────────────────────────────────────
+// ─── DateRangePicker ─────────────────────────────────────────────────────────────
 
 export interface DateRangePickerProps {
-  /** Applied (active) values — used to detect active preset */
-  from: string;
-  to: string;
-  /** Pending (staged) values */
-  pendingFrom: string;
-  pendingTo: string;
-  onPendingFrom: (v: string) => void;
-  onPendingTo:   (v: string) => void;
-  /** Apply pending values to the active filter */
-  onApply: () => void;
-  /** Instantly apply a specific date range (used by preset buttons) */
-  onApplyRange: (from: string, to: string) => void;
-  /** Clear both date filters */
-  onClear: () => void;
-  pendingChanged: boolean;
+  from: string;                                   // YYYY-MM-DD ("" = sem início)
+  to: string;                                     // YYYY-MM-DD ("" = sem fim)
+  onChange: (from: string, to: string) => void;
+  align?: "left" | "right";
 }
 
-export function DateRangePicker({
-  from, to,
-  pendingFrom, pendingTo,
-  onPendingFrom, onPendingTo,
-  onApply, onApplyRange, onClear,
-  pendingChanged,
-}: DateRangePickerProps) {
-  const activePreset = PRESETS.find(
-    (p) => from && to && p.from() === from && p.to() === to,
-  );
+export function DateRangePicker({ from, to, onChange, align = "left" }: DateRangePickerProps) {
+  const [open, setOpen] = useState(false);
+  const [anchor, setAnchor] = useState<string | null>(null); // 1º clique aguardando o 2º
+  const [hover, setHover] = useState<string | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // Mês visível: começa no mês do "from" (ou hoje).
+  const [view, setView] = useState(() => {
+    const p = parseIso(from) ?? parseIso(todayIso())!;
+    return { y: p.y, m: p.m };
+  });
+
+  // Fecha ao clicar fora.
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setAnchor(null);
+      }
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  const cells = useMemo(() => monthGrid(view.y, view.m), [view]);
+
+  const activePreset = PRESETS.find((p) => from && to && p.from() === from && p.to() === to);
+
+  const shiftMonth = (delta: number) => {
+    setView((v) => {
+      const m0 = v.m - 1 + delta;
+      return { y: v.y + Math.floor(m0 / 12), m: ((m0 % 12) + 12) % 12 + 1 };
+    });
+  };
+
+  const pickDay = (day: number) => {
+    const clicked = iso(view.y, view.m, day);
+    if (!anchor) {
+      setAnchor(clicked);
+      setHover(clicked);
+      return;
+    }
+    // 2º clique: define o range corrigindo a ordem.
+    const [a, b] = anchor <= clicked ? [anchor, clicked] : [clicked, anchor];
+    onChange(a, b);
+    setAnchor(null);
+    setHover(null);
+    setOpen(false);
+  };
+
+  // Início/fim "efetivos" pra pintar o range (inclui prévia do hover enquanto escolhe).
+  const effFrom = anchor ? (hover && hover < anchor ? hover : anchor) : from;
+  const effTo   = anchor ? (hover && hover > anchor ? hover : anchor) : to;
+
+  const inRange = (cellIso: string) => effFrom && effTo && cellIso >= effFrom && cellIso <= effTo;
+  const isEdge  = (cellIso: string) => cellIso === effFrom || cellIso === effTo;
+
+  const label = from
+    ? `${isoToBR(from, true)} → ${to ? isoToBR(to, true) : "…"}`
+    : "Selecionar período";
 
   return (
-    <div>
-      {/* Header */}
-      <div className="mb-2 flex items-center justify-between">
-        <p className="text-[11px] font-semibold" style={{ color: "var(--dm-text-secondary)" }}>
-          Período
-        </p>
-        {(from || to) && (
-          <button
-            type="button"
-            onClick={onClear}
-            className="flex items-center gap-0.5 text-[10px] transition hover:opacity-70"
-            style={{ color: "var(--dm-text-tertiary)" }}
-          >
-            <X size={9} />
-            Limpar
-          </button>
-        )}
-      </div>
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition hover:opacity-80"
+        style={{ borderColor: open ? "var(--dm-primary)" : "var(--dm-border-default)", background: "var(--dm-bg-surface)", color: "var(--dm-text-primary)" }}
+      >
+        <Calendar size={13} style={{ color: "var(--dm-text-tertiary)" }} />
+        {label}
+        <ChevronDown size={12} style={{ color: "var(--dm-text-tertiary)", transform: open ? "rotate(180deg)" : "none", transition: "transform .2s" }} />
+      </button>
 
-      {/* Preset chips */}
-      <div className="mb-2 flex flex-wrap gap-1">
-        {PRESETS.map((p) => {
-          const active = p.label === activePreset?.label;
-          return (
-            <button
-              key={p.label}
-              type="button"
-              onClick={() => onApplyRange(p.from(), p.to())}
-              className="rounded-md border px-2 py-0.5 text-[10px] font-medium transition"
-              style={active ? {
-                backgroundColor: "var(--dm-brand-500)",
-                borderColor:     "var(--dm-brand-500)",
-                color: "#fff",
-              } : {
-                borderColor:     "var(--dm-border-default)",
-                backgroundColor: "var(--dm-bg-elevated)",
-                color:           "var(--dm-text-secondary)",
-              }}
-            >
-              {p.label}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Date text inputs (DD/MM/AAAA) */}
-      <div className="grid grid-cols-2 gap-2">
-        <BRDateInput
-          label="De"
-          value={pendingFrom}
-          onChange={onPendingFrom}
-          changed={pendingFrom !== from}
-        />
-        <BRDateInput
-          label="Até"
-          value={pendingTo}
-          onChange={onPendingTo}
-          changed={pendingTo !== to}
-        />
-      </div>
-
-      {/* Apply button — visible only when pending differs from applied */}
-      {pendingChanged && (
-        <button
-          onClick={onApply}
-          className="mt-2 w-full rounded-lg py-2 text-xs font-bold text-white transition active:scale-95"
-          style={{ backgroundColor: "var(--dm-brand-500)" }}
+      {open && (
+        <div
+          className="absolute z-50 mt-1.5 flex overflow-hidden rounded-xl border shadow-xl"
+          style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)", [align === "right" ? "right" : "left"]: 0 }}
         >
-          Aplicar período
-        </button>
-      )}
+          {/* Presets */}
+          <div className="flex flex-col gap-0.5 border-r p-2" style={{ borderColor: "var(--dm-border-subtle)" }}>
+            {PRESETS.map((p) => {
+              const active = p.label === activePreset?.label;
+              return (
+                <button
+                  key={p.label}
+                  type="button"
+                  onClick={() => { onChange(p.from(), p.to()); setAnchor(null); setOpen(false); }}
+                  className="rounded-md px-3 py-1.5 text-left text-[11px] font-semibold transition"
+                  style={active
+                    ? { background: "linear-gradient(135deg,#16A34A 0%,#15803D 100%)", color: "#fff" }
+                    : { color: "var(--dm-text-secondary)" }}
+                >
+                  {p.label}
+                </button>
+              );
+            })}
+          </div>
 
-      {/* Active period summary (shown when no pending change) */}
-      {(from || to) && !pendingChanged && (
-        <p className="mt-1.5 text-center text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
-          {from ? isoToBR(from) : "início"} → {to ? isoToBR(to) : "hoje"}
-        </p>
+          {/* Calendário */}
+          <div className="p-3" style={{ width: 248 }}>
+            <div className="mb-2 flex items-center justify-between">
+              <button type="button" onClick={() => shiftMonth(-1)} className="rounded p-1 transition hover:opacity-70" style={{ color: "var(--dm-text-secondary)" }}>
+                <ChevronLeft size={14} />
+              </button>
+              <span className="text-xs font-bold" style={{ color: "var(--dm-text-primary)" }}>
+                {MONTHS[view.m - 1]} {view.y}
+              </span>
+              <button type="button" onClick={() => shiftMonth(1)} className="rounded p-1 transition hover:opacity-70" style={{ color: "var(--dm-text-secondary)" }}>
+                <ChevronRight size={14} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-7 gap-0.5">
+              {WEEKDAYS.map((w, i) => (
+                <span key={i} className="py-1 text-center text-[9px] font-bold" style={{ color: "var(--dm-text-tertiary)" }}>{w}</span>
+              ))}
+              {cells.map((day, i) => {
+                if (day === null) return <span key={i} />;
+                const cellIso = iso(view.y, view.m, day);
+                const edge = isEdge(cellIso);
+                const mid = inRange(cellIso) && !edge;
+                const isToday = cellIso === todayIso();
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => pickDay(day)}
+                    onMouseEnter={() => anchor && setHover(cellIso)}
+                    className="flex h-7 items-center justify-center rounded-md text-[11px] font-medium transition"
+                    style={edge
+                      ? { background: "linear-gradient(135deg,#16A34A 0%,#15803D 100%)", color: "#fff", fontWeight: 700 }
+                      : mid
+                        ? { background: "rgba(22,163,74,0.16)", color: "var(--dm-text-primary)" }
+                        : { color: "var(--dm-text-secondary)", border: isToday ? "1px solid var(--dm-primary)" : "1px solid transparent" }}
+                  >
+                    {day}
+                  </button>
+                );
+              })}
+            </div>
+
+            <p className="mt-2 text-center text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+              {anchor ? "Escolha a data final" : "Clique início → fim"}
+            </p>
+          </div>
+        </div>
       )}
     </div>
   );

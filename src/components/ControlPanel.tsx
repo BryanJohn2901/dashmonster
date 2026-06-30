@@ -1154,7 +1154,7 @@ function EntryRow({ entry, categorySlug, onDeleted, onToggled, onUpdated }: Entr
         {campCount > 0 && (
           <button type="button" onClick={() => setEditGoalsOpen(true)}
             title="Editar intenção, orçamento e metas das campanhas" aria-label={`Editar intenção e metas de ${entry.label}`}
-            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors hover:bg-indigo-100 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#16A34A] dark:hover:bg-indigo-900/30"
+            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors hover:bg-[#16A34A]/10 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#16A34A] dark:hover:bg-[#22C55E]/15"
             style={{ color: "var(--dm-brand-500)" }}>
             <Pencil size={12} />
           </button>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
@@ -23,6 +23,16 @@ const fmtPct = (n: number) => `${n.toFixed(n < 10 ? 1 : 0)}%`;
 const DIRECT_LABEL = "Direto / Orgânico";
 const UNDEFINED_LABEL = "(não definido)";
 
+// Paleta coesa — verde da marca + neutros + 2 semânticos. SEM roxo/azul.
+const C = {
+  green: "#16A34A",       // primário / positivo
+  greenDeep: "#15803D",
+  teal: "#0D9488",        // origem / tráfego
+  amber: "#D97706",       // investimento / atenção
+  slate: "#64748B",       // neutro comparativo
+  money: "#059669",       // receita
+};
+
 function visitorUtm(v: Visitor): Record<string, string> {
   const out: Record<string, string> = {};
   for (const e of v.events) {
@@ -43,27 +53,70 @@ function topBuckets(
   return head;
 }
 
+// ─── Motion primitives ─────────────────────────────────────────────────────────
+// Conta de 0 → target com easing; respeita prefers-reduced-motion.
+function useCountUp(target: number, duration = 950): number {
+  const [val, setVal] = useState(target);
+  const fromRef = useRef(0);
+  useEffect(() => {
+    if (typeof window !== "undefined" &&
+        window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      setVal(target);
+      fromRef.current = target;
+      return;
+    }
+    const start = performance.now();
+    const from = fromRef.current;
+    let raf = 0;
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - t, 3);
+      setVal(from + (target - from) * eased);
+      if (t < 1) raf = requestAnimationFrame(tick);
+      else fromRef.current = target;
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, duration]);
+  return val;
+}
+
+// Dispara `true` no próximo frame — usado para animar largura de barras a partir de 0.
+function useMounted(): boolean {
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setOn(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+  return on;
+}
+
 // ─── UI primitives ────────────────────────────────────────────────────────────
-function Panel({ title, icon: Icon, action, children, className }: {
+function Panel({ title, icon: Icon, action, children, className, delay = 0 }: {
   title: string;
   icon?: typeof Users;
   action?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
+  delay?: number;
 }) {
   return (
     <section
-      className={`flex flex-col rounded-2xl border p-4 ${className ?? ""}`}
-      style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)" }}
+      className={`dm-reveal flex flex-col rounded-2xl border p-4 ${className ?? ""}`}
+      style={{
+        borderColor: "var(--dm-border-default)",
+        background: "var(--dm-bg-surface)",
+        animationDelay: `${delay}ms`,
+      }}
     >
       <div className="mb-3 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           {Icon && (
-            <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg" style={{ background: "rgba(99,102,200,0.12)" }}>
-              <Icon size={13} style={{ color: "var(--dm-primary)" }} />
+            <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg" style={{ background: "var(--dm-primary-soft)" }}>
+              <Icon size={14} style={{ color: "var(--dm-primary)" }} />
             </span>
           )}
-          <h3 className="text-[12px] font-bold" style={{ color: "var(--dm-text-primary)" }}>{title}</h3>
+          <h3 className="text-[12.5px] font-bold tracking-tight" style={{ color: "var(--dm-text-primary)" }}>{title}</h3>
         </div>
         {action}
       </div>
@@ -72,18 +125,53 @@ function Panel({ title, icon: Icon, action, children, className }: {
   );
 }
 
-function ScoreCard({ label, value, icon: Icon, accent }: {
-  label: string; value: string; icon: typeof Users; accent: string;
+function ScoreCard({ label, count, format, icon: Icon, accent, featured, delay }: {
+  label: string;
+  count: number;
+  format: (n: number) => string;
+  icon: typeof Users;
+  accent: string;
+  featured?: boolean;
+  delay: number;
 }) {
+  const v = useCountUp(count);
   return (
-    <div className="rounded-2xl border p-3.5" style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)" }}>
+    <div
+      className="dm-reveal group relative overflow-hidden rounded-2xl border p-3.5 transition-all duration-300 hover:-translate-y-0.5"
+      style={{
+        borderColor: featured ? "transparent" : "var(--dm-border-default)",
+        background: featured
+          ? `linear-gradient(135deg, ${C.greenDeep} 0%, ${C.green} 70%, #22C55E 100%)`
+          : "var(--dm-bg-surface)",
+        boxShadow: featured ? "0 8px 24px -8px rgba(21,128,61,0.45)" : "none",
+        animationDelay: `${delay}ms`,
+      }}
+    >
       <div className="mb-2 flex items-center gap-1.5">
-        <span className="flex h-6 w-6 items-center justify-center rounded-lg" style={{ background: `${accent}1a` }}>
-          <Icon size={13} style={{ color: accent }} />
+        <span
+          className="flex h-6 w-6 items-center justify-center rounded-lg transition-transform duration-300 group-hover:scale-110"
+          style={{ background: featured ? "rgba(255,255,255,0.18)" : `${accent}1a` }}
+        >
+          <Icon size={13} style={{ color: featured ? "#fff" : accent }} />
         </span>
-        <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: "var(--dm-text-tertiary)" }}>{label}</span>
+        <span
+          className="text-[10px] font-semibold uppercase tracking-wide"
+          style={{ color: featured ? "rgba(255,255,255,0.78)" : "var(--dm-text-tertiary)" }}
+        >
+          {label}
+        </span>
       </div>
-      <p className="text-[20px] font-bold leading-none tabular-nums" style={{ color: "var(--dm-text-primary)" }}>{value}</p>
+      <p
+        className="text-[22px] font-bold leading-none tabular-nums"
+        style={{ color: featured ? "#fff" : "var(--dm-text-primary)" }}
+      >
+        {format(v)}
+      </p>
+      {/* brilho sutil no hover */}
+      <span
+        className="pointer-events-none absolute -right-6 -top-6 h-16 w-16 rounded-full opacity-0 blur-2xl transition-opacity duration-500 group-hover:opacity-100"
+        style={{ background: featured ? "rgba(255,255,255,0.35)" : accent }}
+      />
     </div>
   );
 }
@@ -98,7 +186,7 @@ function ToggleGroup<T extends string>({ options, value, onChange }: {
           key={o.value}
           type="button"
           onClick={() => onChange(o.value)}
-          className="rounded-md px-2.5 py-1 text-[11px] font-semibold transition"
+          className="rounded-md px-2.5 py-1 text-[11px] font-semibold transition-all duration-200"
           style={value === o.value
             ? { background: "var(--dm-bg-surface)", color: "var(--dm-primary)", boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }
             : { color: "var(--dm-text-tertiary)" }}
@@ -116,14 +204,15 @@ function BarList({ items, color, empty, formatValue }: {
   empty: string;
   formatValue?: (v: number) => string;
 }) {
+  const shown = useMounted();
   if (items.length === 0) return <EmptyHint text={empty} />;
   const max = Math.max(...items.map((i) => i.value), 1);
   const total = items.reduce((s, i) => s + i.value, 0);
   return (
-    <div className="flex flex-col gap-2">
-      {items.map((it) => (
-        <div key={it.key}>
-          <div className="mb-0.5 flex items-center justify-between gap-2 text-[11px]">
+    <div className="flex flex-col gap-2.5">
+      {items.map((it, i) => (
+        <div key={it.key} className="group">
+          <div className="mb-1 flex items-center justify-between gap-2 text-[11px]">
             <span className="truncate" style={{ color: "var(--dm-text-secondary)" }}>{it.label}</span>
             <span className="flex flex-shrink-0 items-center gap-1 tabular-nums" style={{ color: "var(--dm-text-tertiary)" }}>
               {it.sub && <span className="opacity-60">{it.sub}</span>}
@@ -133,8 +222,16 @@ function BarList({ items, color, empty, formatValue }: {
               {!formatValue && total > 0 && <span className="opacity-70">{fmtPct((it.value / total) * 100)}</span>}
             </span>
           </div>
-          <div className="h-1.5 w-full overflow-hidden rounded-full" style={{ background: "var(--dm-bg-elevated)" }}>
-            <div className="h-full rounded-full" style={{ width: `${(it.value / max) * 100}%`, background: color }} />
+          <div className="h-2 w-full overflow-hidden rounded-full" style={{ background: "var(--dm-bg-elevated)" }}>
+            <div
+              className="h-full rounded-full"
+              style={{
+                width: shown ? `${(it.value / max) * 100}%` : "0%",
+                background: `linear-gradient(90deg, ${color}cc, ${color})`,
+                transition: "width 0.8s cubic-bezier(0.16,1,0.3,1)",
+                transitionDelay: `${i * 50}ms`,
+              }}
+            />
           </div>
         </div>
       ))}
@@ -163,6 +260,7 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
   funnelHasProductNames?: boolean;
 }) {
   const theme = useChartTheme();
+  const areaShown = useMounted();
   const [timelineMetric, setTimelineMetric] = useState<TimelineMetric>("events");
   const [geoDim, setGeoDim] = useState<GeoDim>("country");
   const [geoMode, setGeoMode] = useState<GeoMode>("users");
@@ -170,6 +268,8 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
   const [deviceDim, setDeviceDim] = useState<DeviceDim>("os");
   const [utmDim, setUtmDim] = useState<UtmDim>("utm_campaign");
   const [utmSort, setUtmSort] = useState<UtmSortCol>("revenue");
+
+  const areaColor = theme.dark ? "#22C55E" : C.green;
 
   const currency = useMemo(
     () => events.find((e) => e.event_name === "Purchase" && e.currency)?.currency ?? "BRL",
@@ -393,9 +493,9 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
 
   // ── Funil de conversão ──────────────────────────────────────────────────────
   const funnelSteps = [
-    { label: "Visitantes", value: totals.uniqueUsers, color: theme.c1 },
-    { label: "Leads", value: totals.leads, color: theme.c4 },
-    { label: "Compras", value: totals.customers, color: theme.c3 },
+    { label: "Visitantes", value: totals.uniqueUsers, color: C.teal },
+    { label: "Leads", value: totals.leads, color: C.amber },
+    { label: "Compras", value: totals.customers, color: C.green },
   ];
 
   const utmDimLabel: Record<UtmDim, string> = {
@@ -424,25 +524,26 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
         </div>
       )}
       {!funnelHasProductNames && (
-        <div className="rounded-lg border px-3 py-2 text-[11px]" style={{ borderColor: "rgba(99,102,200,0.3)", background: "rgba(99,102,200,0.06)", color: "var(--dm-text-secondary)" }}>
+        <div className="rounded-lg border px-3 py-2 text-[11px]" style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-elevated)", color: "var(--dm-text-secondary)" }}>
           <strong style={{ color: "var(--dm-text-primary)" }}>Atribuição limitada</strong> — funil sem produto configurado. Compras Eduzz chegam server-side e podem não carregar a mesma jornada da URL. Configure <strong>Produto</strong> no funil para atribuição precisa.
         </div>
       )}
 
       {/* Scorecards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <ScoreCard label="Usuários únicos" value={fmtInt(totals.uniqueUsers)} icon={Users} accent="#6366C8" />
-        <ScoreCard label="Eventos" value={fmtInt(totals.totalEvents)} icon={Activity} accent="#0891b2" />
-        <ScoreCard label="Leads" value={fmtInt(totals.leads)} icon={UserCheck} accent="#313491" />
-        <ScoreCard label="Vendas" value={fmtInt(totals.sales)} icon={ShoppingBag} accent="#d97706" />
-        <ScoreCard label="Receita" value={formatMoney(totals.revenue, currency)} icon={DollarSign} accent="#059669" />
-        <ScoreCard label="Conversão" value={fmtPct(totals.convRate)} icon={TrendingUp} accent="#7c3aed" />
+        <ScoreCard label="Usuários únicos" count={totals.uniqueUsers} format={fmtInt} icon={Users} accent={C.slate} delay={0} />
+        <ScoreCard label="Eventos" count={totals.totalEvents} format={fmtInt} icon={Activity} accent={C.teal} delay={50} />
+        <ScoreCard label="Leads" count={totals.leads} format={fmtInt} icon={UserCheck} accent={C.teal} delay={100} />
+        <ScoreCard label="Vendas" count={totals.sales} format={fmtInt} icon={ShoppingBag} accent={C.amber} delay={150} />
+        <ScoreCard label="Receita" count={totals.revenue} format={(n) => formatMoney(n, currency)} icon={DollarSign} accent={C.money} featured delay={200} />
+        <ScoreCard label="Conversão" count={totals.convRate} format={fmtPct} icon={TrendingUp} accent={C.green} delay={250} />
       </div>
 
       {/* Timeline */}
       <Panel
         title="Linha do tempo"
         icon={Activity}
+        delay={120}
         action={
           <ToggleGroup
             value={timelineMetric}
@@ -461,8 +562,8 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
             <AreaChart data={timeline} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
               <defs>
                 <linearGradient id="ta-area" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={theme.c1} stopOpacity={0.35} />
-                  <stop offset="100%" stopColor={theme.c1} stopOpacity={0} />
+                  <stop offset="0%" stopColor={areaColor} stopOpacity={0.4} />
+                  <stop offset="100%" stopColor={areaColor} stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke={theme.gridStroke} vertical={false} />
@@ -474,7 +575,18 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
                 labelFormatter={(l) => shortDate(String(l))}
                 formatter={(val) => [fmtInt(Number(val)), ""]}
               />
-              <Area type="monotone" dataKey={timelineMetric} stroke={theme.c1} strokeWidth={2} fill="url(#ta-area)" />
+              <Area
+                type="monotone"
+                dataKey={timelineMetric}
+                stroke={areaColor}
+                strokeWidth={2.5}
+                fill="url(#ta-area)"
+                isAnimationActive={areaShown}
+                animationDuration={900}
+                animationEasing="ease-out"
+                dot={false}
+                activeDot={{ r: 4, fill: areaColor, strokeWidth: 0 }}
+              />
             </AreaChart>
           </ResponsiveContainer>
         ) : (
@@ -484,34 +596,13 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
 
       {/* Funil + Eventos por tipo */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Panel title="Funil de conversão" icon={TrendingUp}>
-          <div className="flex flex-col gap-2.5">
-            {funnelSteps.map((step, i) => {
-              const top = funnelSteps[0].value || 1;
-              const prev = i > 0 ? funnelSteps[i - 1].value : step.value;
-              const pctTop = (step.value / top) * 100;
-              const pctPrev = prev > 0 ? (step.value / prev) * 100 : 0;
-              return (
-                <div key={step.label}>
-                  <div className="mb-0.5 flex items-center justify-between gap-2 text-[11px]">
-                    <span className="font-semibold" style={{ color: "var(--dm-text-secondary)" }}>{step.label}</span>
-                    <span className="tabular-nums" style={{ color: "var(--dm-text-tertiary)" }}>
-                      <span className="font-bold" style={{ color: "var(--dm-text-primary)" }}>{fmtInt(step.value)}</span>
-                      {i > 0 && <span className="ml-1.5 opacity-80">{fmtPct(pctPrev)} da etapa anterior</span>}
-                    </span>
-                  </div>
-                  <div className="h-3 w-full overflow-hidden rounded-md" style={{ background: "var(--dm-bg-elevated)" }}>
-                    <div className="h-full rounded-md transition-all" style={{ width: `${Math.max(pctTop, 2)}%`, background: step.color }} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+        <Panel title="Funil de conversão" icon={TrendingUp} delay={160}>
+          <FunnelChart steps={funnelSteps} />
         </Panel>
 
-        <Panel title="Eventos por tipo" icon={Activity}>
+        <Panel title="Eventos por tipo" icon={Activity} delay={200}>
           <BarList
-            color={theme.c1}
+            color={C.green}
             empty="Sem eventos."
             items={eventsByType.map((e) => ({
               key: e.name,
@@ -532,6 +623,7 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
         <Panel
           title={geoMode === "users" ? "Usuários por localização" : "Vendas por localização"}
           icon={Globe}
+          delay={240}
           action={
             <div className="flex flex-wrap items-center gap-1.5">
               <ToggleGroup
@@ -555,7 +647,7 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
           }
         >
           <BarList
-            color={geoMode === "users" ? "#0891b2" : "#059669"}
+            color={geoMode === "users" ? C.teal : C.money}
             empty={geoMode === "users" ? "Sem dados de localização." : "Nenhuma venda com localização no período."}
             formatValue={geo[0]?.formatValue}
             items={geo.map((g) => ({
@@ -570,6 +662,7 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
         <Panel
           title="Usuários por origem"
           icon={Radio}
+          delay={280}
           action={
             <ToggleGroup
               value={sourceDim}
@@ -582,7 +675,7 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
           }
         >
           <BarList
-            color="#7c3aed"
+            color={C.teal}
             empty="Sem dados de origem."
             items={usersBySource.map((s) => ({ key: s.label, label: s.label, value: s.value }))}
           />
@@ -594,9 +687,10 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
         <Panel
           title="Vendas por origem (first-touch)"
           icon={ShoppingBag}
+          delay={320}
         >
           <BarList
-            color="#059669"
+            color={C.money}
             empty="Nenhuma venda com UTM Source no período."
             formatValue={(v) => formatMoney(v, currency)}
             items={salesBySource.map((s) => ({
@@ -611,9 +705,10 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
         <Panel
           title="UTM Source no momento da venda"
           icon={Tag}
+          delay={360}
         >
           <BarList
-            color="#d97706"
+            color={C.amber}
             empty="Nenhuma venda com UTM Source no evento."
             formatValue={(v) => formatMoney(v, currency)}
             items={utmFinalDeSale.map((s) => ({
@@ -633,6 +728,7 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
       <Panel
         title="Dispositivos dos usuários"
         icon={Monitor}
+        delay={400}
         action={
           <ToggleGroup
             value={deviceDim}
@@ -646,7 +742,7 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
         }
       >
         <BarList
-          color="#7c3aed"
+          color={C.slate}
           empty="Sem dados de dispositivo."
           items={deviceStats.map((d) => ({ key: d.label, label: d.label, value: d.value }))}
         />
@@ -656,6 +752,7 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
       <Panel
         title="Leads & Vendas por UTM"
         icon={Tag}
+        delay={440}
         action={
           <ToggleGroup
             value={utmDim}
@@ -693,12 +790,16 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
               </thead>
               <tbody>
                 {utmRows.map((r, i) => (
-                  <tr key={r.label} style={{ borderBottom: i < utmRows.length - 1 ? "1px solid var(--dm-border-subtle)" : undefined }}>
+                  <tr
+                    key={r.label}
+                    className="transition-colors hover:bg-[var(--dm-bg-elevated)]"
+                    style={{ borderBottom: i < utmRows.length - 1 ? "1px solid var(--dm-border-subtle)" : undefined }}
+                  >
                     <td className="max-w-[240px] truncate px-2 py-2" style={{ color: "var(--dm-text-secondary)" }} title={r.label}>{r.label}</td>
                     <td className="px-2 py-2 text-right tabular-nums" style={{ color: "var(--dm-text-primary)" }}>{fmtInt(r.users)}</td>
                     <td className="px-2 py-2 text-right tabular-nums" style={{ color: "var(--dm-text-primary)" }}>{fmtInt(r.leads)}</td>
                     <td className="px-2 py-2 text-right tabular-nums" style={{ color: "var(--dm-text-primary)" }}>{fmtInt(r.sales)}</td>
-                    <td className="px-2 py-2 text-right font-semibold tabular-nums" style={{ color: r.revenue > 0 ? "#059669" : "var(--dm-text-tertiary)" }}>
+                    <td className="px-2 py-2 text-right font-semibold tabular-nums" style={{ color: r.revenue > 0 ? C.money : "var(--dm-text-tertiary)" }}>
                       {r.revenue > 0 ? formatMoney(r.revenue, currency) : "—"}
                     </td>
                   </tr>
@@ -710,7 +811,7 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
                   <td className="px-2 py-2 text-right font-bold tabular-nums" style={{ color: "var(--dm-text-primary)" }}>{fmtInt(utmTotals.users)}</td>
                   <td className="px-2 py-2 text-right font-bold tabular-nums" style={{ color: "var(--dm-text-primary)" }}>{fmtInt(utmTotals.leads)}</td>
                   <td className="px-2 py-2 text-right font-bold tabular-nums" style={{ color: "var(--dm-text-primary)" }}>{fmtInt(utmTotals.sales)}</td>
-                  <td className="px-2 py-2 text-right font-bold tabular-nums" style={{ color: "#059669" }}>{formatMoney(utmTotals.revenue, currency)}</td>
+                  <td className="px-2 py-2 text-right font-bold tabular-nums" style={{ color: C.money }}>{formatMoney(utmTotals.revenue, currency)}</td>
                 </tr>
               </tfoot>
             </table>
@@ -719,6 +820,44 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
           <EmptyHint text="Sem UTMs capturadas no período." />
         )}
       </Panel>
+    </div>
+  );
+}
+
+// ─── Funil afunilado (centralizado, barras que crescem) ─────────────────────────
+function FunnelChart({ steps }: { steps: { label: string; value: number; color: string }[] }) {
+  const shown = useMounted();
+  const top = steps[0]?.value || 1;
+  return (
+    <div className="flex flex-col gap-2">
+      {steps.map((step, i) => {
+        const prev = i > 0 ? steps[i - 1].value : step.value;
+        const pctTop = Math.max((step.value / top) * 100, 4);
+        const pctPrev = prev > 0 ? (step.value / prev) * 100 : 0;
+        return (
+          <div key={step.label} className="flex flex-col items-center">
+            <div className="mb-1 flex w-full items-center justify-between gap-2 text-[11px]">
+              <span className="font-semibold" style={{ color: "var(--dm-text-secondary)" }}>{step.label}</span>
+              <span className="tabular-nums" style={{ color: "var(--dm-text-tertiary)" }}>
+                <span className="font-bold" style={{ color: "var(--dm-text-primary)" }}>{fmtInt(step.value)}</span>
+                {i > 0 && <span className="ml-1.5 opacity-80">{fmtPct(pctPrev)} da etapa anterior</span>}
+              </span>
+            </div>
+            <div
+              className="flex h-11 items-center justify-center rounded-xl"
+              style={{
+                width: shown ? `${pctTop}%` : "0%",
+                background: `linear-gradient(135deg, ${step.color}, ${step.color}cc)`,
+                boxShadow: `0 6px 16px -8px ${step.color}`,
+                transition: "width 0.85s cubic-bezier(0.16,1,0.3,1)",
+                transitionDelay: `${i * 120}ms`,
+              }}
+            >
+              <span className="px-2 text-[12px] font-bold tabular-nums text-white">{fmtInt(step.value)}</span>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

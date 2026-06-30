@@ -676,7 +676,7 @@ function rowToFunnel(row: Record<string, unknown>): TrackingFunnel {
     id: row.id as string,
     companyId: row.company_id as string,
     label: row.label as string,
-    color: (row.color as string) || "#6366f1",
+    color: (row.color as string) || "#16A34A",
     pixelId: (row.pixel_id as string | null) ?? null,
     productParentIds: (row.product_parent_ids as string[]) || [],
     productNames: (row.product_names as string[]) || [],
@@ -700,7 +700,7 @@ function cleanFunnelList(values: string[]): string[] {
 }
 
 function cleanFunnelColor(value: string): string {
-  return /^#[0-9A-Fa-f]{6}$/.test(value) ? value : "#6366f1";
+  return /^#[0-9A-Fa-f]{6}$/.test(value) ? value : "#16A34A";
 }
 
 export async function fetchTrackingFunnels(companyId: string): Promise<TrackingFunnel[]> {

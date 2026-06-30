@@ -22,6 +22,7 @@ import {
 import { formatBRL, formatCompact, formatInt, formatPercent } from "@/lib/format";
 import { getTemplate, TEMPLATE_LIST, DEFAULT_PERSONALIZADO_CONFIG, KPI_GROUPS, ALL_KPI_OPTIONS } from "@/lib/templates";
 import { PerfilEmpty } from "@/components/empty/PerfilEmpty";
+import { DateRangePicker } from "@/components/DateRangePicker";
 import { ExportReportButton } from "@/components/ExportReportButton";
 import type { ReportData } from "@/types/report";
 import { PerfilAtivoPanel } from "@/components/PerfilAtivoPanel";
@@ -60,13 +61,13 @@ interface ProfileFunnelStep {
 }
 
 const PROFILE_FUNNEL_STEPS: ProfileFunnelStep[] = [
-  { id: "reach",          label: "Alcance",           color: "#3b82f6" },
-  { id: "impressions",    label: "Impressões",         color: "#8b5cf6", rateLabel: "Freq." },
-  { id: "clicks",         label: "Cliques no link",    color: "#0891b2", rateLabel: "CTR" },
+  { id: "reach",          label: "Alcance",           color: "#16A34A" },
+  { id: "impressions",    label: "Impressões",         color: "#0F766E", rateLabel: "Freq." },
+  { id: "clicks",         label: "Cliques no link",    color: "#0D9488", rateLabel: "CTR" },
   { id: "page_views",     label: "Vis. de Página",     color: "#f59e0b", rateLabel: "Taxa LP" },
   { id: "leads",          label: "Leads",              color: "#e11d48", rateLabel: "Tx. Captura" },
   { id: "sales",          label: "Resultados",         color: "#10b981", rateLabel: "Tx. Venda" },
-  { id: "profile_visits", label: "Visitas ao Perfil",  color: "#8b5cf6", rateLabel: "Tx. Visita" },
+  { id: "profile_visits", label: "Visitas ao Perfil",  color: "#0F766E", rateLabel: "Tx. Visita" },
   { id: "new_followers",  label: "Novos Seguidores",   color: "#10b981", rateLabel: "Tx. Follow" },
 ];
 
@@ -393,9 +394,9 @@ function toDailyRows(
 // ─── Section constants ────────────────────────────────────────────────────────
 
 const SECTION_META = {
-  pos:      { label: "Pós Graduação", icon: GraduationCap, color: "text-blue-600",   bg: "bg-blue-50",   border: "border-blue-200" },
+  pos:      { label: "Pós Graduação", icon: GraduationCap, color: "text-slate-600",  bg: "bg-slate-100", border: "border-slate-200" },
   livros:   { label: "Livros",        icon: BookMarked,    color: "text-green-600",  bg: "bg-green-50",  border: "border-green-200" },
-  ebooks:   { label: "Ebooks",        icon: BookMarked,    color: "text-violet-600", bg: "bg-violet-50", border: "border-violet-200" },
+  ebooks:   { label: "Ebooks",        icon: BookMarked,    color: "text-teal-600",   bg: "bg-teal-50",   border: "border-teal-200" },
   perpetuo: { label: "Perpétuo",      icon: Repeat,        color: "text-amber-600",  bg: "bg-amber-50",  border: "border-amber-200" },
   eventos:  { label: "Eventos",       icon: CalendarDays,  color: "text-rose-600",   bg: "bg-rose-50",   border: "border-rose-200" },
 } as const;
@@ -403,8 +404,8 @@ const SECTION_META = {
 // ─── Avatar helpers ───────────────────────────────────────────────────────────
 
 const AVATAR_STYLES = [
-  ["bg-blue-100 text-blue-700",      "border-blue-200"],
-  ["bg-purple-100 text-purple-700",  "border-purple-200"],
+  ["bg-slate-100 text-slate-700",    "border-slate-200"],
+  ["bg-[#16A34A]/10 text-[#15803D]", "border-[#16A34A]/25"],
   ["bg-emerald-100 text-emerald-700","border-emerald-200"],
   ["bg-pink-100 text-pink-700",      "border-pink-200"],
   ["bg-orange-100 text-orange-700",  "border-orange-200"],
@@ -484,7 +485,7 @@ function AddCampaignPanel({
     setAddedThisSession((prev) => new Set([...prev, camp.id]));
   };
 
-  const inputCls = "h-8 w-full rounded-md border border-slate-200 bg-white px-2.5 text-xs text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200";
+  const inputCls = "h-8 w-full rounded-md border border-slate-200 bg-white px-2.5 text-xs text-slate-800 outline-none focus:border-[#16A34A] focus:ring-1 focus:ring-[#16A34A]/20 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200";
 
   if (!hasToken) {
     return (
@@ -516,7 +517,7 @@ function AddCampaignPanel({
             onClick={() => void fetchAccounts()}
             disabled={accountsLoading}
             title="Listar todas as contas disponíveis para este token"
-            className="flex flex-shrink-0 items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold text-slate-600 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-400 dark:hover:border-blue-500"
+            className="flex flex-shrink-0 items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold text-slate-600 transition hover:border-[#16A34A]/40 hover:bg-[#16A34A]/10 hover:text-[#16A34A] disabled:opacity-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-400 dark:hover:border-[#22C55E]/50"
           >
             {accountsLoading ? <Loader2 size={10} className="animate-spin" /> : <Users size={10} />}
             {accountsLoading ? "Buscando…" : "Ver contas"}
@@ -527,7 +528,7 @@ function AddCampaignPanel({
             onClick={() => void fetchCampaigns()}
             disabled={!accountId.trim() || campaignsLoading}
             title="Buscar campanhas desta conta"
-            className="flex flex-shrink-0 items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-[10px] font-semibold text-blue-600 transition hover:bg-blue-100 disabled:opacity-50 dark:border-blue-700 dark:bg-blue-900/20 dark:text-blue-400"
+            className="flex flex-shrink-0 items-center gap-1 rounded-md border border-[#16A34A]/30 bg-[#16A34A]/10 px-2.5 py-1 text-[10px] font-semibold text-[#15803D] transition hover:bg-[#16A34A]/15 disabled:opacity-50 dark:border-[#22C55E]/40 dark:bg-[#22C55E]/10 dark:text-[#22C55E]"
           >
             {campaignsLoading ? <Loader2 size={10} className="animate-spin" /> : <Zap size={10} />}
             {campaignsLoading ? "Buscando…" : "Campanhas"}
@@ -617,7 +618,7 @@ function AddCampaignPanel({
                   className={`flex w-full items-center gap-2 border-b border-slate-100 px-3 py-2 text-left text-[11px] last:border-b-0 transition dark:border-slate-700 ${
                     alreadyAdded || justAdded
                       ? "cursor-default opacity-60"
-                      : "hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                      : "hover:bg-[#16A34A]/10 dark:hover:bg-[#22C55E]/10"
                   }`}
                 >
                   <span className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${c.status === "ACTIVE" ? "bg-emerald-500" : "bg-amber-400"}`} />
@@ -627,7 +628,7 @@ function AddCampaignPanel({
                       <CheckCircle2 size={8} /> Adicionada
                     </span>
                   ) : (
-                    <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] font-semibold text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
+                    <span className="rounded-full bg-[#16A34A]/10 px-1.5 py-0.5 text-[9px] font-semibold text-[#15803D] dark:bg-[#22C55E]/15 dark:text-[#22C55E]">
                       + Adicionar
                     </span>
                   )}
@@ -854,7 +855,7 @@ function ProfileForm({
     "h-9 w-full rounded-lg border px-3 text-xs outline-none transition",
     "border-[var(--dm-border-default)] bg-[var(--dm-bg-elevated)] text-[var(--dm-text-primary)]",
     "placeholder:text-[var(--dm-text-tertiary)]",
-    "focus:border-blue-500 focus:bg-[var(--dm-bg-surface)] focus:ring-2 focus:ring-blue-500/10",
+    "focus:border-[#16A34A] focus:bg-[var(--dm-bg-surface)] focus:ring-2 focus:ring-[#16A34A]/10",
   ].join(" ");
 
   const labelCls = "block text-xs font-semibold mb-1.5";
@@ -1193,16 +1194,16 @@ const KPI_CONFIG_KEY      = "pta_profile_kpi_config_v1";
 
 // Shared color maps (mirrors CampaignAnalysisPanel)
 const KPI_SOLID_OV: Record<string, string> = {
-  brand: "#16A34A", sky: "#0ea5e9", green: "#05CD99",
+  brand: "#16A34A", sky: "#0D9488", green: "#05CD99",
   rose: "#EE5D50", amber: "#F4A60D", slate: "#64748b",
 };
 const KPI_BG_OV: Record<string, string> = {
-  brand: "rgba(22,163,74,0.12)", sky: "rgba(14,165,233,0.12)",
+  brand: "rgba(22,163,74,0.12)", sky: "rgba(13,148,136,0.12)",
   green: "rgba(5,205,153,0.12)", rose: "rgba(238,93,80,0.12)",
   amber: "rgba(244,166,13,0.12)", slate: "rgba(100,116,139,0.10)",
 };
 const FUNNEL_COLORS_OV: Record<string, string> = {
-  reach: "#16A34A", impressions: "#8b5cf6", clicks: "#0ea5e9",
+  reach: "#16A34A", impressions: "#0F766E", clicks: "#0D9488",
   page_views: "#f59e0b", leads: "#e11d48", sales: "#05CD99",
 };
 
@@ -2445,7 +2446,7 @@ function CampaignAnalysisPanel({
 
   const KPI_ACCENT: Record<string, string> = {
     brand: "text-brand",
-    sky:   "text-sky-500",
+    sky:   "text-teal-500",
     green: "text-emerald-500",
     rose:  "text-rose-500",
     amber: "text-amber-500",
@@ -2455,7 +2456,7 @@ function CampaignAnalysisPanel({
   // Horizon-style color maps for KPI cards
   const KPI_SOLID: Record<string, string> = {
     brand: "#16A34A",
-    sky:   "#0ea5e9",
+    sky:   "#0D9488",
     green: "#05CD99",
     rose:  "#EE5D50",
     amber: "#F4A60D",
@@ -2463,7 +2464,7 @@ function CampaignAnalysisPanel({
   };
   const KPI_BG: Record<string, string> = {
     brand: "rgba(22,163,74,0.12)",
-    sky:   "rgba(14,165,233,0.12)",
+    sky:   "rgba(13,148,136,0.12)",
     green: "rgba(5,205,153,0.12)",
     rose:  "rgba(238,93,80,0.12)",
     amber: "rgba(244,166,13,0.12)",
@@ -2473,8 +2474,8 @@ function CampaignAnalysisPanel({
   // Funnel step colors — more saturated for professional look
   const FUNNEL_COLORS: Record<string, string> = {
     reach:          "#16A34A",
-    impressions:    "#8b5cf6",
-    clicks:         "#0ea5e9",
+    impressions:    "#0F766E",
+    clicks:         "#0D9488",
     page_views:     "#f59e0b",
     leads:          "#e11d48",
     sales:          "#05CD99",
@@ -3170,136 +3171,6 @@ function CampaignAnalysisPanel({
   );
 }
 
-// ─── Profile Date Range Picker ────────────────────────────────────────────────
-
-const DATE_PRESETS = [
-  { label: "7d",   days: 6  },
-  { label: "14d",  days: 13 },
-  { label: "30d",  days: 29 },
-  { label: "Mês",  days: -1 }, // first of month
-];
-
-function ProfileDateRange({
-  dateFrom, dateTo, onApply,
-}: { dateFrom: string; dateTo: string; onApply: (from: string, to: string) => void }) {
-  const [open, setOpen]       = useState(false);
-  const [from, setFrom]       = useState(dateFrom);
-  const [to,   setTo]         = useState(dateTo);
-  const ref = useRef<HTMLDivElement>(null);
-
-  // Sync internal state when parent props change
-  useEffect(() => { setFrom(dateFrom); setTo(dateTo); }, [dateFrom, dateTo]);
-
-  // Close on outside click
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
-
-  const applyPreset = (days: number) => {
-    const today = todayStr();
-    let start: string;
-    if (days === -1) {
-      const d = new Date();
-      start = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
-    } else {
-      start = daysAgoStr(days);
-    }
-    onApply(start, today);
-    setOpen(false);
-  };
-
-  const handleApply = () => {
-    if (!from || !to || from > to) return;
-    onApply(from, to);
-    setOpen(false);
-  };
-
-  const isoToBR = (iso: string) => {
-    if (!iso) return "";
-    const [y, m, d] = iso.split("-");
-    return `${d}/${m}/${y}`;
-  };
-
-  return (
-    <div className="relative" ref={ref}>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition hover:bg-[var(--dm-bg-elevated)]"
-        style={{ borderColor: "var(--dm-border-default)", backgroundColor: open ? "var(--dm-bg-elevated)" : "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
-      >
-        <CalendarDays size={13} style={{ color: "var(--dm-text-tertiary)" }} />
-        <span>{isoToBR(dateFrom)}</span>
-        <span style={{ color: "var(--dm-text-tertiary)" }}>→</span>
-        <span>{isoToBR(dateTo)}</span>
-      </button>
-
-      {open && (
-        <div
-          className="absolute right-0 top-full z-30 mt-1.5 w-72 rounded-xl border p-4 shadow-xl"
-          style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}
-        >
-          {/* Presets */}
-          <div className="mb-3 flex flex-wrap gap-1.5">
-            {DATE_PRESETS.map((p) => (
-              <button
-                key={p.label}
-                type="button"
-                onClick={() => applyPreset(p.days)}
-                className="rounded-md border px-2.5 py-1 text-[10px] font-semibold transition"
-                style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-secondary)" }}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Manual date inputs */}
-          <div className="grid grid-cols-2 gap-2">
-            <label className="flex flex-col gap-1">
-              <span className="text-[10px] font-medium" style={{ color: "var(--dm-text-tertiary)" }}>De</span>
-              <input
-                type="date" value={from} max={to || undefined}
-                onChange={(e) => setFrom(e.target.value)}
-                className="h-8 rounded-lg border px-2 text-xs outline-none focus:ring-1 focus:ring-blue-500"
-                style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-[10px] font-medium" style={{ color: "var(--dm-text-tertiary)" }}>Até</span>
-              <input
-                type="date" value={to} min={from || undefined} max={todayStr()}
-                onChange={(e) => setTo(e.target.value)}
-                className="h-8 rounded-lg border px-2 text-xs outline-none focus:ring-1 focus:ring-blue-500"
-                style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
-              />
-            </label>
-          </div>
-
-          {from > to && (
-            <p className="mt-2 text-[10px] font-semibold text-red-500">Data inicial maior que a data final</p>
-          )}
-
-          <button
-            type="button"
-            onClick={handleApply}
-            disabled={!from || !to || from > to}
-            className="mt-3 w-full rounded-lg py-2 text-xs font-bold text-white transition disabled:opacity-40"
-            style={{ backgroundColor: "var(--dm-brand-500)" }}
-          >
-            Aplicar período
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ─── Instagram Insights Panel ─────────────────────────────────────────────────
 
 const IG_GRADIENT = "linear-gradient(135deg,#f09433 0%,#e6683c 25%,#dc2743 50%,#cc2366 75%,#bc1888 100%)";
@@ -3806,10 +3677,11 @@ function ProfileDetailView({
                 Configurar
               </button>
             )}
-            <ProfileDateRange
-              dateFrom={dateFrom}
-              dateTo={dateTo}
-              onApply={(from, to) => { setDateFrom(from); setDateTo(to); persistDates(from, to); }}
+            <DateRangePicker
+              from={dateFrom}
+              to={dateTo}
+              align="right"
+              onChange={(from, to) => { setDateFrom(from); setDateTo(to); persistDates(from, to); }}
             />
           </div>
         </div>

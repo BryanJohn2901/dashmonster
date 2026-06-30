@@ -77,8 +77,8 @@ export function HeroInput({
       </div>
 
       {showRealtime ? (
-        <div className="mb-4 flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50 px-3 py-2">
-          <p className="text-xs text-blue-800">
+        <div className="mb-4 flex items-center justify-between rounded-lg border border-[#16A34A]/30 bg-[#16A34A]/[0.06] px-3 py-2">
+          <p className="text-xs text-[#15803D] dark:text-[#22C55E]">
             Modo Supabase Realtime:{" "}
             <span className="font-semibold">
               {realtimeActive ? "conectado" : "desconectado"}
@@ -117,7 +117,7 @@ export function HeroInput({
             placeholder="https://docs.google.com/spreadsheets/d/..."
             value={url}
             onChange={(event) => setUrl(event.target.value)}
-            className="h-11 w-full rounded-lg border border-slate-300 bg-white pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            className="h-11 w-full rounded-lg border border-slate-300 bg-white pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-[#16A34A] focus:ring-2 focus:ring-[#16A34A]/15"
           />
         </div>
 

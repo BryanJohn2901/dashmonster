@@ -72,10 +72,10 @@ export const KPI_GROUPS: KpiGroup[] = [
 // ─── Catalog of all available funnel stages ───────────────────────────────────
 
 export const ALL_FUNNEL_OPTIONS: FunnelStage[] = [
-  { id: "reach",          label: "Alcance",                  bg: "#DBEAFE" },
-  { id: "impressions",    label: "Impressões",               bg: "#BFDBFE" },
-  { id: "clicks",         label: "Cliques no link",          bg: "#93C5FD", rateFromPrev: "CTR" },
-  { id: "page_views",     label: "Visualizações de página",  bg: "#67E8F9", rateFromPrev: "Tx. Visita" },
+  { id: "reach",          label: "Alcance",                  bg: "#DCFCE7" },
+  { id: "impressions",    label: "Impressões",               bg: "#BBF7D0" },
+  { id: "clicks",         label: "Cliques no link",          bg: "#86EFAC", rateFromPrev: "CTR" },
+  { id: "page_views",     label: "Visualizações de página",  bg: "#5EEAD4", rateFromPrev: "Tx. Visita" },
   { id: "leads",          label: "Leads",                    bg: "#FEF08A", rateFromPrev: "Tx. Captura" },
   { id: "sales",          label: "Vendas",                   bg: "#BBF7D0", rateFromPrev: "Tx. Conversão" },
   { id: "profile_visits", label: "Visitas ao perfil",        bg: "#A7F3D0", rateFromPrev: "Tx. Visita" },

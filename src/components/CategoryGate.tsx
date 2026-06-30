@@ -130,13 +130,13 @@ export const ICON_MAP: Record<string, React.ElementType> = Object.fromEntries(
 // ─── Color options ────────────────────────────────────────────────────────────
 
 const COLOR_OPTIONS: Array<{ key: ColorKey; hex: string; label: string }> = [
-  { key: "blue",    hex: "#3b82f6", label: "Azul" },
+  { key: "blue",    hex: "#0D9488", label: "Teal" },
   { key: "emerald", hex: "#10b981", label: "Verde" },
-  { key: "violet",  hex: "#22C55E", label: "Roxo" },
+  { key: "violet",  hex: "#22C55E", label: "Verde-vivo" },
   { key: "amber",   hex: "#f59e0b", label: "Âmbar" },
   { key: "rose",    hex: "#f43f5e", label: "Rosa" },
   { key: "pink",    hex: "#ec4899", label: "Pink" },
-  { key: "cyan",    hex: "#06b6d4", label: "Ciano" },
+  { key: "cyan",    hex: "#0F766E", label: "Verde-água" },
   { key: "orange",  hex: "#f97316", label: "Laranja" },
 ];
 
@@ -447,7 +447,7 @@ export function CategoryGate({
           {/* Custom section cards */}
           {customSections.map((sec) => {
             const Ico = ICON_MAP[sec.iconName] ?? Package;
-            const hex = COLOR_HEX[sec.colorKey] ?? "#3b82f6";
+            const hex = COLOR_HEX[sec.colorKey] ?? "#16A34A";
             return (
               <button
                 key={sec.id}

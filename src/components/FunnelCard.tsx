@@ -37,10 +37,10 @@ const DEFAULT_STEPS: FunnelStepId[] = ["impressions", "clicks", "pageViews", "le
 // Token-aligned colors (match globals.css --dm-primary / --dm-primary-vivid / --dm-success-base)
 const STEP_COLORS: Record<FunnelStepId, string> = {
   impressions: "#16A34A",
-  clicks:      "#4A4FCC",
-  pageViews:   "#0891b2",
+  clicks:      "#15803D",
+  pageViews:   "#0D9488",
   leads:       "#F59E0B",
-  conversions: "#10B981",
+  conversions: "#22C55E",
 };
 
 function load(key: string): FunnelStepId[] {

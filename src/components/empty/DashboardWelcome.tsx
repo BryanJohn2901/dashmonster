@@ -44,15 +44,15 @@ export function DashboardWelcome({ onOpenControlPanel, onSelectTab }: DashboardW
         style={{ backgroundColor: "var(--dm-bg-surface)" }}
       >
         {/* Background glows */}
-        <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-blue-500/10 blur-[80px]" />
-        <div className="pointer-events-none absolute -bottom-24 -right-24 h-72 w-72 rounded-full bg-emerald-500/8 blur-[80px]" />
+        <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-[#16A34A]/10 blur-[80px]" />
+        <div className="pointer-events-none absolute -bottom-24 -right-24 h-72 w-72 rounded-full bg-emerald-500/[0.06] blur-[80px]" />
 
         <div className="relative flex flex-col gap-10 sm:flex-row sm:items-start sm:gap-12">
           {/* ── Left column ── */}
           <div className="flex min-w-0 flex-1 flex-col gap-6">
             {/* Hero */}
             <div className="flex items-center gap-4">
-              <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-blue-700 shadow-lg shadow-blue-500/25">
+              <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#16A34A] to-[#15803D] shadow-lg shadow-[#16A34A]/25">
                 <TrendingUp size={24} className="text-white" strokeWidth={2} />
               </div>
               <div>
@@ -88,7 +88,7 @@ export function DashboardWelcome({ onOpenControlPanel, onSelectTab }: DashboardW
                   }}
                 >
                   <div
-                    className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg transition-colors group-hover:bg-blue-100 dark:group-hover:bg-blue-500/20"
+                    className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg transition-colors group-hover:bg-[#16A34A]/10 dark:group-hover:bg-[#16A34A]/20"
                     style={{ backgroundColor: "var(--dm-bg-surface)" }}
                   >
                     <Icon size={18} style={{ color: "var(--dm-brand-500)" }} />

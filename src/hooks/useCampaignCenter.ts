@@ -55,7 +55,7 @@ export const INTENT_META: Record<CampaignIntent, IntentMeta> = {
   },
   profile_growth: {
     label: "Crescer Perfil",
-    color: "#8b5cf6",
+    color: "#0F766E",
     goalFields: [
       { id: "new_followers",  label: "Seguidores", unit: "qtd" },
       { id: "profile_visits", label: "Visitas",    unit: "qtd" },
@@ -65,7 +65,7 @@ export const INTENT_META: Record<CampaignIntent, IntentMeta> = {
   },
   traffic: {
     label: "Tráfego",
-    color: "#0891b2",
+    color: "#0D9488",
     goalFields: [
       { id: "clicks", label: "Cliques", unit: "qtd" },
       { id: "cpc",    label: "CPC",     unit: "brl" },
@@ -75,7 +75,7 @@ export const INTENT_META: Record<CampaignIntent, IntentMeta> = {
   },
   awareness: {
     label: "Reconhecimento",
-    color: "#3b82f6",
+    color: "#16A34A",
     goalFields: [
       { id: "reach",     label: "Alcance",    unit: "qtd" },
       { id: "cpm",       label: "CPM",        unit: "brl" },

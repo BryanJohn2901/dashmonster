@@ -23,7 +23,7 @@ export function HistoricoEmpty({ onImportCsv, onAddManual }: HistoricoEmptyProps
         style={{ backgroundColor: "var(--dm-bg-surface)" }}
       >
         {/* Glow */}
-        <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-blue-500/10 blur-[80px]" />
+        <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-[#16A34A]/10 blur-[80px]" />
 
         <div className="relative">
           {/* ── Header ── */}
@@ -112,7 +112,7 @@ export function HistoricoEmpty({ onImportCsv, onAddManual }: HistoricoEmptyProps
                       className="h-full rounded-full animate-pulse"
                       style={{
                         width: `${row.pct}%`,
-                        background: "linear-gradient(90deg, var(--dm-brand-500), var(--dm-brand-400, #3b82f6))",
+                        background: "linear-gradient(90deg, var(--dm-brand-500), var(--dm-brand-400, #22C55E))",
                         opacity: 0.35,
                         animationDelay: `${i * 180}ms`,
                       }}

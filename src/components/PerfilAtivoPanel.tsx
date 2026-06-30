@@ -400,10 +400,10 @@ export function PerfilAtivoPanel({
       {/* ── Sincronizando (sem histórico ainda) ── */}
       {history.length === 0 && (
         <div className="flex items-start gap-2 rounded-lg border px-3 py-2.5"
-          style={{ background: "rgba(96,165,250,0.07)", borderColor: "rgba(96,165,250,0.2)" }}>
-          <Loader2 size={14} className="mt-0.5 animate-spin" style={{ color: "#60A5FA" }} />
+          style={{ background: "rgba(34,197,94,0.07)", borderColor: "rgba(34,197,94,0.2)" }}>
+          <Loader2 size={14} className="mt-0.5 animate-spin" style={{ color: "#22C55E" }} />
           <div className="space-y-0.5">
-            <p className="text-[12px] font-semibold" style={{ color: "#60A5FA" }}>Sincronizando…</p>
+            <p className="text-[12px] font-semibold" style={{ color: "#22C55E" }}>Sincronizando…</p>
             <p className="text-[11px]" style={{ color: "var(--dm-text-secondary)" }}>
               Ainda não há histórico salvo para esta conta. Os dados aparecem após o primeiro
               sync diário ou ao usar o botão de importar histórico abaixo.
@@ -457,10 +457,10 @@ export function PerfilAtivoPanel({
       {history.length < 7 && liveDiag && liveDiag.tokenValid &&
         liveDiag.metricPts && Object.values(liveDiag.metricPts).every(v => v <= 1) && (
         <div className="flex items-start gap-2 rounded-lg border px-3 py-2.5"
-          style={{ background: "rgba(96,165,250,0.07)", borderColor: "rgba(96,165,250,0.2)" }}>
+          style={{ background: "rgba(34,197,94,0.07)", borderColor: "rgba(34,197,94,0.2)" }}>
           <span className="mt-0.5 text-sm">📅</span>
           <div className="space-y-0.5">
-            <p className="text-[12px] font-semibold" style={{ color: "#60A5FA" }}>
+            <p className="text-[12px] font-semibold" style={{ color: "#22C55E" }}>
               Acumulando dados diariamente
             </p>
             <p className="text-[11px]" style={{ color: "var(--dm-text-secondary)" }}>
@@ -526,7 +526,7 @@ export function PerfilAtivoPanel({
             </span>
             {account.isVerified && (
               <span className="rounded px-1.5 py-0.5 text-[10px] font-bold"
-                style={{ background: "rgba(96,165,250,0.15)", color: "#60A5FA" }}>✓ verificado</span>
+                style={{ background: "rgba(34,197,94,0.15)", color: "#22C55E" }}>✓ verificado</span>
             )}
             <ScoreBadge score={Math.min(100, score)} />
           </div>
@@ -553,7 +553,7 @@ export function PerfilAtivoPanel({
       {/* ── KPI grid ── */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
         <KpiTile icon={TrendingUp}   label="Crescimento 30d"    value={`${growthRate30}%`}          sub={`+${fmtNum(followersDelta30)} seg.`} color="#05CD99" />
-        <KpiTile icon={Users}        label="Ganho semanal"      value={`+${fmtNum(followersDelta7)}`} sub="últimos 7 dias"                    color="#60A5FA" />
+        <KpiTile icon={Users}        label="Ganho semanal"      value={`+${fmtNum(followersDelta7)}`} sub="últimos 7 dias"                    color="#22C55E" />
         <KpiTile icon={TrendingUp}   label="Ganhos 30d"         value={`+${fmtNum(totalGained30)}`} sub="seguidores ganhos"                   color="#34D399" />
         <KpiTile icon={UserMinus}    label="Perda 30d"
           value={unfollowsAvailable ? `-${fmtNum(totalLost30)}` : "—"}
@@ -645,7 +645,7 @@ export function PerfilAtivoPanel({
               <Legend iconSize={8} wrapperStyle={{ fontSize: 10, color: "var(--dm-text-tertiary)" }} />
               <Bar dataKey="Ganhos" fill="#34D399" radius={[2, 2, 0, 0]} maxBarSize={14} />
               <Bar dataKey="Perdas" fill="#EE5D50" radius={[2, 2, 0, 0]} maxBarSize={14} />
-              <Line type="monotone" dataKey="Saldo" stroke="#60A5FA" strokeWidth={1.5} dot={false} />
+              <Line type="monotone" dataKey="Saldo" stroke="#22C55E" strokeWidth={1.5} dot={false} />
             </ComposedChart>
           </ResponsiveContainer>
         </div>

@@ -1,6 +1,6 @@
 import { CampaignData } from "@/types/campaign";
 import { HistoricalRow, HistoricalMeta } from "@/types/historical";
-import { ProductData } from "@/types/product";
+import { ProductData, ProductType, emptyProduct } from "@/types/product";
 import { AdvertiserProfile } from "@/hooks/useAdvertiserStore";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -745,15 +745,177 @@ export const MOCK_ADVERTISER_PROFILES: AdvertiserProfile[] = [
   },
 ];
 
-// ─── Seed function — grava dados fictícios no localStorage ────────────────────
+// ─── Dataset por empresa ──────────────────────────────────────────────────────
+// Cada empresa demo (useCompany → DEMO_COMPANIES) tem o seu próprio conjunto de
+// dados, para que trocar de empresa realmente mude tudo na tela. demo-1 usa os
+// dados ricos do PTA acima; demo-2/demo-3 são gerados a partir de temas compactos.
 
-export function seedDemoData(): void {
+export interface CompanyDataset {
+  campaigns: CampaignData[];
+  sourceLabel: string;
+  historical: HistoricalRow[];
+  metas: HistoricalMeta[];
+  products: ProductData[];
+  profiles: AdvertiserProfile[];
+}
+
+/** Produto compacto: parte dos campos + defaults do emptyProduct. */
+function mkProduct(
+  p: Partial<ProductData> & { id: string; nome: string; type: ProductType; categoria: string },
+): ProductData {
+  return { ...emptyProduct(p.type), createdAt: NOW, updatedAt: NOW, ...p } as ProductData;
+}
+
+// demo-1 (PTA): produtos existentes ganham `categoria` + alguns Livro/Ebook.
+const PTA_PRODUCTS: ProductData[] = [
+  ...MOCK_PRODUCTS.map((p) => ({ ...p, categoria: p.type === "pos" ? "Pós Graduação" : "Imersão" })),
+  mkProduct({
+    id: "p100", type: "imersao", categoria: "Ebook", nome: "Ebook Bio do Joelho",
+    expert: "Dr. Rafael Menezes", valorBase: "97,00",
+    promessa: "Domine a biomecânica do joelho em um guia direto ao ponto.",
+    palavrasChave: ["joelho", "ebook", "biomecânica"],
+    linksVenda: [{ id: "lv", turma: "—", valor: "97,00", link: "https://pay.hotmart.com/ebook-joelho-demo" }],
+  }),
+  mkProduct({
+    id: "p101", type: "imersao", categoria: "Livro", nome: "Livro Biomecânica Clínica",
+    expert: "Dr. Rafael Menezes", valorBase: "197,00",
+    promessa: "A referência impressa para o profissional de biomecânica.",
+    palavrasChave: ["livro", "biomecânica", "clínica"],
+    linksVenda: [{ id: "lv", turma: "—", valor: "197,00", link: "https://pay.hotmart.com/livro-bio-demo" }],
+  }),
+];
+
+// ── Gerador genérico a partir de um tema (demo-2 / demo-3) ──────────────────────
+interface ThemeProduct { id: string; nome: string; categoria: string; expert: string; promessa: string; preco: string; tag: string }
+interface ThemeCampaign { name: string; investFrac: number; clicks: number; impr: number; conv: number; ticket: number; leads: number }
+interface Theme {
+  sourceLabel: string;
+  igBase: string;
+  products: ThemeProduct[];
+  campaigns: ThemeCampaign[];
+}
+
+function genDataset(theme: Theme): CompanyDataset {
+  // Campanhas — 30 dias com padrão de semana
+  const campaigns: CampaignData[] = Array.from({ length: DAYS }, (_, i) => {
+    const dt = dateStr(i);
+    const dow = new Date(dt).getDay();
+    const wk = (dow === 0 || dow === 6) ? 0.65 : 1;
+    return theme.campaigns.map((c) =>
+      row(uid("c"), dt, c.name,
+        jitter(c.investFrac * 200 * wk), jitter(c.clicks * wk), jitter(c.impr * wk),
+        jitter(c.conv), jitter(c.conv * c.ticket), jitter(c.leads)),
+    );
+  }).flat();
+
+  // Produtos
+  const products: ProductData[] = theme.products.map((p) =>
+    mkProduct({
+      id: p.id, type: "imersao", categoria: p.categoria, nome: p.nome,
+      expert: p.expert, promessa: p.promessa, valorBase: p.preco,
+      palavrasChave: [p.tag.toLowerCase()],
+      subPromessas: [{ id: `${p.id}s1`, text: p.promessa }],
+      linksVenda: [{ id: `${p.id}lv`, turma: "—", valor: p.preco, link: `https://pay.demo/${p.id}` }],
+      paginasVenda: [{ id: `${p.id}pv`, label: "Principal", url: `https://demo.com/${p.id}` }],
+    }),
+  );
+
+  // Histórico — 1 lançamento por produto, espalhado nos últimos meses
+  const months = ["2026-05", "2026-04", "2026-03", "2026-02", "2026-01", "2025-12"];
+  const historical: HistoricalRow[] = theme.products.map((p, idx) => {
+    const inv = jitter(8000 + idx * 1500);
+    const ticket = Number(p.preco.replace(/[.,]/g, "")) / 100 || 200;
+    const sales = jitter(40 + idx * 6);
+    const rev = Math.round(sales * ticket);
+    return {
+      id: `${p.id}h`, kind: "lancamento", product: p.nome, turma: `T${idx + 1}`, tag: p.tag,
+      ...mk(months[idx % months.length]), investment: inv, revenue: rev,
+      cpm: 24 + idx, reach: jitter(420000), ctr: 2.3 + idx * 0.1, clicks: jitter(11000),
+      pageViews: jitter(6000), pageViewRate: 55, preCheckouts: jitter(900), preCheckoutRate: 15,
+      sales, salesRate: 4, cac: Math.round(inv / Math.max(1, sales)), roas: Math.round((rev / inv) * 10) / 10,
+    } as HistoricalRow;
+  });
+
+  const metas: HistoricalMeta[] = theme.products.map((p, idx) => ({
+    id: `${p.id}m`, product: p.nome, kind: "lancamento", investment: jitter(9000),
+    cpm: 25, ctr: 2.4, pageViewRate: 55, preCheckoutRate: 15, salesTarget: 45 + idx * 5, cac: 300,
+  }));
+
+  // Perfis de anunciante — 1 por produto (até 4)
+  const profiles: AdvertiserProfile[] = theme.products.slice(0, 4).map((p, idx) => ({
+    id: `${p.id}ap`, name: p.nome, product: p.nome,
+    adAccountId: `act_demo_${p.id}`, groupId: p.tag.toLowerCase(),
+    campaigns: [{ id: `${p.id}c`, name: theme.campaigns[idx % theme.campaigns.length].name }],
+    instagramUsername: `${theme.igBase}${idx + 1}`, createdAt: NOW,
+  }));
+
+  return { campaigns, sourceLabel: theme.sourceLabel, historical, metas, products, profiles };
+}
+
+// demo-2 — Loja Fitness Online (e-commerce, ticket baixo, volume alto)
+const LOJA_THEME: Theme = {
+  sourceLabel: "Meta Ads · Loja Fitness (Demo)",
+  igBase: "lojafit",
+  products: [
+    { id: "lf1", nome: "Whey Protein 900g", categoria: "Suplementos", expert: "Loja Fitness", promessa: "Proteína de alta absorção para seus resultados.", preco: "149,00", tag: "Suplementos" },
+    { id: "lf2", nome: "Creatina 300g", categoria: "Suplementos", expert: "Loja Fitness", promessa: "Mais força e performance em cada treino.", preco: "89,00", tag: "Suplementos" },
+    { id: "lf3", nome: "Kit Halteres 20kg", categoria: "Equipamentos", expert: "Loja Fitness", promessa: "Monte seu treino em casa com qualidade.", preco: "299,00", tag: "Equipamentos" },
+    { id: "lf4", nome: "Camiseta Dry-Fit Pro", categoria: "Vestuário", expert: "Loja Fitness", promessa: "Conforto e respirabilidade no treino.", preco: "79,00", tag: "Vestuário" },
+    { id: "lf5", nome: "Ebook 50 Receitas Fit", categoria: "Ebook", expert: "Nutri Marina", promessa: "Receitas práticas para a dieta dar certo.", preco: "27,00", tag: "Ebook" },
+  ],
+  campaigns: [
+    { name: "[LF] Whey | Conversão Catálogo", investFrac: 0.30, clicks: 520, impr: 34000, conv: 38, ticket: 149, leads: 0 },
+    { name: "[LF] Creatina | Conversão", investFrac: 0.22, clicks: 410, impr: 26000, conv: 30, ticket: 89, leads: 0 },
+    { name: "[LF] Equipamentos | Retargeting", investFrac: 0.18, clicks: 220, impr: 15000, conv: 12, ticket: 299, leads: 0 },
+    { name: "[LF] Vestuário | Tráfego", investFrac: 0.14, clicks: 480, impr: 30000, conv: 18, ticket: 79, leads: 0 },
+    { name: "[LF] Ebook Receitas | Lead", investFrac: 0.10, clicks: 360, impr: 22000, conv: 44, ticket: 27, leads: 60 },
+  ],
+};
+
+// demo-3 — Clínica Estética (lead-gen, ticket alto)
+const CLINICA_THEME: Theme = {
+  sourceLabel: "Meta Ads · Clínica Estética (Demo)",
+  igBase: "clinicaderma",
+  products: [
+    { id: "ce1", nome: "Aplicação de Botox", categoria: "Procedimentos", expert: "Dra. Helena Prado", promessa: "Rejuvenescimento natural com segurança médica.", preco: "1.200,00", tag: "Procedimentos" },
+    { id: "ce2", nome: "Preenchimento Labial", categoria: "Procedimentos", expert: "Dra. Helena Prado", promessa: "Harmonização facial com naturalidade.", preco: "1.500,00", tag: "Procedimentos" },
+    { id: "ce3", nome: "Limpeza de Pele Premium", categoria: "Procedimentos", expert: "Esteticista Paula", promessa: "Pele renovada com protocolo profissional.", preco: "350,00", tag: "Procedimentos" },
+    { id: "ce4", nome: "Pacote Harmonização Facial", categoria: "Pacotes", expert: "Dra. Helena Prado", promessa: "Protocolo completo de harmonização em 3 sessões.", preco: "4.800,00", tag: "Pacotes" },
+  ],
+  campaigns: [
+    { name: "[CE] Botox | Lead Agendamento", investFrac: 0.34, clicks: 180, impr: 16000, conv: 9, ticket: 1200, leads: 55 },
+    { name: "[CE] Preenchimento | Lead", investFrac: 0.26, clicks: 150, impr: 13000, conv: 7, ticket: 1500, leads: 42 },
+    { name: "[CE] Limpeza de Pele | Conversão", investFrac: 0.20, clicks: 260, impr: 18000, conv: 20, ticket: 350, leads: 30 },
+    { name: "[CE] Pacote Harmonização | Lead Premium", investFrac: 0.20, clicks: 95, impr: 9000, conv: 4, ticket: 4800, leads: 22 },
+  ],
+};
+
+// Mapa empresa → dataset. demo-1 usa os dados ricos do PTA.
+const DATASETS: Record<string, CompanyDataset> = {
+  "demo-1": {
+    campaigns: MOCK_CAMPAIGNS, sourceLabel: MOCK_SOURCE_LABEL,
+    historical: MOCK_HISTORICAL_ROWS, metas: MOCK_HISTORICAL_METAS,
+    products: PTA_PRODUCTS, profiles: MOCK_ADVERTISER_PROFILES,
+  },
+  "demo-2": genDataset(LOJA_THEME),
+  "demo-3": genDataset(CLINICA_THEME),
+};
+
+/** Dataset de uma empresa demo (fallback: demo-1 / PTA). */
+export function getCompanyDataset(companyId?: string | null): CompanyDataset {
+  return DATASETS[companyId ?? ""] ?? DATASETS["demo-1"];
+}
+
+// ─── Seed function — grava dados fictícios no localStorage (por empresa) ────────
+
+export function seedDemoData(companyId?: string | null): void {
   if (typeof window === "undefined") return;
   try {
-    localStorage.setItem("pta_hist_rows_v2",            JSON.stringify(MOCK_HISTORICAL_ROWS));
-    localStorage.setItem("pta_hist_metas_v1",           JSON.stringify(MOCK_HISTORICAL_METAS));
-    localStorage.setItem("pta_products_v1",             JSON.stringify(MOCK_PRODUCTS));
-    localStorage.setItem("pta_advertiser_profiles_v2",  JSON.stringify(MOCK_ADVERTISER_PROFILES));
+    const ds = getCompanyDataset(companyId);
+    localStorage.setItem("pta_hist_rows_v2",            JSON.stringify(ds.historical));
+    localStorage.setItem("pta_hist_metas_v1",           JSON.stringify(ds.metas));
+    localStorage.setItem("pta_products_v1",             JSON.stringify(ds.products));
+    localStorage.setItem("pta_advertiser_profiles_v2",  JSON.stringify(ds.profiles));
     localStorage.setItem("pta_onboarding_v1",           "1");
   } catch { /* unavailable */ }
 }

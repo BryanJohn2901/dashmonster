@@ -819,7 +819,7 @@ function ProductCell({ product, turma, tag }: { product: string; turma?: string;
     <span className="flex flex-wrap items-center gap-1.5">
       <span>{product}</span>
       {turma && (
-        <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+        <span className="rounded-full bg-[#16A34A]/10 px-1.5 py-0.5 text-[10px] font-bold text-[#15803D] dark:bg-[#22C55E]/15 dark:text-[#22C55E]">
           T{turma}
         </span>
       )}
@@ -1292,7 +1292,7 @@ export function HistoricalView({ selectedKind: propKind, onKindChange }: Histori
               {/* "Todos" pill — always visible */}
               <button
                 onClick={() => setSelectedTag("all")}
-                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition ${selectedTag === "all" ? "border-blue-200 bg-brand text-white" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:bg-[#11131A] dark:text-slate-300 dark:hover:bg-slate-700"}`}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition ${selectedTag === "all" ? "border-transparent bg-brand text-white" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:bg-[#11131A] dark:text-slate-300 dark:hover:bg-slate-700"}`}
               >
                 <Package size={10} /> Todos
               </button>
@@ -1304,7 +1304,7 @@ export function HistoricalView({ selectedKind: propKind, onKindChange }: Histori
                   <div key={tag} className="flex items-center gap-0.5">
                     <button
                       onClick={() => setSelectedTag(selectedTag === tag ? "all" : tag)}
-                      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition ${selectedTag === tag ? "border-blue-200 bg-brand text-white" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:bg-[#11131A] dark:text-slate-300 dark:hover:bg-slate-700"}`}
+                      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition ${selectedTag === tag ? "border-transparent bg-brand text-white" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:bg-[#11131A] dark:text-slate-300 dark:hover:bg-slate-700"}`}
                     >
                       {isCustom && <Tag size={9} className="opacity-70" />}
                       {tag}
@@ -1359,14 +1359,14 @@ export function HistoricalView({ selectedKind: propKind, onKindChange }: Histori
                         if (e.key === "Escape") { setAddingTag(false); setNewTagDraft(""); }
                       }}
                       placeholder="Nome da tag…"
-                      className="h-7 rounded-full border border-blue-300 bg-white px-3 text-xs outline-none focus:ring-2 focus:ring-blue-100 dark:border-blue-600 dark:bg-[#11131A] dark:text-slate-200"
+                      className="h-7 rounded-full border border-[#16A34A]/50 bg-white px-3 text-xs outline-none focus:ring-2 focus:ring-[#16A34A]/15 dark:border-[#22C55E]/50 dark:bg-[#11131A] dark:text-slate-200"
                     />
                     <button onClick={() => { setAddingTag(false); setNewTagDraft(""); }} className="text-slate-400 hover:text-slate-600"><X size={12} /></button>
                   </div>
                 ) : (
                   <button
                     onClick={() => setAddingTag(true)}
-                    className="inline-flex items-center gap-1 rounded-full border border-dashed border-slate-300 px-3 py-1 text-xs font-medium text-slate-400 transition hover:border-blue-400 hover:text-blue-500 dark:border-slate-600 dark:text-slate-500 dark:hover:border-blue-500 dark:hover:text-blue-400"
+                    className="inline-flex items-center gap-1 rounded-full border border-dashed border-slate-300 px-3 py-1 text-xs font-medium text-slate-400 transition hover:border-[#16A34A] hover:text-[#16A34A] dark:border-slate-600 dark:text-slate-500 dark:hover:border-[#22C55E] dark:hover:text-[#22C55E]"
                   >
                     <Plus size={10} /> Tag personalizada
                   </button>
@@ -1409,16 +1409,16 @@ export function HistoricalView({ selectedKind: propKind, onKindChange }: Histori
         {viewKind === "instagram" ? (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard label="Seguidores Ganhos"  value={formatNumber(filtered.reduce((s,r)=>s+((r as {newFollowers?:number}).newFollowers??0),0))} icon={TrendingUp}   accent="bg-emerald-500" iconColor="text-emerald-500" />
-            <StatCard label="Visitas ao Perfil"  value={formatNumber(filtered.reduce((s,r)=>s+r.reach,0))}                                         icon={Target}       accent="bg-blue-500"    iconColor="text-blue-500" />
-            <StatCard label="Cliques no Link"    value={formatNumber(filtered.reduce((s,r)=>s+r.clicks,0))}                                         icon={BarChart2}    accent="bg-violet-500"  iconColor="text-violet-500" />
+            <StatCard label="Visitas ao Perfil"  value={formatNumber(filtered.reduce((s,r)=>s+r.reach,0))}                                         icon={Target}       accent="bg-teal-500"    iconColor="text-teal-500" />
+            <StatCard label="Cliques no Link"    value={formatNumber(filtered.reduce((s,r)=>s+r.clicks,0))}                                         icon={BarChart2}    accent="bg-slate-400"  iconColor="text-slate-500" />
             <StatCard label="Total Engajamentos" value={formatNumber(filtered.reduce((s,r)=>s+((r as {accountsEngaged?:number}).accountsEngaged??0),0))} icon={ShoppingCart} accent="bg-amber-500" iconColor="text-amber-500" />
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
-            <StatCard label="Total Investido"   value={formatCurrency(totals.inv)}  icon={DollarSign}  accent="bg-blue-500"    iconColor="text-blue-500" />
+            <StatCard label="Total Investido"   value={formatCurrency(totals.inv)}  icon={DollarSign}  accent="bg-slate-400"    iconColor="text-slate-500" />
             <StatCard label="Total Faturamento" value={formatCurrency(totals.rev)}  icon={TrendingUp}  accent="bg-emerald-500" iconColor="text-emerald-500" sub={totals.roas > 0 ? `ROAS ${totals.roas.toFixed(2)}x` : undefined} />
             <StatCard label={viewKind === "evento" ? "Ingressos Vendidos" : viewKind === "perpetuo" ? "Vendas/Mês (total)" : "Total de Vendas"}
-                      value={formatNumber(totals.sales)} icon={ShoppingCart} accent="bg-violet-500" iconColor="text-violet-500" />
+                      value={formatNumber(totals.sales)} icon={ShoppingCart} accent="bg-teal-500" iconColor="text-teal-500" />
             <StatCard label="ROAS"              value={totals.roas > 0 ? `${totals.roas.toFixed(2)}x` : "—"} icon={Target}     accent="bg-amber-500"  iconColor="text-amber-500" />
             <StatCard label="CAC Médio"         value={totals.avgCac > 0 ? formatCurrency(totals.avgCac) : "—"} icon={BarChart2} accent="bg-slate-400"  iconColor="text-slate-500" />
           </div>
@@ -1443,8 +1443,8 @@ export function HistoricalView({ selectedKind: propKind, onKindChange }: Histori
                   <ComposedChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
                     <defs>
                       <linearGradient id="gradInv" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%"  stopColor="#2563eb" stopOpacity={0.15} />
-                        <stop offset="95%" stopColor="#2563eb" stopOpacity={0} />
+                        <stop offset="5%"  stopColor="#94A3B8" stopOpacity={0.15} />
+                        <stop offset="95%" stopColor="#94A3B8" stopOpacity={0} />
                       </linearGradient>
                       <linearGradient id="gradRev" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%"  stopColor="#059669" stopOpacity={0.15} />
@@ -1462,7 +1462,7 @@ export function HistoricalView({ selectedKind: propKind, onKindChange }: Histori
                       }
                     />
                     <Legend wrapperStyle={{ fontSize: 11 }} />
-                    <Bar yAxisId="left" dataKey="investment" name="Investimento" fill="#2563eb" opacity={0.8} radius={[3, 3, 0, 0]} />
+                    <Bar yAxisId="left" dataKey="investment" name="Investimento" fill="#94A3B8" opacity={0.85} radius={[3, 3, 0, 0]} />
                     <Bar yAxisId="left" dataKey="revenue"    name="Faturamento"  fill="#059669" opacity={0.8} radius={[3, 3, 0, 0]} />
                     <Line yAxisId="right" type="monotone" dataKey="sales" name="Vendas" stroke="#22C55E" strokeWidth={2} dot={{ r: 3, fill: "#22C55E" }} />
                   </ComposedChart>
@@ -1478,7 +1478,7 @@ export function HistoricalView({ selectedKind: propKind, onKindChange }: Histori
                   {funnel.map((stage, idx) => {
                     const maxVal = funnel[0].value;
                     const widthPct = maxVal > 0 ? (stage.value / maxVal) * 100 : 0;
-                    const colors = ["bg-blue-500", "bg-blue-400", "bg-violet-400", "bg-violet-500", "bg-emerald-500", "bg-amber-500", "bg-rose-500", "bg-cyan-500"];
+                    const colors = ["bg-[#14532D]", "bg-[#15803D]", "bg-[#16A34A]", "bg-[#22C55E]", "bg-[#4ADE80]", "bg-[#15803D]", "bg-[#16A34A]", "bg-[#22C55E]"];
                     return (
                       <div key={stage.label}>
                         <div className="mb-1 flex items-center justify-between text-xs">
@@ -1557,7 +1557,7 @@ export function HistoricalView({ selectedKind: propKind, onKindChange }: Histori
                       onClick={() => setTableSort(key)}
                       className={`flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-semibold transition ${
                         tableSort === key
-                          ? "bg-white text-blue-600 shadow-sm dark:bg-[#11131A] dark:text-blue-400"
+                          ? "bg-white text-[#16A34A] shadow-sm dark:bg-[#11131A] dark:text-[#22C55E]"
                           : "text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
                       }`}
                     >
@@ -1573,7 +1573,7 @@ export function HistoricalView({ selectedKind: propKind, onKindChange }: Histori
                   <button
                     type="button"
                     onClick={() => setColWidths({})}
-                    className="flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-400 transition hover:border-blue-300 hover:text-blue-500 dark:border-slate-600 dark:bg-[#151821] dark:text-slate-500 dark:hover:text-blue-400"
+                    className="flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-400 transition hover:border-[#16A34A]/40 hover:text-[#16A34A] dark:border-slate-600 dark:bg-[#151821] dark:text-slate-500 dark:hover:text-[#22C55E]"
                     title="Voltar ao ajuste automático"
                   >
                     ↺ Redefinir
@@ -1623,7 +1623,7 @@ export function HistoricalView({ selectedKind: propKind, onKindChange }: Histori
                             >
                               <div
                                 style={{ width: 1, height: "60%" }}
-                                className="bg-slate-200 group-hover/th:bg-blue-400 dark:bg-slate-600 dark:group-hover/th:bg-blue-500 transition-colors rounded-full"
+                                className="bg-slate-200 group-hover/th:bg-[#16A34A] dark:bg-slate-600 dark:group-hover/th:bg-[#22C55E] transition-colors rounded-full"
                               />
                             </div>
                           )}
@@ -1639,7 +1639,7 @@ export function HistoricalView({ selectedKind: propKind, onKindChange }: Histori
                     const actionBtns = (
                       <td className="whitespace-nowrap px-3 py-2">
                         <div className="flex items-center gap-0.5">
-                          <button onClick={() => openEdit(realIdx)} className="rounded p-1.5 text-slate-500 hover:bg-blue-50 hover:text-blue-600 dark:text-slate-400 dark:hover:bg-blue-900/30 dark:hover:text-blue-400" title="Editar">
+                          <button onClick={() => openEdit(realIdx)} className="rounded p-1.5 text-slate-500 hover:bg-[#16A34A]/10 hover:text-[#16A34A] dark:text-slate-400 dark:hover:bg-[#22C55E]/15 dark:hover:text-[#22C55E]" title="Editar">
                             <Pencil size={13} />
                           </button>
                           <button onClick={() => handleDuplicate(realIdx)} className="rounded p-1.5 text-slate-500 hover:bg-emerald-50 hover:text-emerald-600 dark:text-slate-400 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-400" title="Duplicar">
@@ -1725,8 +1725,8 @@ export function HistoricalView({ selectedKind: propKind, onKindChange }: Histori
                           <td className="whitespace-nowrap px-3 py-2">{r.ctr > 0 ? `${r.ctr.toFixed(2)}%` : "—"}</td>
                           <td className="whitespace-nowrap px-3 py-2">{r.pageViews > 0 ? formatNumber(r.pageViews) : "—"}</td>
                           <td className="whitespace-nowrap px-3 py-2">{r.preCheckouts > 0 ? formatNumber(r.preCheckouts) : "—"}</td>
-                          <td className="whitespace-nowrap px-3 py-2 font-semibold text-indigo-600 dark:text-indigo-400">{ingressos > 0 ? formatNumber(ingressos) : "—"}</td>
-                          <td className="whitespace-nowrap px-3 py-2 text-indigo-600 dark:text-indigo-400">{fatIngresso > 0 ? formatCurrency(fatIngresso) : "—"}</td>
+                          <td className="whitespace-nowrap px-3 py-2 font-semibold text-teal-600 dark:text-teal-400">{ingressos > 0 ? formatNumber(ingressos) : "—"}</td>
+                          <td className="whitespace-nowrap px-3 py-2 text-teal-600 dark:text-teal-400">{fatIngresso > 0 ? formatCurrency(fatIngresso) : "—"}</td>
                           <td className="whitespace-nowrap px-3 py-2 font-semibold text-emerald-600 dark:text-emerald-400">{vendPos > 0 ? formatNumber(vendPos) : "—"}</td>
                           <td className="whitespace-nowrap px-3 py-2 text-emerald-600 dark:text-emerald-400">{fatPos > 0 ? formatCurrency(fatPos) : "—"}</td>
                           <td className="whitespace-nowrap px-3 py-2">{r.cac > 0 ? formatCurrency(r.cac) : "—"}</td>

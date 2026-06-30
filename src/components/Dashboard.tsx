@@ -41,6 +41,7 @@ import {
 } from "@/utils/metrics";
 import { reportFunnelFromValues } from "@/components/FunnelCard";
 import { OverviewBento } from "@/components/OverviewBento";
+import { DateRangePicker } from "@/components/DateRangePicker";
 import { ExportReportButton } from "@/components/ExportReportButton";
 import type { ReportData } from "@/types/report";
 import { ChartsSection } from "@/components/charts/ChartsSection";
@@ -178,35 +179,19 @@ interface GroupConfig {
   selectedBg: string; selectedText: string; selectedBorder: string;
 }
 
-const G_BLUE = {
-  iconBg: "bg-blue-50 dark:bg-blue-900/20", iconColor: "text-blue-500 dark:text-blue-400",
-  activeDot: "bg-blue-500", activePulse: "bg-blue-400",
-  selectedBg: "bg-blue-50 dark:bg-blue-900/10", selectedText: "text-blue-600 dark:text-blue-400", selectedBorder: "border-blue-200 dark:border-blue-800",
+// Sistema preto/branco + verde: as seções não usam mais cores próprias (azul,
+// violeta, âmbar, rosa). Ícone neutro; verde só no estado ativo/selecionado.
+const G_NEUTRAL = {
+  iconBg: "bg-[var(--dm-bg-elevated)]", iconColor: "text-[color:var(--dm-text-secondary)]",
+  activeDot: "bg-[#16A34A]", activePulse: "bg-[#22C55E]",
+  selectedBg: "bg-[#16A34A]/10 dark:bg-[#22C55E]/10", selectedText: "text-[#16A34A] dark:text-[#22C55E]", selectedBorder: "border-[#16A34A]/30 dark:border-[#22C55E]/30",
 };
 
-const G_EMERALD = {
-  iconBg: "bg-emerald-50 dark:bg-emerald-900/20", iconColor: "text-emerald-500 dark:text-emerald-400",
-  activeDot: "bg-emerald-500", activePulse: "bg-emerald-400",
-  selectedBg: "bg-emerald-50 dark:bg-emerald-900/10", selectedText: "text-emerald-600 dark:text-emerald-400", selectedBorder: "border-emerald-200 dark:border-emerald-800",
-};
-
-const G_VIOLET = {
-  iconBg: "bg-violet-50 dark:bg-violet-900/20", iconColor: "text-violet-500 dark:text-violet-400",
-  activeDot: "bg-violet-500", activePulse: "bg-violet-400",
-  selectedBg: "bg-violet-50 dark:bg-violet-900/10", selectedText: "text-violet-600 dark:text-violet-400", selectedBorder: "border-violet-200 dark:border-violet-800",
-};
-
-const G_AMBER = {
-  iconBg: "bg-amber-50 dark:bg-amber-900/20", iconColor: "text-amber-500 dark:text-amber-400",
-  activeDot: "bg-amber-500", activePulse: "bg-amber-400",
-  selectedBg: "bg-amber-50 dark:bg-amber-900/10", selectedText: "text-amber-600 dark:text-amber-400", selectedBorder: "border-amber-200 dark:border-amber-800",
-};
-
-const G_ROSE = {
-  iconBg: "bg-rose-50 dark:bg-rose-900/20", iconColor: "text-rose-500 dark:text-rose-400",
-  activeDot: "bg-rose-500", activePulse: "bg-rose-400",
-  selectedBg: "bg-rose-50 dark:bg-rose-900/10", selectedText: "text-rose-600 dark:text-rose-400", selectedBorder: "border-rose-200 dark:border-rose-800",
-};
+const G_BLUE = G_NEUTRAL;
+const G_EMERALD = G_NEUTRAL;
+const G_VIOLET = G_NEUTRAL;
+const G_AMBER = G_NEUTRAL;
+const G_ROSE = G_NEUTRAL;
 
 const CAMPAIGN_GROUPS: GroupConfig[] = [
   // ── Pós Graduação ──────────────────────────────────────────────────────────
@@ -1132,7 +1117,7 @@ function ImportPopover({
                 }}
                 className={`flex w-full items-center gap-2 px-3 py-2.5 text-left text-[11px] transition hover:bg-slate-50 dark:hover:bg-slate-700 ${
                   acc.id === accountRows.find((r) => r.rowId === openDropdownRow)?.accountId
-                    ? "bg-blue-50 dark:bg-blue-900/20"
+                    ? "bg-[#16A34A]/10 dark:bg-[#22C55E]/10"
                     : ""
                 }`}
               >
@@ -1396,56 +1381,7 @@ function ContextBar({
       </div>
 
       {/* ── Period pill ── */}
-      <div className="relative">
-        <ContextPill
-          label={periodLabel}
-          icon={<CalendarDays size={11} />}
-          active={!!(dateFrom || dateTo)}
-          isOpen={openPopover === "period"}
-          onClick={() => toggle("period")}
-        />
-        {openPopover === "period" && (
-          <div style={{ ...popoverBase, left: 0, width: 260, padding: 16 }}>
-            <p className="mb-3 text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Período</p>
-            <div className="space-y-2">
-              <div>
-                <label className="mb-1 block text-[11px] font-medium" style={{ color: "var(--dm-text-secondary)" }}>De</label>
-                <input
-                  type="date"
-                  value={pendingFrom}
-                  onChange={e => setPendingFrom(e.target.value)}
-                  className="w-full rounded-lg border px-2.5 py-1.5 text-[12px]"
-                  style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-[11px] font-medium" style={{ color: "var(--dm-text-secondary)" }}>Até</label>
-                <input
-                  type="date"
-                  value={pendingTo}
-                  onChange={e => setPendingTo(e.target.value)}
-                  className="w-full rounded-lg border px-2.5 py-1.5 text-[12px]"
-                  style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
-                />
-              </div>
-            </div>
-            <div className="mt-3 flex gap-2">
-              <button
-                type="button"
-                onClick={() => { setPendingFrom(""); setPendingTo(""); onDateFrom(""); onDateTo(""); }}
-                className="flex-1 rounded-lg py-1.5 text-[11px] font-semibold transition"
-                style={{ background: "var(--dm-bg-elevated)", color: "var(--dm-text-secondary)" }}
-              >Limpar</button>
-              <button
-                type="button"
-                onClick={() => { onDateFrom(pendingFrom); onDateTo(pendingTo); setOpenPopover(null); }}
-                className="flex-1 rounded-lg py-1.5 text-[11px] font-semibold text-white transition"
-                style={{ background: "var(--dm-primary)" }}
-              >Aplicar</button>
-            </div>
-          </div>
-        )}
-      </div>
+      <DateRangePicker from={dateFrom} to={dateTo} onChange={(f, t) => { onDateFrom(f); onDateTo(t); }} />
 
       {/* ── Clear all ── */}
       {hasActiveFilters && (
@@ -1615,7 +1551,7 @@ function CampaignPanel({
               >
                 <span className="relative flex h-2 w-2 flex-shrink-0 items-center justify-center">
                   {isActive && (
-                    <span className="absolute h-3 w-3 animate-ping rounded-full opacity-40 bg-blue-400" />
+                    <span className="absolute h-3 w-3 animate-ping rounded-full opacity-40 bg-[#22C55E]" />
                   )}
                   <span className="relative h-2 w-2 rounded-full" style={{ backgroundColor: isActive ? "var(--dm-brand-500)" : "var(--dm-border-strong)" }} />
                 </span>
@@ -1691,7 +1627,7 @@ function CampaignPanel({
                               <>
                                 {!allExplicit && (
                                   <button type="button" onClick={() => onCheckedCampaignIds([...allIds])}
-                                    className="text-[9px] font-semibold text-blue-500 transition hover:text-blue-700 dark:text-blue-400">
+                                    className="text-[9px] font-semibold text-[#16A34A] transition hover:opacity-80 dark:text-[#22C55E]">
                                     Sel. tudo
                                   </button>
                                 )}
@@ -1708,7 +1644,7 @@ function CampaignPanel({
                               </>
                             ) : (
                               <button type="button" onClick={() => onCheckedCampaignIds([...allIds])}
-                                className="text-[9px] font-semibold text-slate-400 transition hover:text-blue-500 dark:text-slate-500 dark:hover:text-blue-400">
+                                className="text-[9px] font-semibold text-slate-400 transition hover:text-[#16A34A] dark:text-slate-500 dark:hover:text-[#22C55E]">
                                 Filtrar
                               </button>
                             )}
@@ -1797,47 +1733,7 @@ function CampaignPanel({
           {/* Date range */}
           <div>
             <p className="mb-1.5 text-[11px] font-semibold" style={{ color: "var(--dm-text-secondary)" }}>Período</p>
-            <div className="grid grid-cols-2 gap-2">
-              <label className="flex flex-col gap-1">
-                <span className="text-[10px] font-medium" style={{ color: "var(--dm-text-tertiary)" }}>De</span>
-                <input
-                  type="date"
-                  value={pendingFrom}
-                  onChange={(e) => setPendingFrom(e.target.value)}
-                  className="h-9 w-full rounded-lg border px-2 text-xs outline-none transition focus:ring-1"
-                  style={{
-                    borderColor: pendingFrom !== dateFrom ? "var(--dm-brand-400)" : "var(--dm-border-default)",
-                    backgroundColor: "var(--dm-bg-elevated)",
-                    color: "var(--dm-text-primary)",
-                  }}
-                />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-[10px] font-medium" style={{ color: "var(--dm-text-tertiary)" }}>Até</span>
-                <input
-                  type="date"
-                  value={pendingTo}
-                  onChange={(e) => setPendingTo(e.target.value)}
-                  className="h-9 w-full rounded-lg border px-2 text-xs outline-none transition focus:ring-1"
-                  style={{
-                    borderColor: pendingTo !== dateTo ? "var(--dm-brand-400)" : "var(--dm-border-default)",
-                    backgroundColor: "var(--dm-bg-elevated)",
-                    color: "var(--dm-text-primary)",
-                  }}
-                />
-              </label>
-            </div>
-
-            {/* Apply button — only when pending differs from applied */}
-            {pendingChanged && (
-              <button
-                onClick={applyDates}
-                className="mt-2 w-full rounded-lg py-2 text-xs font-bold text-white transition active:scale-95"
-                style={{ backgroundColor: "var(--dm-brand-500)" }}
-              >
-                Aplicar período
-              </button>
-            )}
+            <DateRangePicker from={dateFrom} to={dateTo} onChange={(f, t) => { onDateFrom(f); onDateTo(t); }} />
           </div>
 
           {/* Campaign search */}

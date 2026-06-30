@@ -45,10 +45,10 @@ type MediaFilter  = "all" | "image" | "video" | "carousel";
 const TYPE_LABEL: Record<MetaCampaignCreative["mediaType"], string> = {
   image: "Imagem", video: "Vídeo", carousel: "Carrossel", unknown: "Anúncio",
 };
-// Paleta única do sistema (sem pastel Tailwind): imagem=verde, vídeo=azul, carrossel=roxo.
+// Paleta única do sistema (sem pastel Tailwind): imagem=verde, vídeo=teal, carrossel=verde-vivo.
 const TYPE_COLOR: Record<MetaCampaignCreative["mediaType"], { bg: string; text: string }> = {
   image:    { bg: "rgba(5,205,153,0.10)",  text: "#05CD99" },
-  video:    { bg: "rgba(14,165,233,0.10)", text: "#0ea5e9" },
+  video:    { bg: "rgba(13,148,136,0.10)", text: "#0D9488" },
   carousel: { bg: "rgba(34,197,94,0.10)", text: "#22C55E" },
   unknown:  { bg: "var(--dm-bg-elevated)", text: "var(--dm-text-tertiary)" },
 };
@@ -1354,7 +1354,7 @@ function RankingRow({
           <p className="text-xs font-bold" style={{ color: "var(--dm-brand-500)" }}>{highlightValue}</p>
         </div>
         {ad?.adLink && (
-          <a href={ad.adLink} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-500">
+          <a href={ad.adLink} target="_blank" rel="noopener noreferrer" className="text-[#16A34A] transition hover:opacity-70 dark:text-[#22C55E]">
             <ExternalLink size={11} />
           </a>
         )}
@@ -1799,7 +1799,7 @@ export function BestCreatives({
       {subTab === "rankings" && (
         <div className="grid gap-4 md:grid-cols-3">
           {[
-            { title: "Maior CTR",       subtitle: "Criativos que mais geram cliques", icon: MousePointerClick, color: "text-violet-500", data: byCtr,        highlight: "CTR",      fmt: (c: AggregatedCampaign) => formatPercent(c.ctr) },
+            { title: "Maior CTR",       subtitle: "Criativos que mais geram cliques", icon: MousePointerClick, color: "text-slate-500", data: byCtr,        highlight: "CTR",      fmt: (c: AggregatedCampaign) => formatPercent(c.ctr) },
             { title: "Melhor ROAS",     subtitle: "Maior retorno sobre investimento",  icon: Trophy,            color: "text-amber-500",  data: byRoas,       highlight: "ROAS",     fmt: (c: AggregatedCampaign) => `${c.roas.toFixed(2)}x` },
             { title: "Melhor Conversão",subtitle: "Maior taxa de conversão",           icon: ShoppingCart,      color: "text-emerald-500",data: byConversion, highlight: "Tx. Conv.",fmt: (c: AggregatedCampaign) => formatPercent(c.conversionRate) },
           ].map(({ title, subtitle, icon: Icon, color, data, highlight, fmt }) => (

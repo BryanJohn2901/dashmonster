@@ -14,7 +14,7 @@ const DEFAULT_COLS = ["spend", "reach", "leads", "sales", "revenue", "roas"];
 const ROAS_GREEN = "#05CD99";
 const ROAS_AMBER = "#F4A60D";
 const ROAS_RED   = "#EE5D50";
-const BRAND_GRAD  = "linear-gradient(135deg,#6366C8 0%,#313491 100%)";
+const BRAND_GRAD  = "linear-gradient(135deg,#16A34A 0%,#15803D 100%)";
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 

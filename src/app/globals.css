@@ -93,13 +93,13 @@
      ---------------------------------------------------------- */
 
   /* LANÇAMENTOS DE PÓS — Azul royal */
-  --dm-cat-pos-bg:         #EFF6FF;
-  --dm-cat-pos-border:     #BFDBFE;
-  --dm-cat-pos-tag-bg:     #DBEAFE;
-  --dm-cat-pos-tag-text:   #1E40AF;
-  --dm-cat-pos-base:       #2563EB;
-  --dm-cat-pos-icon:       #3B82F6;
-  --dm-cat-pos-title:      #1E3A8A;
+  --dm-cat-pos-bg:         #F0FDF4;
+  --dm-cat-pos-border:     #BBF7D0;
+  --dm-cat-pos-tag-bg:     #DCFCE7;
+  --dm-cat-pos-tag-text:   #15803D;
+  --dm-cat-pos-base:       #16A34A;
+  --dm-cat-pos-icon:       #16A34A;
+  --dm-cat-pos-title:      #14532D;
 
   /* LIVROS — Esmeralda */
   --dm-cat-livros-bg:      #ECFDF5;
@@ -111,13 +111,13 @@
   --dm-cat-livros-title:   #064E3B;
 
   /* EBOOKS — Violeta */
-  --dm-cat-ebooks-bg:      #F5F3FF;
-  --dm-cat-ebooks-border:  #DDD6FE;
-  --dm-cat-ebooks-tag-bg:  #EDE9FE;
-  --dm-cat-ebooks-tag-text:#5B21B6;
-  --dm-cat-ebooks-base:    #7C3AED;
-  --dm-cat-ebooks-icon:    #8B5CF6;
-  --dm-cat-ebooks-title:   #4C1D95;
+  --dm-cat-ebooks-bg:      #F0FDFA;
+  --dm-cat-ebooks-border:  #99F6E4;
+  --dm-cat-ebooks-tag-bg:  #CCFBF1;
+  --dm-cat-ebooks-tag-text:#0F766E;
+  --dm-cat-ebooks-base:    #0D9488;
+  --dm-cat-ebooks-icon:    #0D9488;
+  --dm-cat-ebooks-title:   #134E4A;
 
   /* PERPÉTUO — Âmbar */
   --dm-cat-perpetuo-bg:      #FFFBEB;
@@ -155,10 +155,10 @@
   --dm-error-text:     #9F1239;
   --dm-error-base:     #E14D4D;
 
-  --dm-info-bg:        #EFF6FF;
-  --dm-info-border:    #BFDBFE;
-  --dm-info-text:      #1E40AF;
-  --dm-info-base:      #2563EB;
+  --dm-info-bg:        #F0FDF4;
+  --dm-info-border:    #BBF7D0;
+  --dm-info-text:      #15803D;
+  --dm-info-base:      #16A34A;
 
   /* ----------------------------------------------------------
      VALORES SEMÂNTICOS (4.3) — positivo / negativo / neutro
@@ -180,9 +180,9 @@
   --dm-delta-flat:     #A3AED0;
   --dm-delta-flat-bg:  rgba(163,174,208,0.12);
 
-  /* Calmo: faturamento=verde, vendas=roxo, resto neutro (máx 2 séries de marca) */
+  /* Calmo: faturamento=verde, vendas=teal, resto neutro (máx 2 séries de marca) */
   --dm-chart-1:  #16A34A;
-  --dm-chart-2:  #7C3AED;
+  --dm-chart-2:  #0D9488;
   --dm-chart-3:  #98A2B3;
   --dm-chart-4:  #DC2626;
   --dm-chart-5:  #C8CDD9;
@@ -190,11 +190,11 @@
   --dm-chart-7:  #A3AED0;
 
   /* ----------------------------------------------------------
-     DATA VIZ — paleta monocromática indigo + status
+     DATA VIZ — paleta verde + teal + status
      Fonte: guia_visual_tema_my_account_graficos.docx §12
      ---------------------------------------------------------- */
   --dm-data-1:       #16A34A;
-  --dm-data-2:       #7C3AED;
+  --dm-data-2:       #0D9488;
   --dm-data-3:       #98A2B3;
   --dm-data-4:       #C8CDD9;
   --dm-data-5:       #E4E7EC;
@@ -360,9 +360,9 @@
   --dm-btn-primary-bg:   #15803D;   /* verde = CTA primário */
   --dm-btn-primary-text: #FFFFFF;
   --dm-btn-primary-hover:#166534;
-  --dm-btn-ghost-bg:     rgba(167,139,250,0.14);
-  --dm-btn-ghost-text:   #A78BFA;
-  --dm-btn-ghost-hover:  rgba(167,139,250,0.22);
+  --dm-btn-ghost-bg:     rgba(34,197,94,0.14);
+  --dm-btn-ghost-text:   #22C55E;
+  --dm-btn-ghost-hover:  rgba(34,197,94,0.22);
   --dm-btn-destructive-bg:   #7F1D1D;
   --dm-btn-destructive-text: #FCA5A5;
   --dm-btn-destructive-hover:#991B1B;
@@ -372,13 +372,13 @@
      ---------------------------------------------------------- */
 
   /* PÓS */
-  --dm-cat-pos-bg:         #0D0F1A;
-  --dm-cat-pos-border:     #2A2D6A;
-  --dm-cat-pos-tag-bg:     #161840;
-  --dm-cat-pos-tag-text:   #A5B4FC;
-  --dm-cat-pos-base:       #6366F1;
-  --dm-cat-pos-icon:       #6366F1;
-  --dm-cat-pos-title:      #C7D2FE;
+  --dm-cat-pos-bg:         #052E16;
+  --dm-cat-pos-border:     #14532D;
+  --dm-cat-pos-tag-bg:     #064E3B;
+  --dm-cat-pos-tag-text:   #86EFAC;
+  --dm-cat-pos-base:       #22C55E;
+  --dm-cat-pos-icon:       #22C55E;
+  --dm-cat-pos-title:      #BBF7D0;
 
   /* LIVROS */
   --dm-cat-livros-bg:      #052E1C;
@@ -390,13 +390,13 @@
   --dm-cat-livros-title:   #A7F3D0;
 
   /* EBOOKS */
-  --dm-cat-ebooks-bg:      #1A0F35;
-  --dm-cat-ebooks-border:  #3B0764;
-  --dm-cat-ebooks-tag-bg:  #2E1065;
-  --dm-cat-ebooks-tag-text:#C4B5FD;
-  --dm-cat-ebooks-base:    #A78BFA;
-  --dm-cat-ebooks-icon:    #A78BFA;
-  --dm-cat-ebooks-title:   #DDD6FE;
+  --dm-cat-ebooks-bg:      #042F2E;
+  --dm-cat-ebooks-border:  #134E4A;
+  --dm-cat-ebooks-tag-bg:  #115E59;
+  --dm-cat-ebooks-tag-text:#5EEAD4;
+  --dm-cat-ebooks-base:    #2DD4BF;
+  --dm-cat-ebooks-icon:    #2DD4BF;
+  --dm-cat-ebooks-title:   #99F6E4;
 
   /* PERPÉTUO */
   --dm-cat-perpetuo-bg:      #2A1A00;
@@ -434,10 +434,10 @@
   --dm-error-text:     #FCA5A5;
   --dm-error-base:     #F87171;
 
-  --dm-info-bg:        #0D0F1A;
-  --dm-info-border:    #2A2D6A;
-  --dm-info-text:      #A5B4FC;
-  --dm-info-base:      #6366F1;
+  --dm-info-bg:        #052E16;
+  --dm-info-border:    #14532D;
+  --dm-info-text:      #86EFAC;
+  --dm-info-base:      #22C55E;
 
   /* ----------------------------------------------------------
      VALORES SEMÂNTICOS DARK (4.3)
@@ -459,9 +459,9 @@
   --dm-delta-flat:     #999999;
   --dm-delta-flat-bg:  #99999920;
 
-  /* Calmo dark: faturamento=verde, vendas=roxo, resto neutro */
+  /* Calmo dark: faturamento=verde, vendas=teal, resto neutro */
   --dm-chart-1:  #34D17F;
-  --dm-chart-2:  #A78BFA;
+  --dm-chart-2:  #2DD4BF;
   --dm-chart-3:  #98A2B3;
   --dm-chart-4:  #F87171;
   --dm-chart-5:  #667085;
@@ -471,13 +471,13 @@
   /* ----------------------------------------------------------
      FOCO DARK
      ---------------------------------------------------------- */
-  --dm-focus-ring: 0 0 0 3px rgba(167,139,250,0.35);
+  --dm-focus-ring: 0 0 0 3px rgba(34,197,94,0.35);
 
   /* ----------------------------------------------------------
-     DATA VIZ DARK — indigo luminoso para contraste
+     DATA VIZ DARK — verde + teal luminoso para contraste
      ---------------------------------------------------------- */
   --dm-data-1:       #34D17F;
-  --dm-data-2:       #A78BFA;
+  --dm-data-2:       #2DD4BF;
   --dm-data-3:       #98A2B3;
   --dm-data-4:       #667085;
   --dm-data-5:       rgba(152,162,179,0.20);
@@ -703,6 +703,16 @@ h1, h2, h3, h4, h5 {
 
 .animate-fade-in {
   animation: fadeIn 0.3s ease-out;
+}
+
+/* ─── Analytics — reveal em cascata ─────────────────────────────────────────── */
+@keyframes dm-reveal-up {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.dm-reveal { animation: dm-reveal-up 0.55s cubic-bezier(0.16, 1, 0.3, 1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .dm-reveal { animation: none; }
 }
 
 @keyframes toast-slide-in {

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Search, RefreshCw, Calendar, User } from "lucide-react";
 import { loadMetaCredentials } from "@/utils/metaApi";
+import { DateRangePicker } from "@/components/DateRangePicker";
 import { useAdvertiserStore } from "@/hooks/useAdvertiserStore";
 import { classifyCampaign, classifyCourse } from "@/utils/campaignClassifier";
 import { fetchLeads as fetchDbLeads, subscribeLeads, syncLeadsSheet } from "@/utils/supabaseLeads";
@@ -257,30 +258,7 @@ export function LeadsView() {
 
       {/* Date + Search row */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <Calendar size={13} className="flex-shrink-0" style={{ color: "var(--dm-text-tertiary)" }} />
-        <input
-          type="date"
-          value={dateFrom}
-          onChange={(e) => setDateFrom(e.target.value)}
-          className="rounded-lg border px-2 py-1 text-xs"
-          style={{
-            borderColor: "var(--dm-border-default)",
-            background:  "var(--dm-bg-surface)",
-            color:       "var(--dm-text-primary)",
-          }}
-        />
-        <span className="text-xs" style={{ color: "var(--dm-text-tertiary)" }}>até</span>
-        <input
-          type="date"
-          value={dateTo}
-          onChange={(e) => setDateTo(e.target.value)}
-          className="rounded-lg border px-2 py-1 text-xs"
-          style={{
-            borderColor: "var(--dm-border-default)",
-            background:  "var(--dm-bg-surface)",
-            color:       "var(--dm-text-primary)",
-          }}
-        />
+        <DateRangePicker from={dateFrom} to={dateTo} onChange={(f, t) => { setDateFrom(f); setDateTo(t); }} />
         <div className="relative flex-1 min-w-[180px]">
           <Search
             size={12}

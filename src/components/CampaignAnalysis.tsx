@@ -39,7 +39,7 @@ interface TaskSuggestion {
 const CATEGORY_META: Record<Category, { label: string; icon: React.ElementType; color: string; bg: string }> = {
   pausar:    { label: "Pausar",    icon: PauseCircle,   color: "#EF4444", bg: "rgba(239,68,68,0.12)" },
   criativo:  { label: "Criativo",  icon: ImageIcon,     color: "#22C55E", bg: "rgba(34,197,94,0.12)" },
-  landing:   { label: "Landing",   icon: Globe,         color: "#0ea5e9", bg: "rgba(14,165,233,0.12)" },
+  landing:   { label: "Landing",   icon: Globe,         color: "#0D9488", bg: "rgba(13,148,136,0.12)" },
   orçamento: { label: "Orçamento", icon: DollarSign,    color: "#F59E0B", bg: "rgba(245,158,11,0.12)" },
   targeting: { label: "Targeting", icon: Target,        color: "#16A34A", bg: "rgba(22,163,74,0.12)" },
   escalar:   { label: "Escalar",   icon: TrendingUp,    color: "#05CD99", bg: "rgba(5,205,153,0.12)" },
@@ -131,7 +131,7 @@ function HealthRing({ score }: { score: number }) {
   const color  = score >= 70 ? "#10B981" : score >= 40 ? "#F59E0B" : "#EF4444";
   return (
     <svg width={84} height={84} viewBox="0 0 84 84" className="-rotate-90">
-      <circle cx={42} cy={42} r={r} fill="none" stroke="rgba(99,102,241,0.15)" strokeWidth={8} />
+      <circle cx={42} cy={42} r={r} fill="none" stroke="rgba(22,163,74,0.15)" strokeWidth={8} />
       <circle
         cx={42} cy={42} r={r} fill="none"
         stroke={color} strokeWidth={8}
@@ -236,7 +236,7 @@ const ROADMAPS: Record<ProductCategory, { title: string; subtitle: string; color
   pos: {
     title: "Roadmap Pós-Graduação",
     subtitle: "Ciclo de captação para cursos de longa duração",
-    color: "#6366f1",
+    color: "#16A34A",
     steps: [
       { icon: GraduationCap, label: "Posicionamento",     description: "Defina o diferencial do curso vs. concorrência.",    tips: ["Foque em resultado profissional claro", "Ex.: 'Aprovado em concurso em 6 meses'"] },
       { icon: Users,         label: "Público-alvo",        description: "Segmente por cargo, área e nível de experiência.",   tips: ["LinkedIn Ads para decisão B2B", "Meta Ads para profissionais 25–45"] },
@@ -249,7 +249,7 @@ const ROADMAPS: Record<ProductCategory, { title: string; subtitle: string; color
   livros: {
     title: "Roadmap de Livros",
     subtitle: "Estratégia de vendas e posicionamento de autor",
-    color: "#0891b2",
+    color: "#0D9488",
     steps: [
       { icon: BookOpen,    label: "Posicionamento de autor", description: "Bio forte + foto profissional + redes unificadas.", tips: ["Instagram + LinkedIn são os principais", "Depoimentos de leitores como prova social"] },
       { icon: Globe,       label: "Landing page do livro",   description: "LP com sinopse, índice e trecho gratuito.",          tips: ["Ofereça cap. 1 grátis em troca de e-mail", "Nota média visível (Amazon/Goodreads)"] },
@@ -367,7 +367,7 @@ function TabOverview({ campaigns, selectedCategory }: { campaigns: AggregatedCam
         <p className="mb-3 text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>Top 10 por Investimento</p>
         <div className="space-y-2">
           {top10.map((c, idx) => {
-            const roasColor = c.roas >= 3 ? "#05CD99" : c.roas >= 1.5 ? "#0ea5e9" : c.roas >= 1 ? "#F59E0B" : "#EF4444";
+            const roasColor = c.roas >= 3 ? "#05CD99" : c.roas >= 1.5 ? "#0D9488" : c.roas >= 1 ? "#F59E0B" : "#EF4444";
             const barColor  = c.roas >= 3 ? "#05CD99" : c.roas >= 1.5 ? "#16A34A" : c.roas >= 1 ? "#F59E0B" : "#EF4444";
             const pct       = (c.investment / maxInv) * 100;
             return (
@@ -575,7 +575,7 @@ function TabPositive({ campaigns, isMetricVisible = () => true }: { campaigns: A
     isMetricVisible("roas")        && topRoas.length > 0 && <TopList key="roas" title="Melhor ROAS" subtitle="Maior retorno sobre investimento (≥ 2x)" icon={TrendingUp} items={topRoas} metricLabel="ROAS" metricValue={(c) => `${c.roas.toFixed(2)}x`} color="text-emerald-700" bg="bg-emerald-50" />,
     isMetricVisible("revenue")     && topRev.length  > 0 && <TopList key="rev"  title="Maior Receita" subtitle="Campanhas com maior faturamento" icon={Award} items={topRev} metricLabel="Receita" metricValue={(c) => formatCurrency(c.revenue)} color="text-emerald-700" bg="bg-emerald-50" />,
     isMetricVisible("ctr")         && topCtr.length  > 0 && <TopList key="ctr"  title="Melhor CTR" subtitle="Alta taxa de cliques — criativo engaja (≥ 1%)" icon={Zap} items={topCtr} metricLabel="CTR" metricValue={(c) => formatPercent(c.ctr)} color="text-slate-700" bg="bg-slate-100" />,
-    isMetricVisible("conversions") && topConv.length > 0 && <TopList key="conv" title="Melhor Conversão" subtitle="Cliques que viram compras (≥ 2%)" icon={Star} items={topConv} metricLabel="Conv." metricValue={(c) => formatPercent(c.conversionRate)} color="text-violet-700" bg="bg-violet-50" />,
+    isMetricVisible("conversions") && topConv.length > 0 && <TopList key="conv" title="Melhor Conversão" subtitle="Cliques que viram compras (≥ 2%)" icon={Star} items={topConv} metricLabel="Conv." metricValue={(c) => formatPercent(c.conversionRate)} color="text-emerald-700" bg="bg-emerald-50" />,
   ].filter(Boolean);
 
   if (lists.length === 0) return (

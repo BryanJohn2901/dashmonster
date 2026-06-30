@@ -14,61 +14,21 @@ interface GroupConfig {
   dotActive: string;
 }
 
+// Sistema preto/branco + verde — cards sem cor própria; verde só no selecionado.
+const G_CARD = {
+  iconBg: "bg-[#16A34A]/10",
+  iconColor: "text-[#16A34A]",
+  selectedCard: "border-[#16A34A] bg-[#16A34A]/5 ring-1 ring-[#16A34A]/40",
+  dotActive: "bg-[#16A34A]",
+};
+
 const GROUPS: GroupConfig[] = [
-  {
-    id: "biomecanica",
-    label: "Biomecânica",
-    icon: BookOpen,
-    iconBg: "bg-blue-100",
-    iconColor: "text-blue-600",
-    selectedCard: "border-blue-500 bg-blue-50 ring-1 ring-blue-400",
-    dotActive: "bg-blue-500",
-  },
-  {
-    id: "musculacao",
-    label: "Musculação",
-    icon: Dumbbell,
-    iconBg: "bg-purple-100",
-    iconColor: "text-purple-600",
-    selectedCard: "border-purple-500 bg-purple-50 ring-1 ring-purple-400",
-    dotActive: "bg-purple-500",
-  },
-  {
-    id: "fisiologia",
-    label: "Fisiologia",
-    icon: Activity,
-    iconBg: "bg-emerald-100",
-    iconColor: "text-emerald-600",
-    selectedCard: "border-emerald-500 bg-emerald-50 ring-1 ring-emerald-400",
-    dotActive: "bg-emerald-500",
-  },
-  {
-    id: "bodybuilding",
-    label: "Bodybuilding",
-    icon: Trophy,
-    iconBg: "bg-orange-100",
-    iconColor: "text-orange-600",
-    selectedCard: "border-orange-500 bg-orange-50 ring-1 ring-orange-400",
-    dotActive: "bg-orange-500",
-  },
-  {
-    id: "feminino",
-    label: "Trein. Feminino",
-    icon: Users,
-    iconBg: "bg-pink-100",
-    iconColor: "text-pink-600",
-    selectedCard: "border-pink-500 bg-pink-50 ring-1 ring-pink-400",
-    dotActive: "bg-pink-500",
-  },
-  {
-    id: "funcional",
-    label: "Trein. Funcional",
-    icon: Zap,
-    iconBg: "bg-teal-100",
-    iconColor: "text-teal-600",
-    selectedCard: "border-teal-500 bg-teal-50 ring-1 ring-teal-400",
-    dotActive: "bg-teal-500",
-  },
+  { id: "biomecanica",  label: "Biomecânica",      icon: BookOpen, ...G_CARD },
+  { id: "musculacao",   label: "Musculação",       icon: Dumbbell, ...G_CARD },
+  { id: "fisiologia",   label: "Fisiologia",       icon: Activity, ...G_CARD },
+  { id: "bodybuilding", label: "Bodybuilding",     icon: Trophy,   ...G_CARD },
+  { id: "feminino",     label: "Trein. Feminino",  icon: Users,    ...G_CARD },
+  { id: "funcional",    label: "Trein. Funcional", icon: Zap,      ...G_CARD },
 ];
 
 interface CampaignSelectorProps {

@@ -45,11 +45,11 @@ const CONFIG: Record<ToastType, {
   info: {
     Icon: Info,
     label: "Informação",
-    bar: "bg-blue-500",
-    iconColor: "text-blue-500",
-    textColor: "text-blue-700 dark:text-blue-300",
+    bar: "bg-slate-500",
+    iconColor: "text-slate-500",
+    textColor: "text-slate-700 dark:text-slate-300",
     bg: "bg-white dark:bg-[#1e1e1e]",
-    border: "border-blue-200 dark:border-blue-800",
+    border: "border-slate-200 dark:border-slate-700",
   },
 };
 

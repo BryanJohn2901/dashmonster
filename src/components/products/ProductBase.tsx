@@ -162,47 +162,6 @@ function ProductViewer({ product: p, onEdit, onClose }: { product: ProductData; 
 
   return (
     <div className="flex flex-col h-full overflow-y-auto">
-      {/* ── Sticky header ── */}
-      <div
-        className="sticky top-0 z-10 flex items-center justify-between gap-3 px-6 py-4 border-b"
-        style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)" }}
-      >
-        <div className="flex items-center gap-3">
-          <button
-            type="button" onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-xl border transition hover:opacity-70"
-            style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}
-          >
-            <ArrowLeft size={14} />
-          </button>
-          <div>
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span
-                className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
-                style={{ background: accentLight, color: accentColor }}
-              >
-                {isPos ? "Pós Grad." : "Imersão"}
-              </span>
-              {course && <span className="text-[10px] text-slate-400">{course.label}</span>}
-              {p.turmaVinculada && <span className="text-[10px] font-semibold text-[#05CD99]">{p.turmaVinculada}</span>}
-            </div>
-            <h1
-              className="text-base font-bold mt-0.5 truncate max-w-xs"
-              style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins)" }}
-            >
-              {p.nome || "Sem nome"}
-            </h1>
-          </div>
-        </div>
-        <button
-          type="button" onClick={onEdit}
-          className="flex items-center gap-2 rounded-xl px-4 py-2 text-[13px] font-semibold text-white transition hover:opacity-90"
-          style={{ background: BRAND_GRAD }}
-        >
-          <Edit3 size={13} /> Editar
-        </button>
-      </div>
-
       {/* ── Bento Grid body ── */}
       <div className="flex-1 p-5 lg:p-7">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -211,16 +170,32 @@ function ProductViewer({ product: p, onEdit, onClose }: { product: ProductData; 
           {/* shape-xl=28px com p-7 acima → top corners 100% visíveis */}
           <div
             className="col-span-1 md:col-span-2 lg:col-span-3 relative overflow-hidden"
-            style={{ background: heroGrad, borderRadius: "var(--dm-shape-xl)" }}
+            style={{ background: heroGrad, borderRadius: "var(--dm-shape-xl)", boxShadow: "0 20px 50px -24px rgba(11,61,36,0.7)" }}
           >
-            {/* decorative orb */}
-            <div
-              className="absolute -top-16 -right-16 h-64 w-64 rounded-full opacity-10"
-              style={{ background: "white" }}
-            />
+            {/* orbs decorativos + brilho superior */}
+            <div className="absolute -top-16 -right-16 h-64 w-64 rounded-full opacity-10" style={{ background: "white" }} />
+            <div className="absolute -bottom-24 -left-16 h-72 w-72 rounded-full opacity-[0.07]" style={{ background: "white" }} />
+            <div className="absolute inset-x-0 top-0 h-px" style={{ background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent)" }} />
             <div className="relative p-6 lg:p-8">
+              {/* Controles — voltar + editar, dentro do hero (sem barra separada) */}
+              <div className="mb-5 flex items-center justify-between">
+                <button
+                  type="button" onClick={onClose}
+                  className="flex items-center gap-1.5 rounded-xl bg-white/15 px-3 py-2 text-[12px] font-semibold text-white backdrop-blur-sm transition hover:bg-white/25"
+                >
+                  <ArrowLeft size={15} /> Voltar
+                </button>
+                <button
+                  type="button" onClick={onEdit}
+                  className="flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-[13px] font-semibold shadow-lg transition hover:-translate-y-0.5"
+                  style={{ color: "#15803D" }}
+                >
+                  <Edit3 size={14} /> Editar
+                </button>
+              </div>
               <div className="flex flex-wrap items-center gap-2 mb-4">
-                <span className="rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-wider bg-white/20 text-white">
+                <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-wider bg-white/20 text-white">
+                  {isPos ? <GraduationCap size={12} /> : <CalendarDays size={12} />}
                   {isPos ? "Pós Graduação" : "Imersão"}
                 </span>
                 {course && (
@@ -568,6 +543,24 @@ export function ProductBase({ viewId, onOpenView, onCloseView }: ProductBaseProp
   const posList     = products.filter((p) => p.type === "pos");
   const imersaoList = products.filter((p) => p.type === "imersao");
 
+  // Agrupamento da Base = categoria personalizada (preenchida no produto).
+  // Legado/sem categoria cai no rótulo do tipo (Pós Graduação / Imersão).
+  const groups = (() => {
+    const m = new Map<string, ProductData[]>();
+    for (const p of products) {
+      const key = p.categoria?.trim() || (p.type === "pos" ? "Pós Graduação" : "Imersão");
+      const arr = m.get(key) ?? [];
+      arr.push(p);
+      m.set(key, arr);
+    }
+    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0], "pt-BR"));
+  })();
+
+  // Categorias já existentes — alimentam o combobox do formulário.
+  const existingCategories = [...new Set(
+    products.map((p) => p.categoria?.trim()).filter((c): c is string => !!c),
+  )].sort((a, b) => a.localeCompare(b, "pt-BR"));
+
   const handleAdd = () => { setEditing(null); setView("add"); };
 
   const handleView = (p: ProductData) => {
@@ -605,6 +598,7 @@ export function ProductBase({ viewId, onOpenView, onCloseView }: ProductBaseProp
     return (
       <ProductForm
         product={editing}
+        existingCategories={existingCategories}
         onSave={handleSave}
         onCancel={handleCancel}
       />
@@ -667,10 +661,10 @@ export function ProductBase({ viewId, onOpenView, onCloseView }: ProductBaseProp
       {products.length > 0 && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
-            { label: "Total de produtos", value: products.length, color: "text-slate-900" },
-            { label: "Pós Graduações",    value: posList.length,   color: "text-blue-700" },
-            { label: "Imersões",          value: imersaoList.length, color: "text-violet-700" },
-            { label: "Com links de venda",value: products.filter((p) => p.linksVenda.length > 0 || p.paginasVenda?.length > 0).length, color: "text-emerald-700" },
+            { label: "Total de produtos", value: products.length, color: "text-slate-900 dark:text-slate-100" },
+            { label: "Pós Graduações",    value: posList.length,   color: "text-[#15803D] dark:text-[#22C55E]" },
+            { label: "Imersões",          value: imersaoList.length, color: "text-slate-600 dark:text-slate-300" },
+            { label: "Com links de venda",value: products.filter((p) => p.linksVenda.length > 0 || p.paginasVenda?.length > 0).length, color: "text-emerald-700 dark:text-emerald-400" },
           ].map(({ label, value, color }) => (
             <div key={label} className="rounded-xl p-4 shadow-sm"
               style={{ border: "1px solid var(--dm-border-default)", background: "var(--dm-bg-surface)" }}>
@@ -681,18 +675,16 @@ export function ProductBase({ viewId, onOpenView, onCloseView }: ProductBaseProp
         </div>
       )}
 
-      {/* ── Pós Graduação section ── */}
-      <section>
-        <SectionHeader
-          icon={GraduationCap}
-          title="Pós Graduação"
-          count={posList.length}
-        />
-        {posList.length === 0 ? (
-          <EmptyState type="pos" onAdd={handleAdd} />
-        ) : (
+      {/* ── Seções por categoria (personalizada) ── */}
+      {groups.map(([categoria, items]) => (
+        <section key={categoria}>
+          <SectionHeader
+            icon={Package}
+            title={categoria}
+            count={items.length}
+          />
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {posList.map((p) => (
+            {items.map((p) => (
               <ProductCard
                 key={p.id}
                 product={p}
@@ -709,45 +701,11 @@ export function ProductBase({ viewId, onOpenView, onCloseView }: ProductBaseProp
               style={{ borderColor: "var(--dm-border-default)" }}
             >
               <Plus size={18} style={{ color: "var(--dm-text-tertiary)" }} />
-              <span className="text-xs font-semibold" style={{ color: "var(--dm-text-tertiary)" }}>Nova Pós Graduação</span>
+              <span className="text-xs font-semibold" style={{ color: "var(--dm-text-tertiary)" }}>Adicionar em {categoria}</span>
             </button>
           </div>
-        )}
-      </section>
-
-      {/* ── Imersão section ── */}
-      <section>
-        <SectionHeader
-          icon={CalendarDays}
-          title="Imersões"
-          count={imersaoList.length}
-        />
-        {imersaoList.length === 0 ? (
-          <EmptyState type="imersao" onAdd={handleAdd} />
-        ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {imersaoList.map((p) => (
-              <ProductCard
-                key={p.id}
-                product={p}
-                onView={() => handleView(p)}
-                onEdit={() => handleEdit(p)}
-                onDuplicate={() => handleDuplicate(p)}
-                onDelete={() => handleDelete(p.id)}
-              />
-            ))}
-            <button
-              type="button"
-              onClick={handleAdd}
-              className="flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed py-8 text-center transition hover:bg-[var(--dm-primary-soft)]"
-              style={{ borderColor: "var(--dm-border-default)" }}
-            >
-              <Plus size={18} style={{ color: "var(--dm-text-tertiary)" }} />
-              <span className="text-xs font-semibold" style={{ color: "var(--dm-text-tertiary)" }}>Nova Imersão</span>
-            </button>
-          </div>
-        )}
-      </section>
+        </section>
+      ))}
 
     </div>
   );

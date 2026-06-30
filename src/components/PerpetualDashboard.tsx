@@ -225,7 +225,7 @@ function ProdutoCard({ id, data }: { id: ProdutoKey; data: ProdutoData }) {
         {/* Lead source */}
         <div className="space-y-1.5">
           <p className="text-[9px] font-semibold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>Origem de Leads ({n(totalLeads)} total)</p>
-          <LeadBar label="Meta Ads"  value={rc.leads.meta_ads}  total={rc.leads.total} color="#3b82f6" />
+          <LeadBar label="Meta Ads"  value={rc.leads.meta_ads}  total={rc.leads.total} color="#16A34A" />
           <LeadBar label="Google"    value={rc.leads.google_ads} total={rc.leads.total} color="#f59e0b" />
           <LeadBar label="Orgânico"  value={rc.leads.organico}  total={rc.leads.total} color="#10b981" />
         </div>
@@ -409,7 +409,7 @@ export function PerpetualDashboard({ data, onRefresh, refreshing }: PerpetualDas
           ].map(({ icon: Icon, label, value }) => (
             <div key={label} className="rounded-[18px] border bg-white dark:bg-[#1d2027] shadow-horizon p-4 flex items-center gap-3"
               style={{ borderColor: "var(--dm-border-default)" }}>
-              <Icon size={16} className="text-violet-500 flex-shrink-0" />
+              <Icon size={16} className="flex-shrink-0" style={{ color: "var(--dm-primary)" }} />
               <div>
                 <p className="text-[10px] font-semibold" style={{ color: "var(--dm-text-tertiary)" }}>{label}</p>
                 <p className="text-base font-bold font-[family-name:var(--font-poppins)]" style={{ color: "var(--dm-text-primary)" }}>{value}</p>

@@ -19,8 +19,8 @@ export function AnaliseEmpty({ onImport }: AnaliseEmptyProps) {
         style={{ backgroundColor: "var(--dm-bg-surface)" }}
       >
         {/* Glow */}
-        <div className="pointer-events-none absolute -left-20 -top-20 h-64 w-64 rounded-full bg-blue-500/10 blur-[80px]" />
-        <div className="pointer-events-none absolute -bottom-20 -right-20 h-64 w-64 rounded-full bg-violet-500/8 blur-[80px]" />
+        <div className="pointer-events-none absolute -left-20 -top-20 h-64 w-64 rounded-full bg-[#16A34A]/10 blur-[80px]" />
+        <div className="pointer-events-none absolute -bottom-20 -right-20 h-64 w-64 rounded-full bg-[#16A34A]/[0.06] blur-[80px]" />
 
         <div className="relative flex flex-col gap-10 sm:flex-row sm:items-start sm:gap-12">
           {/* ── Left column ── */}

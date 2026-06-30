@@ -12,18 +12,18 @@ import {
 
 // ─── Paleta de cores pré-definidas para o funil ───────────────────────────────
 const COLORS = [
-  "#6366f1", // índigo (padrão)
-  "#10b981", // verde
+  "#16A34A", // verde (padrão)
+  "#22C55E", // verde vivo
+  "#0D9488", // teal
   "#f59e0b", // âmbar
   "#ef4444", // vermelho
-  "#8b5cf6", // roxo
-  "#06b6d4", // ciano
+  "#64748B", // cinza
 ];
 
 const inputCls = "h-9 rounded-xl border px-3 text-[12px] outline-none transition focus:ring-1";
 const inputStyle = { borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" } as React.CSSProperties;
 const btnPrimary = "flex items-center justify-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-bold text-white transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-40 focus-visible:outline-none";
-const btnPrimaryStyle = { background: "linear-gradient(135deg,#6366C8 0%,#313491 100%)" } as React.CSSProperties;
+const btnPrimaryStyle = { background: "linear-gradient(135deg,#16A34A 0%,#15803D 100%)" } as React.CSSProperties;
 
 // ─── TagInput — chips de texto separados por vírgula/Enter ───────────────────
 function TagInput({
@@ -47,7 +47,7 @@ function TagInput({
         <span
           key={v}
           className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold"
-          style={{ background: "rgba(99,102,241,0.12)", color: "#6366f1" }}
+          style={{ background: "rgba(22,163,74,0.12)", color: "#16A34A" }}
         >
           {v}
           <button
@@ -187,7 +187,7 @@ function FunnelForm({
   }
 
   return (
-    <div className="space-y-3 rounded-xl border p-3" style={{ borderColor: "var(--dm-primary)", background: "rgba(99,102,241,0.04)" }}>
+    <div className="space-y-3 rounded-xl border p-3" style={{ borderColor: "var(--dm-primary)", background: "rgba(22,163,74,0.04)" }}>
       {/* Nome + cor */}
       <div className="flex items-center gap-2">
         <input

@@ -5,7 +5,7 @@ export const posTemplate: Template = {
   id: "pos",
   label: "Pós Graduação",
   description: "Lançamentos mensais com funil de leads e venda de curso",
-  color: "#4F46E5",
+  color: "#16A34A",
   kpis: [
     { id: "spend",   label: "Investimento", format: formatBRL, color: "brand" },
     { id: "revenue", label: "Faturamento",  format: formatBRL, color: "green" },

@@ -489,7 +489,7 @@ export function ChartsSection({
       <div className={comparisonMode === "horizontal" ? "xl:col-span-12" : "xl:col-span-8"}>
         <ChartCard
           icon={BarChart2}
-          iconColor="#0ea5e9"
+          iconColor="#0D9488"
           title="Investimento vs Receita"
           subtitle="Comparativo por campanha no período"
           action={

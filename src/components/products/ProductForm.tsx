@@ -179,7 +179,7 @@ function AttachmentPanel({
                     <img
                       src={att.dataUrl}
                       alt={att.name}
-                      className="h-10 w-10 rounded-md object-cover ring-1 ring-slate-200 transition group-hover:ring-blue-400"
+                      className="h-10 w-10 rounded-md object-cover ring-1 ring-slate-200 transition group-hover:ring-[#16A34A]"
                     />
                   ) : (
                     <div className="flex h-10 w-10 items-center justify-center rounded-md bg-red-50 ring-1 ring-red-100">
@@ -199,7 +199,7 @@ function AttachmentPanel({
                   <button
                     type="button"
                     onClick={() => setViewing(att)}
-                    className="flex h-6 w-6 items-center justify-center rounded text-slate-400 transition hover:bg-blue-50 hover:text-blue-600"
+                    className="flex h-6 w-6 items-center justify-center rounded text-slate-400 transition hover:bg-[#16A34A]/10 hover:text-[#16A34A]"
                     title="Visualizar"
                   >
                     <Eye size={11} />
@@ -706,18 +706,87 @@ function PersonaSegmentos({
 
 // ─── Main form component ──────────────────────────────────────────────────────
 
+// ─── Categoria (filtro da Base) — presets + criar personalizada ────────────────
+
+const CATEGORIA_PRESETS = ["Pós Graduação", "Imersão", "Livro", "Ebook", "Produto"];
+
+function CategoriaField({
+  value, existing, onChange,
+}: { value: string; existing: string[]; onChange: (v: string) => void }) {
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState("");
+  const options = [...new Set([...CATEGORIA_PRESETS, ...existing, ...(value ? [value] : [])])];
+
+  const commit = () => {
+    const v = draft.trim();
+    if (v) onChange(v);
+    setDraft("");
+    setAdding(false);
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {options.map((opt) => {
+        const active = value === opt;
+        return (
+          <button
+            key={opt}
+            type="button"
+            onClick={() => onChange(opt)}
+            className="rounded-full px-3 py-1 text-[11px] font-semibold transition"
+            style={active
+              ? { background: "var(--dm-primary)", color: "#fff" }
+              : { background: "var(--dm-bg-elevated)", color: "var(--dm-text-secondary)", border: "1px solid var(--dm-border-default)" }}
+          >
+            {opt}
+          </button>
+        );
+      })}
+      {adding ? (
+        <input
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); commit(); }
+            if (e.key === "Escape") { setAdding(false); setDraft(""); }
+          }}
+          onBlur={commit}
+          placeholder="Nova categoria…"
+          className="h-7 w-40 rounded-full border px-3 text-[11px] outline-none"
+          style={{ borderColor: "var(--dm-primary)", background: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={() => setAdding(true)}
+          className="flex items-center gap-1 rounded-full border border-dashed px-3 py-1 text-[11px] font-semibold transition hover:border-[color:var(--dm-primary)] hover:text-[color:var(--dm-primary)]"
+          style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-tertiary)" }}
+        >
+          <Plus size={11} /> Outra
+        </button>
+      )}
+    </div>
+  );
+}
+
 interface ProductFormProps {
   product?: ProductData | null;
+  /** Categorias já usadas — sugeridas no combobox (pode-se criar uma nova digitando). */
+  existingCategories?: string[];
   onSave: (p: ProductData) => void;
   onCancel: () => void;
 }
 
-export function ProductForm({ product, onSave, onCancel }: ProductFormProps) {
+export function ProductForm({ product, existingCategories = [], onSave, onCancel }: ProductFormProps) {
   const isEdit = !!product;
 
-  // ── Type selection step (only when adding) ──────────────────────────────────
-  const [typeChosen, setTypeChosen] = useState<ProductType | null>(
-    isEdit ? product!.type : null,
+  // ── Tipo do produto (Pós/Imersão) ───────────────────────────────────────────
+  // Não é mais uma etapa-gate: entra direto no formulário. O tipo define quais
+  // campos aparecem e pode ser alternado inline — será personalizado por cliente,
+  // então não faz sentido travar todo mundo numa escolha padrão antes de começar.
+  const [typeChosen, setTypeChosen] = useState<ProductType>(
+    isEdit ? product!.type : "pos",
   );
 
   // ── Form state ──────────────────────────────────────────────────────────────
@@ -788,12 +857,6 @@ export function ProductForm({ product, onSave, onCancel }: ProductFormProps) {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  // ── Handle type selection ────────────────────────────────────────────────────
-  const handleChooseType = (t: ProductType) => {
-    setTypeChosen(t);
-    setForm({ ...emptyProduct(t), type: t });
-  };
-
   // ── Save ────────────────────────────────────────────────────────────────────
   const handleSave = async () => {
     if (!form.nome.trim()) { alert("O nome do produto é obrigatório."); return; }
@@ -813,7 +876,7 @@ export function ProductForm({ product, onSave, onCancel }: ProductFormProps) {
       <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl dark:bg-slate-800">
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 dark:border-slate-700">
           <div className="flex items-center gap-2">
-            <Sparkles size={16} className="text-violet-500" />
+            <Sparkles size={16} style={{ color: "var(--dm-primary)" }} />
             <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Importar produto via TXT</h3>
           </div>
           <button onClick={closeImport} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-700"><X size={16} /></button>
@@ -839,11 +902,11 @@ export function ProductForm({ product, onSave, onCancel }: ProductFormProps) {
               onChange={(e) => { setImportText(e.target.value); setImportResult(null); }}
               placeholder="Cole o conteúdo do template.txt aqui..."
               rows={8}
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-mono text-slate-800 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-100 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200"
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-mono text-slate-800 outline-none transition focus:border-[color:var(--dm-primary)] focus:ring-2 focus:ring-[color:var(--dm-primary-soft)] dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200"
             />
             <div className="mt-1.5 flex items-center gap-2">
               <span className="text-[11px] text-slate-400">ou</span>
-              <label className="cursor-pointer text-[11px] font-medium text-violet-600 hover:underline dark:text-violet-400">
+              <label className="cursor-pointer text-[11px] font-medium text-[color:var(--dm-primary)] hover:underline">
                 carregar arquivo .txt
                 <input ref={fileInputRef} type="file" accept=".txt,text/plain" className="hidden" onChange={handleFileUpload} />
               </label>
@@ -871,7 +934,7 @@ export function ProductForm({ product, onSave, onCancel }: ProductFormProps) {
             <button
               onClick={handleImport}
               disabled={!importText.trim()}
-              className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-violet-700 disabled:opacity-40"
+              className="flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-xs font-semibold text-white transition hover:bg-brand-hover disabled:opacity-40"
             >
               <Sparkles size={12} /> Analisar e Preencher
             </button>
@@ -888,62 +951,14 @@ export function ProductForm({ product, onSave, onCancel }: ProductFormProps) {
     </div>
   );
 
-  // ── Type selection screen ────────────────────────────────────────────────────
-  if (!typeChosen) {
-    return (
-      <>
-        {importOverlay}
-        <div className="flex min-h-full flex-col items-center justify-center px-4 py-12">
-          <div className="w-full max-w-md">
-            <button onClick={onCancel} className="mb-8 flex items-center gap-2 text-sm font-medium transition hover:opacity-80" style={{ color: "var(--dm-text-secondary)" }}>
-              <ArrowLeft size={15} /> Voltar
-            </button>
-            <h2 className="mb-2 text-xl font-bold" style={{ color: "var(--dm-text-primary)" }}>Novo produto</h2>
-            <p className="mb-8 text-sm" style={{ color: "var(--dm-text-tertiary)" }}>Preencha manualmente ou importe um TXT para pré-preenchimento automático</p>
-            <div className="grid grid-cols-2 gap-4">
-              <button
-                onClick={() => handleChooseType("pos")}
-                className="group flex flex-col items-start rounded-2xl border p-5 text-left transition hover:-translate-y-0.5 hover:border-[color:var(--dm-primary-border)] hover:shadow-lg"
-                style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)" }}
-              >
-                <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl text-lg" style={{ background: "var(--dm-primary-soft)" }}>🎓</div>
-                <p className="font-bold" style={{ color: "var(--dm-text-primary)" }}>Pós Graduação</p>
-                <p className="mt-1 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>Lançamento de turma com currículo completo, entregáveis e imersão</p>
-              </button>
-              <button
-                onClick={() => handleChooseType("imersao")}
-                className="group flex flex-col items-start rounded-2xl border p-5 text-left transition hover:-translate-y-0.5 hover:border-[color:var(--dm-primary-border)] hover:shadow-lg"
-                style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)" }}
-              >
-                <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl text-lg" style={{ background: "var(--dm-primary-soft)" }}>⚡</div>
-                <p className="font-bold" style={{ color: "var(--dm-text-primary)" }}>Imersão</p>
-                <p className="mt-1 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>Evento intensivo presencial ou online com tema e público específico</p>
-              </button>
-            </div>
-
-            {/* Import TXT option */}
-            <button
-              onClick={() => setShowImport(true)}
-              className="mt-4 w-full flex items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-5 py-4 text-sm font-semibold transition hover:border-[color:var(--dm-primary-border)] hover:text-[color:var(--dm-primary)]"
-              style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-elevated)", color: "var(--dm-text-secondary)" }}
-            >
-              <Sparkles size={16} style={{ color: "var(--dm-primary)" }} />
-              Importar via TXT — pré-preenchimento automático
-            </button>
-          </div>
-        </div>
-      </>
-    );
-  }
-
   const isPos = form.type === "pos";
 
   return (
     <div className="flex flex-col">
       {importOverlay}
 
-      {/* ── Sticky top bar ─────────────────────────────────────────────────── */}
-      <div className="sticky top-0 z-20 flex items-center justify-between border-b backdrop-blur-sm px-4 lg:px-6 py-2.5" style={{ borderColor: "var(--dm-border-default)", background: "color-mix(in srgb, var(--dm-bg-surface) 92%, transparent)" }}>
+      {/* ── Top bar — flutuante e arredondada (sem slab full-bleed) ──────────── */}
+      <div className="sticky top-3 z-20 mx-3 mt-3 flex items-center justify-between gap-3 rounded-2xl border px-4 py-2.5 shadow-sm backdrop-blur-md lg:mx-4" style={{ borderColor: "var(--dm-border-default)", background: "color-mix(in srgb, var(--dm-bg-surface) 85%, transparent)" }}>
         <div className="flex items-center gap-2.5">
           <button
             type="button"
@@ -955,7 +970,7 @@ export function ProductForm({ product, onSave, onCancel }: ProductFormProps) {
           </button>
           <div className="flex items-center gap-2">
             <span className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider" style={{ background: "var(--dm-primary-soft)", color: "var(--dm-primary)" }}>
-              {isPos ? "Pós" : "Imersão"}
+              {form.categoria?.trim() || (isPos ? "Pós" : "Imersão")}
             </span>
             <p className="text-sm font-semibold truncate max-w-xs" style={{ color: "var(--dm-text-primary)" }}>
               {form.nome || (isEdit ? "Editar produto" : "Novo produto")}
@@ -993,7 +1008,7 @@ export function ProductForm({ product, onSave, onCancel }: ProductFormProps) {
               <Paperclip size={12} className="text-slate-400" />
               <p className={cls.label + " mb-0"}>Referências</p>
               {form.attachments.length > 0 && (
-                <span className="ml-auto rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold text-blue-700">
+                <span className="ml-auto rounded-full bg-[#16A34A]/10 px-1.5 py-0.5 text-[10px] font-bold text-[#15803D]">
                   {form.attachments.length}
                 </span>
               )}
@@ -1025,13 +1040,40 @@ export function ProductForm({ product, onSave, onCancel }: ProductFormProps) {
           </div>
 
           {/* ══ IDENTIDADE (always open) ══ */}
-          <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3 dark:border-slate-700 dark:bg-slate-800">
-            <div className="flex items-center gap-2">
-              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${isPos ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400" : "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400"}`}>
-                {isPos ? "Pós Graduação" : "Imersão"}
-              </span>
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Identidade do produto</p>
+          <div className="rounded-xl border border-[color:var(--dm-border-default)] bg-[var(--dm-bg-surface)] p-4 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-secondary)" }}>Identidade do produto</p>
+              {/* Modelo de CAMPOS (layout) — separado da categoria/filtro */}
+              <div className="flex items-center gap-1.5" title="Define quais campos aparecem no formulário">
+                <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Campos</span>
+                <div className="flex gap-0.5 rounded-lg p-0.5" style={{ background: "var(--dm-bg-elevated)" }}>
+                  {([["pos", "Completo"], ["imersao", "Enxuto"]] as [ProductType, string][]).map(([t, label]) => {
+                    const active = form.type === t;
+                    return (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => set("type", t)}
+                        className="rounded-md px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider transition-all"
+                        style={active
+                          ? { background: "var(--dm-bg-surface)", color: "var(--dm-primary)", boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }
+                          : { color: "var(--dm-text-tertiary)" }}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
+
+            <Field label="Categoria" hint="é o filtro que agrupa o produto na Base — clique numa ou crie a sua">
+              <CategoriaField
+                value={form.categoria ?? ""}
+                existing={existingCategories}
+                onChange={(v) => set("categoria", v)}
+              />
+            </Field>
 
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Nome do produto" required>

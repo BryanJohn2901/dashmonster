@@ -94,7 +94,7 @@ export default function ProdutoPage() {
   if (!ready) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3" style={{ backgroundColor: "var(--dm-bg-base)" }}>
-        <Loader2 size={20} className="animate-spin text-violet-500" />
+        <Loader2 size={20} className="animate-spin" style={{ color: "var(--dm-primary)" }} />
         <span className="text-sm" style={{ color: "var(--dm-text-tertiary)" }}>
           {slug === "perpetuo" ? "Conectando ao Apps Script…" : "Carregando…"}
         </span>

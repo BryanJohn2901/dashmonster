@@ -99,8 +99,8 @@ export function PixelFunnelSection({ adAccountId, dateFrom, dateTo }: Props) {
 
   const f = data?.funnel;
   const steps = f ? [
-    { icon: Eye,               label: "PageView",  count: f.pageView,         rate: undefined,                                                              color: "#6366f1" },
-    { icon: MousePointerClick, label: "Lead",       count: f.lead,             rate: f.pageView > 0          ? f.lead / f.pageView : 0,                     color: "#0ea5e9" },
+    { icon: Eye,               label: "PageView",  count: f.pageView,         rate: undefined,                                                              color: "#16A34A" },
+    { icon: MousePointerClick, label: "Lead",       count: f.lead,             rate: f.pageView > 0          ? f.lead / f.pageView : 0,                     color: "#0D9488" },
     { icon: ShoppingCart,      label: "Checkout",   count: f.initiateCheckout, rate: f.lead > 0              ? f.initiateCheckout / f.lead : 0,              color: "#f59e0b" },
     { icon: CreditCard,        label: "Pagamento",  count: f.addPaymentInfo,   rate: f.initiateCheckout > 0  ? f.addPaymentInfo / f.initiateCheckout : 0,    color: "#f97316" },
     { icon: Trophy,            label: "Purchase",   count: f.purchase,         rate: f.addPaymentInfo > 0    ? f.purchase / f.addPaymentInfo : 0,            color: "#22c55e" },

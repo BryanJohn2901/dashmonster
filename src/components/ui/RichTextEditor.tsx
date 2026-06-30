@@ -41,7 +41,7 @@ function ToolbarButton({
       className={[
         "flex h-7 w-7 items-center justify-center rounded transition-colors text-slate-600 dark:text-slate-300",
         active
-          ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400"
+          ? "bg-[#16A34A]/10 text-[#16A34A] dark:bg-[#22C55E]/15 dark:text-[#22C55E]"
           : "hover:bg-slate-100 dark:hover:bg-slate-700",
       ].join(" ")}
     >
@@ -103,7 +103,7 @@ export default function RichTextEditor({ value, onChange, placeholder, minHeight
   if (!editor) return null;
 
   return (
-    <div className="overflow-hidden rounded-lg border border-slate-200 bg-white transition focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 dark:border-slate-600 dark:bg-slate-700 dark:focus-within:border-blue-500">
+    <div className="overflow-hidden rounded-lg border border-slate-200 bg-white transition focus-within:border-[#16A34A] focus-within:ring-2 focus-within:ring-[#16A34A]/15 dark:border-slate-600 dark:bg-slate-700 dark:focus-within:border-[#22C55E]">
       {/* ── Toolbar ── */}
       <div className="flex flex-wrap items-center gap-0.5 border-b border-slate-200 bg-slate-50 px-2 py-1.5 dark:border-slate-600 dark:bg-slate-800">
         {/* Text style */}

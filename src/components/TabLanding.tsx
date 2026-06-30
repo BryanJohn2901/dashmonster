@@ -39,13 +39,13 @@ export function TabLanding({
   return (
     <div className="relative mx-auto max-w-4xl overflow-hidden rounded-[2rem] p-1 sm:p-2" style={{ animation: "dm-fade-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) both" }}>
       {/* Background Glow */}
-      <div className="absolute -left-32 -top-32 h-96 w-96 rounded-full bg-blue-500/20 blur-[100px]" />
+      <div className="absolute -left-32 -top-32 h-96 w-96 rounded-full bg-[#16A34A]/20 blur-[100px]" />
       <div className="absolute -bottom-32 -right-32 h-96 w-96 rounded-full bg-emerald-500/10 blur-[100px]" />
 
       <div className="glass-panel relative flex flex-col gap-8 rounded-[1.75rem] p-6 sm:p-12">
         {/* ── Hero ── */}
         <div className="text-center">
-          <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br from-blue-500 to-blue-700 text-white shadow-xl shadow-blue-500/30">
+          <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br from-[#16A34A] to-[#15803D] text-white shadow-xl shadow-[#16A34A]/30">
             <Icon size={40} strokeWidth={1.5} />
           </div>
           <h1 className="text-3xl font-extrabold tracking-tight sm:text-4xl" style={{ fontFamily: "var(--font-display)", color: "var(--dm-text-primary)" }}>
@@ -64,7 +64,7 @@ export function TabLanding({
               className="group flex flex-col gap-4 rounded-2xl border p-5 transition-all hover:-translate-y-1 hover:shadow-xl dark:bg-slate-800/50"
               style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)", animationDelay: `${idx * 100}ms`, animation: "dm-fade-up 0.4s both" }}
             >
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-blue-600 transition-colors group-hover:bg-blue-100 dark:bg-blue-500/10 dark:text-blue-400 dark:group-hover:bg-blue-500/20">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#16A34A]/10 text-[#16A34A] transition-colors group-hover:bg-[#16A34A]/15 dark:bg-[#22C55E]/10 dark:text-[#22C55E] dark:group-hover:bg-[#22C55E]/20">
                 <f.icon size={22} />
               </div>
               <div>
@@ -115,7 +115,7 @@ export function TabLanding({
             <button
               type="button"
               onClick={cta.onClick}
-              className="flex items-center gap-2 rounded-xl bg-blue-600 px-8 py-3.5 text-[16px] font-bold text-white shadow-lg shadow-blue-500/25 transition-all hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-blue-500/40"
+              className="flex items-center gap-2 rounded-xl bg-brand px-8 py-3.5 text-[16px] font-bold text-white shadow-lg shadow-[#16A34A]/25 transition-all hover:-translate-y-0.5 hover:bg-brand-hover hover:shadow-[#16A34A]/40"
             >
               {cta.label}
             </button>

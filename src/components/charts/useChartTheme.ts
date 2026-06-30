@@ -3,16 +3,16 @@
 import { useTheme } from "next-themes";
 
 // ── Data viz palette — minimalista, poucas cores
-// Regra: azul/roxo = dado principal; cinza = comparativo; verde/vermelho = semântico
+// Regra: verde = dado principal; cinza = comparativo; teal/âmbar/rosa = categorias
 export const PIE_COLORS_LIGHT = [
-  "#313491", "#4A4FCC", "#6E72FF", "#A5A8FF",
-  "#1FA971", "#F4A93C", "#E14D4D", "#8A8FAD",
-  "#D6D8FF", "#6F7482", "#0891b2", "#A0A5B3",
+  "#16A34A", "#0D9488", "#F59E0B", "#15803D",
+  "#E14D4D", "#64748B", "#22C55E", "#0F766E",
+  "#D97706", "#94A3B8", "#4ADE80", "#475569",
 ];
 export const PIE_COLORS_DARK = [
-  "#6C70FF", "#8A8FCC", "#A5A8FF", "#C4C6FF",
-  "#22C55E", "#EAB308", "#EF4444", "#8A8FAD",
-  "#D6D8FF", "#6F7686", "#22D3EE", "#A0A5B3",
+  "#22C55E", "#2DD4BF", "#FBBF24", "#4ADE80",
+  "#F87171", "#94A3B8", "#16A34A", "#5EEAD4",
+  "#FCD34D", "#CBD5E1", "#86EFAC", "#64748B",
 ];
 
 // ─── Shared chart theme ────────────────────────────────────────────────────────
@@ -23,8 +23,8 @@ export function useChartTheme() {
   return {
     dark,
     pieColors:   dark ? PIE_COLORS_DARK : PIE_COLORS_LIGHT,
-    /* Primary series: nova paleta minimalista */
-    c1: dark ? "#6C70FF" : "#313491",   /* chart-primary */
+    /* Primary series: verde de marca */
+    c1: dark ? "#22C55E" : "#16A34A",   /* chart-primary */
     c2: dark ? "#8A8FAD" : "#A0A5B3",   /* chart-secondary (cinza — dado comparativo) */
     c3: dark ? "#22C55E" : "#1FA971",   /* chart-success */
     c4: dark ? "#EAB308" : "#F4A93C",   /* warning/investment */

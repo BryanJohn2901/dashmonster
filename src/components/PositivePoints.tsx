@@ -43,7 +43,7 @@ function TopList({ title, subtitle, icon: Icon, items, metricLabel, metricValue,
                 Invest.: {formatCurrency(c.investment)} · Receita: {formatCurrency(c.revenue)}
               </p>
             </div>
-            <span className={`shrink-0 rounded-md px-2 py-0.5 text-xs font-semibold ${badgeColor === "text-emerald-600" ? "bg-emerald-50 text-emerald-700" : badgeColor === "text-blue-600" ? "bg-blue-50 text-blue-700" : "bg-violet-50 text-violet-700"}`}>
+            <span className={`shrink-0 rounded-md px-2 py-0.5 text-xs font-semibold ${badgeColor === "text-emerald-600" ? "bg-emerald-50 text-emerald-700" : badgeColor === "text-slate-600" ? "bg-slate-100 text-slate-700" : "bg-[#16A34A]/10 text-[#15803D]"}`}>
               {metricLabel}: {metricValue(c)}
             </span>
           </li>
@@ -129,7 +129,7 @@ export function PositivePoints({ campaigns }: PositivePointsProps) {
         items={topCtr}
         metricLabel="CTR"
         metricValue={(c) => formatPercent(c.ctr)}
-        badgeColor="text-blue-600"
+        badgeColor="text-slate-600"
       />
       <TopList
         title="Melhor Taxa de Conversão"
@@ -138,7 +138,7 @@ export function PositivePoints({ campaigns }: PositivePointsProps) {
         items={topConversion}
         metricLabel="Conv."
         metricValue={(c) => formatPercent(c.conversionRate)}
-        badgeColor="text-violet-600"
+        badgeColor="text-[#15803D]"
       />
     </div>
   );

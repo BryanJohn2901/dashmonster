@@ -81,6 +81,9 @@ export interface PersonaSegmento {
 export interface ProductData {
   id: string;
   type: ProductType;
+  /** Categoria personalizada (criada pelo cliente no formulário). É o que agrupa
+   *  a Base de Produtos. `type` (pos/imersão) passa a controlar só o layout. */
+  categoria?: string;
   courseGroup?: CourseGroupId;
   turmaVinculada?: string;   // e.g. "Turma 5", "T3"
   attachments: Attachment[];  // reference prints & PDFs
@@ -147,6 +150,7 @@ export interface ProductData {
 export function emptyProduct(type: ProductType): Omit<ProductData, "id" | "createdAt" | "updatedAt"> {
   return {
     type,
+    categoria: "",
     attachments: [],
     nome: "",
     expert: "",
