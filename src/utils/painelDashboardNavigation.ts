@@ -9,6 +9,12 @@ export interface PainelSaveNavDetail {
   /** Slug da categoria: pos, livros, … ou custom-* */
   categorySlug: string;
   isCustom: boolean;
+  /**
+   * true = quem disparou (wizard dentro do Dashboard) NÃO mexe na lista de
+   * entries nem sincroniza métricas — o listener do Dashboard faz isso.
+   * Falso/ausente = caminho do Painel (page.tsx já faz merge+sync), evita duplicar.
+   */
+  syncAfter?: boolean;
 }
 export function mapPainelInternalFilterToDashboardGroupId(
   categorySlug: string,

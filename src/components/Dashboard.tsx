@@ -2077,17 +2077,27 @@ export function Dashboard({
         setCampaignsForGroup(gid, summaries);
         if (subset) setCampaignSelectionForGroup(gid, entry.selectedCampaignIds);
         else clearCampaignSelectionForGroup(gid);
-        return;
+      } else {
+        const slug = categorySlug as ProductCategory;
+        const groupId = mapPainelInternalFilterToDashboardGroupId(categorySlug, entry.internalFilter);
+        setSelectedCategory(slug);
+        setSelectedGroup(groupId);
+        setCampaignConfig(groupId, { adAccountId: entry.adAccountId });
+        setCampaignsForGroup(groupId, summaries);
+        if (subset) setCampaignSelectionForGroup(groupId, entry.selectedCampaignIds);
+        else clearCampaignSelectionForGroup(groupId);
       }
 
-      const slug = categorySlug as ProductCategory;
-      const groupId = mapPainelInternalFilterToDashboardGroupId(categorySlug, entry.internalFilter);
-      setSelectedCategory(slug);
-      setSelectedGroup(groupId);
-      setCampaignConfig(groupId, { adAccountId: entry.adAccountId });
-      setCampaignsForGroup(groupId, summaries);
-      if (subset) setCampaignSelectionForGroup(groupId, entry.selectedCampaignIds);
-      else clearCampaignSelectionForGroup(groupId);
+      // Wizard interno (syncAfter): o disparador NÃO está no page.tsx, então é
+      // o Dashboard que precisa colocar a entry na lista e puxar as métricas.
+      // O Painel (page.tsx) já faz isso — lá vem sem syncAfter, evitando duplicar.
+      if (d.syncAfter) {
+        const merged = accountEntries.some((e) => e.id === entry.id)
+          ? accountEntries.map((e) => (e.id === entry.id ? entry : e))
+          : [...accountEntries, entry];
+        onEntriesChange?.(merged);
+        void onRefresh?.();
+      }
     };
 
     window.addEventListener(PTA_PAINEL_SAVE_NAV_EVENT, onApply);
@@ -2100,6 +2110,9 @@ export function Dashboard({
     setCampaignSelectionForGroup,
     clearCampaignSelectionForGroup,
     setMainTab,
+    accountEntries,
+    onEntriesChange,
+    onRefresh,
   ]);
 
   // Persist sidebar checkbox changes back to the store so they survive remounts.

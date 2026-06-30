@@ -2,13 +2,16 @@
 
 // ─── CampaignWizard — conectar/configurar campanha manualmente ──────────────────
 // Ocupa a janela inteira (sem drawer lateral). Dois passos:
-//   1. Identificação — nome da campanha + categoria/filtro + conta (ACT) opcional
+//   1. Conexão — nome + categoria/filtro do dashboard + conta (ACT) + campanhas reais do Meta
 //   2. Objetivo & metas — intenção, resultado, orçamento e metas dinâmicas
-// Salva como uma entry da Central (mesma estrutura do fluxo antigo), garantindo
-// a categoria/filtro no banco quando for nova.
+//
+// Em vez de gravar só na Central (que agrupava por CONTA), monta uma
+// UserAccountEntry e dispara a MESMA ponte do Painel de Controle
+// (PTA_PAINEL_SAVE_NAV_EVENT) — o listener do Dashboard registra a campanha no
+// FILTRO certo (Biomecânica, Mentoria…) e puxa as métricas. É o caminho provado.
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ArrowRight, Check, Loader2, Plug, Target, X, Plus } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Loader2, Plug, Target, X, Plus, Search } from "lucide-react";
 import {
   INTENT_META, INTENT_OPTIONS,
   type CampaignCenterEntry, type CampaignIntent,
@@ -16,8 +19,17 @@ import {
 import type { ResultType } from "@/hooks/useAdvertiserStore";
 import { RESULT_TYPE_OPTIONS } from "@/components/ProfileAnalysis";
 import { useCompany, readAdAccountSuggestions } from "@/hooks/useCompany";
-import { fetchUserCategories, upsertUserCategory } from "@/utils/supabaseCategories";
+import { fetchUserCategories, upsertUserCategory, upsertUserAccountEntry } from "@/utils/supabaseCategories";
+import { getInternalFiltersForCategorySlug } from "@/config/categoryInternalFilters";
+import { fetchMetaCampaigns, loadMetaCredentials, type MetaCampaign } from "@/utils/metaApi";
+import {
+  PTA_PAINEL_SAVE_NAV_EVENT,
+  mapPainelInternalFilterToDashboardGroupId,
+} from "@/utils/painelDashboardNavigation";
+import { FIXED_CATEGORIES } from "@/types/userConfig";
 import type { UserCategory } from "@/types/userConfig";
+
+const FIXED_SLUGS = new Set(FIXED_CATEGORIES.map((c) => c.slug));
 
 const UNIT_PLACEHOLDER: Record<string, string> = {
   qtd: "0", brl: "R$ 0,00", pct: "0%", x: "0,0x",
@@ -39,7 +51,7 @@ const normAct = (id: string) => `act_${id.replace(/^act_/, "")}`;
 
 export function CampaignWizard({ onClose, onSave, nameSuggestions = [] }: {
   onClose: () => void;
-  onSave: (entry: CampaignCenterEntry) => void;
+  onSave: (entries: CampaignCenterEntry[]) => void;
   nameSuggestions?: string[];
 }) {
   const { company } = useCompany();
@@ -55,7 +67,8 @@ export function CampaignWizard({ onClose, onSave, nameSuggestions = [] }: {
   const [catSlug, setCatSlug] = useState("");   // categoria existente escolhida
   const [newCat, setNewCat] = useState("");     // nome de categoria nova (se preenchido, tem prioridade)
   const [creatingCat, setCreatingCat] = useState(false);
-  const [actId, setActId] = useState("");       // opcional
+  const [internalFilter, setInternalFilter] = useState(""); // filtro específico do dashboard (bm, mentoria-scala…)
+  const [actId, setActId] = useState("");
   const [intent, setIntent] = useState<CampaignIntent>(INTENT_OPTIONS[0].value);
   const [resultType, setResultType] = useState<ResultType>(INTENT_META[INTENT_OPTIONS[0].value].defaultResultTypes[0]);
   const [budget, setBudget] = useState("");
@@ -63,9 +76,25 @@ export function CampaignWizard({ onClose, onSave, nameSuggestions = [] }: {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Campanhas reais do Meta (puxadas pela conta) — fonte das métricas
+  const [campaigns, setCampaigns] = useState<MetaCampaign[]>([]);
+  const [selectedCampaignIds, setSelectedCampaignIds] = useState<string[]>([]);
+  const [fetchingCampaigns, setFetchingCampaigns] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
   const meta = INTENT_META[intent];
   const catLabel = newCat.trim() || cats.find((c) => c.slug === catSlug)?.name || "";
-  const canNext = name.trim().length > 0 && catLabel.length > 0;
+
+  // Categoria custom = nova OU slug fora das 5 fixas → sem filtro interno (usa panel-entry)
+  const isCustomCat = Boolean(newCat.trim()) || (Boolean(catSlug) && !FIXED_SLUGS.has(catSlug));
+  const filterOptions = useMemo(
+    () => (!isCustomCat && catSlug ? getInternalFiltersForCategorySlug(catSlug) : []),
+    [isCustomCat, catSlug],
+  );
+  const needsFilter = filterOptions.length > 0;
+  const filterReady = !needsFilter || Boolean(internalFilter);
+
+  const canNext = name.trim().length > 0 && catLabel.length > 0 && filterReady;
 
   const chooseIntent = (v: CampaignIntent) => {
     setIntent(v);
@@ -82,6 +111,29 @@ export function CampaignWizard({ onClose, onSave, nameSuggestions = [] }: {
     });
   };
 
+  const handleFetchCampaigns = async () => {
+    if (!actId.trim()) { setFetchError("Escolha ou digite a conta (act_…) antes de buscar."); return; }
+    const { accessToken } = loadMetaCredentials();
+    if (!accessToken) { setFetchError("Token Meta da empresa não configurado. Configure em Integrações."); return; }
+    setFetchingCampaigns(true); setFetchError(null);
+    try {
+      const list = await fetchMetaCampaigns(normAct(actId), accessToken);
+      setCampaigns(list);
+      setSelectedCampaignIds([]);
+      if (list.length === 0) setFetchError("Nenhuma campanha encontrada nesta conta.");
+    } catch (e) {
+      setCampaigns([]);
+      setFetchError(e instanceof Error ? e.message : "Falha ao buscar campanhas.");
+    } finally {
+      setFetchingCampaigns(false);
+    }
+  };
+
+  const toggleCampaign = (id: string) =>
+    setSelectedCampaignIds((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  const toggleAllCampaigns = () =>
+    setSelectedCampaignIds((s) => (s.length === campaigns.length ? [] : campaigns.map((c) => c.id)));
+
   const handleSave = async () => {
     if (!canNext) { setStep(1); return; }
     setSaving(true); setError(null);
@@ -90,35 +142,79 @@ export function CampaignWizard({ onClose, onSave, nameSuggestions = [] }: {
       const slug = isNew ? slugify(newCat.trim()) : catSlug;
       const label = isNew ? newCat.trim() : (cats.find((c) => c.slug === catSlug)?.name ?? catSlug);
 
-      // garante a categoria/filtro no banco quando for nova — mas se o upsert
-      // falhar (offline/sem sessão), segue com o slug local: não trava o save.
-      let categorySlug = slug;
+      // garante a categoria/filtro no banco quando for nova — se o upsert falhar
+      // (offline/sem sessão), segue com o slug local: não trava o save.
+      let category = cats.find((c) => c.slug === slug);
       try {
-        const existing = cats.find((c) => c.slug === slug);
-        const category = existing ?? await upsertUserCategory({ slug, name: label, type: "custom", position: cats.length });
-        categorySlug = category?.slug ?? slug;
-      } catch { /* mantém categorySlug = slug local */ }
+        category = category ?? await upsertUserCategory({
+          slug, name: label, type: isNew ? "custom" : "fixed", position: cats.length,
+        });
+      } catch { /* mantém category = local (pode ser undefined) */ }
 
-      const act = actId ? normAct(actId) : "manual";
-      const actLabel = actId
+      const act = actId.trim() ? normAct(actId) : "";
+      const actLabel = actId.trim()
         ? (suggested.find((s) => normAct(s.id) === act)?.label ?? act)
         : "Manual";
       const b = parseFloat(budget);
+      const monthlyBudget = isNaN(b) || b <= 0 ? null : b;
+      const filterId = !isCustomCat && internalFilter ? internalFilter : null;
+      const selectedMeta = campaigns.filter((c) => selectedCampaignIds.includes(c.id));
+      const now = new Date().toISOString();
 
-      onSave({
+      // Caminho provado: temos conta + categoria no banco + campanhas reais →
+      // monta UserAccountEntry, persiste e dispara a ponte do Painel.
+      if (act && category?.id && selectedMeta.length > 0) {
+        const entry = await upsertUserAccountEntry({
+          categoryId: category.id,
+          label: actLabel,
+          adAccountId: act,
+          internalFilter: filterId,
+          campaigns: campaigns.map((c) => ({ id: c.id, name: c.name, status: c.status })),
+          selectedCampaignIds: selectedMeta.length < campaigns.length ? selectedCampaignIds : [],
+        });
+
+        const groupId = isCustomCat
+          ? `panel-entry-${entry.id}`
+          : mapPainelInternalFilterToDashboardGroupId(slug, filterId);
+
+        // Central: uma entry por campanha escolhida — alimenta o Perfil de Anunciantes
+        onSave(selectedMeta.map((c) => ({
+          campaignId: c.id,
+          campaignName: c.name,
+          adAccountId: act,
+          adAccountLabel: actLabel,
+          intent,
+          resultType,
+          groupId,
+          monthlyBudget,
+          goals,
+          enabled: c.status === "ACTIVE",
+          autoConfigured: false,
+          updatedAt: now,
+        })));
+
+        window.dispatchEvent(new CustomEvent(PTA_PAINEL_SAVE_NAV_EVENT, {
+          detail: { entry, categorySlug: slug, isCustom: isCustomCat, syncAfter: true },
+        }));
+        onClose();
+        return;
+      }
+
+      // Fallback manual (sem token/conta/campanhas): grava só a Central, como antes.
+      onSave([{
         campaignId: `manual-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
         campaignName: name.trim(),
-        adAccountId: act,
+        adAccountId: act || "manual",
         adAccountLabel: actLabel,
         intent,
         resultType,
-        groupId: categorySlug,
-        monthlyBudget: isNaN(b) || b <= 0 ? null : b,
+        groupId: isCustomCat ? slug : (filterId ? mapPainelInternalFilterToDashboardGroupId(slug, filterId) : slug),
+        monthlyBudget,
         goals,
         enabled: true,
         autoConfigured: false,
-        updatedAt: new Date().toISOString(),
-      });
+        updatedAt: now,
+      }]);
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao salvar a campanha.");
@@ -144,7 +240,7 @@ export function CampaignWizard({ onClose, onSave, nameSuggestions = [] }: {
               Conectar conta
             </h3>
             <p className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
-              Passo {step} de 2 — {step === 1 ? "identificação" : "objetivo & metas"}
+              Passo {step} de 2 — {step === 1 ? "conexão" : "objetivo & metas"}
             </p>
           </div>
         </div>
@@ -196,22 +292,6 @@ export function CampaignWizard({ onClose, onSave, nameSuggestions = [] }: {
               )}
             </label>
 
-            <label className="flex flex-col gap-1.5">
-              <span className={labelCls} style={{ color: "var(--dm-text-tertiary)" }}>Conta de anúncio (opcional)</span>
-              <input type="text" value={actId} onChange={(e) => setActId(e.target.value)}
-                list="dm-wiz-act"
-                placeholder="Escolha uma conta ★ ou digite o ACT (act_123…)"
-                className={fieldCls} style={{ ...fieldStyle, background: "var(--dm-bg-surface)" }} />
-              <datalist id="dm-wiz-act">
-                {suggested.map((s) => <option key={s.id} value={s.id}>{s.label ? `★ ${s.label}` : s.id}</option>)}
-              </datalist>
-              <span className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
-                {suggested.length > 0
-                  ? "★ contas registradas desta empresa — ou escreva o ID na mão"
-                  : "Opcional — escreva o ID da conta (act_…) se quiser amarrar a campanha a ela"}
-              </span>
-            </label>
-
             <div className="flex flex-col gap-2">
               <span className={labelCls} style={{ color: "var(--dm-text-tertiary)" }}>Em qual categoria deve aparecer</span>
               <div className="flex flex-wrap gap-2">
@@ -219,7 +299,7 @@ export function CampaignWizard({ onClose, onSave, nameSuggestions = [] }: {
                   const active = !newCat.trim() && catSlug === c.slug;
                   return (
                     <button key={c.id} type="button"
-                      onClick={() => { setCatSlug(c.slug); setNewCat(""); setCreatingCat(false); }}
+                      onClick={() => { setCatSlug(c.slug); setNewCat(""); setCreatingCat(false); setInternalFilter(""); }}
                       className="flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition hover:opacity-80"
                       style={{
                         borderColor: active ? "var(--dm-primary)" : "var(--dm-border-default)",
@@ -230,7 +310,7 @@ export function CampaignWizard({ onClose, onSave, nameSuggestions = [] }: {
                     </button>
                   );
                 })}
-                <button type="button" onClick={() => { setCreatingCat(true); setCatSlug(""); }}
+                <button type="button" onClick={() => { setCreatingCat(true); setCatSlug(""); setInternalFilter(""); }}
                   className="flex items-center gap-1.5 rounded-full border border-dashed px-3 py-1.5 text-xs font-semibold transition hover:opacity-80"
                   style={{
                     borderColor: creatingCat || newCat.trim() ? "var(--dm-primary)" : "var(--dm-border-default)",
@@ -245,6 +325,87 @@ export function CampaignWizard({ onClose, onSave, nameSuggestions = [] }: {
                   className={fieldCls} style={{ ...fieldStyle, background: "var(--dm-bg-surface)", marginTop: 4 }} autoFocus />
               )}
             </div>
+
+            {/* Filtro específico do dashboard — só para categorias fixas */}
+            {needsFilter && (
+              <div className="flex flex-col gap-2">
+                <span className={labelCls} style={{ color: "var(--dm-text-tertiary)" }}>Em qual filtro do dashboard</span>
+                <div className="flex flex-wrap gap-2">
+                  {filterOptions.map((opt) => {
+                    const active = internalFilter === opt.id;
+                    return (
+                      <button key={opt.id} type="button" onClick={() => setInternalFilter(opt.id)}
+                        className="rounded-full border px-3 py-1.5 text-xs font-semibold transition hover:opacity-80"
+                        style={{
+                          borderColor: active ? "var(--dm-primary)" : "var(--dm-border-default)",
+                          background: active ? "rgba(22,163,74,0.12)" : "var(--dm-bg-surface)",
+                          color: active ? "var(--dm-primary)" : "var(--dm-text-secondary)",
+                        }}>
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <label className="flex flex-col gap-1.5">
+              <span className={labelCls} style={{ color: "var(--dm-text-tertiary)" }}>Conta de anúncio</span>
+              <div className="flex gap-2">
+                <input type="text" value={actId} onChange={(e) => setActId(e.target.value)}
+                  list="dm-wiz-act"
+                  placeholder="Escolha uma conta ★ ou digite o ACT (act_123…)"
+                  className={`${fieldCls} flex-1`} style={{ ...fieldStyle, background: "var(--dm-bg-surface)" }} />
+                <button type="button" onClick={() => void handleFetchCampaigns()} disabled={fetchingCampaigns || !actId.trim()}
+                  className="flex items-center gap-1.5 rounded-[10px] border px-3 text-xs font-bold transition hover:opacity-80 disabled:opacity-40"
+                  style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)", background: "var(--dm-bg-surface)" }}>
+                  {fetchingCampaigns ? <Loader2 size={13} className="animate-spin" /> : <Search size={13} />}
+                  Buscar campanhas
+                </button>
+              </div>
+              <datalist id="dm-wiz-act">
+                {suggested.map((s) => <option key={s.id} value={s.id}>{s.label ? `★ ${s.label}` : s.id}</option>)}
+              </datalist>
+              <span className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                Busque as campanhas reais da conta para puxar as métricas do Meta no filtro escolhido.
+              </span>
+            </label>
+
+            {fetchError && (
+              <p className="rounded-lg border px-3 py-2 text-[11px]" style={{ borderColor: "rgba(238,93,80,0.4)", background: "rgba(238,93,80,0.08)", color: "#EE5D50" }}>{fetchError}</p>
+            )}
+
+            {/* Checklist de campanhas reais */}
+            {campaigns.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <span className={labelCls} style={{ color: "var(--dm-text-tertiary)" }}>
+                    Campanhas ({selectedCampaignIds.length}/{campaigns.length})
+                  </span>
+                  <button type="button" onClick={toggleAllCampaigns}
+                    className="text-[11px] font-semibold transition hover:opacity-80" style={{ color: "var(--dm-primary)" }}>
+                    {selectedCampaignIds.length === campaigns.length ? "Limpar" : "Selecionar todas"}
+                  </button>
+                </div>
+                <div className="flex max-h-48 flex-col gap-1 overflow-y-auto rounded-xl border p-1.5" style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)" }}>
+                  {campaigns.map((c) => {
+                    const checked = selectedCampaignIds.includes(c.id);
+                    return (
+                      <button key={c.id} type="button" onClick={() => toggleCampaign(c.id)}
+                        className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition hover:opacity-80"
+                        style={{ background: checked ? "rgba(22,163,74,0.10)" : "transparent" }}>
+                        <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border"
+                          style={{ borderColor: checked ? "var(--dm-primary)" : "var(--dm-border-default)", background: checked ? "var(--dm-primary)" : "transparent" }}>
+                          {checked && <Check size={11} className="text-white" />}
+                        </span>
+                        <span className="flex-1 truncate text-xs font-medium" style={{ color: "var(--dm-text-primary)" }}>{c.name}</span>
+                        <span className="text-[10px] font-bold uppercase" style={{ color: c.status === "ACTIVE" ? "#16A34A" : "var(--dm-text-tertiary)" }}>{c.status}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div className="flex flex-col gap-5">
@@ -252,6 +413,9 @@ export function CampaignWizard({ onClose, onSave, nameSuggestions = [] }: {
             <div className="flex flex-wrap items-center gap-2 rounded-xl border p-3" style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-elevated)" }}>
               <span className="text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>{name.trim() || "Campanha"}</span>
               <span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: "rgba(22,163,74,0.12)", color: "var(--dm-primary)" }}>{catLabel}</span>
+              {selectedCampaignIds.length > 0 && (
+                <span className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>{selectedCampaignIds.length} campanha(s) do Meta</span>
+              )}
               {actId && <span className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>★ {suggested.find((s) => normAct(s.id) === normAct(actId))?.label ?? actId}</span>}
             </div>
 

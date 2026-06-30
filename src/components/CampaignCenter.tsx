@@ -670,7 +670,7 @@ export function CampaignCenter({ onConnectingChange }: { onConnectingChange?: (c
     return (
       <CampaignWizard
         onClose={() => setShowConnect(false)}
-        onSave={(entry) => upsertEntries([entry])}
+        onSave={(newEntries) => upsertEntries(newEntries)}
         nameSuggestions={[...new Set(entries.map((e) => e.campaignName.trim()).filter(Boolean))]}
       />
     );
