@@ -685,7 +685,7 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
                   {utmEntries.length > 0 && (
                     <div className="mt-1.5 flex flex-wrap gap-1">
                       {utmEntries.map(([k, v]) => (
-                        <span key={k} className="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] dark:bg-slate-700" style={{ color: "var(--dm-text-tertiary)" }}>
+                        <span key={k} className="rounded px-1.5 py-0.5 text-[9px]" style={{ color: "var(--dm-text-tertiary)", background: "var(--dm-bg-elevated)" }}>
                           {k.replace("utm_", "")}: <strong style={{ color: "var(--dm-text-secondary)" }}>{v}</strong>
                         </span>
                       ))}
@@ -1043,8 +1043,8 @@ export function TrackingEventsView() {
   return (
     <div className="flex flex-col h-full p-4 sm:p-6 overflow-y-auto">
       {/* Header */}
-      <div className="mb-5 flex items-start justify-between gap-3">
-        <div>
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
           <h2 className="text-lg font-bold" style={{ color: "var(--dm-text-primary)" }}>
             Eventos de Tracking
           </h2>
@@ -1058,9 +1058,9 @@ export function TrackingEventsView() {
             {eventsCapped && <span style={{ color: "#d97706" }}> · mostrando os {EVENTS_LIMIT} mais recentes (estreite o período pra ver tudo)</span>}
           </p>
         </div>
-        <div className="flex flex-shrink-0 items-center gap-2">
+        <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
           {/* Alternador Visitantes | Analytics | Funis */}
-          <div className="flex gap-0.5 rounded-lg border p-0.5" style={{ borderColor: "var(--dm-border-default)" }}>
+          <div className="flex flex-1 gap-0.5 rounded-lg border p-0.5 sm:flex-none" style={{ borderColor: "var(--dm-border-default)" }}>
             {([
               ["visitors", "Visitantes", Table2],
               ["analytics", "Analytics", BarChart3],
@@ -1070,7 +1070,7 @@ export function TrackingEventsView() {
                 key={v}
                 type="button"
                 onClick={() => setView(v)}
-                className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-bold transition"
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-bold transition sm:flex-none"
                 style={view === v
                   ? { background: "linear-gradient(135deg,#22C55E 0%,#16A34A 100%)", color: "#fff" }
                   : { color: "var(--dm-text-tertiary)" }}
@@ -1356,9 +1356,9 @@ export function TrackingEventsView() {
         />
       )}
 
-      {/* Table — 1 linha por visitante */}
+      {/* Table — 1 linha por visitante (desktop ≥ md) */}
       {view === "visitors" && filteredVisitors.length > 0 && (
-        <div className="overflow-x-auto rounded-2xl border" style={{ borderColor: "var(--dm-border-default)" }}>
+        <div className="hidden overflow-x-auto rounded-2xl border md:block" style={{ borderColor: "var(--dm-border-default)" }}>
           <table className="w-full min-w-[680px] text-xs">
             <thead>
               <tr style={{ borderBottom: "1px solid var(--dm-border-default)", background: "var(--dm-bg-elevated)" }}>
@@ -1380,6 +1380,8 @@ export function TrackingEventsView() {
                 const device = parseUserAgent(visitor.lastUserAgent);
                 const os = parseOS(visitor.lastUserAgent);
                 const browser = parseBrowser(visitor.lastUserAgent);
+                const email = visitor.leadEmail ?? visitor.anyEmail;
+                const dotColor = visitor.isCustomer ? "#16A34A" : visitor.isLead ? "var(--dm-primary)" : "var(--dm-border-strong)";
                 return (
                   <tr
                     key={visitor.fingerprintId}
@@ -1390,8 +1392,15 @@ export function TrackingEventsView() {
                       background: i % 2 === 0 ? "var(--dm-bg-surface)" : "var(--dm-bg-card)",
                     }}
                   >
-                    <td className="px-4 py-2.5 font-mono text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
-                      {visitor.fingerprintId.slice(0, 12)}…
+                    <td className="px-4 py-2.5">
+                      <div className="flex items-center gap-2">
+                        <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ background: dotColor }} title={visitor.isCustomer ? "Cliente" : visitor.isLead ? "Lead" : "Visitante"} />
+                        {email ? (
+                          <span className="block truncate text-[11px] font-medium" style={{ color: "var(--dm-text-secondary)", maxWidth: 170 }} title={email}>{email}</span>
+                        ) : (
+                          <span className="font-mono text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>{visitor.fingerprintId.slice(0, 12)}…</span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-2.5 tabular-nums whitespace-nowrap" style={{ color: "var(--dm-text-secondary)" }} title={relativeTime(visitor.lastSeen)}>
                       {fmt(visitor.lastSeen)}
@@ -1403,7 +1412,7 @@ export function TrackingEventsView() {
                       {utmEntries.length > 0 ? (
                         <div className="flex flex-wrap gap-1">
                           {utmEntries.slice(0, 2).map(([k, v]) => (
-                            <span key={k} className="truncate rounded bg-slate-100 px-1.5 py-0.5 text-[9px] dark:bg-slate-700" style={{ color: "var(--dm-text-tertiary)", maxWidth: 130 }}>
+                            <span key={k} className="truncate rounded px-1.5 py-0.5 text-[9px]" style={{ color: "var(--dm-text-tertiary)", background: "var(--dm-bg-elevated)", maxWidth: 130 }}>
                               {v}
                             </span>
                           ))}
@@ -1486,6 +1495,70 @@ export function TrackingEventsView() {
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Cards — 1 por visitante (mobile < md) */}
+      {view === "visitors" && filteredVisitors.length > 0 && (
+        <div className="flex flex-col gap-2 md:hidden">
+          {filteredVisitors.map((visitor) => {
+            const device = parseUserAgent(visitor.lastUserAgent);
+            const os = parseOS(visitor.lastUserAgent);
+            const browser = parseBrowser(visitor.lastUserAgent);
+            const meta = [os, device ? DEVICE_LABELS[device.device] : null, browser].filter(Boolean).join(" · ");
+            const loc = formatLocation(visitor.lastLocation);
+            const email = visitor.leadEmail ?? visitor.anyEmail;
+            const identity = email ?? `${visitor.fingerprintId.slice(0, 14)}…`;
+            const initial = email?.[0]?.toUpperCase() ?? "#";
+            const accent = visitor.isCustomer ? "#16A34A" : visitor.isLead ? "var(--dm-primary)" : "var(--dm-text-tertiary)";
+            const accentBg = visitor.isCustomer || visitor.isLead ? "rgba(22,163,74,0.12)" : "var(--dm-bg-elevated)";
+            return (
+              <button
+                key={visitor.fingerprintId}
+                type="button"
+                onClick={() => setSelectedVisitor(visitor)}
+                className="flex w-full items-start gap-3 rounded-xl border p-3 text-left transition active:scale-[0.99]"
+                style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)" }}
+              >
+                <span
+                  className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-[13px] font-bold"
+                  style={{ background: accentBg, color: accent }}
+                >
+                  {initial}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`min-w-0 flex-1 truncate text-[12px] font-semibold ${email ? "" : "font-mono"}`} style={{ color: "var(--dm-text-primary)" }}>
+                      {identity}
+                    </span>
+                    <span className="flex-shrink-0 text-[10px] tabular-nums" style={{ color: "var(--dm-text-tertiary)" }} title={fmt(visitor.lastSeen)}>
+                      {relativeTime(visitor.lastSeen)}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 truncate text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                    {visitor.events.length} evento{visitor.events.length !== 1 ? "s" : ""}{meta ? ` · ${meta}` : ""}
+                  </p>
+                  {loc && (
+                    <p className="mt-0.5 truncate text-[11px]" style={{ color: "var(--dm-text-secondary)" }}>{loc}</p>
+                  )}
+                  {(visitor.isLead || visitor.isCustomer) && (
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                      {visitor.isLead && (
+                        <span className="rounded-full px-2 py-0.5 text-[9px] font-semibold" style={{ background: EVENT_COLORS.Lead.bg, color: EVENT_COLORS.Lead.text }}>
+                          ✓ converteu
+                        </span>
+                      )}
+                      {visitor.isCustomer && (
+                        <span className="rounded-full px-2 py-0.5 text-[9px] font-semibold" style={{ background: EVENT_COLORS.Purchase.bg, color: EVENT_COLORS.Purchase.text }}>
+                          💰 {formatMoney(visitor.totalRevenue, visitor.events.find((e) => e.event_name === "Purchase")?.currency ?? null)}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </button>
+            );
+          })}
         </div>
       )}
 
