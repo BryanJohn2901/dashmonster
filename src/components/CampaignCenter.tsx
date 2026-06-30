@@ -314,8 +314,9 @@ function ConnectDrawer({ onClose, onImport }: {
 
   return createPortal(
     <>
-      <div className="fixed inset-0 z-40 bg-black/30 backdrop-blur-[2px]" onClick={onClose} />
-      <div className="fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l shadow-2xl sm:max-w-[460px]"
+      {/* z acima do modal de Configurações (z-[100]) — senão o drawer abria atrás e não dava pra usar */}
+      <div className="fixed inset-0 z-[130] bg-black/40 backdrop-blur-[2px]" onClick={onClose} />
+      <div className="fixed inset-y-0 right-0 z-[140] flex w-full flex-col border-l shadow-2xl sm:max-w-[460px]"
         style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
 
         {/* Header */}
