@@ -19,7 +19,12 @@ import {
   IdentidadeSection, ConexaoSection, ContasSection, HistoricoSection, TrackingSection, EquipeSection,
 } from "@/components/CompanyStudio";
 import { CampaignCenter } from "@/components/CampaignCenter";
+import { upsertUserCategory, deleteUserCategory } from "@/utils/supabaseCategories";
 import type { UserCategory } from "@/types/userConfig";
+
+const slugifyFilter = (s: string) =>
+  s.normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
 type NavId = "perfil" | "identidade" | "conexao" | "contas" | "instagram" | "filtros" | "historico" | "tracking" | "colaboradores" | "devacesso" | "criarempresa";
 
@@ -31,6 +36,7 @@ interface HubSettingsProps {
   onUpdateProfile?: (name: string) => Promise<void>;
   onSignOut?: () => void;
   categories?: UserCategory[];
+  onCategoriesChange?: (next: UserCategory[]) => void;
 }
 
 const NAV: { group: string; items: { id: NavId; label: string; icon: typeof UserRound; sub: string }[] }[] = [
@@ -56,7 +62,7 @@ const ADMIN_GROUP = { group: "Admin", items: [
   { id: "criarempresa" as NavId, label: "Criar empresa", icon: Plus, sub: "Provisionar acesso p/ novo cliente" },
 ]};
 
-export function HubSettings({ open, onClose, userName, email, onUpdateProfile, onSignOut, categories = [] }: HubSettingsProps) {
+export function HubSettings({ open, onClose, userName, email, onUpdateProfile, onSignOut, categories = [], onCategoriesChange }: HubSettingsProps) {
   const [nav, setNav] = useState<NavId>("perfil");
   const { isSuperAdmin } = useCompany();
   const { active: devActive } = useDevMode();
@@ -143,7 +149,7 @@ export function HubSettings({ open, onClose, userName, email, onUpdateProfile, o
               ? <DevAccessSection />
               : nav === "criarempresa"
               ? <CriarEmpresaSection />
-              : <EmpresaSections nav={nav} categories={categories} />}
+              : <EmpresaSections nav={nav} categories={categories} onCategoriesChange={onCategoriesChange} />}
           </div>
         </div>
       </div>
@@ -571,7 +577,7 @@ function CriarEmpresaSection() {
 
 // ─── Seções de empresa (reuso da lógica do CompanyStudio) ───────────────────────
 
-function EmpresaSections({ nav, categories }: { nav: NavId; categories: UserCategory[] }) {
+function EmpresaSections({ nav, categories, onCategoriesChange }: { nav: NavId; categories: UserCategory[]; onCategoriesChange?: (next: UserCategory[]) => void }) {
   const { company, role, isOwner, canWrite, loading, memberships, switchCompany } = useCompany();
   const [token, setToken] = useState("");
   const [members, setMembers] = useState<CompanyMember[] | null>(null);
@@ -588,7 +594,6 @@ function EmpresaSections({ nav, categories }: { nav: NavId; categories: UserCate
 
   const suggestions = useMemo(() => readAdAccountSuggestions(company?.settings), [company?.settings]);
   const customTabs = useMemo(() => readCustomHistoryTabs(company?.settings), [company?.settings]);
-  const enabledFilters = categories.filter((c) => c.isEnabled);
   const totalTabs = 4 + customTabs.length; // 4 tipos padrão + customizadas
 
   if (loading) {
@@ -642,21 +647,7 @@ function EmpresaSections({ nav, categories }: { nav: NavId; categories: UserCate
       case "colaboradores":
         return <EquipeSection company={company} canEdit={isOwner} members={members} setMembers={setMembers} open onToggle={noop} variant="panel" />;
       case "filtros":
-        return (
-          <div className="rounded-2xl border p-5" style={{ background: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
-            <p className="mb-1 text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>Filtros ativos</p>
-            <p className="mb-4 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>Filtros habilitados aparecem no dashboard. Gerencie-os na aba de filtros do dashboard.</p>
-            <div className="flex flex-wrap gap-1.5">
-              {enabledFilters.length === 0
-                ? <span className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>Nenhum filtro habilitado.</span>
-                : enabledFilters.map((f) => (
-                    <span key={f.id} className="flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold" style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>
-                      <span>{f.emoji ?? "🏷️"}</span> {f.name}
-                    </span>
-                  ))}
-            </div>
-          </div>
-        );
+        return <FiltrosEditor categories={categories} canEdit={canWrite} onChange={onCategoriesChange} />;
       default:
         return null;
     }
@@ -666,6 +657,167 @@ function EmpresaSections({ nav, categories }: { nav: NavId; categories: UserCate
     <div className="space-y-4">
       <CompanyContextBar company={company} role={role} memberships={memberships} switchCompany={switchCompany} />
       {section}
+    </div>
+  );
+}
+
+// ─── Editor de filtros (categorias) por empresa ─────────────────────────────────
+// Antes era só leitura. Agora cria/renomeia/ativa/exclui filtros e propaga via
+// onCategoriesChange → o dashboard da empresa selecionada reflete na hora.
+// Categorias fixas (Pós, Eventos…) não podem ser excluídas, só renomeadas/desativadas.
+function FiltrosEditor({ categories, canEdit, onChange }: {
+  categories: UserCategory[];
+  canEdit: boolean;
+  onChange?: (next: UserCategory[]) => void;
+}) {
+  const [cats, setCats] = useState<UserCategory[]>(categories);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCats(categories);
+  }, [categories]);
+
+  const [newName, setNewName] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const commit = (next: UserCategory[]) => { setCats(next); onChange?.(next); };
+
+  const persist = (cat: UserCategory) => upsertUserCategory({
+    id: cat.id, slug: cat.slug, name: cat.name, type: cat.type,
+    emoji: cat.emoji, position: cat.position, isEnabled: cat.isEnabled,
+  });
+
+  const handleAdd = async () => {
+    const nm = newName.trim();
+    if (!nm) return;
+    setBusyId("__new__");
+    try {
+      const created = await upsertUserCategory({
+        slug: slugifyFilter(nm) || `filtro-${Date.now()}`,
+        name: nm, type: "custom", position: cats.length, isEnabled: true,
+      });
+      commit([...cats.filter((c) => c.id !== created.id), created]);
+      setNewName(""); setAdding(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao criar filtro.");
+    } finally { setBusyId(null); }
+  };
+
+  const handleToggle = async (cat: UserCategory) => {
+    const updated = { ...cat, isEnabled: !cat.isEnabled };
+    const next = cats.map((c) => (c.id === cat.id ? updated : c));
+    commit(next);
+    setBusyId(cat.id);
+    try { await persist(updated); }
+    catch (e) { commit(cats); toast.error(e instanceof Error ? e.message : "Erro ao salvar."); }
+    finally { setBusyId(null); }
+  };
+
+  const handleRename = async (cat: UserCategory) => {
+    const nm = editName.trim();
+    setEditingId(null);
+    if (!nm || nm === cat.name) return;
+    const updated = { ...cat, name: nm };
+    const next = cats.map((c) => (c.id === cat.id ? updated : c));
+    commit(next);
+    setBusyId(cat.id);
+    try { await persist(updated); }
+    catch (e) { commit(cats); toast.error(e instanceof Error ? e.message : "Erro ao renomear."); }
+    finally { setBusyId(null); }
+  };
+
+  const handleDelete = async (cat: UserCategory) => {
+    const next = cats.filter((c) => c.id !== cat.id);
+    commit(next);
+    setBusyId(cat.id);
+    try { await deleteUserCategory(cat.id); }
+    catch (e) { commit(cats); toast.error(e instanceof Error ? e.message : "Erro ao excluir."); }
+    finally { setBusyId(null); }
+  };
+
+  return (
+    <div className="rounded-2xl border p-5" style={{ background: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <p className="text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>Filtros do dashboard</p>
+        {canEdit && !adding && (
+          <button type="button" onClick={() => setAdding(true)}
+            className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-bold transition hover:opacity-80"
+            style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-primary)" }}>
+            <Plus size={13} /> Novo filtro
+          </button>
+        )}
+      </div>
+      <p className="mb-4 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
+        Ativos aparecem no dashboard desta empresa. {canEdit ? "Crie, renomeie, ative/desative ou exclua." : "Somente o dono/gestor pode editar."}
+      </p>
+
+      {adding && (
+        <div className="mb-3 flex gap-2">
+          <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void handleAdd(); } if (e.key === "Escape") { setAdding(false); setNewName(""); } }}
+            placeholder="ex: Pós, Eventos, Mentoria…" autoFocus
+            className="h-10 flex-1 rounded-[10px] border px-3 text-sm outline-none transition focus:ring-1"
+            style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }} />
+          <button type="button" onClick={() => void handleAdd()} disabled={!newName.trim() || busyId === "__new__"}
+            className="flex items-center gap-1.5 rounded-[10px] px-3 text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-40"
+            style={{ background: "var(--dm-btn-primary-bg)" }}>
+            {busyId === "__new__" ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />} Criar
+          </button>
+          <button type="button" onClick={() => { setAdding(false); setNewName(""); }}
+            className="rounded-[10px] border px-3 text-xs font-semibold transition hover:opacity-80"
+            style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>Cancelar</button>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-1.5">
+        {cats.length === 0 && (
+          <span className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>Nenhum filtro ainda. Crie o primeiro.</span>
+        )}
+        {cats.map((f) => {
+          const editing = editingId === f.id;
+          const busy = busyId === f.id;
+          return (
+            <div key={f.id} className="flex items-center gap-2 rounded-xl border px-3 py-2"
+              style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-elevated)", opacity: f.isEnabled ? 1 : 0.55 }}>
+              <span className="text-base">{f.emoji ?? "🏷️"}</span>
+              {editing ? (
+                <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void handleRename(f); } if (e.key === "Escape") setEditingId(null); }}
+                  onBlur={() => void handleRename(f)} autoFocus
+                  className="h-8 flex-1 rounded-lg border px-2 text-sm outline-none"
+                  style={{ borderColor: "var(--dm-primary)", background: "var(--dm-bg-surface)", color: "var(--dm-text-primary)" }} />
+              ) : (
+                <span className="flex-1 truncate text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>{f.name}</span>
+              )}
+              {f.type === "fixed" && (
+                <span className="rounded-full px-2 py-0.5 text-[9px] font-bold" style={{ background: "rgba(100,116,139,0.14)", color: "var(--dm-text-tertiary)" }}>padrão</span>
+              )}
+              {busy && <Loader2 size={13} className="animate-spin" style={{ color: "var(--dm-text-tertiary)" }} />}
+              {canEdit && !editing && (
+                <>
+                  <button type="button" onClick={() => void handleToggle(f)} title={f.isEnabled ? "Desativar" : "Ativar"}
+                    className="rounded-md px-2 py-1 text-[10px] font-bold transition hover:opacity-80"
+                    style={{ color: f.isEnabled ? "var(--dm-primary)" : "var(--dm-text-tertiary)" }}>
+                    {f.isEnabled ? "Ativo" : "Inativo"}
+                  </button>
+                  <button type="button" onClick={() => { setEditingId(f.id); setEditName(f.name); }} title="Renomear"
+                    className="flex h-7 w-7 items-center justify-center rounded-md transition hover:opacity-70" style={{ color: "var(--dm-text-tertiary)" }}>
+                    <SlidersHorizontal size={13} />
+                  </button>
+                  {f.type === "custom" && (
+                    <button type="button" onClick={() => void handleDelete(f)} title="Excluir"
+                      className="flex h-7 w-7 items-center justify-center rounded-md transition hover:opacity-70" style={{ color: "#EE5D50" }}>
+                      <Trash2 size={13} />
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -3665,6 +3665,7 @@ export function Dashboard({
         onUpdateProfile={onUpdateProfile}
         onSignOut={onSignOut}
         categories={categories}
+        onCategoriesChange={onCategoriesChange}
       />
 
       {pickCategoryOpen && (

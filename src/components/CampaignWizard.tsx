@@ -19,15 +19,22 @@ import {
 import type { ResultType } from "@/hooks/useAdvertiserStore";
 import { RESULT_TYPE_OPTIONS } from "@/components/ProfileAnalysis";
 import { useCompany, readAdAccountSuggestions } from "@/hooks/useCompany";
-import { fetchUserCategories, upsertUserCategory, upsertUserAccountEntry } from "@/utils/supabaseCategories";
-import { getInternalFiltersForCategorySlug } from "@/config/categoryInternalFilters";
+import { fetchUserCategories, upsertUserCategory, upsertUserAccountEntry, fetchUserAccountEntries } from "@/utils/supabaseCategories";
+import {
+  getInternalFiltersForCategorySlug,
+  createCustomInternalFilterId,
+  isCustomInternalFilterId,
+  parseCustomInternalFilterId,
+  getCustomInternalFilterLabel,
+  type CategoryInternalFilterOption,
+} from "@/config/categoryInternalFilters";
 import { fetchMetaCampaigns, loadMetaCredentials, type MetaCampaign } from "@/utils/metaApi";
 import {
   PTA_PAINEL_SAVE_NAV_EVENT,
   mapPainelInternalFilterToDashboardGroupId,
 } from "@/utils/painelDashboardNavigation";
 import { FIXED_CATEGORIES } from "@/types/userConfig";
-import type { UserCategory } from "@/types/userConfig";
+import type { UserCategory, UserAccountEntry } from "@/types/userConfig";
 
 const FIXED_SLUGS = new Set(FIXED_CATEGORIES.map((c) => c.slug));
 
@@ -68,6 +75,12 @@ export function CampaignWizard({ onClose, onSave, nameSuggestions = [] }: {
   const [newCat, setNewCat] = useState("");     // nome de categoria nova (se preenchido, tem prioridade)
   const [creatingCat, setCreatingCat] = useState(false);
   const [internalFilter, setInternalFilter] = useState(""); // filtro específico do dashboard (bm, mentoria-scala…)
+  const [creatingFilter, setCreatingFilter] = useState(false);
+  const [newFilter, setNewFilter] = useState("");
+  const [accountEntries, setAccountEntries] = useState<UserAccountEntry[]>([]);
+  useEffect(() => {
+    void fetchUserAccountEntries().then(setAccountEntries).catch(() => {});
+  }, []);
   const [actId, setActId] = useState("");
   const [intent, setIntent] = useState<CampaignIntent>(INTENT_OPTIONS[0].value);
   const [resultType, setResultType] = useState<ResultType>(INTENT_META[INTENT_OPTIONS[0].value].defaultResultTypes[0]);
@@ -87,11 +100,42 @@ export function CampaignWizard({ onClose, onSave, nameSuggestions = [] }: {
 
   // Categoria custom = nova OU slug fora das 5 fixas → sem filtro interno (usa panel-entry)
   const isCustomCat = Boolean(newCat.trim()) || (Boolean(catSlug) && !FIXED_SLUGS.has(catSlug));
-  const filterOptions = useMemo(
-    () => (!isCustomCat && catSlug ? getInternalFiltersForCategorySlug(catSlug) : []),
-    [isCustomCat, catSlug],
-  );
-  const needsFilter = filterOptions.length > 0;
+  // Filtros custom já criados nesta categoria (derivados das entries) + os recém-criados aqui.
+  const customFilters = useMemo<CategoryInternalFilterOption[]>(() => {
+    if (isCustomCat || !catSlug) return [];
+    const seen = new Set<string>();
+    return accountEntries
+      .map((e) => e.internalFilter)
+      .filter(isCustomInternalFilterId)
+      .map((id) => {
+        const parsed = parseCustomInternalFilterId(id);
+        if (!parsed || parsed.categorySlug !== catSlug || seen.has(id)) return null;
+        seen.add(id);
+        return { id, label: getCustomInternalFilterLabel(id) ?? parsed.label };
+      })
+      .filter(Boolean) as CategoryInternalFilterOption[];
+  }, [accountEntries, isCustomCat, catSlug]);
+
+  const filterOptions = useMemo(() => {
+    if (isCustomCat || !catSlug) return [];
+    const builtins = getInternalFiltersForCategorySlug(catSlug);
+    const ids = new Set(builtins.map((o) => o.id));
+    // inclui o filtro recém-selecionado mesmo que ainda não esteja nas entries
+    const extra = customFilters.filter((o) => !ids.has(o.id));
+    if (isCustomInternalFilterId(internalFilter) && !extra.some((o) => o.id === internalFilter)) {
+      extra.push({ id: internalFilter, label: getCustomInternalFilterLabel(internalFilter) ?? internalFilter });
+    }
+    return [...builtins, ...extra];
+  }, [isCustomCat, catSlug, customFilters, internalFilter]);
+  const needsFilter = !isCustomCat && Boolean(catSlug);
+
+  const createFilter = () => {
+    const nm = newFilter.trim();
+    if (!nm || !catSlug) return;
+    setInternalFilter(createCustomInternalFilterId(catSlug, nm));
+    setNewFilter("");
+    setCreatingFilter(false);
+  };
   const filterReady = !needsFilter || Boolean(internalFilter);
 
   const canNext = name.trim().length > 0 && catLabel.length > 0 && filterReady;
@@ -333,19 +377,42 @@ export function CampaignWizard({ onClose, onSave, nameSuggestions = [] }: {
                 <div className="flex flex-wrap gap-2">
                   {filterOptions.map((opt) => {
                     const active = internalFilter === opt.id;
+                    const custom = isCustomInternalFilterId(opt.id);
                     return (
                       <button key={opt.id} type="button" onClick={() => setInternalFilter(opt.id)}
-                        className="rounded-full border px-3 py-1.5 text-xs font-semibold transition hover:opacity-80"
+                        className="flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-semibold transition hover:opacity-80"
                         style={{
                           borderColor: active ? "var(--dm-primary)" : "var(--dm-border-default)",
                           background: active ? "rgba(22,163,74,0.12)" : "var(--dm-bg-surface)",
                           color: active ? "var(--dm-primary)" : "var(--dm-text-secondary)",
                         }}>
+                        {custom && <span style={{ opacity: 0.7 }}>✦</span>}
                         {opt.label}
                       </button>
                     );
                   })}
+                  <button type="button" onClick={() => setCreatingFilter(true)}
+                    className="flex items-center gap-1 rounded-full border border-dashed px-3 py-1.5 text-xs font-semibold transition hover:opacity-80"
+                    style={{
+                      borderColor: creatingFilter ? "var(--dm-primary)" : "var(--dm-border-default)",
+                      color: creatingFilter ? "var(--dm-primary)" : "var(--dm-text-tertiary)",
+                    }}>
+                    <Plus size={12} /> Novo filtro
+                  </button>
                 </div>
+                {creatingFilter && (
+                  <div className="flex gap-2">
+                    <input type="text" value={newFilter} onChange={(e) => setNewFilter(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); createFilter(); } }}
+                      placeholder="ex: Turma Janeiro, Black Friday…"
+                      className={`${fieldCls} flex-1`} style={{ ...fieldStyle, background: "var(--dm-bg-surface)" }} autoFocus />
+                    <button type="button" onClick={createFilter} disabled={!newFilter.trim()}
+                      className="flex items-center gap-1.5 rounded-[10px] px-3 text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-40"
+                      style={{ background: "var(--dm-btn-primary-bg)" }}>
+                      <Check size={13} /> Criar
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
