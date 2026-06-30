@@ -37,9 +37,10 @@ const slugify = (s: string) =>
 
 const normAct = (id: string) => `act_${id.replace(/^act_/, "")}`;
 
-export function CampaignWizard({ onClose, onSave }: {
+export function CampaignWizard({ onClose, onSave, nameSuggestions = [] }: {
   onClose: () => void;
   onSave: (entry: CampaignCenterEntry) => void;
+  nameSuggestions?: string[];
 }) {
   const { company } = useCompany();
   const suggested = useMemo(() => readAdAccountSuggestions(company?.settings), [company?.settings]);
@@ -165,24 +166,51 @@ export function CampaignWizard({ onClose, onSave }: {
       {/* Body */}
       <div className="flex-1 overflow-y-auto">
         {step === 1 ? (
-          <div className="flex flex-col gap-5">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="flex flex-col gap-1.5">
-                <span className={labelCls} style={{ color: "var(--dm-text-tertiary)" }}>Nome da campanha</span>
-                <input type="text" value={name} onChange={(e) => setName(e.target.value)}
-                  placeholder="ex: Biomecânica, Musculação, Mentoria Scala"
-                  className={fieldCls} style={fieldStyle} autoFocus />
-              </label>
-              <label className="flex flex-col gap-1.5">
-                <span className={labelCls} style={{ color: "var(--dm-text-tertiary)" }}>Conta de anúncio (opcional)</span>
-                <select value={actId} onChange={(e) => setActId(e.target.value)} className={fieldCls} style={fieldStyle}>
-                  <option value="">Sem conta específica</option>
-                  {suggested.map((s) => (
-                    <option key={s.id} value={s.id}>★ {s.label || s.id}</option>
-                  ))}
-                </select>
-              </label>
-            </div>
+          <div className="mx-auto flex w-full max-w-2xl flex-col gap-5 rounded-2xl border p-5 sm:p-6" style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-elevated)" }}>
+            <label className="flex flex-col gap-1.5">
+              <span className={labelCls} style={{ color: "var(--dm-text-tertiary)" }}>Nome da campanha</span>
+              <input type="text" value={name} onChange={(e) => setName(e.target.value)}
+                list="dm-wiz-names"
+                placeholder="ex: Biomecânica, Musculação, Mentoria Scala"
+                className={fieldCls} style={{ ...fieldStyle, background: "var(--dm-bg-surface)" }} autoFocus />
+              <datalist id="dm-wiz-names">
+                {nameSuggestions.map((n) => <option key={n} value={n} />)}
+              </datalist>
+              {nameSuggestions.length > 0 && (
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {nameSuggestions.slice(0, 10).map((n) => {
+                    const active = name.trim() === n;
+                    return (
+                      <button key={n} type="button" onClick={() => setName(n)}
+                        className="rounded-full border px-2.5 py-1 text-[11px] font-medium transition hover:opacity-80"
+                        style={{
+                          borderColor: active ? "var(--dm-primary)" : "var(--dm-border-default)",
+                          color: active ? "var(--dm-primary)" : "var(--dm-text-secondary)",
+                          background: active ? "rgba(22,163,74,0.10)" : "transparent",
+                        }}>
+                        {n}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </label>
+
+            <label className="flex flex-col gap-1.5">
+              <span className={labelCls} style={{ color: "var(--dm-text-tertiary)" }}>Conta de anúncio (opcional)</span>
+              <input type="text" value={actId} onChange={(e) => setActId(e.target.value)}
+                list="dm-wiz-act"
+                placeholder="Escolha uma conta ★ ou digite o ACT (act_123…)"
+                className={fieldCls} style={{ ...fieldStyle, background: "var(--dm-bg-surface)" }} />
+              <datalist id="dm-wiz-act">
+                {suggested.map((s) => <option key={s.id} value={s.id}>{s.label ? `★ ${s.label}` : s.id}</option>)}
+              </datalist>
+              <span className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                {suggested.length > 0
+                  ? "★ contas registradas desta empresa — ou escreva o ID na mão"
+                  : "Opcional — escreva o ID da conta (act_…) se quiser amarrar a campanha a ela"}
+              </span>
+            </label>
 
             <div className="flex flex-col gap-2">
               <span className={labelCls} style={{ color: "var(--dm-text-tertiary)" }}>Em qual categoria deve aparecer</span>
@@ -195,7 +223,7 @@ export function CampaignWizard({ onClose, onSave }: {
                       className="flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition hover:opacity-80"
                       style={{
                         borderColor: active ? "var(--dm-primary)" : "var(--dm-border-default)",
-                        background: active ? "rgba(22,163,74,0.12)" : "var(--dm-bg-elevated)",
+                        background: active ? "rgba(22,163,74,0.12)" : "var(--dm-bg-surface)",
                         color: active ? "var(--dm-primary)" : "var(--dm-text-secondary)",
                       }}>
                       <span>{c.emoji ?? "🏷️"}</span> {c.name}
@@ -214,7 +242,7 @@ export function CampaignWizard({ onClose, onSave }: {
               {(creatingCat || newCat.trim()) && (
                 <input type="text" value={newCat} onChange={(e) => setNewCat(e.target.value)}
                   placeholder="ex: Pós, Eventos, Perpétuo, Livros…"
-                  className={fieldCls} style={{ ...fieldStyle, marginTop: 4 }} autoFocus />
+                  className={fieldCls} style={{ ...fieldStyle, background: "var(--dm-bg-surface)", marginTop: 4 }} autoFocus />
               )}
             </div>
           </div>
