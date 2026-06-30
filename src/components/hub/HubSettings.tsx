@@ -575,6 +575,8 @@ function EmpresaSections({ nav, categories }: { nav: NavId; categories: UserCate
   const { company, role, isOwner, canWrite, loading, memberships, switchCompany } = useCompany();
   const [token, setToken] = useState("");
   const [members, setMembers] = useState<CompanyMember[] | null>(null);
+  // Conectar conta abre o wizard ocupando a janela — esconde sugestões/cabeçalho.
+  const [connecting, setConnecting] = useState(false);
 
   useEffect(() => {
     if (!company) return;
@@ -617,14 +619,18 @@ function EmpresaSections({ nav, categories }: { nav: NavId; categories: UserCate
       case "contas":
         return (
           <div className="space-y-4">
-            <ContasSection company={company} canEdit={isOwner} suggestions={suggestions} open onToggle={noop} variant="panel" />
-            <div className="rounded-2xl border p-5" style={{ background: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
-              <p className="mb-1 text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>Acoplar conta a um filtro</p>
-              <p className="mb-4 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
-                Em <strong style={{ color: "var(--dm-text-secondary)" }}>Conectar conta</strong> você liga o ACT a um filtro (existente ou novo) junto com nome e campanhas — tudo de uma vez.
-              </p>
-              <CampaignCenter />
-            </div>
+            {!connecting && (
+              <>
+                <ContasSection company={company} canEdit={isOwner} suggestions={suggestions} open onToggle={noop} variant="panel" />
+                <div className="px-1">
+                  <p className="text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>Acoplar conta a um filtro</p>
+                  <p className="mt-0.5 text-[11px] leading-relaxed" style={{ color: "var(--dm-text-tertiary)" }}>
+                    Em <strong style={{ color: "var(--dm-text-secondary)" }}>Conectar conta</strong> você liga o ACT a um filtro (existente ou novo) com nome, objetivo e metas — tudo de uma vez.
+                  </p>
+                </div>
+              </>
+            )}
+            <CampaignCenter key="campaign-center" onConnectingChange={setConnecting} />
           </div>
         );
       case "instagram":

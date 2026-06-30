@@ -614,7 +614,7 @@ function CompanyBadge() {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function CampaignCenter() {
+export function CampaignCenter({ onConnectingChange }: { onConnectingChange?: (connecting: boolean) => void } = {}) {
   const { entries, upsertEntries, updateEntry, removeEntry, clearAll } = useCampaignCenter();
   const { canWrite, company } = useCompany();
   // sem empresa configurada (migration pendente) ninguém é bloqueado
@@ -622,6 +622,8 @@ export function CampaignCenter() {
   // Colapsado por padrão: só o card aberto monta os controles (DOM enxuto)
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [showConnect, setShowConnect] = useState(false);
+  // Avisa o pai (Configurações) p/ esconder o resto e o wizard ocupar a janela.
+  useEffect(() => { onConnectingChange?.(showConnect); }, [showConnect, onConnectingChange]);
 
   // Grupos = filtros/categorias do Painel (mesmo setup, sem retrabalho)
   const [categoryGroups, setCategoryGroups] = useState<string[]>([]);
@@ -685,29 +687,29 @@ export function CampaignCenter() {
             Conta, filtro, ACT e campanhas — tudo configurado de uma vez em Conectar conta.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <CompanyBadge />
           {!readOnly && (<>
           <button type="button" onClick={() => setShowConnect(true)}
-            className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-semibold text-white transition hover:opacity-90"
+            className="flex items-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-1.5 text-[11px] font-semibold text-white transition hover:opacity-90"
             style={{ background: "var(--dm-btn-primary-bg)" }}>
             <Plug size={12} /> Conectar conta
           </button>
           {entries.length > 0 && (
             <button type="button" onClick={autoConfigureAll}
-              className="flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-[11px] font-semibold transition hover:opacity-80"
+              className="flex items-center gap-1.5 whitespace-nowrap rounded-xl border px-3 py-1.5 text-[11px] font-semibold transition hover:opacity-80"
               style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)", backgroundColor: "var(--dm-bg-elevated)" }}>
-              <Sparkles size={12} /> Auto-configurar tudo
+              <Sparkles size={12} /> Auto-configurar
             </button>
           )}
           <button type="button" onClick={seedMock}
-            className="flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-[11px] font-semibold transition hover:opacity-80"
+            className="flex items-center gap-1.5 whitespace-nowrap rounded-xl border px-3 py-1.5 text-[11px] font-semibold transition hover:opacity-80"
             style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)", backgroundColor: "var(--dm-bg-elevated)" }}>
-            <FlaskConical size={12} /> Carregar dados de teste
+            <FlaskConical size={12} /> Dados de teste
           </button>
           {entries.length > 0 && (
             <button type="button" onClick={clearAll}
-              className="flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-[11px] font-semibold transition hover:opacity-80"
+              className="flex items-center gap-1.5 whitespace-nowrap rounded-xl border px-3 py-1.5 text-[11px] font-semibold transition hover:opacity-80"
               style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-tertiary)", backgroundColor: "transparent" }}>
               <Trash2 size={12} /> Limpar
             </button>

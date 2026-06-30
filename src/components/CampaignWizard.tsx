@@ -126,7 +126,7 @@ export function CampaignWizard({ onClose, onSave }: {
   };
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex min-h-[460px] flex-col">
       {/* Header */}
       <div className="flex items-center justify-between gap-3 border-b pb-4" style={{ borderColor: "var(--dm-border-default)" }}>
         <div className="flex items-center gap-3 min-w-0">
