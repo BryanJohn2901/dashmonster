@@ -3188,7 +3188,7 @@ export function Dashboard({
       )}
 
       {/* ── Center ── */}
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
 
         {/* ── Barra única: abas (esq) + categoria/ações (dir) ── */}
         <div
