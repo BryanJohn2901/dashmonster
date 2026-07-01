@@ -49,6 +49,7 @@ import {
 } from "@/lib/resultDetection";
 import { useCompany, fetchTrackingFunnels, fetchEduzzCatalog, type TrackingFunnel, type EduzzProduct } from "@/hooks/useCompany";
 import { supabaseClient } from "@/lib/supabase";
+import { useChartTheme, shortDate, xInterval } from "@/components/charts/useChartTheme";
 import { eventMatchesFunnel, type TrackingEvent } from "@/components/TrackingEventsView";
 
 const formatCurrency = formatBRL;
@@ -61,7 +62,7 @@ const LINKED_FUNNEL_LS_KEY       = "pta_profile_linked_funnel_v1";
 const PRODUCT_LINKS_LS_KEY       = "pta_profile_product_links_v1";
 const GOALS_LS_KEY         = "pta_profile_goals_v1";
 
-type ProfileFunnelStepId = "reach" | "impressions" | "clicks" | "page_views" | "leads" | "sales" | "profile_visits" | "new_followers";
+type ProfileFunnelStepId = "reach" | "impressions" | "clicks" | "page_views" | "leads" | "sales" | "purchases" | "profile_visits" | "new_followers";
 
 interface ProfileFunnelStep {
   id: ProfileFunnelStepId;
@@ -76,7 +77,8 @@ const PROFILE_FUNNEL_STEPS: ProfileFunnelStep[] = [
   { id: "clicks",         label: "Cliques no link",    color: "#0D9488", rateLabel: "CTR" },
   { id: "page_views",     label: "Vis. de Página",     color: "#f59e0b", rateLabel: "Taxa LP" },
   { id: "leads",          label: "Leads",              color: "#e11d48", rateLabel: "Tx. Captura" },
-  { id: "sales",          label: "Resultados",         color: "#10b981", rateLabel: "Tx. Venda" },
+  { id: "sales",          label: "Resultados",         color: "#10b981", rateLabel: "Tx. Captura" },
+  { id: "purchases",      label: "Vendas (Eduzz)",     color: "#059669", rateLabel: "Tx. Venda" },
   { id: "profile_visits", label: "Visitas ao Perfil",  color: "#0F766E", rateLabel: "Tx. Visita" },
   { id: "new_followers",  label: "Novos Seguidores",   color: "#10b981", rateLabel: "Tx. Follow" },
 ];
@@ -1595,6 +1597,10 @@ function ProfileOverviewPanel({
   const [showKpiPanel, setShowKpiPanel]   = useState(false);
   const [draggingKpiId, setDraggingKpiId] = useState<string | null>(null);
   const [dragOverKpiId, setDragOverKpiId] = useState<string | null>(null);
+  const [ovTimelineMetric, setOvTimelineMetric] = useState<"spend" | "impressions" | "reach" | "clicks" | "leads" | "result" | "sales_eduzz" | "cpr">("spend");
+  const [ovTimelineVisible, setOvTimelineVisible] = useState<Set<string>>(() => new Set(["spend", "leads", "result"]));
+  const [ovTimelineConfigOpen, setOvTimelineConfigOpen] = useState(false);
+  const ovTheme = useChartTheme();
   const dragKpiIdRef                      = useRef<string | null>(null);
 
   const persistKpiOrder = (newOrder: string[]) => {
@@ -1769,6 +1775,9 @@ function ProfileOverviewPanel({
                       : effectiveResultType && totals.cfg > 0
                         ? totals.cfg
                         : totals.conv,
+    purchases:      (productSalesCounts["sales_total"] ?? 0) > 0
+                      ? productSalesCounts["sales_total"]!
+                      : ovData?.salesTotal ?? ovData?.tickets ?? 0,
     profile_visits: totals.pvt,
     new_followers:  totals.fol,
   };
@@ -1978,127 +1987,8 @@ function ProfileOverviewPanel({
           </div>
         </div>
 
-        {/* Bento grid: funil à esquerda + cards KPI à direita */}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-
-          {/* ── Coluna esquerda: funil compacto ── */}
-          <div className="sm:col-span-2 lg:col-span-1 lg:row-span-2">
-            <div className="flex h-full flex-col gap-3 rounded-2xl border p-5"
-              style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-subtle)" }}>
-              <div className="flex items-center justify-between">
-                <span className="flex items-center gap-1.5 text-xs font-bold" style={{ color: "var(--dm-text-primary)" }}>
-                  <span className="flex h-6 w-6 items-center justify-center rounded-lg"
-                    style={{ backgroundColor: "rgba(22,163,74,0.12)" }}>
-                    <Filter size={13} style={{ color: "#16A34A" }} />
-                  </span>
-                  Funil de conversão
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setShowFunnelPanel((v) => !v)}
-                  className="flex h-6 w-6 items-center justify-center rounded-lg transition hover:opacity-70"
-                  style={{
-                    backgroundColor: showFunnelPanel ? "rgba(22,163,74,0.12)" : "var(--dm-bg-elevated)",
-                    color: showFunnelPanel ? "#16A34A" : "var(--dm-text-tertiary)",
-                  }}
-                  title="Personalizar funil"
-                >
-                  <SlidersHorizontal size={12} />
-                </button>
-              </div>
-              {showFunnelPanel && (
-                <div className="rounded-xl border p-3 space-y-2"
-                  style={{ borderColor: "var(--dm-border-subtle)", backgroundColor: "var(--dm-bg-elevated)" }}>
-                  <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>Etapas visíveis</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {PROFILE_FUNNEL_STEPS.map((step) => {
-                      const selected = funnelStepIds.includes(step.id);
-                      const index    = funnelStepIds.indexOf(step.id);
-                      return (
-                        <div key={step.id}
-                          className="flex items-center gap-1 rounded-[10px] cursor-pointer select-none transition"
-                          style={{
-                            padding: "4px 10px",
-                            backgroundColor: selected ? step.color + "20" : "var(--dm-bg-surface)",
-                            border: `1.5px solid ${selected ? step.color + "66" : "var(--dm-border-default)"}`,
-                            color: selected ? step.color : "var(--dm-text-tertiary)",
-                          }}
-                          onClick={() => !(selected && funnelStepIds.length === 1) && toggleFunnelStep(step.id)}
-                        >
-                          <span className="text-[10px] font-semibold">{step.label}</span>
-                          {selected && (
-                            <div className="flex gap-0.5 ml-0.5">
-                              <button type="button"
-                                onClick={(e) => { e.stopPropagation(); moveFunnelStep(step.id, -1); }}
-                                disabled={index === 0}
-                                className="rounded p-0.5 transition disabled:opacity-20 hover:opacity-80">
-                                <ArrowUp size={8} />
-                              </button>
-                              <button type="button"
-                                onClick={(e) => { e.stopPropagation(); moveFunnelStep(step.id, 1); }}
-                                disabled={index === funnelStepIds.length - 1}
-                                className="rounded p-0.5 transition disabled:opacity-20 hover:opacity-80">
-                                <ArrowDown size={8} />
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <button type="button" onClick={() => persistFunnelSteps(DEFAULT_FUNNEL_STEP_IDS)}
-                    className="text-[10px] font-semibold transition hover:opacity-70" style={{ color: "var(--dm-brand-500)" }}>
-                    Restaurar padrão
-                  </button>
-                </div>
-              )}
-              <div className="flex flex-1 flex-col justify-center gap-2.5">
-                {(() => {
-                  const maxVal = Math.max(...funnelStepIds.map((id) => funnelVals[id] ?? 0), 1);
-                  return funnelStepIds.map((stepId, i) => {
-                    const step = PROFILE_FUNNEL_STEPS.find((s) => s.id === stepId);
-                    if (!step) return null;
-                    const val     = funnelVals[stepId] ?? 0;
-                    const prevId  = i > 0 ? funnelStepIds[i - 1] : null;
-                    const prevVal = prevId ? (funnelVals[prevId] ?? 0) : null;
-                    const rate    = prevVal !== null && prevVal > 0 ? (val / prevVal) * 100 : null;
-                    const isFreq  = prevId === "reach" && stepId === "impressions";
-                    const rateDisplay = rate !== null
-                      ? isFreq
-                        ? `${(rate / 100).toFixed(1)}x${step.rateLabel ? ` ${step.rateLabel}` : ""}`
-                        : `${formatPercent(rate)}${step.rateLabel ? ` ${step.rateLabel}` : ""}`
-                      : null;
-                    const color    = FUNNEL_COLORS_OV[stepId] ?? step.color;
-                    const widthPct = Math.max(6, (val / maxVal) * 100);
-                    return (
-                      <div key={stepId} className="flex flex-col gap-1">
-                        <div className="flex items-center justify-between text-[11px]">
-                          <span className="font-semibold" style={{ color: "var(--dm-text-secondary)" }}>
-                            {stepId === "sales" && resultEventLabel ? resultEventLabel : step.label}
-                          </span>
-                          <span className="flex items-center gap-2">
-                            {rateDisplay !== null && (
-                              <span className="rounded-full px-1.5 py-0.5 text-[9px] font-bold tabular-nums"
-                                style={{ color, backgroundColor: color + "18" }}>
-                                {rateDisplay}
-                              </span>
-                            )}
-                            <span className="font-bold tabular-nums" style={{ color: "var(--dm-text-primary)" }}>{formatInt(val)}</span>
-                          </span>
-                        </div>
-                        <div className="h-2.5 w-full overflow-hidden rounded-full" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
-                          <div className="h-full rounded-full transition-all duration-500"
-                            style={{ width: `${widthPct}%`, background: color }} />
-                        </div>
-                      </div>
-                    );
-                  });
-                })()}
-              </div>
-            </div>
-          </div>
-
-          {/* ── Cards KPI (estilo StatCard com sparkline) ── */}
+        {/* KPI cards em linha */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           {kpiOrder
             .map(id => template.kpis.find(k => k.id === id) ?? ALL_KPI_OPTIONS.find(k => k.id === id))
             .filter((kpi): kpi is NonNullable<typeof kpi> => Boolean(kpi))
@@ -2286,6 +2176,282 @@ function ProfileOverviewPanel({
                 </article>
               );
             })}
+        </div>
+
+        {/* Linha do tempo + Funil de conversão */}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+
+          {/* Linha do tempo */}
+          {(() => {
+            const OV_TL_ALL: { id: typeof ovTimelineMetric; label: string; currency?: true }[] = [
+              { id: "spend",        label: "Investimento",    currency: true },
+              { id: "impressions",  label: "Impressões" },
+              { id: "reach",        label: "Alcance" },
+              { id: "clicks",       label: "Cliques" },
+              { id: "leads",        label: "Leads" },
+              { id: "result",       label: "Resultado (EndForm)" },
+              { id: "sales_eduzz",  label: "Vendas (Eduzz)" },
+              { id: "cpr",          label: "Custo/Resultado",  currency: true },
+            ];
+            // Mapa data → contagem de vendas Eduzz para correlacionar com dailyRows
+            const eduzzDailyArr = productDailyCounts["sales_total"];
+            const eduzzDailyMap: Record<string, number> = {};
+            if (eduzzDailyArr?.length) {
+              const _d = new Date(`${dateFrom}T12:00:00`);
+              eduzzDailyArr.forEach((val) => {
+                eduzzDailyMap[_d.toISOString().slice(0, 10)] = val;
+                _d.setDate(_d.getDate() + 1);
+              });
+            }
+            const ovTlVisible = OV_TL_ALL.filter((m) => ovTimelineVisible.has(m.id));
+            const activeMeta = OV_TL_ALL.find((m) => m.id === ovTimelineMetric) ?? OV_TL_ALL[0];
+            const ovTlFmt = activeMeta.currency ? formatCurrency : formatNumber;
+            const ovTlData = dailyRows.map((r) => {
+              const val =
+                ovTimelineMetric === "spend"        ? r.spend
+                : ovTimelineMetric === "impressions" ? r.impressions
+                : ovTimelineMetric === "reach"       ? r.reach
+                : ovTimelineMetric === "clicks"      ? r.clicks
+                : ovTimelineMetric === "leads"       ? r.leads
+                : ovTimelineMetric === "result"      ? (r.customResult || r.configuredResult)
+                : ovTimelineMetric === "sales_eduzz" ? (eduzzDailyMap[r.date] ?? 0)
+                : (() => { const res = r.customResult || r.configuredResult; return res > 0 ? r.spend / res : null; })(); // cpr
+              return { date: r.date, value: val };
+            });
+            return (
+              <section
+                className="lg:col-span-2 dm-reveal flex flex-col rounded-2xl border p-4"
+                style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)", animationDelay: "80ms" }}
+              >
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ background: "var(--dm-primary-soft)" }}>
+                      <Activity size={14} style={{ color: "var(--dm-primary)" }} />
+                    </span>
+                    <h3 className="text-[12.5px] font-bold tracking-tight" style={{ color: "var(--dm-text-primary)" }}>Linha do tempo</h3>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    {/* Toggle de métricas visíveis */}
+                    {ovTlVisible.length > 0 && (
+                      <div className="flex gap-0.5 rounded-lg p-0.5" style={{ background: "var(--dm-bg-elevated)" }}>
+                        {ovTlVisible.map(({ id, label }) => (
+                          <button key={id} type="button" onClick={() => setOvTimelineMetric(id)}
+                            className="rounded-md px-2.5 py-1 text-[11px] font-semibold transition-all duration-200"
+                            style={ovTimelineMetric === id
+                              ? { background: "var(--dm-bg-surface)", color: "var(--dm-primary)", boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }
+                              : { color: "var(--dm-text-tertiary)" }}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {/* Botão configurar */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setOvTimelineConfigOpen((v) => !v)}
+                        className="flex h-7 w-7 items-center justify-center rounded-lg transition hover:opacity-80"
+                        style={{
+                          background: ovTimelineConfigOpen ? "var(--dm-primary-soft)" : "var(--dm-bg-elevated)",
+                          color: ovTimelineConfigOpen ? "var(--dm-primary)" : "var(--dm-text-tertiary)",
+                        }}
+                        title="Configurar métricas"
+                      >
+                        <SlidersHorizontal size={13} />
+                      </button>
+                      {ovTimelineConfigOpen && (
+                        <div
+                          className="absolute right-0 top-9 z-30 rounded-xl border p-3 shadow-xl"
+                          style={{ background: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)", minWidth: 170 }}
+                        >
+                          <p className="mb-2 text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>
+                            Métricas visíveis
+                          </p>
+                          <div className="flex flex-col gap-1.5">
+                            {OV_TL_ALL.map(({ id, label }) => {
+                              const checked = ovTimelineVisible.has(id);
+                              return (
+                                <label key={id} className="flex cursor-pointer items-center gap-2 select-none">
+                                  <span
+                                    className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded"
+                                    style={{
+                                      background: checked ? "#16A34A" : "var(--dm-bg-elevated)",
+                                      border: `1.5px solid ${checked ? "#16A34A" : "var(--dm-border-default)"}`,
+                                    }}
+                                    onClick={() => {
+                                      const next = new Set(ovTimelineVisible);
+                                      if (checked) {
+                                        if (next.size > 1) next.delete(id);
+                                      } else {
+                                        next.add(id);
+                                      }
+                                      setOvTimelineVisible(next);
+                                      // Se a métrica selecionada foi removida, vai para a primeira visível
+                                      if (ovTimelineMetric === id && !next.has(id)) {
+                                        const first = OV_TL_ALL.find((m) => next.has(m.id));
+                                        if (first) setOvTimelineMetric(first.id);
+                                      }
+                                    }}
+                                  >
+                                    {checked && <Check size={10} color="#fff" />}
+                                  </span>
+                                  <span className="text-[11px] font-medium" style={{ color: "var(--dm-text-secondary)" }}>{label}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                {dailyRows.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={220}>
+                    <AreaChart data={ovTlData} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="ov-area-grad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor={ovTheme.c1} stopOpacity={0.4} />
+                          <stop offset="100%" stopColor={ovTheme.c1} stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke={ovTheme.gridStroke} vertical={false} />
+                      <XAxis dataKey="date" tickFormatter={shortDate} interval={xInterval(ovTlData.length)} tick={{ fill: ovTheme.tickFill, fontSize: 11 }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fill: ovTheme.tickFill, fontSize: 11 }} axisLine={false} tickLine={false} width={40} allowDecimals={false} />
+                      <Tooltip
+                        contentStyle={ovTheme.tooltipStyle.contentStyle}
+                        cursor={ovTheme.tooltipStyle.cursor}
+                        labelFormatter={(l) => shortDate(String(l))}
+                        formatter={(val) => [ovTlFmt(Number(val ?? 0)), activeMeta.label]}
+                      />
+                      <Area type="monotone" dataKey="value" stroke={ovTheme.c1} strokeWidth={2.5} fill="url(#ov-area-grad)"
+                        connectNulls
+                        animationDuration={900} animationEasing="ease-out"
+                        dot={false} activeDot={{ r: 4, fill: ovTheme.c1, strokeWidth: 0 }} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="flex flex-1 items-center justify-center py-8">
+                    <p className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>Sem dados no período.</p>
+                  </div>
+                )}
+              </section>
+            );
+          })()}
+
+          {/* Funil de conversão */}
+          <div className="dm-reveal flex flex-col gap-3 rounded-2xl border p-5"
+            style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-subtle)", animationDelay: "160ms" }}>
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-1.5 text-xs font-bold" style={{ color: "var(--dm-text-primary)" }}>
+                <span className="flex h-6 w-6 items-center justify-center rounded-lg"
+                  style={{ backgroundColor: "rgba(22,163,74,0.12)" }}>
+                  <Filter size={13} style={{ color: "#16A34A" }} />
+                </span>
+                Funil de conversão
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowFunnelPanel((v) => !v)}
+                className="flex h-6 w-6 items-center justify-center rounded-lg transition hover:opacity-70"
+                style={{
+                  backgroundColor: showFunnelPanel ? "rgba(22,163,74,0.12)" : "var(--dm-bg-elevated)",
+                  color: showFunnelPanel ? "#16A34A" : "var(--dm-text-tertiary)",
+                }}
+                title="Personalizar funil"
+              >
+                <SlidersHorizontal size={12} />
+              </button>
+            </div>
+            {showFunnelPanel && (
+              <div className="rounded-xl border p-3 space-y-2"
+                style={{ borderColor: "var(--dm-border-subtle)", backgroundColor: "var(--dm-bg-elevated)" }}>
+                <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>Etapas visíveis</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {PROFILE_FUNNEL_STEPS.map((step) => {
+                    const selected = funnelStepIds.includes(step.id);
+                    const index    = funnelStepIds.indexOf(step.id);
+                    return (
+                      <div key={step.id}
+                        className="flex items-center gap-1 rounded-[10px] cursor-pointer select-none transition"
+                        style={{
+                          padding: "4px 10px",
+                          backgroundColor: selected ? step.color + "20" : "var(--dm-bg-surface)",
+                          border: `1.5px solid ${selected ? step.color + "66" : "var(--dm-border-default)"}`,
+                          color: selected ? step.color : "var(--dm-text-tertiary)",
+                        }}
+                        onClick={() => !(selected && funnelStepIds.length === 1) && toggleFunnelStep(step.id)}
+                      >
+                        <span className="text-[10px] font-semibold">{step.label}</span>
+                        {selected && (
+                          <div className="flex gap-0.5 ml-0.5">
+                            <button type="button"
+                              onClick={(e) => { e.stopPropagation(); moveFunnelStep(step.id, -1); }}
+                              disabled={index === 0}
+                              className="rounded p-0.5 transition disabled:opacity-20 hover:opacity-80">
+                              <ArrowUp size={8} />
+                            </button>
+                            <button type="button"
+                              onClick={(e) => { e.stopPropagation(); moveFunnelStep(step.id, 1); }}
+                              disabled={index === funnelStepIds.length - 1}
+                              className="rounded p-0.5 transition disabled:opacity-20 hover:opacity-80">
+                              <ArrowDown size={8} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <button type="button" onClick={() => persistFunnelSteps(DEFAULT_FUNNEL_STEP_IDS)}
+                  className="text-[10px] font-semibold transition hover:opacity-70" style={{ color: "var(--dm-brand-500)" }}>
+                  Restaurar padrão
+                </button>
+              </div>
+            )}
+            <div className="flex flex-1 flex-col justify-center gap-2.5">
+              {(() => {
+                const maxVal = Math.max(...funnelStepIds.map((id) => funnelVals[id] ?? 0), 1);
+                return funnelStepIds.map((stepId, i) => {
+                  const step = PROFILE_FUNNEL_STEPS.find((s) => s.id === stepId);
+                  if (!step) return null;
+                  const val     = funnelVals[stepId] ?? 0;
+                  const prevId  = i > 0 ? funnelStepIds[i - 1] : null;
+                  const prevVal = prevId ? (funnelVals[prevId] ?? 0) : null;
+                  const rate    = prevVal !== null && prevVal > 0 ? (val / prevVal) * 100 : null;
+                  const isFreq  = prevId === "reach" && stepId === "impressions";
+                  const rateDisplay = rate !== null
+                    ? isFreq
+                      ? `${(rate / 100).toFixed(1)}x${step.rateLabel ? ` ${step.rateLabel}` : ""}`
+                      : `${formatPercent(rate)}${step.rateLabel ? ` ${step.rateLabel}` : ""}`
+                    : null;
+                  const color    = FUNNEL_COLORS_OV[stepId] ?? step.color;
+                  const widthPct = Math.max(6, (val / maxVal) * 100);
+                  return (
+                    <div key={stepId} className="flex flex-col gap-1">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="font-semibold" style={{ color: "var(--dm-text-secondary)" }}>
+                          {stepId === "sales" && resultEventLabel ? resultEventLabel : step.label}
+                        </span>
+                        <span className="flex items-center gap-2">
+                          {rateDisplay !== null && (
+                            <span className="rounded-full px-1.5 py-0.5 text-[9px] font-bold tabular-nums"
+                              style={{ color, backgroundColor: color + "18" }}>
+                              {rateDisplay}
+                            </span>
+                          )}
+                          <span className="font-bold tabular-nums" style={{ color: "var(--dm-text-primary)" }}>{formatInt(val)}</span>
+                        </span>
+                      </div>
+                      <div className="h-2.5 w-full overflow-hidden rounded-full" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
+                        <div className="h-full rounded-full transition-all duration-500"
+                          style={{ width: `${widthPct}%`, background: color }} />
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+          </div>
         </div>
 
         {/* ── Cards personalizados ── */}
