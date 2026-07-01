@@ -10,6 +10,8 @@ export interface MetaEntityStatus {
   effective_status: string; // Estado real considerando hierarquia pai → filho:
                             // ACTIVE | PAUSED | CAMPAIGN_PAUSED | ADSET_PAUSED |
                             // DISAPPROVED | PENDING_REVIEW | WITH_ISSUES | …
+  campaignId?:      string; // ID da campanha pai (adsets only)
+  adsetId?:         string; // ID do conjunto pai (ads only)
 }
 
 /**
@@ -45,9 +47,10 @@ export async function GET(request: NextRequest) {
     ? ["ACTIVE", "PAUSED", "CAMPAIGN_PAUSED"]
     : ["ACTIVE", "PAUSED", "CAMPAIGN_PAUSED", "ADSET_PAUSED"];
 
+  const extraField = level === "adset" ? ",campaign_id" : ",adset_id";
   const params: Record<string, string> = {
     access_token:     accessToken,
-    fields:           "id,name,status,effective_status",
+    fields:           `id,name,status,effective_status${extraField}`,
     effective_status: JSON.stringify(effectiveStatusFilter),
     limit:            "500",
   };
@@ -56,6 +59,7 @@ export async function GET(request: NextRequest) {
     params.filtering = JSON.stringify([{ field: "campaign.id", operator: "IN", value: ids }]);
   }
 
+  interface RawItem { id: string; name: string; status: string; effective_status: string; campaign_id?: string; adset_id?: string; }
   const allItems: MetaEntityStatus[] = [];
   let nextUrl: string | null =
     `https://graph.facebook.com/${META_API_VERSION}/act_${accountId}/${edge}?` +
@@ -74,7 +78,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: msg }, { status: 502 });
     }
 
-    allItems.push(...(json.data ?? []));
+    for (const r of (json.data ?? []) as RawItem[]) {
+      allItems.push({
+        id: r.id, name: r.name, status: r.status, effective_status: r.effective_status,
+        ...(r.campaign_id ? { campaignId: r.campaign_id } : {}),
+        ...(r.adset_id    ? { adsetId:    r.adset_id    } : {}),
+      });
+    }
     nextUrl = json.paging?.next ?? null;
   }
 

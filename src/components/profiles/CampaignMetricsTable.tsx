@@ -86,21 +86,21 @@ const VIEW_OPTIONS: { value: BreakdownView; label: string; labelPlural: string }
 
 export function CampaignMetricsTable({
   profileId, campaignRows, adsetRows, adRows, totalsValues,
-  adLinks, adLinksLoading, statusByView, onViewChange,
+  adLinks, adLinksLoading, statusByView, drillDown,
+  onViewChange, onCampaignDrillDown, onAdsetDrillDown,
 }: {
   profileId: string;
   campaignRows: CampaignRow[];
   adsetRows?: CampaignRow[];
   adRows?: CampaignRow[];
   totalsValues: Record<string, number>;
-  /** Mapa adId → URL externa do criativo (ex: post do Instagram). Só usado na view "Anúncio". */
   adLinks?: Record<string, string>;
-  /** Indica que adLinks ainda está carregando — exibido como dica sutil no header. */
   adLinksLoading?: boolean;
-  /** Status real (ACTIVE/PAUSED/...) por nível e por id — sobrepõe a heurística de entrega quando disponível. */
   statusByView?: Partial<Record<BreakdownView, Record<string, string>>>;
-  /** Notifica o pai quando a view muda — usado pra disparar fetch lazy de adLinks/status. */
+  drillDown?: { campaignId: string; campaignName: string; adsetId?: string; adsetName?: string } | null;
   onViewChange?: (view: BreakdownView) => void;
+  onCampaignDrillDown?: (id: string, name: string) => void;
+  onAdsetDrillDown?: (id: string, name: string) => void;
 }) {
   const [view, setView] = useState<BreakdownView>("campaign");
   const [page, setPage] = useState(1);
@@ -312,12 +312,42 @@ export function CampaignMetricsTable({
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/50 px-5 py-4 sm:px-6 sm:py-5 dark:border-slate-700/50">
         <div>
+          {/* Breadcrumb minimalista — só aparece em drill-down */}
+          {drillDown && (
+            <div className="mb-1 flex items-center gap-1 text-[11px] text-slate-400 dark:text-slate-500">
+              <button type="button"
+                onClick={() => changeView("campaign")}
+                className="hover:text-emerald-500 transition-colors">
+                Todas as campanhas
+              </button>
+              <ChevronRight size={10} className="flex-shrink-0" />
+              {drillDown.adsetId ? (
+                <>
+                  <button type="button"
+                    onClick={() => changeView("adset")}
+                    className="max-w-[160px] truncate hover:text-emerald-500 transition-colors">
+                    {drillDown.campaignName}
+                  </button>
+                  <ChevronRight size={10} className="flex-shrink-0" />
+                  <span className="max-w-[160px] truncate font-semibold text-slate-600 dark:text-slate-300">
+                    {drillDown.adsetName}
+                  </span>
+                </>
+              ) : (
+                <span className="max-w-[200px] truncate font-semibold text-slate-600 dark:text-slate-300">
+                  {drillDown.campaignName}
+                </span>
+              )}
+            </div>
+          )}
           <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100"
             style={{ fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>
             Performance por {viewMeta.label}
           </h3>
           <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">
-            {firstIdx}–{lastIdx} de {activeRows.length} {viewMeta.labelPlural} · clique no cabeçalho ordena · botão direito edita
+            {firstIdx}–{lastIdx} de {activeRows.length} {viewMeta.labelPlural}
+            {(view === "campaign" || (view === "adset" && !drillDown)) && " · clique na linha para detalhar"}
+            {view !== "campaign" && " · clique no cabeçalho ordena · botão direito edita"}
             {view === "ad" && adLinksLoading && " · carregando links dos criativos…"}
           </p>
         </div>
@@ -426,7 +456,14 @@ export function CampaignMetricsTable({
               }
               const creativeLink = view === "ad" ? adLinks?.[row.id] : undefined;
               return (
-              <tr key={row.id} className="transition-all hover:bg-white/50 dark:hover:bg-slate-800/50">
+              <tr
+                key={row.id}
+                className={`transition-all hover:bg-white/50 dark:hover:bg-slate-800/50 ${view !== "ad" ? "cursor-pointer" : ""}`}
+                onClick={() => {
+                  if (view === "campaign") { onCampaignDrillDown?.(row.id, row.name); changeView("adset"); }
+                  else if (view === "adset") { onAdsetDrillDown?.(row.id, row.name); changeView("ad"); }
+                }}
+              >
                 <td className="px-5 py-3.5">
                   <div className="flex items-center gap-2.5 min-w-0 group/name">
                     <span

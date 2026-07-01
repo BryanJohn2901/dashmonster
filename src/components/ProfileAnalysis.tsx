@@ -16,7 +16,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import {
   fetchMetaCampaigns, fetchMetaInsights, fetchMetaAdAccounts, fetchMetaCreatives, fetchMetaEntityStatus,
-  loadMetaCredentials, MetaInsight, MetaAdAccount,
+  loadMetaCredentials, MetaInsight, MetaAdAccount, MetaEntityStatus,
   extractLeads, extractRevenue, fetchCampaignGoals,
 } from "@/utils/metaApi";
 import {
@@ -1397,6 +1397,11 @@ function ProfileOverviewPanel({
     return () => { alive = false; };
   }, [productLinks, companyId, dateFrom, dateTo]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Drill-down state — campanha/conjunto selecionado para filtrar a tabela ──
+  const [drillDown, setDrillDown] = useState<{
+    campaignId: string; campaignName: string; adsetId?: string; adsetName?: string;
+  } | null>(null);
+
   // ── Links de criativo (URL externa do anúncio, ex: post do Instagram) ──────
   // Busca sob demanda (só quando o usuário abre a view "Anúncio" na tabela),
   // pois é uma chamada extra à API da Meta que varre a conta inteira de anúncios.
@@ -1432,6 +1437,8 @@ function ProfileOverviewPanel({
   const [campaignStatusMap, setCampaignStatusMap] = useState<Record<string, string>>({});
   const [adsetStatusMap, setAdsetStatusMap]       = useState<Record<string, string>>({});
   const [adStatusMap, setAdStatusMap]             = useState<Record<string, string>>({});
+  const [adsetStatusList, setAdsetStatusList]     = useState<MetaEntityStatus[]>([]);
+  const [adStatusList, setAdStatusList]           = useState<MetaEntityStatus[]>([]);
   const [adsetStatusLoading, setAdsetStatusLoading] = useState(false);
   const [adStatusLoading, setAdStatusLoading]       = useState(false);
   const adsetStatusLoadedRef = useRef(false);
@@ -1462,11 +1469,9 @@ function ProfileOverviewPanel({
     fetchMetaEntityStatus(adAccountId, accessToken, "adset", campaigns.map((c) => c.id))
       .then((list) => {
         const map: Record<string, string> = {};
-        // effective_status reflete o estado real: se o conjunto está pausado,
-        // os anúncios filhos terão effective_status "ADSET_PAUSED" mesmo com
-        // status próprio "ACTIVE". Usamos effective_status como fonte da bolinha.
         for (const it of list) map[it.id] = it.effective_status || it.status;
         setAdsetStatusMap(map);
+        setAdsetStatusList(list);
         adsetStatusLoadedRef.current = true;
       })
       .catch(() => { /* falha silenciosa */ })
@@ -1481,11 +1486,9 @@ function ProfileOverviewPanel({
     fetchMetaEntityStatus(adAccountId, accessToken, "ad", campaigns.map((c) => c.id))
       .then((list) => {
         const map: Record<string, string> = {};
-        // effective_status reflete o estado real: se o conjunto está pausado,
-        // os anúncios filhos terão effective_status "ADSET_PAUSED" mesmo com
-        // status próprio "ACTIVE". Usamos effective_status como fonte da bolinha.
         for (const it of list) map[it.id] = it.effective_status || it.status;
         setAdStatusMap(map);
+        setAdStatusList(list);
         adStatusLoadedRef.current = true;
       })
       .catch(() => { /* falha silenciosa */ })
@@ -1740,26 +1743,37 @@ function ProfileOverviewPanel({
     [campaigns, rows, template],
   );
 
-  const adsetTableRows: CampaignRow[] = useMemo(
-    () => adsetRows.map((r) => {
+  const adsetTableRows: CampaignRow[] = useMemo(() => {
+    if (adsetStatusList.length > 0) {
+      const base = drillDown?.campaignId
+        ? adsetStatusList.filter((it) => it.campaignId === drillDown.campaignId)
+        : adsetStatusList;
+      return base.map((it) => {
+        const raw = rowRawValues(adsetRows.find((r) => r.metaId === it.id));
+        return { id: it.id, name: it.name, values: { ...raw, ...template.derive(raw) } };
+      });
+    }
+    return adsetRows.map((r) => {
       const raw = rowRawValues(r);
-      // id = adset_id real (quando disponível) — necessário pra casar com o status
-      // real (ACTIVE/PAUSED) buscado via fetchMetaEntityStatus.
       return { id: r.metaId || r.name, name: r.name, values: { ...raw, ...template.derive(raw) } };
-    }),
-    [adsetRows, template],
-  );
+    });
+  }, [adsetStatusList, adsetRows, template, drillDown]);
 
-  const adTableRows: CampaignRow[] = useMemo(
-    () => adLevelRows.map((r) => {
+  const adTableRows: CampaignRow[] = useMemo(() => {
+    if (adStatusList.length > 0) {
+      const base = drillDown?.adsetId
+        ? adStatusList.filter((it) => it.adsetId === drillDown.adsetId)
+        : adStatusList;
+      return base.map((it) => {
+        const raw = rowRawValues(adLevelRows.find((r) => r.metaId === it.id));
+        return { id: it.id, name: it.name, values: { ...raw, ...template.derive(raw) } };
+      });
+    }
+    return adLevelRows.map((r) => {
       const raw = rowRawValues(r);
-      // id = ad_id real (quando disponível) — necessário pra casar com o mapa de
-      // links de criativo buscado via fetchMetaCreatives. Fallback pro nome evita
-      // quebrar a tabela caso a Meta não retorne ad_id por algum motivo.
       return { id: r.metaId || r.name, name: r.name, values: { ...raw, ...template.derive(raw) } };
-    }),
-    [adLevelRows, template],
-  );
+    });
+  }, [adStatusList, adLevelRows, template, drillDown]);
 
   // ── Funnel step aggregate values ──────────────────────────────────────────
   const funnelVals: Record<ProfileFunnelStepId, number> = {
@@ -2633,9 +2647,20 @@ function ProfileOverviewPanel({
           adLinks={adCreativeLinks}
           adLinksLoading={creativesLoading}
           statusByView={{ campaign: campaignStatusMap, adset: adsetStatusMap, ad: adStatusMap }}
+          drillDown={drillDown}
           onViewChange={(v) => {
+            if (v === "campaign") setDrillDown(null);
+            if (v === "adset") { loadAdsetStatus(); if (drillDown?.adsetId) setDrillDown((d) => d ? { campaignId: d.campaignId, campaignName: d.campaignName } : null); }
             if (v === "ad") { loadAdCreativeLinks(); loadAdStatus(); }
-            if (v === "adset") loadAdsetStatus();
+          }}
+          onCampaignDrillDown={(id, name) => {
+            setDrillDown({ campaignId: id, campaignName: name });
+            loadAdsetStatus();
+          }}
+          onAdsetDrillDown={(id, name) => {
+            setDrillDown((d) => d ? { ...d, adsetId: id, adsetName: name } : { campaignId: "", campaignName: "", adsetId: id, adsetName: name });
+            loadAdCreativeLinks();
+            loadAdStatus();
           }}
         />
       )}

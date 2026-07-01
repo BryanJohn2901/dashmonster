@@ -58,6 +58,8 @@ export interface MetaEntityStatus {
   status:           string; // toggle próprio: ACTIVE | PAUSED | DELETED | ARCHIVED
   effective_status: string; // estado real (inclui pausa herdada do pai):
                             // ACTIVE | PAUSED | CAMPAIGN_PAUSED | ADSET_PAUSED | …
+  campaignId?:      string; // ID da campanha pai (adsets only)
+  adsetId?:         string; // ID do conjunto pai (ads only)
 }
 
 /**
