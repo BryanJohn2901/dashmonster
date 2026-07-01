@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Save, Plus, Trash2, Star, Download, AlertTriangle, CheckCircle2, XCircle, ChevronDown, Code2, Send, Globe } from "lucide-react";
+import { Loader2, Save, Plus, Trash2, Star, Download, AlertTriangle, CheckCircle2, XCircle, ChevronDown, Code2, Send, Globe, Webhook, Info, Copy, X, RefreshCw } from "lucide-react";
 import { toast } from "@/hooks/useToast";
 import {
   fetchTrackingPixels, createTrackingPixel, updateTrackingPixel, deleteTrackingPixel, setDefaultTrackingPixel, verifyMetaToken, normalizeHostname,
+  generateWebhookSecret, clearWebhookSecret,
   type Company, type TrackingPixel,
 } from "@/hooks/useCompany";
 
@@ -123,6 +124,11 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
   const [testUrl, setTestUrl] = useState("");
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<TestProxyResult | null>(null);
+  const [generatingSecret, setGeneratingSecret] = useState(false);
+  const [newWebhookSecret, setNewWebhookSecret] = useState<string | null>(null);
+  const [webhookSecretCopied, setWebhookSecretCopied] = useState(false);
+  const [webhookUrlCopied, setWebhookUrlCopied] = useState(false);
+  const [showWebhookInfo, setShowWebhookInfo] = useState(false);
 
   const tokenChanged = capiToken.trim().length > 0 || clearCapiToken;
   const dirty =
@@ -221,6 +227,53 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch { toast.error("Não foi possível copiar."); }
+  };
+
+  const webhookUrl = `${appBase}/api/tracking/webhook/${pixel.slug}`;
+
+  const copyWebhookUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(webhookUrl);
+      setWebhookUrlCopied(true);
+      setTimeout(() => setWebhookUrlCopied(false), 2000);
+    } catch { toast.error("Não foi possível copiar."); }
+  };
+
+  const copyNewSecret = async () => {
+    if (!newWebhookSecret) return;
+    try {
+      await navigator.clipboard.writeText(newWebhookSecret);
+      setWebhookSecretCopied(true);
+      setTimeout(() => setWebhookSecretCopied(false), 2000);
+    } catch { toast.error("Não foi possível copiar."); }
+  };
+
+  const handleGenerateSecret = async () => {
+    if (pixel.hasWebhookSecret && !confirm("Regenerar o secret vai invalidar o token atual. Ferramentas que usam o token antigo vão parar de funcionar. Continuar?")) return;
+    setGeneratingSecret(true);
+    setNewWebhookSecret(null);
+    try {
+      const { pixel: updated, webhookSecret } = await generateWebhookSecret(pixel.id);
+      onSaved(updated);
+      setNewWebhookSecret(webhookSecret);
+      toast.success("Secret gerado! Copie agora — não será exibido novamente.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao gerar secret.");
+    } finally {
+      setGeneratingSecret(false);
+    }
+  };
+
+  const handleClearSecret = async () => {
+    if (!confirm("Remover o secret vai desativar o webhook. Continuar?")) return;
+    try {
+      const updated = await clearWebhookSecret(pixel.id);
+      onSaved(updated);
+      setNewWebhookSecret(null);
+      toast.success("Webhook desativado.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao remover secret.");
+    }
   };
 
   const runProxyTest = async () => {
@@ -394,6 +447,108 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
         </label>
       </Collapsible>
 
+      {/* ── Passo 3 — Webhook (formulários externos) ── */}
+      <Collapsible
+        icon={Webhook}
+        title="Webhook"
+        subtitle="Receba eventos de ferramentas externas"
+        defaultOpen={pixel.hasWebhookSecret || Boolean(newWebhookSecret)}
+        badge={pixel.hasWebhookSecret || Boolean(newWebhookSecret) ? { tone: "ok", label: "ativo" } : { tone: "neutral", label: "opcional" }}
+      >
+        <p className="text-[11px] leading-relaxed" style={{ color: "var(--dm-text-tertiary)" }}>
+          Envie eventos de formulários externos (Typeform, JotForm, ActiveCampaign etc.) via requisição POST — sem precisar instalar o pixel na ferramenta.
+        </p>
+
+        {/* URL do webhook */}
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>URL do Webhook</span>
+            <button
+              type="button"
+              onClick={() => setShowWebhookInfo(true)}
+              title="Ver formato do payload"
+              className="transition-opacity hover:opacity-70"
+              style={{ color: "var(--dm-text-tertiary)" }}
+            >
+              <Info size={12} />
+            </button>
+          </div>
+          <div className="flex items-center gap-2 rounded-xl border px-3 py-2" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
+            <code className="flex-1 overflow-x-auto text-[11px]" style={{ color: "var(--dm-text-secondary)" }}>{webhookUrl}</code>
+            <button
+              type="button"
+              onClick={() => void copyWebhookUrl()}
+              className="flex-shrink-0 text-[10px] font-bold transition-opacity hover:opacity-70"
+              style={{ color: webhookUrlCopied ? "#05CD99" : BRAND }}
+            >
+              {webhookUrlCopied ? "Copiado!" : <Copy size={11} />}
+            </button>
+          </div>
+        </div>
+
+        {/* Secret recém-gerado — exibido UMA vez */}
+        {newWebhookSecret && (
+          <div className="space-y-1.5 rounded-xl border p-3" style={{ borderColor: "#F4A60D", backgroundColor: "rgba(244,166,13,0.06)" }}>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "#F4A60D" }}>Secret gerado — copie agora</span>
+              <button type="button" onClick={() => void copyNewSecret()} className="text-[10px] font-bold" style={{ color: webhookSecretCopied ? "#05CD99" : BRAND }}>
+                {webhookSecretCopied ? "Copiado!" : "Copiar"}
+              </button>
+            </div>
+            <code className="block break-all font-mono text-[11px]" style={{ color: "var(--dm-text-primary)" }}>{newWebhookSecret}</code>
+            <p className="text-[10px]" style={{ color: "#F4A60D" }}>
+              Este valor não será exibido novamente. Guarde em local seguro e configure na sua ferramenta.
+            </p>
+          </div>
+        )}
+
+        {/* Gerenciamento do secret */}
+        <div className="flex flex-col gap-1">
+          <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
+            Secret de autenticação
+            {(pixel.hasWebhookSecret || newWebhookSecret) && (
+              <span className="font-normal normal-case" style={{ color: "#05CD99" }}>✓ configurado</span>
+            )}
+          </span>
+          {canEdit && (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void handleGenerateSecret()}
+                disabled={generatingSecret}
+                className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[10px] font-bold transition-opacity hover:opacity-80 disabled:opacity-40"
+                style={{ borderColor: "var(--dm-border-default)", color: BRAND }}
+              >
+                {generatingSecret
+                  ? <Loader2 size={11} className="animate-spin" />
+                  : pixel.hasWebhookSecret || newWebhookSecret
+                    ? <RefreshCw size={11} />
+                    : <Plus size={11} />}
+                {pixel.hasWebhookSecret || newWebhookSecret ? "Regenerar secret" : "Gerar secret"}
+              </button>
+              {(pixel.hasWebhookSecret || newWebhookSecret) && (
+                <button
+                  type="button"
+                  onClick={() => void handleClearSecret()}
+                  className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[10px] font-bold transition-opacity hover:opacity-80"
+                  style={{ borderColor: "var(--dm-border-default)", color: "#ef4444" }}
+                >
+                  <X size={11} /> Desativar
+                </button>
+              )}
+            </div>
+          )}
+          <span className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+            Envie o secret no header <code>Authorization: Bearer &lt;secret&gt;</code> de cada requisição.
+          </span>
+        </div>
+      </Collapsible>
+
+      {/* Modal de formato do webhook */}
+      {showWebhookInfo && (
+        <WebhookInfoModal url={webhookUrl} onClose={() => setShowWebhookInfo(false)} />
+      )}
+
       {canEdit && (
         <div className="flex items-center gap-2">
           <button type="button" onClick={() => void save()} disabled={saving || !dirty} className={`h-11 flex-1 ${btnPrimary}`} style={btnPrimaryStyle}>
@@ -422,6 +577,311 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Modal de documentação do Webhook ────────────────────────────────────────────
+
+const WH_EXAMPLE_LEAD = `{
+  "event_name": "Lead",
+  "email": "joao@exemplo.com.br",
+  "phone": "+5511999999999",
+  "name": "João Silva",
+  "event_url": "https://meusite.com.br/obrigado",
+  "utm_source": "facebook",
+  "utm_medium": "cpc",
+  "utm_campaign": "lancamento-junho",
+  "utm_content": "video-depoimento"
+}`;
+
+const WH_EXAMPLE_PURCHASE = `{
+  "event_name": "Purchase",
+  "email": "maria@exemplo.com.br",
+  "phone": "+5521988887777",
+  "name": "Maria Souza",
+  "value": 297.00,
+  "currency": "BRL",
+  "event_id": "order_89f3a2b1",
+  "event_url": "https://meusite.com.br/checkout/obrigado",
+  "utm_source": "google",
+  "utm_medium": "cpc",
+  "utm_campaign": "remarketing-q2",
+  "action_source": "website",
+  "custom_data": {
+    "produto": "Mentoria Premium",
+    "parcelas": 12
+  }
+}`;
+
+const WH_EXAMPLE_TYPEFORM = `{
+  "event_name": "CompleteRegistration",
+  "email": "{{ field:email }}",
+  "name": "{{ field:nome_completo }}",
+  "phone": "{{ field:telefone }}",
+  "utm_source": "{{ hidden:utm_source }}",
+  "utm_medium": "{{ hidden:utm_medium }}",
+  "utm_campaign": "{{ hidden:utm_campaign }}",
+  "event_url": "{{ form_url }}"
+}`;
+
+type WH_FIELD = { name: string; type: string; req?: boolean; auto?: string; desc: string };
+
+const WH_FIELDS_IDENTIDADE: WH_FIELD[] = [
+  { name: "event_name",   type: "string",  req: true,  desc: 'Nome do evento. Pode ser qualquer evento padrão Meta ou customizado (ver catálogo abaixo). Ex: "Lead", "Purchase".' },
+  { name: "email",        type: "string",  desc: "E-mail do lead em texto puro. O servidor aplica SHA-256 automaticamente antes de enviar à Meta." },
+  { name: "phone",        type: "string",  desc: 'Telefone com DDI. Ex: "+5511999999999". Apenas dígitos são mantidos; hasheado com SHA-256.' },
+  { name: "name",         type: "string",  desc: 'Nome completo. O servidor separa em primeiro e último nome. Alternativa: envie "first_name" + "last_name" separados.' },
+  { name: "first_name",   type: "string",  desc: 'Primeiro nome (alternativa a "name").' },
+  { name: "last_name",    type: "string",  desc: 'Sobrenome (alternativa a "name").' },
+];
+
+const WH_FIELDS_EVENTO: WH_FIELD[] = [
+  { name: "event_url",    type: "string",  desc: "URL completa da página onde ocorreu a conversão. Melhora a correspondência de eventos na Meta." },
+  { name: "event_id",     type: "string",  auto: "UUID gerado pelo servidor se omitido", desc: "ID único por disparo do evento. Usado para deduplicar pixel ↔ CAPI. Recomendado: UUID ou ID interno da ferramenta (ex: ID do form submission)." },
+  { name: "event_time",   type: "number",  auto: "Horário de recebimento (Unix segundos)", desc: "Data/hora do evento como Unix timestamp em segundos. Ex: 1751234567. Permite registrar eventos que ocorreram no passado." },
+  { name: "action_source",type: "string",  auto: '"website"', desc: 'Origem da ação para a Meta. Valores aceitos: "website", "email", "app", "phone_call", "chat", "physical_store", "system_generated", "other".' },
+];
+
+const WH_FIELDS_VALOR: WH_FIELD[] = [
+  { name: "value",        type: "number",  desc: "Valor monetário da transação. Ex: 297.00. Obrigatório junto com currency para eventos Purchase." },
+  { name: "currency",     type: "string",  auto: '"BRL"', desc: 'Código de moeda ISO 4217. Ex: "BRL", "USD", "EUR". Ignorado se "value" não for enviado.' },
+];
+
+const WH_FIELDS_UTM: WH_FIELD[] = [
+  { name: "utm_source",   type: "string",  desc: 'Origem do tráfego. Ex: "facebook", "google", "email".' },
+  { name: "utm_medium",   type: "string",  desc: 'Meio de marketing. Ex: "cpc", "organic", "email".' },
+  { name: "utm_campaign", type: "string",  desc: "Nome da campanha." },
+  { name: "utm_content",  type: "string",  desc: "Variação de anúncio ou conteúdo (A/B test)." },
+  { name: "utm_term",     type: "string",  desc: "Palavra-chave (para buscas pagas)." },
+  { name: "utm_placement",type: "string",  desc: "Posicionamento do anúncio (feed, stories, etc.)." },
+];
+
+const WH_FIELDS_EXTRA: WH_FIELD[] = [
+  { name: "custom_data",  type: "object",  desc: "Objeto chave-valor livre. Salvo no histórico de tracking da dashboard. Ex: { produto: 'Mentoria', parcelas: 12 }." },
+];
+
+const META_EVENTS = [
+  { name: "Lead",                   desc: "Formulário preenchido, interesse demonstrado." },
+  { name: "CompleteRegistration",   desc: "Cadastro concluído (criação de conta, inscrição em lista)." },
+  { name: "Purchase",               desc: "Compra finalizada. Envie value + currency." },
+  { name: "InitiateCheckout",       desc: "Checkout iniciado (carro de compras, botão de comprar)." },
+  { name: "AddToCart",              desc: "Produto ou oferta adicionado ao carrinho." },
+  { name: "ViewContent",            desc: "Página de produto ou oferta visualizada." },
+  { name: "Search",                 desc: "Busca realizada dentro da ferramenta/site." },
+  { name: "AddPaymentInfo",         desc: "Dados de pagamento inseridos no checkout." },
+  { name: "Subscribe",              desc: "Assinatura criada (recorrência, plano)." },
+  { name: "StartTrial",             desc: "Período de teste iniciado." },
+  { name: "Contact",                desc: "Contato realizado (WhatsApp, ligação, chat)." },
+  { name: "Schedule",               desc: "Agendamento realizado (reunião, consulta)." },
+  { name: "SubmitApplication",      desc: "Candidatura ou aplicação enviada." },
+  { name: "Donate",                 desc: "Doação realizada." },
+  { name: "FindLocation",           desc: "Localização de loja ou unidade encontrada." },
+  { name: "CustomizeProduct",       desc: "Produto personalizado (cor, tamanho, configuração)." },
+  { name: "PageView",               desc: "Visualização de página genérica." },
+  { name: "CustomEvent",            desc: 'Qualquer nome seguindo o padrão [A-Za-z][A-Za-z0-9_:-]* (até 64 caracteres). Ex: "QuizConcluido", "VideoAssistido".' },
+];
+
+function WH_FieldTable({ fields }: { fields: WH_FIELD[] }) {
+  return (
+    <div className="rounded-lg border divide-y overflow-hidden" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
+      {fields.map((f) => (
+        <div key={f.name} className="grid gap-x-3 px-2.5 py-2" style={{ gridTemplateColumns: "140px 1fr" }}>
+          <div className="flex flex-col gap-0.5">
+            <div className="flex items-center gap-1">
+              <code className="text-[10px] font-semibold" style={{ color: "var(--dm-text-primary)" }}>{f.name}</code>
+              {f.req && <span className="text-[8px] font-bold" style={{ color: "#ef4444" }}>*</span>}
+            </div>
+            <span className="text-[9px] font-bold uppercase" style={{ color: "var(--dm-text-tertiary)" }}>{f.type}</span>
+            {f.auto && (
+              <span className="text-[9px] leading-tight" style={{ color: "#05CD99" }}>auto: {f.auto}</span>
+            )}
+          </div>
+          <p className="text-[10px] leading-snug self-center" style={{ color: "var(--dm-text-secondary)" }}>{f.desc}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function WH_Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-2 border-t pt-4" style={{ borderColor: "var(--dm-border-default)" }}>
+      <h3 className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>{title}</h3>
+      {children}
+    </div>
+  );
+}
+
+function WebhookInfoModal({ url, onClose }: { url: string; onClose: () => void }) {
+  const [exTab, setExTab] = useState<"lead" | "purchase" | "typeform">("lead");
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4"
+      style={{ backgroundColor: "rgba(0,0,0,0.7)" }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        className="relative my-4 flex w-full max-w-3xl flex-col overflow-hidden rounded-2xl border"
+        style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)" }}
+      >
+        {/* Header fixo */}
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b px-5 py-3.5" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)" }}>
+          <div className="flex items-center gap-2">
+            <Webhook size={15} style={{ color: BRAND }} />
+            <span className="text-[14px] font-bold" style={{ color: "var(--dm-text-primary)" }}>Referência do Webhook</span>
+            <span className="rounded-full px-2 py-0.5 text-[9px] font-bold" style={{ background: "rgba(22,163,74,0.12)", color: BRAND }}>v1</span>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-lg p-1 transition-opacity hover:opacity-60" style={{ color: "var(--dm-text-tertiary)" }}>
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-0">
+
+          {/* Endpoint e Autenticação */}
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <h3 className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Endpoint</h3>
+              <div className="flex items-center gap-2 rounded-lg border px-3 py-2" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
+                <span className="flex-shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold" style={{ background: "rgba(22,163,74,0.15)", color: BRAND }}>POST</span>
+                <code className="flex-1 overflow-x-auto text-[10px]" style={{ color: "var(--dm-text-secondary)" }}>{url}</code>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <h3 className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Autenticação</h3>
+              <div className="rounded-lg border px-3 py-2.5 space-y-1.5" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
+                <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>Use um dos dois headers abaixo (qualquer um é aceito):</p>
+                <code className="block text-[10px]" style={{ color: "var(--dm-text-secondary)" }}>
+                  <span style={{ color: "var(--dm-text-tertiary)" }}>Authorization:</span> Bearer &lt;webhook_secret&gt;
+                </code>
+                <code className="block text-[10px]" style={{ color: "var(--dm-text-secondary)" }}>
+                  <span style={{ color: "var(--dm-text-tertiary)" }}>X-DM-Secret:</span> &lt;webhook_secret&gt;
+                </code>
+                <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                  O secret é gerado na seção Webhook acima. Retornado <strong style={{ color: "var(--dm-text-secondary)" }}>uma única vez</strong> — guarde-o imediatamente.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Processamento automático */}
+          <WH_Section title="O que o servidor faz automaticamente">
+            <div className="rounded-lg border divide-y overflow-hidden" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
+              {([
+                ["event_id",     "Gera um UUID v4 único se não enviado (necessário para deduplicação Meta)."],
+                ["event_time",   "Usa o horário exato de recebimento (Unix segundos) se não enviado."],
+                ["currency",     'Define "BRL" como padrão se não enviado junto com value.'],
+                ["action_source",'Define "website" como padrão se não enviado.'],
+                ["email",        "Aplica SHA-256 (trim + lowercase) antes de enviar à Meta. Nunca envie já hasheado."],
+                ["phone",        "Remove todos os não-dígitos e aplica SHA-256 antes de enviar à Meta."],
+                ["name",         "Hasha primeiro e último nome separadamente com SHA-256."],
+                ["fingerprint",  "Gera um ID de correlação de sessão: SHA-256(email) quando disponível (liga eventos do mesmo lead), ou UUID aleatório."],
+              ] as [string, string][]).map(([field, desc]) => (
+                <div key={field} className="flex gap-3 px-2.5 py-2">
+                  <code className="w-28 flex-shrink-0 text-[10px] font-semibold self-start mt-0.5" style={{ color: "#05CD99" }}>{field}</code>
+                  <p className="text-[10px] leading-snug" style={{ color: "var(--dm-text-secondary)" }}>{desc}</p>
+                </div>
+              ))}
+            </div>
+          </WH_Section>
+
+          {/* Campos — Identidade */}
+          <WH_Section title="Campos do body — Identidade do lead">
+            <WH_FieldTable fields={WH_FIELDS_IDENTIDADE} />
+          </WH_Section>
+
+          {/* Campos — Evento */}
+          <WH_Section title="Campos do body — Dados do evento">
+            <WH_FieldTable fields={WH_FIELDS_EVENTO} />
+          </WH_Section>
+
+          {/* Campos — Valor */}
+          <WH_Section title="Campos do body — Valor monetário">
+            <WH_FieldTable fields={WH_FIELDS_VALOR} />
+          </WH_Section>
+
+          {/* Campos — UTMs */}
+          <WH_Section title="Campos do body — UTMs / Origem de tráfego">
+            <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+              Salvo no histórico de tracking. Ferramentas como Typeform permitem passar UTMs via hidden fields; inclua-os no payload para manter a rastreabilidade completa.
+            </p>
+            <WH_FieldTable fields={WH_FIELDS_UTM} />
+          </WH_Section>
+
+          {/* Campos — Extra */}
+          <WH_Section title="Campos do body — Dados extras">
+            <WH_FieldTable fields={WH_FIELDS_EXTRA} />
+            <p className="text-[9px]" style={{ color: "var(--dm-text-tertiary)" }}><span style={{ color: "#ef4444" }}>*</span> obrigatório</p>
+          </WH_Section>
+
+          {/* Catálogo de eventos */}
+          <WH_Section title="Catálogo de eventos Meta padrão">
+            <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+              Use qualquer nome abaixo em <code>event_name</code>. Nomes customizados também são aceitos (padrão <code>[A-Za-z][A-Za-z0-9_:-]*</code>, até 64 chars).
+            </p>
+            <div className="rounded-lg border divide-y overflow-hidden" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
+              {META_EVENTS.map((e) => (
+                <div key={e.name} className="flex gap-3 px-2.5 py-1.5">
+                  <code className="w-44 flex-shrink-0 text-[10px] font-semibold self-start mt-0.5" style={{ color: "var(--dm-text-primary)" }}>{e.name}</code>
+                  <p className="text-[10px] leading-snug" style={{ color: "var(--dm-text-secondary)" }}>{e.desc}</p>
+                </div>
+              ))}
+            </div>
+          </WH_Section>
+
+          {/* Exemplos */}
+          <WH_Section title="Exemplos de payload">
+            <div className="flex gap-1.5 rounded-lg border p-1" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
+              {(["lead", "purchase", "typeform"] as const).map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setExTab(tab)}
+                  className="flex-1 rounded-md px-2.5 py-1 text-[10px] font-bold transition-all"
+                  style={exTab === tab
+                    ? { background: "rgba(22,163,74,0.15)", color: BRAND }
+                    : { color: "var(--dm-text-tertiary)" }}
+                >
+                  {tab === "lead" ? "Lead" : tab === "purchase" ? "Purchase" : "Typeform"}
+                </button>
+              ))}
+            </div>
+            {exTab === "typeform" && (
+              <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                Exemplo de mapeamento usando variáveis do Typeform (Webhooks → Body). Substitua os campos hidden por suas próprias variáveis da ferramenta.
+              </p>
+            )}
+            <pre className="overflow-x-auto rounded-lg border px-3 py-3 text-[10px] leading-relaxed font-mono" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)", color: "var(--dm-text-secondary)" }}>
+              {exTab === "lead" ? WH_EXAMPLE_LEAD : exTab === "purchase" ? WH_EXAMPLE_PURCHASE : WH_EXAMPLE_TYPEFORM}
+            </pre>
+          </WH_Section>
+
+          {/* Respostas esperadas */}
+          <WH_Section title="Respostas esperadas">
+            <div className="rounded-lg border divide-y overflow-hidden" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
+              {([
+                ["200", "#05CD99", '{ "received": true }',     "Evento gravado. CAPI enviado em background (falhas de CAPI não alteram o 200)."],
+                ["400", "#F4A60D", '{ "error": "..." }',       'JSON inválido ou event_name ausente/fora do padrão.'],
+                ["401", "#ef4444", '{ "error": "..." }',       "Header de autenticação ausente, ou webhook secret incorreto."],
+                ["404", "#ef4444", '{ "error": "..." }',       "Pixel não encontrado (slug errado na URL)."],
+                ["413", "#ef4444", '{ "error": "..." }',       "Payload maior que 64 KB."],
+              ] as [string, string, string, string][]).map(([code, color, body, desc]) => (
+                <div key={code} className="flex gap-3 px-2.5 py-2">
+                  <span className="w-8 flex-shrink-0 text-[11px] font-bold self-start mt-0.5" style={{ color }}>{code}</span>
+                  <div className="min-w-0 flex-1">
+                    <code className="block text-[10px]" style={{ color: "var(--dm-text-secondary)" }}>{body}</code>
+                    <p className="mt-0.5 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>{desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </WH_Section>
+
+          <div className="pt-4" />
+        </div>
+      </div>
     </div>
   );
 }

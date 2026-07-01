@@ -1,10 +1,11 @@
+import { randomBytes } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, requireCompanyAccess } from "@/lib/trackingAuth";
 
 export const runtime = "nodejs";
 
 const PIXEL_SELECT =
-  "id, company_id, slug, name, meta_pixel_id, meta_capi_token, dominio_autorizado, meta_test_event_code, is_default, created_at";
+  "id, company_id, slug, name, meta_pixel_id, meta_capi_token, dominio_autorizado, meta_test_event_code, is_default, created_at, webhook_secret";
 
 function normalizeHostname(raw: string): string {
   let v = raw.trim().toLowerCase();
@@ -25,6 +26,7 @@ function safePixel(row: Record<string, unknown>) {
     name: (row.name as string) || "Pixel sem nome",
     metaPixelId: (row.meta_pixel_id as string) ?? "",
     hasMetaCapiToken: Boolean(row.meta_capi_token),
+    hasWebhookSecret: Boolean(row.webhook_secret),
     dominioAutorizado: (row.dominio_autorizado as string) ?? "",
     metaTestEventCode: (row.meta_test_event_code as string) ?? "",
     isDefault: Boolean(row.is_default),
@@ -75,7 +77,7 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   const body = await request.json().catch(() => null) as
     | {
-        action?: "update" | "set-default";
+        action?: "update" | "set-default" | "generate-webhook-secret" | "clear-webhook-secret";
         pixelId?: string;
         name?: string;
         metaPixelId?: string;
@@ -102,6 +104,32 @@ export async function PATCH(request: NextRequest) {
   const companyId = pixelRes.data.company_id as string;
   const access = await requireCompanyAccess(request, { companyId, write: true });
   if (!access.ok) return access.response;
+
+  if (body.action === "generate-webhook-secret") {
+    const newSecret = randomBytes(32).toString("hex");
+    const upd = await access.db
+      .from("tracking_pixels")
+      .update({ webhook_secret: newSecret })
+      .eq("id", body.pixelId)
+      .eq("company_id", companyId);
+    if (upd.error) return NextResponse.json({ error: upd.error.message }, { status: 500 });
+    const fresh = await access.db.from("tracking_pixels").select(PIXEL_SELECT).eq("id", body.pixelId).single();
+    if (fresh.error || !fresh.data) return NextResponse.json({ error: "Pixel não encontrado." }, { status: 500 });
+    // webhookSecret retornado UMA VEZ — nunca mais exposto (nem em GET, nem no próximo PATCH)
+    return NextResponse.json({ pixel: safePixel(fresh.data as Record<string, unknown>), webhookSecret: newSecret });
+  }
+
+  if (body.action === "clear-webhook-secret") {
+    const upd = await access.db
+      .from("tracking_pixels")
+      .update({ webhook_secret: null })
+      .eq("id", body.pixelId)
+      .eq("company_id", companyId);
+    if (upd.error) return NextResponse.json({ error: upd.error.message }, { status: 500 });
+    const fresh = await access.db.from("tracking_pixels").select(PIXEL_SELECT).eq("id", body.pixelId).single();
+    if (fresh.error || !fresh.data) return NextResponse.json({ error: "Pixel não encontrado." }, { status: 500 });
+    return NextResponse.json({ pixel: safePixel(fresh.data as Record<string, unknown>) });
+  }
 
   if (body.action === "set-default") {
     const rpc = await access.db.rpc("set_default_tracking_pixel", {

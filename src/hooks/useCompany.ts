@@ -366,6 +366,8 @@ export interface TrackingPixel {
   metaPixelId: string;
   /** O token existe no banco, mas nunca volta para o browser. */
   hasMetaCapiToken: boolean;
+  /** O webhook_secret existe no banco, mas nunca volta para o browser (exceto no momento da geração). */
+  hasWebhookSecret: boolean;
   dominioAutorizado: string;
   /** Código de "Eventos de teste" do Events Manager — opcional, só pra validar dedup Pixel+CAPI. Remover depois do teste. */
   metaTestEventCode: string;
@@ -381,6 +383,7 @@ function rowToTrackingPixel(row: Record<string, unknown>): TrackingPixel {
     name: row.name as string,
     metaPixelId: (row.meta_pixel_id as string) ?? "",
     hasMetaCapiToken: Boolean(row.hasMetaCapiToken),
+    hasWebhookSecret: Boolean(row.hasWebhookSecret),
     dominioAutorizado: (row.dominio_autorizado as string) ?? "",
     metaTestEventCode: (row.meta_test_event_code as string) ?? "",
     isDefault: Boolean(row.is_default),
@@ -499,6 +502,30 @@ export async function setDefaultTrackingPixel(companyId: string, pixelId: string
     method: "PATCH",
     body: JSON.stringify({ action: "set-default", pixelId }),
   });
+}
+
+/**
+ * Gera (ou regenera) o webhook_secret de um pixel.
+ * O secret é retornado UMA ÚNICA VEZ na resposta — mostre ao usuário imediatamente
+ * e avise que não será exibido novamente.
+ */
+export async function generateWebhookSecret(
+  pixelId: string,
+): Promise<{ pixel: TrackingPixel; webhookSecret: string }> {
+  const data = await trackingPixelsJson<{ pixel: TrackingPixel; webhookSecret: string }>("/api/tracking/pixels", {
+    method: "PATCH",
+    body: JSON.stringify({ action: "generate-webhook-secret", pixelId }),
+  });
+  return data;
+}
+
+/** Remove o webhook_secret de um pixel (desativa o endpoint de webhook). */
+export async function clearWebhookSecret(pixelId: string): Promise<TrackingPixel> {
+  const data = await trackingPixelsJson<{ pixel: TrackingPixel }>("/api/tracking/pixels", {
+    method: "PATCH",
+    body: JSON.stringify({ action: "clear-webhook-secret", pixelId }),
+  });
+  return data.pixel;
 }
 
 /** Remove um pixel (RLS: owner OU manager). Não deixa remover o único pixel restante da empresa. */
