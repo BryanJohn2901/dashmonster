@@ -1,17 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis,
   Area, AreaChart,
 } from "recharts";
 import {
-  Activity, AlertCircle, ArrowDown, ArrowLeft, ArrowUp, AtSign, BookMarked, CalendarDays,
-  Check, CheckCircle2, Edit2, Eye, EyeOff, GraduationCap, Heart, Key, Loader2, MessageCircle, Plus, RefreshCw,
-  Repeat, Search, SlidersHorizontal, Star, StickyNote, Target, Trash2, TrendingDown, TrendingUp, Users, X, Zap,
+  Activity, AlertCircle, ArrowDown, ArrowLeft, ArrowUp, AtSign, BadgeDollarSign, BookMarked, CalendarDays,
+  Check, CheckCircle2, Coins, Edit2, Eye, EyeOff, Filter, Gauge, GraduationCap, Heart, Key, Loader2,
+  MessageCircle, MousePointerClick, Plus, RefreshCw,
+  Repeat, Search, SlidersHorizontal, Star, StickyNote, Target, Trash2, TrendingDown, TrendingUp,
+  UserRound, Users, Wallet, X, Zap,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import {
-  fetchMetaCampaigns, fetchMetaInsights, fetchMetaAdAccounts,
+  fetchMetaCampaigns, fetchMetaInsights, fetchMetaAdAccounts, fetchMetaCreatives, fetchMetaEntityStatus,
   loadMetaCredentials, MetaInsight, MetaAdAccount,
   extractLeads, extractRevenue, fetchCampaignGoals,
 } from "@/utils/metaApi";
@@ -20,6 +24,7 @@ import {
   InstagramAccount, InstagramProfileInsights,
 } from "@/utils/instagramApi";
 import { formatBRL, formatCompact, formatInt, formatPercent } from "@/lib/format";
+import { Sparkline, Delta, pctChange } from "@/components/ui/StatCard";
 import { getTemplate, TEMPLATE_LIST, DEFAULT_PERSONALIZADO_CONFIG, KPI_GROUPS, ALL_KPI_OPTIONS } from "@/lib/templates";
 import { PerfilEmpty } from "@/components/empty/PerfilEmpty";
 import { DateRangePicker } from "@/components/DateRangePicker";
@@ -42,13 +47,18 @@ import {
   getActionValue, autoDetectResultType, computeCustomResult,
   resolveRowResult, goalToEventLabel, type CampaignGoal,
 } from "@/lib/resultDetection";
+import { useCompany, fetchTrackingFunnels, fetchEduzzCatalog, type TrackingFunnel, type EduzzProduct } from "@/hooks/useCompany";
+import { supabaseClient } from "@/lib/supabase";
+import { eventMatchesFunnel, type TrackingEvent } from "@/components/TrackingEventsView";
 
 const formatCurrency = formatBRL;
 const formatNumber = formatInt;
 
-const TEMPLATE_LS_KEY      = "pta_profile_template_v1";
-const DATES_LS_KEY         = "pta_profile_dates_v1";
-const FUNNEL_CONFIG_LS_KEY = "pta_profile_funnel_v1";
+const TEMPLATE_LS_KEY            = "pta_profile_template_v1";
+const DATES_LS_KEY               = "pta_profile_dates_v1";
+const FUNNEL_CONFIG_LS_KEY       = "pta_profile_funnel_v1";
+const LINKED_FUNNEL_LS_KEY       = "pta_profile_linked_funnel_v1";
+const PRODUCT_LINKS_LS_KEY       = "pta_profile_product_links_v1";
 const GOALS_LS_KEY         = "pta_profile_goals_v1";
 
 type ProfileFunnelStepId = "reach" | "impressions" | "clicks" | "page_views" | "leads" | "sales" | "profile_visits" | "new_followers";
@@ -185,6 +195,9 @@ interface ProfileAnalysisProps {
 
 interface AdsetRow {
   name: string;
+  // ID real do Meta (ex: ad_id) — capturado opcionalmente via toAdsetRows(getId).
+  // Usado para localizar o criativo (link externo do anúncio), não exibido na UI.
+  metaId?: string;
   impressions: number;
   reach: number;
   clicks: number;        // inline_link_clicks (cliques no link)
@@ -269,12 +282,20 @@ function toAdsetRows(
   data: MetaInsight[],
   resultTypeMap?: Record<string, string>,
   goalMap?: Record<string, CampaignGoal>,
+  getKey?: (d: MetaInsight) => string,
+  getId?: (d: MetaInsight) => string | undefined,
 ): AdsetRow[] {
   const map = new Map<string, AdsetRow>();
   data.forEach((d) => {
-    const key = d.adset_name ?? d.campaign_name;
-    const cur = map.get(key) ?? {
-      name: key,
+    const displayName = getKey ? getKey(d) : (d.adset_name ?? d.campaign_name);
+    const id = getId ? getId(d) : undefined;
+    // Agrupa pelo ID real quando disponível — NUNCA pelo nome. Anúncios/conjuntos
+    // duplicados no Gerenciador frequentemente compartilham o mesmo nome; agrupar
+    // por nome fundiria entidades distintas (com status diferentes!) numa só linha.
+    const groupKey = id ?? displayName;
+    const cur = map.get(groupKey) ?? {
+      name: displayName,
+      metaId: id,
       impressions: 0, reach: 0, clicks: 0, total_clicks: 0, spend: 0, revenue: 0,
       cpm: 0, ctr: 0, ctr_all: 0, purchases: 0, leads: 0, cpa: 0,
       page_views: 0, profile_visits: 0, new_followers: 0, customResult: 0, configuredResult: 0,
@@ -304,7 +325,7 @@ function toAdsetRows(
     const rt = resultTypeMap?.[d.campaign_id];
     cur.customResult     += resolveRowResult(d, { goal: goalMap?.[d.campaign_id] });
     cur.configuredResult += computeCustomResult(d, rt);
-    map.set(key ?? "", cur);
+    map.set(groupKey ?? "", cur);
   });
   return Array.from(map.values()).map((r) => ({
     ...r,
@@ -1206,9 +1227,19 @@ const FUNNEL_COLORS_OV: Record<string, string> = {
   reach: "#16A34A", impressions: "#0F766E", clicks: "#0D9488",
   page_views: "#f59e0b", leads: "#e11d48", sales: "#05CD99",
 };
+const KPI_ICON_OV: Record<string, LucideIcon> = {
+  spend: Wallet, customResult: Target, sales: Target, tickets: Target,
+  sales_ingresso: Target, sales_pos: Target, sales_total: Target,
+  revenue: Coins, cpa: Coins, roas: Gauge, roi: TrendingUp,
+  ctr: MousePointerClick, cpc: BadgeDollarSign, cpm: Zap,
+  clicks: MousePointerClick, total_clicks: MousePointerClick,
+  impressions: Activity, leads: Users, cpl: UserRound,
+  page_views: Eye, reach: Eye, profile_visits: UserRound, new_followers: Users,
+};
 
 function ProfileOverviewPanel({
   profileId, adAccountId, campaigns, dateFrom, dateTo, template, reportTitle,
+  linkedFunnel, companyId,
 }: {
   profileId: string;
   adAccountId: string;
@@ -1217,10 +1248,247 @@ function ProfileOverviewPanel({
   dateTo: string;
   template: Template;
   reportTitle: string;
+  /** Funil de tracking vinculado a este perfil (dados do pixel, via Supabase). */
+  linkedFunnel?: TrackingFunnel | null;
+  /** ID da empresa — necessário para buscar eventos de tracking. */
+  companyId?: string;
 }) {
-  const [rows, setRows]       = useState<AdsetRow[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState<string | null>(null);
+  const [rows, setRows]               = useState<AdsetRow[]>([]);
+  const [dailyRows, setDailyRows]     = useState<DailyRow[]>([]);
+  const [adsetRows, setAdsetRows]     = useState<AdsetRow[]>([]);
+  const [adLevelRows, setAdLevelRows] = useState<AdsetRow[]>([]);
+  const [loading, setLoading]         = useState(false);
+  const [error, setError]             = useState<string | null>(null);
+
+  // ── Eventos de tracking (Supabase) para o funil vinculado ─────────────────
+  // Só busca quando um TrackingFunnel está vinculado ao perfil. Falha silenciosa.
+  type TrackingEventMin = Pick<TrackingEvent, "fingerprint_id"|"event_name"|"value"|"product_name"|"product_parent_id"|"utm_campaign"|"event_url"|"pixel_id">;
+  const [trackingEvents, setTrackingEvents] = useState<TrackingEventMin[]>([]);
+  const [trackingLoading, setTrackingLoading] = useState(false);
+
+  useEffect(() => {
+    if (!linkedFunnel || !companyId || !supabaseClient) { setTrackingEvents([]); return; }
+    let alive = true;
+    setTrackingLoading(true);
+    void (async () => {
+      try {
+        const { data } = await supabaseClient
+          .from("events_log")
+          .select("fingerprint_id,event_name,value,product_name,product_parent_id,utm_campaign,event_url,pixel_id")
+          .eq("company_id", companyId)
+          .gte("created_at", new Date(`${dateFrom}T00:00:00`).toISOString())
+          .lte("created_at", new Date(`${dateTo}T23:59:59.999`).toISOString())
+          .or("sale_confirmed.is.null,sale_confirmed.eq.true")
+          .neq("event_name", "Renewal")
+          .neq("event_name", "Installment");
+        if (alive) setTrackingEvents((data ?? []) as TrackingEventMin[]);
+      } catch {
+        if (alive) setTrackingEvents([]);
+      } finally {
+        if (alive) setTrackingLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [linkedFunnel?.id, companyId, dateFrom, dateTo]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Agrega eventos do funil vinculado ────────────────────────────────────
+  const trackingStats = useMemo(() => {
+    if (!linkedFunnel || trackingEvents.length === 0) return null;
+    const matched = trackingEvents.filter((e) => eventMatchesFunnel(e as TrackingEvent, linkedFunnel));
+    const visitors = new Set(matched.map((e) => e.fingerprint_id)).size;
+    const leads    = new Set(matched.filter((e) => e.event_name === "Lead").map((e) => e.fingerprint_id)).size;
+    const sales    = new Set(matched.filter((e) => e.event_name === "Purchase").map((e) => e.fingerprint_id)).size;
+    const revenue  = matched.filter((e) => e.event_name === "Purchase" && e.value != null).reduce((s, e) => s + (e.value ?? 0), 0);
+    return { visitors, leads, sales, revenue };
+  }, [linkedFunnel, trackingEvents]);
+
+  // ── Catálogo Eduzz + vínculo KPI → produto ───────────────────────────────────
+  // Permite associar um produto Eduzz (via webhook) a KPIs editáveis como
+  // sales_total, sales_ingresso, sales_pos — auto-popula o valor via events_log.
+  const [eduzzCatalog, setEduzzCatalog] = useState<EduzzProduct[]>([]);
+  const [productPickerKpi, setProductPickerKpi] = useState<string | null>(null);
+  const [productPickerQuery, setProductPickerQuery] = useState("");
+  const [productLinks, setProductLinks] = useState<Record<string, string>>(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      const stored = JSON.parse(localStorage.getItem(PRODUCT_LINKS_LS_KEY) ?? "{}") as Record<string, Record<string,string>>;
+      return stored[profileId] ?? {};
+    } catch { return {}; }
+  });
+  // Dados completos por kpiId: count (vendas únicas), revenue (faturamento), daily (sparkline)
+  interface EduzzKpiStats { count: number; revenue: number; daily: number[]; dailyRevenue: number[]; }
+  const [productEduzzStats, setProductEduzzStats] = useState<Record<string, EduzzKpiStats>>({});
+  // Atalhos derivados (sem recomputar)
+  const productSalesCounts   = useMemo(() => Object.fromEntries(Object.entries(productEduzzStats).map(([k,v]) => [k, v.count])),   [productEduzzStats]);
+  const productRevenueSums   = useMemo(() => Object.fromEntries(Object.entries(productEduzzStats).map(([k,v]) => [k, v.revenue])), [productEduzzStats]);
+  const productDailyCounts   = useMemo(() => Object.fromEntries(Object.entries(productEduzzStats).map(([k,v]) => [k, v.daily])),   [productEduzzStats]);
+  const productDailyRevenues = useMemo(() => Object.fromEntries(Object.entries(productEduzzStats).map(([k,v]) => [k, v.dailyRevenue])), [productEduzzStats]);
+
+  const persistProductLinks = (next: Record<string, string>) => {
+    setProductLinks(next);
+    try {
+      const stored = JSON.parse(localStorage.getItem(PRODUCT_LINKS_LS_KEY) ?? "{}") as Record<string, Record<string,string>>;
+      localStorage.setItem(PRODUCT_LINKS_LS_KEY, JSON.stringify({ ...stored, [profileId]: next }));
+    } catch {}
+  };
+
+  // Carrega catálogo Eduzz uma vez
+  useEffect(() => {
+    if (!companyId) return;
+    fetchEduzzCatalog(companyId).then(setEduzzCatalog).catch(() => {});
+  }, [companyId]);
+
+  // Busca dados completos (count, revenue, sparkline diário) dos produtos vinculados
+  useEffect(() => {
+    const linkedProductIds = Object.values(productLinks).filter(Boolean);
+    if (linkedProductIds.length === 0 || !companyId || !supabaseClient) { setProductEduzzStats({}); return; }
+    let alive = true;
+    void (async () => {
+      try {
+        const { data } = await supabaseClient
+          .from("events_log")
+          .select("fingerprint_id, product_parent_id, value, created_at")
+          .eq("company_id", companyId)
+          .eq("event_name", "Purchase")
+          .in("product_parent_id", linkedProductIds)
+          .gte("created_at", new Date(`${dateFrom}T00:00:00`).toISOString())
+          .lte("created_at", new Date(`${dateTo}T23:59:59.999`).toISOString())
+          .or("sale_confirmed.is.null,sale_confirmed.eq.true");
+        if (!alive || !data) return;
+
+        // Agrega por produto: vendas únicas (fingerprint distinct), receita, e por dia
+        const byProduct: Record<string, { fps: Set<string>; rev: number; byDay: Record<string, {fps: Set<string>; rev: number}> }> = {};
+        for (const row of data) {
+          const pid = (row.product_parent_id as string) || "";
+          const fp  = (row.fingerprint_id as string) || "";
+          const val = (row.value as number) ?? 0;
+          const day = (row.created_at as string || "").slice(0, 10); // "YYYY-MM-DD"
+          if (!pid) continue;
+          if (!byProduct[pid]) byProduct[pid] = { fps: new Set(), rev: 0, byDay: {} };
+          byProduct[pid].fps.add(fp);
+          byProduct[pid].rev += val;
+          if (!byProduct[pid].byDay[day]) byProduct[pid].byDay[day] = { fps: new Set(), rev: 0 };
+          byProduct[pid].byDay[day].fps.add(fp);
+          byProduct[pid].byDay[day].rev += val;
+        }
+
+        // Gera série diária alinhada ao período (gaps = 0)
+        const days: string[] = [];
+        const d = new Date(`${dateFrom}T12:00:00`);
+        const end = new Date(`${dateTo}T12:00:00`);
+        while (d <= end) { days.push(d.toISOString().slice(0, 10)); d.setDate(d.getDate() + 1); }
+
+        const stats: Record<string, EduzzKpiStats> = {};
+        for (const [kpiId, parentId] of Object.entries(productLinks)) {
+          const agg = byProduct[parentId];
+          if (!agg) { stats[kpiId] = { count: 0, revenue: 0, daily: days.map(() => 0), dailyRevenue: days.map(() => 0) }; continue; }
+          stats[kpiId] = {
+            count:        agg.fps.size,
+            revenue:      agg.rev,
+            daily:        days.map((day) => agg.byDay[day]?.fps.size ?? 0),
+            dailyRevenue: days.map((day) => agg.byDay[day]?.rev ?? 0),
+          };
+        }
+        setProductEduzzStats(stats);
+      } catch { /* silencioso */ }
+    })();
+    return () => { alive = false; };
+  }, [productLinks, companyId, dateFrom, dateTo]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Links de criativo (URL externa do anúncio, ex: post do Instagram) ──────
+  // Busca sob demanda (só quando o usuário abre a view "Anúncio" na tabela),
+  // pois é uma chamada extra à API da Meta que varre a conta inteira de anúncios.
+  // Falha aqui nunca deve quebrar a tabela — é um extra, não um dado essencial.
+  const [adCreativeLinks, setAdCreativeLinks] = useState<Record<string, string>>({});
+  const [creativesLoading, setCreativesLoading] = useState(false);
+  const creativesLoadedRef = useRef(false);
+  const loadAdCreativeLinks = useCallback(() => {
+    if (creativesLoadedRef.current || creativesLoading) return;
+    const { accessToken } = loadMetaCredentials();
+    if (!accessToken || !adAccountId) return;
+    setCreativesLoading(true);
+    fetchMetaCreatives(adAccountId, accessToken)
+      .then((list) => {
+        const map: Record<string, string> = {};
+        for (const c of list) {
+          const url = c.instagramUrl || c.adLink;
+          if (url) map[c.adId] = url;
+        }
+        setAdCreativeLinks(map);
+        creativesLoadedRef.current = true;
+      })
+      .catch(() => { /* falha silenciosa — link é um extra, não pode travar a tabela */ })
+      .finally(() => setCreativesLoading(false));
+  }, [adAccountId, creativesLoading]);
+
+  // ── Status real (ACTIVE/PAUSED) por nível ───────────────────────────────────
+  // O indicador de "entrega" (bolinha) usa investimento no período como proxy
+  // por padrão, mas isso não reflete o toggle ligado/desligado real do Gerenciador
+  // de Anúncios — um conjunto pode ter gasto no período e já estar pausado agora.
+  // Campanha: busca eager (rota já existente, dado leve). Conjunto/Anúncio: lazy,
+  // disparado ao entrar na respectiva aba da tabela (evita custo desnecessário).
+  const [campaignStatusMap, setCampaignStatusMap] = useState<Record<string, string>>({});
+  const [adsetStatusMap, setAdsetStatusMap]       = useState<Record<string, string>>({});
+  const [adStatusMap, setAdStatusMap]             = useState<Record<string, string>>({});
+  const [adsetStatusLoading, setAdsetStatusLoading] = useState(false);
+  const [adStatusLoading, setAdStatusLoading]       = useState(false);
+  const adsetStatusLoadedRef = useRef(false);
+  const adStatusLoadedRef    = useRef(false);
+
+  useEffect(() => {
+    if (!adAccountId || campaigns.length === 0) return;
+    const { accessToken } = loadMetaCredentials();
+    if (!accessToken) return;
+    let alive = true;
+    fetchMetaCampaigns(adAccountId, accessToken)
+      .then((list) => {
+        if (!alive) return;
+        const ids = new Set(campaigns.map((c) => c.id));
+        const map: Record<string, string> = {};
+        for (const c of list) if (ids.has(c.id)) map[c.id] = c.status;
+        setCampaignStatusMap(map);
+      })
+      .catch(() => { /* falha silenciosa — status real é um extra */ });
+    return () => { alive = false; };
+  }, [adAccountId, campaigns]);
+
+  const loadAdsetStatus = useCallback(() => {
+    if (adsetStatusLoadedRef.current || adsetStatusLoading) return;
+    const { accessToken } = loadMetaCredentials();
+    if (!accessToken || !adAccountId) return;
+    setAdsetStatusLoading(true);
+    fetchMetaEntityStatus(adAccountId, accessToken, "adset", campaigns.map((c) => c.id))
+      .then((list) => {
+        const map: Record<string, string> = {};
+        // effective_status reflete o estado real: se o conjunto está pausado,
+        // os anúncios filhos terão effective_status "ADSET_PAUSED" mesmo com
+        // status próprio "ACTIVE". Usamos effective_status como fonte da bolinha.
+        for (const it of list) map[it.id] = it.effective_status || it.status;
+        setAdsetStatusMap(map);
+        adsetStatusLoadedRef.current = true;
+      })
+      .catch(() => { /* falha silenciosa */ })
+      .finally(() => setAdsetStatusLoading(false));
+  }, [adAccountId, campaigns, adsetStatusLoading]);
+
+  const loadAdStatus = useCallback(() => {
+    if (adStatusLoadedRef.current || adStatusLoading) return;
+    const { accessToken } = loadMetaCredentials();
+    if (!accessToken || !adAccountId) return;
+    setAdStatusLoading(true);
+    fetchMetaEntityStatus(adAccountId, accessToken, "ad", campaigns.map((c) => c.id))
+      .then((list) => {
+        const map: Record<string, string> = {};
+        // effective_status reflete o estado real: se o conjunto está pausado,
+        // os anúncios filhos terão effective_status "ADSET_PAUSED" mesmo com
+        // status próprio "ACTIVE". Usamos effective_status como fonte da bolinha.
+        for (const it of list) map[it.id] = it.effective_status || it.status;
+        setAdStatusMap(map);
+        adStatusLoadedRef.current = true;
+      })
+      .catch(() => { /* falha silenciosa */ })
+      .finally(() => setAdStatusLoading(false));
+  }, [adAccountId, campaigns, adStatusLoading]);
 
   // ── Tipo de resultado dominante (comum a todas as campanhas do perfil) ────
   // Só definido se TODAS as campanhas concordam no mesmo resultType.
@@ -1376,9 +1644,12 @@ function ProfileOverviewPanel({
     const ids = campaigns.map((c) => c.id);
     Promise.all([
       fetchMetaInsights(adAccountId, dateFrom, dateTo, { level: "campaign", timeIncrement: "all_days", campaignIds: ids }),
+      fetchMetaInsights(adAccountId, dateFrom, dateTo, { level: "campaign", timeIncrement: "1",        campaignIds: ids }),
+      fetchMetaInsights(adAccountId, dateFrom, dateTo, { level: "adset",    timeIncrement: "all_days", campaignIds: ids }),
+      fetchMetaInsights(adAccountId, dateFrom, dateTo, { level: "ad",       timeIncrement: "all_days", campaignIds: ids }),
       fetchCampaignGoals(adAccountId, accessToken, ids),
     ])
-      .then(([data, goals]) => {
+      .then(([data, daily, adsetData, adData, goals]) => {
         const effective = dominantResultType ?? autoDetectResultType(data);
         setDetectedResultType(effective ?? null);
         // Label do evento real: se TODAS as campanhas concordam no mesmo objetivo → mostra.
@@ -1396,6 +1667,9 @@ function ProfileOverviewPanel({
           campaigns.filter(c => c.resultType).map(c => [c.id, c.resultType!])
         );
         setRows(toAdsetRows(data, rtMap, goals));
+        setDailyRows(toDailyRows(daily, rtMap, goals));
+        setAdsetRows(toAdsetRows(adsetData, rtMap, goals, (d) => d.adset_name ?? d.campaign_name, (d) => d.adset_id));
+        setAdLevelRows(toAdsetRows(adData, rtMap, goals, (d) => d.ad_name ?? d.adset_name ?? d.campaign_name, (d) => d.ad_id));
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Erro ao buscar dados."))
       .finally(() => setLoading(false));
@@ -1429,7 +1703,10 @@ function ProfileOverviewPanel({
     clicks:         totals.clk,
     total_clicks:   totals.allC,
     spend:          totals.inv,
-    revenue:        (ovData?.revenue ?? 0) > 0 ? ovData!.revenue! : totals.rev,
+    // Faturamento: Eduzz webhook > override manual > Meta campaign revenue
+    revenue:        (productRevenueSums["sales_total"] ?? 0) > 0
+                      ? productRevenueSums["sales_total"]!
+                      : (ovData?.revenue ?? 0) > 0 ? ovData!.revenue! : totals.rev,
     leads:          totals.lds,
     // "Resultados" = real auto-detectado (EndForm, lead, compra…); independe de config.
     customResult:   totals.cust,
@@ -1439,11 +1716,14 @@ function ProfileOverviewPanel({
     page_views:     totals.pv,
     profile_visits: totals.pvt,
     new_followers:  totals.fol,
-    sales_ingresso: ovData?.salesIngresso ?? 0,
-    sales_pos:      ovData?.salesPos      ?? 0,
-    sales_total:    ovData?.salesTotal    ?? 0,
+    // Produto Eduzz vinculado tem prioridade sobre override manual:
+    // se o usuário conectou um produto real, usamos contagem do webhook.
+    sales_ingresso: (productSalesCounts["sales_ingresso"] ?? 0) > 0 ? productSalesCounts["sales_ingresso"]! : ovData?.salesIngresso ?? 0,
+    sales_pos:      (productSalesCounts["sales_pos"]      ?? 0) > 0 ? productSalesCounts["sales_pos"]!      : ovData?.salesPos      ?? 0,
+    sales_total:    (productSalesCounts["sales_total"]    ?? 0) > 0 ? productSalesCounts["sales_total"]!    : ovData?.salesTotal    ?? 0,
   };
-  const kpiValues = useMemo(() => ({ ...rawValues, ...template.derive(rawValues) }), [rows, template]); // eslint-disable-line react-hooks/exhaustive-deps
+  // productEduzzStats nas deps garante re-renderização imediata ao vincular produto
+  const kpiValues = useMemo(() => ({ ...rawValues, ...template.derive(rawValues) }), [rows, template, productEduzzStats]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Valores por campanha p/ a tabela "Vendas por Campanha" (colunas configuráveis) ──
   const campaignRows: CampaignRow[] = useMemo(
@@ -1452,6 +1732,27 @@ function ProfileOverviewPanel({
       return { id: camp.id, name: camp.name, values: { ...raw, ...template.derive(raw) } };
     }),
     [campaigns, rows, template],
+  );
+
+  const adsetTableRows: CampaignRow[] = useMemo(
+    () => adsetRows.map((r) => {
+      const raw = rowRawValues(r);
+      // id = adset_id real (quando disponível) — necessário pra casar com o status
+      // real (ACTIVE/PAUSED) buscado via fetchMetaEntityStatus.
+      return { id: r.metaId || r.name, name: r.name, values: { ...raw, ...template.derive(raw) } };
+    }),
+    [adsetRows, template],
+  );
+
+  const adTableRows: CampaignRow[] = useMemo(
+    () => adLevelRows.map((r) => {
+      const raw = rowRawValues(r);
+      // id = ad_id real (quando disponível) — necessário pra casar com o mapa de
+      // links de criativo buscado via fetchMetaCreatives. Fallback pro nome evita
+      // quebrar a tabela caso a Meta não retorne ad_id por algum motivo.
+      return { id: r.metaId || r.name, name: r.name, values: { ...raw, ...template.derive(raw) } };
+    }),
+    [adLevelRows, template],
   );
 
   // ── Funnel step aggregate values ──────────────────────────────────────────
@@ -1471,6 +1772,35 @@ function ProfileOverviewPanel({
     profile_visits: totals.pvt,
     new_followers:  totals.fol,
   };
+
+  // ── Séries diárias para sparklines nos cards KPI ──────────────────────────
+  const dailySeries = useMemo(() => {
+    const sorted = [...dailyRows].sort((a, b) => a.date.localeCompare(b.date));
+    return {
+      spend:          sorted.map(r => r.spend),
+      // Faturamento: usa dados Eduzz quando produto vinculado tem série diária
+      revenue:        productDailyRevenues["sales_total"]?.length > 0
+                        ? productDailyRevenues["sales_total"]
+                        : sorted.map(r => r.revenue),
+      customResult:   sorted.map(r => r.customResult),
+      sales:          sorted.map(r => r.configuredResult > 0 ? r.configuredResult : r.purchases),
+      leads:          sorted.map(r => r.leads),
+      impressions:    sorted.map(r => r.impressions),
+      clicks:         sorted.map(r => r.clicks),
+      cpa:            sorted.map(r => { const c = r.customResult > 0 ? r.customResult : r.configuredResult || r.purchases; return c > 0 ? r.spend / c : 0; }),
+      roas:           sorted.map(r => r.spend > 0 ? r.revenue / r.spend : 0),
+      ctr:            sorted.map(r => r.impressions > 0 ? (r.clicks / r.impressions) * 100 : 0),
+      cpl:            sorted.map(r => r.leads > 0 ? r.spend / r.leads : 0),
+      page_views:     sorted.map(r => r.page_views),
+      reach:          sorted.map(r => r.reach),
+      profile_visits: sorted.map(r => r.profile_visits),
+      new_followers:  sorted.map(r => r.new_followers),
+      // Séries Eduzz diárias — alimentam sparkline de sales_total/ingresso/pos/revenue
+      sales_total:    productDailyCounts["sales_total"]    ?? [],
+      sales_ingresso: productDailyCounts["sales_ingresso"] ?? [],
+      sales_pos:      productDailyCounts["sales_pos"]      ?? [],
+    };
+  }, [dailyRows, productDailyCounts, productDailyRevenues]);
 
   const buildReport = (): ReportData => {
     const data = buildReportFromKpisFunnel({
@@ -1520,6 +1850,25 @@ function ProfileOverviewPanel({
       });
     }
 
+    // Funil de Tracking vinculado — dados reais do pixel (Supabase).
+    if (linkedFunnel && trackingStats) {
+      const inv = totals.inv;
+      data.groups.push({
+        id: "g_tracking_funnel",
+        label: `Funil de Tracking · ${linkedFunnel.label}`,
+        items: [
+          { id: "trk_visitors", label: "Visitantes únicos", value: formatInt(trackingStats.visitors) },
+          { id: "trk_leads",    label: "Leads únicos",      value: trackingStats.leads > 0 ? formatInt(trackingStats.leads) : "—",
+            sub: trackingStats.leads > 0 && trackingStats.visitors > 0 ? `TX ${formatPercent((trackingStats.leads / trackingStats.visitors) * 100)}` : undefined },
+          { id: "trk_sales",    label: "Vendas únicas",     value: trackingStats.sales > 0 ? formatInt(trackingStats.sales) : "—",
+            sub: trackingStats.sales > 0 && trackingStats.leads > 0 ? `TX ${formatPercent((trackingStats.sales / trackingStats.leads) * 100)}` : undefined },
+          { id: "trk_revenue",  label: "Receita (pixel)",   value: trackingStats.revenue > 0 ? formatBRL(trackingStats.revenue) : "—", accent: "green" as const },
+          { id: "trk_cpl",      label: "Custo por Lead",    value: inv > 0 && trackingStats.leads > 0 ? formatBRL(inv / trackingStats.leads) : "—", accent: "amber" as const },
+          { id: "trk_cpv",      label: "Custo por Venda",   value: inv > 0 && trackingStats.sales > 0 ? formatBRL(inv / trackingStats.sales) : "—", accent: "amber" as const },
+        ],
+      });
+    }
+
     return data;
   };
 
@@ -1546,8 +1895,11 @@ function ProfileOverviewPanel({
           const retryIds = campaigns.map((c) => c.id);
           Promise.all([
             fetchMetaInsights(adAccountId, dateFrom, dateTo, { level: "campaign", timeIncrement: "all_days", campaignIds: retryIds }),
+            fetchMetaInsights(adAccountId, dateFrom, dateTo, { level: "campaign", timeIncrement: "1",        campaignIds: retryIds }),
+            fetchMetaInsights(adAccountId, dateFrom, dateTo, { level: "adset",    timeIncrement: "all_days", campaignIds: retryIds }),
+            fetchMetaInsights(adAccountId, dateFrom, dateTo, { level: "ad",       timeIncrement: "all_days", campaignIds: retryIds }),
             fetchCampaignGoals(adAccountId, accessToken, retryIds),
-          ]).then(([data, goals]) => {
+          ]).then(([data, daily, adsetData, adData, goals]) => {
               const effective = dominantResultType ?? autoDetectResultType(data);
               setDetectedResultType(effective ?? null);
               const goalLabels = campaigns
@@ -1562,6 +1914,9 @@ function ProfileOverviewPanel({
                 campaigns.filter(c => c.resultType).map(c => [c.id, c.resultType!])
               );
               setRows(toAdsetRows(data, rtMap, goals));
+              setDailyRows(toDailyRows(daily, rtMap, goals));
+              setAdsetRows(toAdsetRows(adsetData, rtMap, goals, (d) => d.adset_name ?? d.campaign_name, (d) => d.adset_id));
+              setAdLevelRows(toAdsetRows(adData, rtMap, goals, (d) => d.ad_name ?? d.adset_name ?? d.campaign_name, (d) => d.ad_id));
             })
             .catch((e) => setError(e instanceof Error ? e.message : "Erro ao buscar dados."))
             .finally(() => setLoading(false));
@@ -1593,191 +1948,348 @@ function ProfileOverviewPanel({
         </span>
       </div>
 
-      {/* ── MÉTRICAS PRINCIPAIS ────────────────────────────────────────────── */}
-      <div>
-        <div className="mb-3 flex items-center justify-between">
-          <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>
-            Métricas Principais
-          </p>
+      {/* ── Indicadores principais — bento layout ─────────────────────────── */}
+      <section className="space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-bold tracking-tight sm:text-base" style={{ color: "var(--dm-text-primary)" }}>
+            Indicadores principais
+          </h2>
           <div className="flex items-center gap-2">
-            {/* ── Configurar Métricas ── */}
             <button
               type="button"
               onClick={() => setShowKpiPanel(true)}
-              className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-semibold transition"
-              style={{ backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)", border: "1px solid var(--dm-border-default)" }}
+              className="flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[11px] font-semibold transition hover:opacity-80"
+              style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)", color: "var(--dm-text-secondary)" }}
             >
-              <SlidersHorizontal size={11} />
-              Configurar
+              <SlidersHorizontal size={12} /> Configurar
             </button>
             <button
               type="button"
               onClick={() => setEditGoals((v) => !v)}
-              className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-semibold transition"
+              className="flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[11px] font-semibold transition hover:opacity-80"
               style={editGoals
-                ? { background: "linear-gradient(135deg,#16A34A 0%,#15803D 100%)", color: "#fff", boxShadow: "0 4px 12px rgba(22,163,74,0.30)" }
-                : { backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)", border: "1px solid var(--dm-border-default)" }}
+                ? { background: "linear-gradient(135deg,#16A34A 0%,#15803D 100%)", color: "#fff", borderColor: "transparent" }
+                : { borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)", color: "var(--dm-text-secondary)" }}
             >
-              <Target size={11} />
+              <Target size={12} />
               {editGoals ? "Salvar Metas" : "Definir Metas"}
             </button>
             <ExportReportButton buildData={buildReport} fileName={`relatorio_${reportTitle}_${dateFrom}_${dateTo}`} />
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        {/* Bento grid: funil à esquerda + cards KPI à direita */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+
+          {/* ── Coluna esquerda: funil compacto ── */}
+          <div className="sm:col-span-2 lg:col-span-1 lg:row-span-2">
+            <div className="flex h-full flex-col gap-3 rounded-2xl border p-5"
+              style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-subtle)" }}>
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-xs font-bold" style={{ color: "var(--dm-text-primary)" }}>
+                  <span className="flex h-6 w-6 items-center justify-center rounded-lg"
+                    style={{ backgroundColor: "rgba(22,163,74,0.12)" }}>
+                    <Filter size={13} style={{ color: "#16A34A" }} />
+                  </span>
+                  Funil de conversão
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowFunnelPanel((v) => !v)}
+                  className="flex h-6 w-6 items-center justify-center rounded-lg transition hover:opacity-70"
+                  style={{
+                    backgroundColor: showFunnelPanel ? "rgba(22,163,74,0.12)" : "var(--dm-bg-elevated)",
+                    color: showFunnelPanel ? "#16A34A" : "var(--dm-text-tertiary)",
+                  }}
+                  title="Personalizar funil"
+                >
+                  <SlidersHorizontal size={12} />
+                </button>
+              </div>
+              {showFunnelPanel && (
+                <div className="rounded-xl border p-3 space-y-2"
+                  style={{ borderColor: "var(--dm-border-subtle)", backgroundColor: "var(--dm-bg-elevated)" }}>
+                  <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>Etapas visíveis</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {PROFILE_FUNNEL_STEPS.map((step) => {
+                      const selected = funnelStepIds.includes(step.id);
+                      const index    = funnelStepIds.indexOf(step.id);
+                      return (
+                        <div key={step.id}
+                          className="flex items-center gap-1 rounded-[10px] cursor-pointer select-none transition"
+                          style={{
+                            padding: "4px 10px",
+                            backgroundColor: selected ? step.color + "20" : "var(--dm-bg-surface)",
+                            border: `1.5px solid ${selected ? step.color + "66" : "var(--dm-border-default)"}`,
+                            color: selected ? step.color : "var(--dm-text-tertiary)",
+                          }}
+                          onClick={() => !(selected && funnelStepIds.length === 1) && toggleFunnelStep(step.id)}
+                        >
+                          <span className="text-[10px] font-semibold">{step.label}</span>
+                          {selected && (
+                            <div className="flex gap-0.5 ml-0.5">
+                              <button type="button"
+                                onClick={(e) => { e.stopPropagation(); moveFunnelStep(step.id, -1); }}
+                                disabled={index === 0}
+                                className="rounded p-0.5 transition disabled:opacity-20 hover:opacity-80">
+                                <ArrowUp size={8} />
+                              </button>
+                              <button type="button"
+                                onClick={(e) => { e.stopPropagation(); moveFunnelStep(step.id, 1); }}
+                                disabled={index === funnelStepIds.length - 1}
+                                className="rounded p-0.5 transition disabled:opacity-20 hover:opacity-80">
+                                <ArrowDown size={8} />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <button type="button" onClick={() => persistFunnelSteps(DEFAULT_FUNNEL_STEP_IDS)}
+                    className="text-[10px] font-semibold transition hover:opacity-70" style={{ color: "var(--dm-brand-500)" }}>
+                    Restaurar padrão
+                  </button>
+                </div>
+              )}
+              <div className="flex flex-1 flex-col justify-center gap-2.5">
+                {(() => {
+                  const maxVal = Math.max(...funnelStepIds.map((id) => funnelVals[id] ?? 0), 1);
+                  return funnelStepIds.map((stepId, i) => {
+                    const step = PROFILE_FUNNEL_STEPS.find((s) => s.id === stepId);
+                    if (!step) return null;
+                    const val     = funnelVals[stepId] ?? 0;
+                    const prevId  = i > 0 ? funnelStepIds[i - 1] : null;
+                    const prevVal = prevId ? (funnelVals[prevId] ?? 0) : null;
+                    const rate    = prevVal !== null && prevVal > 0 ? (val / prevVal) * 100 : null;
+                    const isFreq  = prevId === "reach" && stepId === "impressions";
+                    const rateDisplay = rate !== null
+                      ? isFreq
+                        ? `${(rate / 100).toFixed(1)}x${step.rateLabel ? ` ${step.rateLabel}` : ""}`
+                        : `${formatPercent(rate)}${step.rateLabel ? ` ${step.rateLabel}` : ""}`
+                      : null;
+                    const color    = FUNNEL_COLORS_OV[stepId] ?? step.color;
+                    const widthPct = Math.max(6, (val / maxVal) * 100);
+                    return (
+                      <div key={stepId} className="flex flex-col gap-1">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="font-semibold" style={{ color: "var(--dm-text-secondary)" }}>
+                            {stepId === "sales" && resultEventLabel ? resultEventLabel : step.label}
+                          </span>
+                          <span className="flex items-center gap-2">
+                            {rateDisplay !== null && (
+                              <span className="rounded-full px-1.5 py-0.5 text-[9px] font-bold tabular-nums"
+                                style={{ color, backgroundColor: color + "18" }}>
+                                {rateDisplay}
+                              </span>
+                            )}
+                            <span className="font-bold tabular-nums" style={{ color: "var(--dm-text-primary)" }}>{formatInt(val)}</span>
+                          </span>
+                        </div>
+                        <div className="h-2.5 w-full overflow-hidden rounded-full" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
+                          <div className="h-full rounded-full transition-all duration-500"
+                            style={{ width: `${widthPct}%`, background: color }} />
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            </div>
+          </div>
+
+          {/* ── Cards KPI (estilo StatCard com sparkline) ── */}
           {kpiOrder
             .map(id => template.kpis.find(k => k.id === id) ?? ALL_KPI_OPTIONS.find(k => k.id === id))
             .filter((kpi): kpi is NonNullable<typeof kpi> => Boolean(kpi))
             .map((kpi) => {
-            const val       = kpiValues[kpi.id] ?? 0;
-            const display   = val > 0 ? kpi.format(val) : "—";
-            const goalVal   = goals[kpi.id] ?? 0;
-            const goalPct   = goalVal > 0
-              ? kpi.invert ? (goalVal / Math.max(val, 0.001)) * 100 : (val / goalVal) * 100
-              : 0;
-            const goalMet   = goalVal > 0 && (kpi.invert ? val <= goalVal : val >= goalVal);
-            const goalColor = goalMet ? "#05CD99" : goalPct >= 75 ? "#F4A60D" : "#EE5D50";
-            const solid     = KPI_SOLID_OV[kpi.color] ?? "#16A34A";
-            const isOvEditable = (OV_EDITABLE_IDS as readonly string[]).includes(kpi.id);
-            const isOvEditing  = editingOvId === kpi.id;
-            const isDragOver   = dragOverKpiId === kpi.id;
-            const isDragging   = draggingKpiId === kpi.id;
+              const val       = kpiValues[kpi.id] ?? 0;
+              const display   = val > 0 ? kpi.format(val) : "—";
+              const goalVal   = goals[kpi.id] ?? 0;
+              // Para métricas invertidas (custo: CPA, CPL, CPC…), a meta é o teto ideal —
+              // ratio = val/goal > 1 significa que ESTOUROU o custo máximo permitido.
+              const goalRatio    = goalVal > 0 ? val / goalVal : 0;
+              const goalMet      = goalVal > 0 && (kpi.invert ? val <= goalVal : val >= goalVal);
+              const goalExceeded = kpi.invert && goalVal > 0 && val > goalVal;
+              const goalPct      = goalRatio * 100;
+              const goalColor    = kpi.invert
+                ? (goalExceeded ? "#EE5D50" : goalRatio >= 0.85 ? "#F4A60D" : "#05CD99")
+                : (goalMet ? "#05CD99" : goalPct >= 75 ? "#F4A60D" : "#EE5D50");
+              const solid     = KPI_SOLID_OV[kpi.color] ?? "#16A34A";
+              const KpiIcon   = KPI_ICON_OV[kpi.id] ?? Activity;
+              const isOvEditable = (OV_EDITABLE_IDS as readonly string[]).includes(kpi.id);
+              const isOvEditing  = editingOvId === kpi.id;
+              const isDragOver   = dragOverKpiId === kpi.id;
+              const isDragging   = draggingKpiId === kpi.id;
+              const linkedProductParentId = productLinks[kpi.id];
+              const linkedProduct = linkedProductParentId ? eduzzCatalog.find((p) => p.parentId === linkedProductParentId) : undefined;
+              const isEduzzLinked = Boolean(linkedProduct);
+              const kpiLabel = kpi.id === "customResult" && resultEventLabel
+                ? `Resultados (${resultEventLabel})`
+                : kpi.id === "cpa" && resultEventLabel && template.id === "personalizado"
+                  ? `Custo por Resultado (${resultEventLabel})`
+                  : kpi.id === "cpa" && kpiValues.customResult > 0 && template.id !== "personalizado"
+                    ? "Custo por Resultado"
+                    : kpi.id === "sales" && effectiveResultType && template.id !== "personalizado"
+                      ? RESULT_TYPE_LABELS[effectiveResultType]
+                      : kpi.id === "cpa" && effectiveResultType && template.id !== "personalizado"
+                        ? `Custo por ${RESULT_TYPE_LABELS[effectiveResultType]}`
+                        : kpi.label;
+              const sparkData = dailySeries[kpi.id as keyof typeof dailySeries];
 
-            return (
-              <article
-                key={kpi.id}
-                draggable
-                onDragStart={(e) => {
-                  dragKpiIdRef.current = kpi.id;
-                  setDraggingKpiId(kpi.id);
-                  e.dataTransfer.effectAllowed = "move";
-                }}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = "move";
-                  if (dragKpiIdRef.current !== kpi.id) setDragOverKpiId(kpi.id);
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  const src = dragKpiIdRef.current;
-                  if (src && src !== kpi.id) {
-                    const next = [...kpiOrder];
-                    const fi = next.indexOf(src); const ti = next.indexOf(kpi.id);
-                    if (fi >= 0 && ti >= 0) { next.splice(fi, 1); next.splice(ti, 0, src); persistKpiOrder(next); }
-                  }
-                  dragKpiIdRef.current = null; setDraggingKpiId(null); setDragOverKpiId(null);
-                }}
-                onDragEnd={() => { dragKpiIdRef.current = null; setDraggingKpiId(null); setDragOverKpiId(null); }}
-                className="relative flex flex-col rounded-[20px] border shadow-horizon card-hover overflow-hidden transition-all duration-150"
-                style={{
-                  backgroundColor: "var(--dm-bg-surface)",
-                  borderColor: isDragOver ? solid : "var(--dm-border-default)",
-                  padding: "18px 18px 18px 22px",
-                  cursor: "grab",
-                  opacity: isDragging ? 0.5 : 1,
-                }}
-              >
-                {/* Left accent bar */}
-                <div className="absolute left-0 top-0 bottom-0 w-[3px]" style={{ backgroundColor: solid }} />
-
-                {/* Header: label + controls */}
-                <div className="mb-2 flex items-start justify-between gap-2">
-                  <p className="text-[11px] font-semibold leading-tight" style={{ color: "var(--dm-text-secondary)" }} title={kpi.tooltip}>
-                    {kpi.id === "customResult" && resultEventLabel
-                      ? `Resultados (${resultEventLabel})`
-                      : kpi.id === "cpa" && resultEventLabel && template.id === "personalizado"
-                        ? `Custo por Resultado (${resultEventLabel})`
-                        : kpi.id === "cpa" && kpiValues.customResult > 0 && template.id !== "personalizado"
-                          ? `Custo por Resultado`
-                          : kpi.id === "sales" && effectiveResultType && template.id !== "personalizado"
-                            ? RESULT_TYPE_LABELS[effectiveResultType]
-                            : kpi.id === "cpa" && effectiveResultType && template.id !== "personalizado"
-                              ? `Custo por ${RESULT_TYPE_LABELS[effectiveResultType]}`
-                              : kpi.label}
-                    {isOvEditable && val > 0 && (
-                      <span className="ml-1.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase" style={{ backgroundColor: solid + "1a", color: solid }}>manual</span>
-                    )}
-                  </p>
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    {isOvEditable && !editGoals && (
-                      <button type="button"
-                        onClick={() => { setEditingOvId(kpi.id); setEditingOvVal(String(val > 0 ? val : "")); }}
-                        className="flex h-6 w-6 items-center justify-center rounded-full transition hover:opacity-80"
-                        style={{ backgroundColor: solid + "1a", color: solid }}
-                        title="Inserir valor manualmente">
-                        <Edit2 size={11} />
-                      </button>
-                    )}
-                    {editGoals && (
-                      <input
-                        type="number" step="any"
-                        value={goals[kpi.id] ?? ""}
-                        onChange={(e) => { const v = parseFloat(e.target.value); updateGoal(kpi.id, isNaN(v) ? 0 : v); }}
-                        placeholder="Meta"
-                        className="w-20 h-7 rounded-[10px] border px-2 text-[10px] text-right outline-none"
-                        style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
-                      />
-                    )}
+              return (
+                <article
+                  key={kpi.id}
+                  draggable
+                  onDragStart={(e) => {
+                    dragKpiIdRef.current = kpi.id;
+                    setDraggingKpiId(kpi.id);
+                    e.dataTransfer.effectAllowed = "move";
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                    if (dragKpiIdRef.current !== kpi.id) setDragOverKpiId(kpi.id);
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const src = dragKpiIdRef.current;
+                    if (src && src !== kpi.id) {
+                      const next = [...kpiOrder];
+                      const fi = next.indexOf(src); const ti = next.indexOf(kpi.id);
+                      if (fi >= 0 && ti >= 0) { next.splice(fi, 1); next.splice(ti, 0, src); persistKpiOrder(next); }
+                    }
+                    dragKpiIdRef.current = null; setDraggingKpiId(null); setDragOverKpiId(null);
+                  }}
+                  onDragEnd={() => { dragKpiIdRef.current = null; setDraggingKpiId(null); setDragOverKpiId(null); }}
+                  className="flex flex-col gap-2.5 rounded-2xl border p-4 transition-all duration-150"
+                  style={{
+                    backgroundColor: "var(--dm-bg-surface)",
+                    borderColor: isDragOver ? solid : "var(--dm-border-subtle)",
+                    cursor: "grab",
+                    opacity: isDragging ? 0.5 : 1,
+                  }}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="flex min-w-0 items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider"
+                      style={{ color: "var(--dm-text-tertiary)" }}>
+                      <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg"
+                        style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
+                        <KpiIcon size={13} style={{ color: "var(--dm-text-tertiary)" }} />
+                      </span>
+                      <span className="truncate">{kpiLabel}</span>
+                      {isOvEditable && val > 0 && (
+                        <span className="ml-0.5 flex-shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase"
+                          style={{ backgroundColor: solid + "1a", color: solid }}>
+                          {isEduzzLinked ? "Eduzz" : "manual"}
+                        </span>
+                      )}
+                    </span>
+                    <div className="flex shrink-0 items-center gap-1">
+                      {sparkData && sparkData.length >= 2 && !editGoals && (
+                        <Delta value={pctChange(sparkData)} invert={kpi.invert} />
+                      )}
+                      {isOvEditable && !editGoals && (
+                        <button type="button"
+                          onClick={() => {
+                            // Se há catálogo Eduzz disponível → abre o picker de produto.
+                            // Senão, cai no modo de entrada manual.
+                            if (eduzzCatalog.length > 0) {
+                              setProductPickerKpi(kpi.id);
+                              setProductPickerQuery("");
+                            } else {
+                              setEditingOvId(kpi.id);
+                              setEditingOvVal(String(val > 0 ? val : ""));
+                            }
+                          }}
+                          className="flex h-6 w-6 items-center justify-center rounded-full transition hover:opacity-80"
+                          style={{ backgroundColor: solid + "1a", color: solid }}
+                          title={eduzzCatalog.length > 0 ? "Conectar produto Eduzz" : "Inserir valor manualmente"}>
+                          <Edit2 size={11} />
+                        </button>
+                      )}
+                      {editGoals && (
+                        <input
+                          type="number" step="any"
+                          value={goals[kpi.id] ?? ""}
+                          onChange={(e) => { const v = parseFloat(e.target.value); updateGoal(kpi.id, isNaN(v) ? 0 : v); }}
+                          placeholder="Meta"
+                          className="w-20 h-7 rounded-[10px] border px-2 text-[10px] text-right outline-none"
+                          style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
+                        />
+                      )}
+                    </div>
                   </div>
-                </div>
 
-                {/* Value */}
-                {isOvEditing ? (
-                  <div className="flex items-center gap-2 mt-1">
-                    <input
-                      type="number" min="0" step="any" autoFocus
-                      value={editingOvVal}
-                      onChange={(e) => setEditingOvVal(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
+                  {isOvEditing ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number" min="0" step="any" autoFocus
+                        value={editingOvVal}
+                        onChange={(e) => setEditingOvVal(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            const v = parseFloat(editingOvVal);
+                            if (!isNaN(v) && v >= 0) setOvManual(ovKey, { [OV_FIELD_MAP[kpi.id as OvEditableId]]: v });
+                            setEditingOvId(null);
+                          }
+                          if (e.key === "Escape") setEditingOvId(null);
+                        }}
+                        className="w-full rounded-[10px] border px-3 py-1.5 text-[16px] font-bold outline-none tabular-nums"
+                        style={{ borderColor: solid, backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
+                      />
+                      <button type="button"
+                        onClick={() => {
                           const v = parseFloat(editingOvVal);
                           if (!isNaN(v) && v >= 0) setOvManual(ovKey, { [OV_FIELD_MAP[kpi.id as OvEditableId]]: v });
                           setEditingOvId(null);
-                        }
-                        if (e.key === "Escape") setEditingOvId(null);
-                      }}
-                      className="w-full rounded-[10px] border px-3 py-1.5 text-[16px] font-bold outline-none tabular-nums"
-                      style={{ borderColor: solid, backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
-                    />
-                    <button type="button"
-                      onClick={() => {
-                        const v = parseFloat(editingOvVal);
-                        if (!isNaN(v) && v >= 0) setOvManual(ovKey, { [OV_FIELD_MAP[kpi.id as OvEditableId]]: v });
-                        setEditingOvId(null);
-                      }}
-                      className="shrink-0 rounded-full px-3 py-1.5 text-[11px] font-bold text-white"
-                      style={{ background: `linear-gradient(135deg,${solid} 0%,${solid}bb 100%)` }}>OK</button>
-                  </div>
-                ) : (
-                  <p className="mt-1 text-[26px] font-bold tabular-nums tracking-tight leading-tight"
-                    style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins), Poppins, sans-serif" }}>
-                    {display}
-                  </p>
-                )}
-
-                {/* Goal progress — bar first, then % | Meta below */}
-                {!editGoals && goalVal > 0 && (
-                  <div className="mt-3 space-y-1.5">
-                    <div className="h-1.5 overflow-hidden rounded-full" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
-                      <div className="h-full rounded-full transition-all duration-500"
-                        style={{ width: `${Math.min(100, goalPct)}%`, backgroundColor: goalColor }} />
+                        }}
+                        className="shrink-0 rounded-full px-3 py-1.5 text-[11px] font-bold text-white"
+                        style={{ background: `linear-gradient(135deg,${solid} 0%,${solid}bb 100%)` }}>OK</button>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold" style={{ color: goalColor }}>
-                        {Math.min(Math.round(goalPct), 999)}%
-                      </span>
-                      <span className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
-                        Meta: {kpi.format(goalVal)}
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </article>
-            );
-          })}
+                  ) : (
+                    <p className="text-[26px] font-bold leading-none tabular-nums"
+                      style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>
+                      {display}
+                    </p>
+                  )}
 
-          {/* ── Cards personalizados — informação livre do usuário ── */}
+                  {/* Sparkline sempre renderizado — quando não há dados, o componente
+                      retorna <div className="h-7" /> mantendo espaço consistente
+                      em todos os cards, independente de ter sparkline ou meta */}
+                  {!isOvEditing && (
+                    <Sparkline data={sparkData ?? []} color={solid} />
+                  )}
+
+                  {!editGoals && !isOvEditing && goalVal > 0 && (
+                    <div className="space-y-1.5">
+                      {goalExceeded && (
+                        <span className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase"
+                          style={{ backgroundColor: "#EE5D501a", color: "#EE5D50" }}>
+                          Custo estourado
+                        </span>
+                      )}
+                      <div className="h-1.5 overflow-hidden rounded-full" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
+                        <div className="h-full rounded-full transition-all duration-500"
+                          style={{ width: `${Math.min(100, goalPct)}%`, backgroundColor: goalColor }} />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold" style={{ color: goalColor }}>
+                          {goalExceeded ? `+${Math.round(goalPct - 100)}% acima` : `${Math.min(Math.round(goalPct), 999)}%`}
+                        </span>
+                        <span className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                          Meta: {kpi.format(goalVal)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </article>
+              );
+            })}
+        </div>
+
+        {/* ── Cards personalizados ── */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           {customCards.map((cc) => (
             <article key={cc.id}
               className="relative flex flex-col rounded-[20px] border shadow-horizon card-hover overflow-hidden"
@@ -1807,14 +2319,10 @@ function ProfileOverviewPanel({
                 {cc.value || "—"}
               </p>
               {cc.note && (
-                <p className="mt-1 text-[10px] leading-snug" style={{ color: "var(--dm-text-tertiary)" }}>
-                  {cc.note}
-                </p>
+                <p className="mt-1 text-[10px] leading-snug" style={{ color: "var(--dm-text-tertiary)" }}>{cc.note}</p>
               )}
             </article>
           ))}
-
-          {/* Tile de criar/editar card personalizado */}
           {cardForm ? (
             <article className="flex flex-col gap-2 rounded-[20px] border-2 shadow-horizon"
               style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "#16A34A", padding: "18px" }}>
@@ -1867,230 +2375,102 @@ function ProfileOverviewPanel({
             </button>
           )}
         </div>
-      </div>
+      </section>
 
-      {/* ── FUNIL DE CONVERSÃO ─────────────────────────────────────────────── */}
-      <article className="overflow-hidden rounded-[20px] border shadow-horizon"
-        style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
-
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4"
-          style={{ borderColor: "var(--dm-border-subtle)" }}>
-          <div>
-            <h3 className="text-sm font-bold" style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>
-              Funil de Conversão
-            </h3>
-            <p className="mt-0.5 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
-              Jornada consolidada de todas as campanhas
-            </p>
+      {/* ── Funil de Tracking vinculado ─────────────────────────────────────── */}
+      {linkedFunnel && (
+        <article className="overflow-hidden rounded-[20px] border shadow-horizon"
+          style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
+          {/* Header */}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4"
+            style={{ borderColor: "var(--dm-border-subtle)" }}>
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
+                style={{ backgroundColor: linkedFunnel.color + "22" }}>
+                <Activity size={14} style={{ color: linkedFunnel.color }} />
+              </span>
+              <div className="min-w-0">
+                <h3 className="text-sm font-bold truncate" style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>
+                  {linkedFunnel.label}
+                </h3>
+                <p className="mt-0.5 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                  Funil de tracking · dados do pixel
+                  {trackingLoading && " · carregando…"}
+                </p>
+              </div>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="flex rounded-[10px] p-0.5" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
-              {(["bars", "funnel"] as const).map((v) => (
-                <button key={v} type="button" onClick={() => setFunnelView(v)}
-                  className="flex items-center gap-1.5 rounded-[8px] px-3 py-1.5 text-[11px] font-semibold transition-all"
-                  style={funnelView === v
-                    ? { background: "linear-gradient(135deg,#16A34A 0%,#15803D 100%)", color: "#fff", boxShadow: "0 2px 8px rgba(22,163,74,0.28)" }
-                    : { color: "var(--dm-text-tertiary)" }}>
-                  {v === "bars" ? "Barras" : "Funil"}
-                </button>
-              ))}
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowFunnelPanel((v) => !v)}
-              className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-semibold transition"
-              style={showFunnelPanel
-                ? { background: "linear-gradient(135deg,#16A34A 0%,#15803D 100%)", color: "#fff", boxShadow: "0 4px 12px rgba(22,163,74,0.30)" }
-                : { backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-secondary)", border: "1px solid var(--dm-border-default)" }}
-            >
-              <SlidersHorizontal size={11} />
-              {showFunnelPanel ? "Fechar" : "Personalizar"}
-            </button>
-          </div>
-        </div>
 
-        {/* Funnel customization panel */}
-        {showFunnelPanel && (
-          <div className="border-b px-5 py-4 space-y-3" style={{ borderColor: "var(--dm-border-subtle)", backgroundColor: "var(--dm-bg-elevated)" }}>
-            <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>
-              Etapas visíveis
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {PROFILE_FUNNEL_STEPS.map((step) => {
-                const selected = funnelStepIds.includes(step.id);
-                const index    = funnelStepIds.indexOf(step.id);
-                return (
-                  <div key={step.id}
-                    className="flex items-center gap-1.5 rounded-[12px] cursor-pointer select-none transition"
-                    style={{
-                      padding: "6px 12px",
-                      backgroundColor: selected ? step.color + "20" : "var(--dm-bg-surface)",
-                      border: `1.5px solid ${selected ? step.color + "66" : "var(--dm-border-default)"}`,
-                      color: selected ? step.color : "var(--dm-text-tertiary)",
-                    }}
-                    onClick={() => !(selected && funnelStepIds.length === 1) && toggleFunnelStep(step.id)}
-                  >
-                    <span className="text-[11px] font-semibold">{step.label}</span>
-                    {selected && (
-                      <div className="flex gap-0.5 ml-0.5">
-                        <button type="button"
-                          onClick={(e) => { e.stopPropagation(); moveFunnelStep(step.id, -1); }}
-                          disabled={index === 0}
-                          className="rounded p-0.5 transition disabled:opacity-20 hover:opacity-80">
-                          <ArrowUp size={9} />
-                        </button>
-                        <button type="button"
-                          onClick={(e) => { e.stopPropagation(); moveFunnelStep(step.id, 1); }}
-                          disabled={index === funnelStepIds.length - 1}
-                          className="rounded p-0.5 transition disabled:opacity-20 hover:opacity-80">
-                          <ArrowDown size={9} />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+          {/* Conteúdo */}
+          {trackingLoading ? (
+            <div className="flex items-center justify-center py-10">
+              <Loader2 size={16} className="animate-spin" style={{ color: "var(--dm-text-tertiary)" }} />
             </div>
-            <button type="button" onClick={() => persistFunnelSteps(DEFAULT_FUNNEL_STEP_IDS)}
-              className="text-[10px] font-semibold transition hover:opacity-70"
-              style={{ color: "var(--dm-brand-500)" }}>
-              Restaurar padrão
-            </button>
-          </div>
-        )}
-
-        {/* VIEW: BARRAS */}
-        {funnelView === "bars" && (() => {
-          const maxVal = Math.max(...funnelStepIds.map((id) => funnelVals[id] ?? 0), 1);
-          return (
-            <div className="flex flex-col gap-0 px-5 py-5">
-              {funnelStepIds.map((stepId, i) => {
-                const step    = PROFILE_FUNNEL_STEPS.find((s) => s.id === stepId);
-                if (!step) return null;
-                const val     = funnelVals[stepId] ?? 0;
-                const prevId  = i > 0 ? funnelStepIds[i - 1] : null;
-                const prevVal = prevId ? (funnelVals[prevId] ?? 0) : null;
-                const rate    = prevVal !== null && prevVal > 0 ? (val / prevVal) * 100 : null;
-                const isFrequency = prevId === "reach" && stepId === "impressions";
-                const rateDisplay = rate !== null
-                  ? isFrequency
-                    ? `${(rate / 100).toFixed(1)}x${step.rateLabel ? ` ${step.rateLabel}` : ""}`
-                    : `${formatPercent(rate)}${step.rateLabel ? ` ${step.rateLabel}` : ""}`
-                  : null;
-                const color   = FUNNEL_COLORS_OV[stepId] ?? step.color;
-                const pct     = maxVal > 0 ? (val / maxVal) * 100 : 0;
-                return (
-                  <div key={stepId} className="flex flex-col">
-                    {i > 0 && (
-                      <div className="flex items-center gap-3 py-2 pl-[52px]">
-                        <div className="w-px self-stretch" style={{ backgroundColor: "var(--dm-border-default)", minHeight: "12px" }} />
-                        {rateDisplay !== null && (
-                          <span className="rounded-full px-3 py-0.5 text-[10px] font-bold"
-                            style={{ backgroundColor: color + "18", color }}>
-                            {rateDisplay}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    <div className="flex items-center gap-4">
-                      <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full text-sm font-bold text-white"
-                        style={{ background: `linear-gradient(135deg,${color} 0%,${color}bb 100%)`, boxShadow: `0 4px 12px ${color}44` }}>
-                        {i + 1}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-baseline justify-between mb-2">
-                          <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color }}>
-                            {stepId === "sales" && resultEventLabel
-                              ? resultEventLabel
-                              : step.label}
-                          </p>
-                          <p className="text-[20px] font-bold tabular-nums leading-none"
-                            style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>
-                            {val > 0 ? formatNumber(val) : <span style={{ color: "var(--dm-text-tertiary)", fontSize: "14px" }}>Sem dados</span>}
-                          </p>
-                        </div>
-                        <div className="h-2 overflow-hidden rounded-full" style={{ backgroundColor: color + "18" }}>
-                          <div className="h-full rounded-full transition-all duration-700"
-                            style={{ width: `${pct}%`, background: `linear-gradient(90deg,${color} 0%,${color}99 100%)` }} />
-                        </div>
-                      </div>
-                    </div>
+          ) : trackingStats ? (
+            <div className="p-5">
+              {/* Funil visual */}
+              <div className="grid grid-cols-3 gap-3 sm:grid-cols-3 mb-5">
+                {[
+                  { label: "Visitantes", value: trackingStats.visitors, sub: undefined, color: "#0D9488" },
+                  { label: "Leads",      value: trackingStats.leads,
+                    sub: trackingStats.visitors > 0 ? `${formatPercent((trackingStats.leads / trackingStats.visitors) * 100)} captura` : undefined,
+                    color: "#f59e0b" },
+                  { label: "Vendas",     value: trackingStats.sales,
+                    sub: trackingStats.leads > 0 ? `${formatPercent((trackingStats.sales / trackingStats.leads) * 100)} conversão` : undefined,
+                    color: "#16A34A" },
+                ].map((s) => (
+                  <div key={s.label} className="flex flex-col gap-1.5 rounded-[14px] border p-4"
+                    style={{ backgroundColor: "var(--dm-bg-elevated)", borderColor: "var(--dm-border-subtle)" }}>
+                    <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>{s.label}</span>
+                    <span className="text-[22px] font-bold tabular-nums" style={{ color: s.color, fontFamily: "var(--font-poppins)" }}>
+                      {s.value > 0 ? formatInt(s.value) : "—"}
+                    </span>
+                    {s.sub && <span className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>{s.sub}</span>}
                   </div>
-                );
-              })}
-            </div>
-          );
-        })()}
-
-        {/* VIEW: FUNIL AFUNILADO */}
-        {funnelView === "funnel" && (() => {
-          const total = funnelStepIds.length;
-          return (
-            <div className="flex flex-col items-center px-6 py-6 gap-0">
-              {funnelStepIds.map((stepId, i) => {
-                const step    = PROFILE_FUNNEL_STEPS.find((s) => s.id === stepId);
-                if (!step) return null;
-                const val     = funnelVals[stepId] ?? 0;
-                const prevId  = i > 0 ? funnelStepIds[i - 1] : null;
-                const prevVal = prevId ? (funnelVals[prevId] ?? 0) : null;
-                const rate    = prevVal !== null && prevVal > 0 ? (val / prevVal) * 100 : null;
-                const isFrequency = prevId === "reach" && stepId === "impressions";
-                const rateDisplay = rate !== null
-                  ? isFrequency
-                    ? `${(rate / 100).toFixed(1)}x${step.rateLabel ? ` ${step.rateLabel}` : ""}`
-                    : `${formatPercent(rate)}${step.rateLabel ? ` ${step.rateLabel}` : ""}`
-                  : null;
-                const color   = FUNNEL_COLORS_OV[stepId] ?? step.color;
-                const widthPct = total > 1 ? 100 - (i / (total - 1)) * 50 : 88;
-                return (
-                  <div key={stepId} className="w-full flex flex-col items-center">
-                    {i > 0 && (
-                      <div className="flex flex-col items-center py-2 gap-1">
-                        <div className="w-px h-4" style={{ backgroundColor: "var(--dm-border-default)" }} />
-                        {rateDisplay !== null && (
-                          <span className="rounded-full px-3 py-0.5 text-[10px] font-bold"
-                            style={{ backgroundColor: color + "1a", color }}>
-                            {rateDisplay}
-                          </span>
-                        )}
-                        <div className="w-px h-4" style={{ backgroundColor: "var(--dm-border-default)" }} />
-                      </div>
-                    )}
-                    <div className="flex items-center justify-between transition-all"
-                      style={{
-                        width: `${widthPct}%`, borderRadius: "14px", padding: "14px 20px",
-                        background: `linear-gradient(135deg, ${color}22 0%, ${color}0d 100%)`,
-                        border: `1.5px solid ${color}55`,
-                      }}>
-                      <div>
-                        <p className="text-[10px] font-bold uppercase tracking-wider mb-0.5" style={{ color }}>
-                          {stepId === "sales" && resultEventLabel
-                            ? resultEventLabel
-                            : step.label}
-                        </p>
-                        {rateDisplay !== null && step.rateLabel && (
-                          <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>{step.rateLabel}</p>
-                        )}
-                      </div>
-                      <p className="text-[22px] font-bold tabular-nums"
-                        style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>
-                        {val > 0 ? formatNumber(val) : <span style={{ color: "var(--dm-text-tertiary)", fontSize: "13px" }}>—</span>}
-                      </p>
-                    </div>
+                ))}
+              </div>
+              {/* Métricas derivadas */}
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {[
+                  { label: "Receita (pixel)",  value: trackingStats.revenue > 0 ? formatBRL(trackingStats.revenue) : "—", accent: "#16A34A" },
+                  { label: "Custo por Lead",   value: totals.inv > 0 && trackingStats.leads > 0 ? formatBRL(totals.inv / trackingStats.leads) : "—", accent: "#f59e0b" },
+                  { label: "Custo por Venda",  value: totals.inv > 0 && trackingStats.sales > 0 ? formatBRL(totals.inv / trackingStats.sales) : "—", accent: "#f59e0b" },
+                  { label: "ROAS (pixel)",     value: totals.inv > 0 && trackingStats.revenue > 0 ? `${(trackingStats.revenue / totals.inv).toFixed(2)}x` : "—", accent: "#16A34A" },
+                ].map((m) => (
+                  <div key={m.label} className="rounded-[12px] border px-3 py-2.5"
+                    style={{ backgroundColor: "var(--dm-bg-elevated)", borderColor: "var(--dm-border-subtle)" }}>
+                    <p className="text-[10px] uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>{m.label}</p>
+                    <p className="mt-1 text-[15px] font-bold tabular-nums" style={{ color: m.accent }}>{m.value}</p>
                   </div>
-                );
-              })}
+                ))}
+              </div>
             </div>
-          );
-        })()}
-      </article>
+          ) : (
+            <div className="flex flex-col items-center gap-2 px-5 py-8 text-center">
+              <Activity size={18} style={{ color: "var(--dm-text-tertiary)" }} />
+              <p className="text-[12px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                Nenhum evento encontrado para este funil no período selecionado.
+              </p>
+            </div>
+          )}
+        </article>
+      )}
 
       {/* ── VENDAS POR CAMPANHA — colunas configuráveis, sort e métricas custom ── */}
       {campaigns.length > 0 && rows.length > 0 && (
         <CampaignMetricsTable
           profileId={profileId}
           campaignRows={campaignRows}
+          adsetRows={adsetTableRows}
+          adRows={adTableRows}
           totalsValues={kpiValues}
+          adLinks={adCreativeLinks}
+          adLinksLoading={creativesLoading}
+          statusByView={{ campaign: campaignStatusMap, adset: adsetStatusMap, ad: adStatusMap }}
+          onViewChange={(v) => {
+            if (v === "ad") { loadAdCreativeLinks(); loadAdStatus(); }
+            if (v === "adset") loadAdsetStatus();
+          }}
         />
       )}
 
@@ -2196,6 +2576,121 @@ function ProfileOverviewPanel({
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Product Picker — conecta KPI editável a produto Eduzz ──────────── */}
+      {productPickerKpi && createPortal(
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+          onClick={() => setProductPickerKpi(null)}>
+          <div className="w-full max-w-md overflow-hidden rounded-2xl border shadow-2xl"
+            style={{ background: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}
+            onClick={(e) => e.stopPropagation()}>
+            {/* Header */}
+            <div className="flex items-center justify-between border-b px-5 py-4"
+              style={{ borderColor: "var(--dm-border-subtle)" }}>
+              <div>
+                <h3 className="text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>
+                  Conectar produto Eduzz
+                </h3>
+                <p className="mt-0.5 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                  Vendas serão contadas automaticamente via webhook
+                </p>
+              </div>
+              <button type="button" onClick={() => setProductPickerKpi(null)}
+                className="flex h-8 w-8 items-center justify-center rounded-full transition hover:opacity-70"
+                style={{ backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)" }}>
+                <X size={15} />
+              </button>
+            </div>
+            {/* Search */}
+            <div className="border-b px-4 py-3" style={{ borderColor: "var(--dm-border-subtle)" }}>
+              <div className="flex items-center gap-2 rounded-[10px] border px-3 py-2"
+                style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)" }}>
+                <Search size={13} style={{ color: "var(--dm-text-tertiary)", flexShrink: 0 }} />
+                <input
+                  autoFocus
+                  type="text"
+                  value={productPickerQuery}
+                  onChange={(e) => setProductPickerQuery(e.target.value)}
+                  placeholder="Pesquisar produto…"
+                  className="w-full bg-transparent text-[13px] outline-none"
+                  style={{ color: "var(--dm-text-primary)" }}
+                />
+                {productPickerQuery && (
+                  <button type="button" onClick={() => setProductPickerQuery("")}
+                    className="flex-shrink-0 transition hover:opacity-70"
+                    style={{ color: "var(--dm-text-tertiary)" }}>
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
+            </div>
+            {/* Lista */}
+            <div className="max-h-[50vh] overflow-y-auto py-2">
+              {(() => {
+                const q = productPickerQuery.trim().toLowerCase();
+                const currentLinkedParentId = productLinks[productPickerKpi!];
+                const filtered = (q
+                  ? eduzzCatalog.filter((p) => p.name.toLowerCase().includes(q) || p.parentId.includes(q))
+                  : eduzzCatalog
+                // Produto vinculado sempre aparece primeiro (destaque)
+                ).sort((a, b) => {
+                  if (a.parentId === currentLinkedParentId) return -1;
+                  if (b.parentId === currentLinkedParentId) return 1;
+                  return 0;
+                });
+                if (filtered.length === 0) return (
+                  <p className="px-4 py-6 text-center text-[12px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                    {q ? "Nenhum produto encontrado" : "Nenhum produto disponível"}
+                  </p>
+                );
+                return filtered.map((p) => {
+                  const isLinked = productLinks[productPickerKpi!] === p.parentId;
+                  return (
+                    <button key={p.parentId} type="button"
+                      onClick={() => {
+                        persistProductLinks({ ...productLinks, [productPickerKpi!]: p.parentId });
+                        setProductPickerKpi(null);
+                      }}
+                      className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-white/5">
+                      <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg"
+                        style={{ backgroundColor: isLinked ? "#16A34A22" : "var(--dm-bg-elevated)" }}>
+                        <Target size={14} style={{ color: isLinked ? "#16A34A" : "var(--dm-text-tertiary)" }} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[13px] font-semibold" style={{ color: "var(--dm-text-primary)" }}>
+                          {p.name}
+                        </p>
+                        <p className="text-[10px] font-mono" style={{ color: "var(--dm-text-tertiary)" }}>
+                          {p.parentId}
+                          {p.offers.length > 0 && ` · ${p.offers.length} oferta${p.offers.length !== 1 ? "s" : ""}`}
+                        </p>
+                      </div>
+                      {isLinked && <Check size={14} style={{ color: "#16A34A", flexShrink: 0 }} />}
+                    </button>
+                  );
+                });
+              })()}
+            </div>
+            {/* Rodapé — desvincular se houver produto já conectado */}
+            {productLinks[productPickerKpi!] && (
+              <div className="border-t px-4 py-3" style={{ borderColor: "var(--dm-border-subtle)" }}>
+                <button type="button"
+                  onClick={() => {
+                    const next = { ...productLinks };
+                    delete next[productPickerKpi!];
+                    persistProductLinks(next);
+                    setProductPickerKpi(null);
+                  }}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-[10px] border py-2 text-[12px] font-semibold text-red-400 transition hover:bg-red-500/5"
+                  style={{ borderColor: "var(--dm-border-default)" }}>
+                  <X size={12} /> Desvincular produto
+                </button>
+              </div>
+            )}
+          </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
@@ -2747,13 +3242,15 @@ function CampaignAnalysisPanel({
             const val       = kpiValues[kpi.id] ?? 0;
             const display   = val > 0 ? kpi.format(val) : "—";
             const goalVal   = goals[kpi.id] ?? 0;
-            const goalPct   = goalVal > 0
-              ? kpi.invert
-                ? (goalVal / Math.max(val, 0.001)) * 100
-                : (val / goalVal) * 100
-              : 0;
-            const goalMet   = goalVal > 0 && (kpi.invert ? val <= goalVal : val >= goalVal);
-            const goalColor = goalMet ? "#05CD99" : goalPct >= 75 ? "#F4A60D" : "#EE5D50";
+            // Para métricas invertidas (custo: CPA, CPL, CPC…), a meta é o teto ideal —
+            // ratio = val/goal > 1 significa que ESTOUROU o custo máximo permitido.
+            const goalRatio    = goalVal > 0 ? val / goalVal : 0;
+            const goalMet      = goalVal > 0 && (kpi.invert ? val <= goalVal : val >= goalVal);
+            const goalExceeded = kpi.invert && goalVal > 0 && val > goalVal;
+            const goalPct      = goalRatio * 100;
+            const goalColor    = kpi.invert
+              ? (goalExceeded ? "#EE5D50" : goalRatio >= 0.85 ? "#F4A60D" : "#05CD99")
+              : (goalMet ? "#05CD99" : goalPct >= 75 ? "#F4A60D" : "#EE5D50");
             const solid     = KPI_SOLID[kpi.color] ?? "#16A34A";
             const bg        = KPI_BG[kpi.color]    ?? "rgba(22,163,74,0.10)";
 
@@ -2855,6 +3352,12 @@ function CampaignAnalysisPanel({
                 {/* Goal progress — bar first, then % | Meta below */}
                 {!editGoals && !isEditing && goalVal > 0 && (
                   <div className="mt-3 space-y-1.5">
+                    {goalExceeded && (
+                      <span className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase"
+                        style={{ backgroundColor: "#EE5D501a", color: "#EE5D50" }}>
+                        Custo estourado
+                      </span>
+                    )}
                     <div className="h-1.5 overflow-hidden rounded-full" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
                       <div
                         className="h-full rounded-full transition-all duration-500"
@@ -2863,7 +3366,7 @@ function CampaignAnalysisPanel({
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-bold" style={{ color: goalColor }}>
-                        {Math.min(Math.round(goalPct), 999)}%
+                        {goalExceeded ? `+${Math.round(goalPct - 100)}% acima` : `${Math.min(Math.round(goalPct), 999)}%`}
                       </span>
                       <span className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
                         Meta: {kpi.format(goalVal)}
@@ -3496,8 +3999,35 @@ function ProfileDetailView({
   const addCampaignToProfile    = onAddCampaign;
   const removeCampaignFromProfile = onRemoveCampaign;
   const updateProfile           = onUpdateProfile;
-  const [activeCampId, setActiveCampId] = useState<string>(profile.campaigns[0]?.id ?? "");
-  const [profileTab, setProfileTab] = useState<"overview" | "campanha" | "conjunto" | "instagram">("overview");
+  const [profileTab, setProfileTab] = useState<"overview" | "nova" | "instagram">("overview");
+
+  // ── Funil de Tracking vinculado ao perfil ────────────────────────────────
+  const { companyId } = useCompany();
+  const [trackingFunnels, setTrackingFunnels] = useState<TrackingFunnel[]>([]);
+  const [linkedFunnelId, setLinkedFunnelId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const stored = JSON.parse(localStorage.getItem(LINKED_FUNNEL_LS_KEY) ?? "{}") as Record<string, string>;
+      return stored[profile.id] ?? null;
+    } catch { return null; }
+  });
+  const [showFunnelPicker, setShowFunnelPicker] = useState(false);
+
+  const linkedFunnel = trackingFunnels.find((f) => f.id === linkedFunnelId) ?? null;
+
+  const persistLinkedFunnel = (funnelId: string | null) => {
+    setLinkedFunnelId(funnelId);
+    try {
+      const stored = JSON.parse(localStorage.getItem(LINKED_FUNNEL_LS_KEY) ?? "{}") as Record<string, string>;
+      if (funnelId) { localStorage.setItem(LINKED_FUNNEL_LS_KEY, JSON.stringify({ ...stored, [profile.id]: funnelId })); }
+      else { delete stored[profile.id]; localStorage.setItem(LINKED_FUNNEL_LS_KEY, JSON.stringify(stored)); }
+    } catch {}
+  };
+
+  useEffect(() => {
+    if (!companyId) return;
+    fetchTrackingFunnels(companyId).then(setTrackingFunnels).catch(() => {});
+  }, [companyId]);
 
   // Persist date range per profile. Priority: profile-specific → appliedDateRange prop → shared Dashboard range → 14-day default.
   const [dateFrom, setDateFrom] = useState<string>(() => {
@@ -3586,16 +4116,8 @@ function ProfileDetailView({
   // Resolved template — personalizado is built from config, others are static
   const resolvedTemplate = getTemplate(templateId, personalizadoConfig);
 
-  // Keep activeCampId in sync when campaigns list changes
-  useEffect(() => {
-    if (!profile.campaigns.some((c) => c.id === activeCampId) && profile.campaigns.length > 0) {
-      setActiveCampId(profile.campaigns[0].id);
-    }
-  }, [profile.campaigns, activeCampId]);
-
   const handleAddCampaign = (camp: ActiveCampaign) => {
     addCampaignToProfile(profile.id, camp);
-    setActiveCampId(camp.id);
     // Panel stays open so user can add more campaigns
   };
 
@@ -3611,17 +4133,11 @@ function ProfileDetailView({
     if (confirmRemoveId === campId) {
       removeCampaignFromProfile(profile.id, campId);
       setConfirmRemoveId(null);
-      if (activeCampId === campId) {
-        const remaining = profile.campaigns.filter((c) => c.id !== campId);
-        setActiveCampId(remaining[0]?.id ?? "");
-      }
     } else {
       setConfirmRemoveId(campId);
       setTimeout(() => setConfirmRemoveId(null), 3000);
     }
   };
-
-  const activeCampaign = profile.campaigns.find((c) => c.id === activeCampId);
 
   return (
     <div className="space-y-4">
@@ -3677,6 +4193,55 @@ function ProfileDetailView({
                 Configurar
               </button>
             )}
+            {/* Seletor de funil de tracking */}
+            {trackingFunnels.length > 0 && (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowFunnelPicker((v) => !v)}
+                  className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12px] font-semibold transition"
+                  style={linkedFunnel
+                    ? { borderColor: linkedFunnel.color, background: linkedFunnel.color + "18", color: linkedFunnel.color }
+                    : { borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)", background: "var(--dm-bg-elevated)" }}
+                >
+                  <Activity size={12} />
+                  {linkedFunnel ? linkedFunnel.label : "Funil de Tracking"}
+                </button>
+                {showFunnelPicker && (
+                  <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowFunnelPicker(false)} />
+                  <div className="absolute right-0 top-full z-50 mt-1.5 w-56 overflow-hidden rounded-[14px] border shadow-xl"
+                    style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
+                    <div className="py-1">
+                      <p className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
+                        Vincular funil
+                      </p>
+                      {trackingFunnels.map((f) => (
+                        <button key={f.id} type="button"
+                          onClick={() => { persistLinkedFunnel(f.id); setShowFunnelPicker(false); }}
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] font-medium transition hover:bg-white/5"
+                          style={{ color: linkedFunnelId === f.id ? f.color : "var(--dm-text-secondary)" }}>
+                          <span className="h-2 w-2 flex-shrink-0 rounded-full" style={{ backgroundColor: f.color }} />
+                          <span className="truncate">{f.label}</span>
+                          {linkedFunnelId === f.id && <Check size={11} className="ml-auto flex-shrink-0" style={{ color: f.color }} />}
+                        </button>
+                      ))}
+                      {linkedFunnelId && (
+                        <>
+                          <div className="my-1 border-t" style={{ borderColor: "var(--dm-border-subtle)" }} />
+                          <button type="button"
+                            onClick={() => { persistLinkedFunnel(null); setShowFunnelPicker(false); }}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] font-medium text-red-400 transition hover:bg-white/5">
+                            <X size={11} /> Desvincular
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  </>
+                )}
+              </div>
+            )}
             <DateRangePicker
               from={dateFrom}
               to={dateTo}
@@ -3695,19 +4260,13 @@ function ProfileDetailView({
         >
           {profile.campaigns.map((camp) => (
             <div key={camp.id} className="group relative flex items-center">
-              <button
-                type="button"
-                onClick={() => setActiveCampId(camp.id)}
-                className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all"
-                style={
-                  activeCampId === camp.id
-                    ? { backgroundColor: "var(--dm-brand-500)", borderColor: "var(--dm-brand-500)", color: "#fff" }
-                    : { backgroundColor: "var(--dm-bg-elevated)", borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }
-                }
+              <span
+                className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold"
+                style={{ backgroundColor: "var(--dm-bg-elevated)", borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}
               >
-                <span className={`h-1.5 w-1.5 rounded-full ${activeCampId === camp.id ? "bg-white" : "bg-emerald-500"}`} />
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                 {camp.name.length > 36 ? camp.name.slice(0, 36) + "…" : camp.name}
-              </button>
+              </span>
               {/* Remove campaign button */}
               {confirmRemoveId === camp.id ? (
                 <div
@@ -3804,8 +4363,7 @@ function ProfileDetailView({
       <div className="flex gap-1 rounded-[14px] p-1" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
         {([
           ["overview",   "Visão Geral"],
-          ["campanha",   "Campanha"],
-          ["conjunto",   "Análise de Conjunto"],
+          ["nova",       "Nova Aba"],
           ...(profile.instagramUserId ? [["instagram", "Perfil Ativo"]] : []),
         ] as [string, string][]).map(([id, label]) => (
           <button key={id} type="button"
@@ -3831,6 +4389,8 @@ function ProfileDetailView({
             dateTo={dateTo}
             template={resolvedTemplate}
             reportTitle={`${profile.name} · Visão Geral`}
+            linkedFunnel={linkedFunnel}
+            companyId={companyId ?? undefined}
           />
         ) : !hasToken ? (
           <div className="flex flex-col items-center gap-3 rounded-xl border p-8 text-center"
@@ -3853,41 +4413,16 @@ function ProfileDetailView({
         )
       )}
 
-      {/* ── Campanha — seleção individual ── */}
-      {profileTab === "campanha" && hasToken && activeCampaign && (
-        <CampaignAnalysisPanel
-          key={`${activeCampaign.id}-${dateFrom}-${dateTo}-${templateId}-${JSON.stringify(personalizadoConfig)}`}
-          adAccountId={profile.adAccountId}
-          campaign={activeCampaign}
-          dateFrom={dateFrom}
-          dateTo={dateTo}
-          template={resolvedTemplate}
-          instagramUserId={profile.instagramUserId}
-          hideTabSwitcher
-          reportTitle={`${profile.name} · ${activeCampaign.name}`}
-        />
-      )}
-      {profileTab === "campanha" && !hasToken && (
-        <div className="flex flex-col items-center gap-3 rounded-xl border p-8 text-center"
+      {/* ── Nova Aba — em desenvolvimento ── */}
+      {profileTab === "nova" && (
+        <div className="flex flex-col items-center gap-3 rounded-xl border p-10 text-center"
           style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
-          <Key size={20} className="text-amber-500" />
-          <p className="text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>Token não configurado</p>
+          <SlidersHorizontal size={20} style={{ color: "var(--dm-text-tertiary)" }} />
+          <p className="text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>Em desenvolvimento</p>
+          <p className="mt-1 text-xs" style={{ color: "var(--dm-text-secondary)" }}>
+            Essa aba ainda está sendo construída.
+          </p>
         </div>
-      )}
-
-      {/* ── Análise de Conjunto ── */}
-      {profileTab === "conjunto" && hasToken && activeCampaign && (
-        <CampaignAnalysisPanel
-          key={`conjunto-${activeCampaign.id}-${dateFrom}-${dateTo}`}
-          adAccountId={profile.adAccountId}
-          campaign={activeCampaign}
-          dateFrom={dateFrom}
-          dateTo={dateTo}
-          template={resolvedTemplate}
-          instagramUserId={profile.instagramUserId}
-          forceTab="conjunto"
-          hideTabSwitcher
-        />
       )}
 
       {/* ── Perfil Ativo ── */}
