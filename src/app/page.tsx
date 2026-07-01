@@ -772,6 +772,7 @@ export default function Home() {
         userName={currentUser.name || currentUser.email.split("@")[0]}
         email={currentUser.email}
         companyName={memberships.find((m) => m.company.id === activeCompanyId)?.company.name}
+        products={memberships.find((m) => m.company.id === activeCompanyId)?.company.products}
         onOpenDash={() => {
           try { sessionStorage.setItem(PRODUCT_CHOSEN_KEY, "1"); } catch {}
           setProductChosen(true);

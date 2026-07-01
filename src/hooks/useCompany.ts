@@ -15,6 +15,8 @@ export interface Company {
   logoUrl: string | null;
   /** Pré-configuração do owner (filtros padrão, colunas do histórico, etc.) */
   settings: Record<string, unknown>;
+  /** Produtos contratados (ex.: ["dash","pipe"]). Só super admin altera (trigger 071). */
+  products: string[];
 }
 
 /** Uma empresa da qual o usuário é membro, com o papel dele nela. */
@@ -60,7 +62,7 @@ function writeActiveCompanyId(id: string | null): void {
 }
 
 function rowToCompany(raw: {
-  id: string; name: string; slug: string; logo_url?: string | null; settings?: unknown;
+  id: string; name: string; slug: string; logo_url?: string | null; settings?: unknown; products?: unknown;
 }): Company {
   return {
     id: raw.id,
@@ -68,6 +70,8 @@ function rowToCompany(raw: {
     slug: raw.slug,
     logoUrl: raw.logo_url ?? null,
     settings: (raw.settings as Record<string, unknown>) ?? {},
+    // default ["dash"]: empresas antes da migration 071 (ou preview) mantêm o Dash.
+    products: Array.isArray(raw.products) ? (raw.products as string[]) : ["dash"],
   };
 }
 
@@ -85,14 +89,17 @@ const DEMO_COMPANIES: Company[] = [
       historyTabLabels: { lancamento: "Lançamentos", evento: "Eventos ao vivo" },
       customHistoryTabs: [{ id: "ct_demo", label: "Mentorias", emoji: "🎓" }],
     },
+    products: ["dash"],
   },
   {
     id: "demo-2", name: "Loja Fitness Online (Demo)", slug: "demo-loja", logoUrl: null,
     settings: { adAccountSuggestions: [{ id: "5551234567890", label: "E-commerce" }] },
+    products: ["dash"],
   },
   {
     id: "demo-3", name: "Clínica Estética (Demo)", slug: "demo-clinica", logoUrl: null,
     settings: {},
+    products: ["dash"],
   },
 ];
 function demoState(): CompanyState {
@@ -116,7 +123,7 @@ async function fetchCompanyState(): Promise<CompanyState> {
 
   const { data, error } = await supabaseClient
     .from("company_members")
-    .select("role, companies ( id, name, slug, logo_url, settings )")
+    .select("role, companies ( id, name, slug, logo_url, settings, products )")
     .eq("user_id", auth.user.id)
     .order("created_at");
 
@@ -145,7 +152,7 @@ async function fetchCompanyState(): Promise<CompanyState> {
     if (isSuperAdmin) {
       const { data: allCompanies, error: allErr } = await supabaseClient
         .from("companies")
-        .select("id, name, slug, logo_url, settings")
+        .select("id, name, slug, logo_url, settings, products")
         .order("name");
       if (!allErr && allCompanies) {
         const ownIds = new Set(memberships.map((m) => m.company.id));
@@ -241,6 +248,24 @@ export async function updateCompanySettings(
   await refreshCompany();
 }
 
+/**
+ * Define os produtos contratados de uma empresa (ex.: ["dash","pipe"]).
+ * SÓ super admin: o trigger `enforce_company_products_admin` (migration 071)
+ * rejeita a alteração de `products` por qualquer outro papel, no banco.
+ */
+export async function setCompanyProducts(
+  companyId: string,
+  products: string[],
+): Promise<void> {
+  if (!supabaseClient) throw new Error("Supabase não configurado.");
+  const { error } = await supabaseClient
+    .from("companies")
+    .update({ products })
+    .eq("id", companyId);
+  if (error) throw new Error(error.message);
+  await refreshCompany();
+}
+
 // ─── Membros (tela Empresa) ───────────────────────────────────────────────────
 
 export interface CompanyMember {
@@ -319,7 +344,7 @@ export async function createCompany(name: string, ownerEmail?: string): Promise<
   const { data, error } = await supabaseClient
     .from("companies")
     .insert({ name: clean, slug, settings: { blankTaxonomy: true } })
-    .select("id, name, slug, logo_url, settings")
+    .select("id, name, slug, logo_url, settings, products")
     .single();
   if (error) throw new Error(error.message);
   const company = rowToCompany(data);
@@ -841,7 +866,7 @@ export async function fetchAdminCompanies(): Promise<AdminCompany[]> {
   if (!supabaseClient) return [];
   const { data: comps, error } = await supabaseClient
     .from("companies")
-    .select("id, name, slug, logo_url, settings, meta_access_token")
+    .select("id, name, slug, logo_url, settings, products, meta_access_token")
     .order("name");
   if (error) throw new Error(error.message);
 

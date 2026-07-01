@@ -4,14 +4,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   X, UserRound, Building2, KeyRound, Megaphone, SlidersHorizontal, History, Radar, Users,
   LogOut, Loader2, Save, ShieldCheck, Lock, Unlock, CheckCircle2, Plus, Sparkles,
-  ArrowLeft, ArrowRight, Mail, PartyPopper, Camera, Link2, ChevronDown, Check, Trash2,
+  ArrowLeft, ArrowRight, Mail, PartyPopper, Camera, Link2, ChevronDown, Check, Trash2, Package,
 } from "lucide-react";
 import { useAvatarUrl, resolveAvatarSrc, AVATAR_ICON_COUNT } from "@/hooks/useAvatarUrl";
 import { useTheme } from "next-themes";
 import {
-  useCompany, readAdAccountSuggestions, fetchCompanyToken, fetchCompanyMembers, createCompany,
+  useCompany, readAdAccountSuggestions, fetchCompanyToken, fetchCompanyMembers, createCompany, setCompanyProducts,
   type CompanyMember, type Company, type CompanyRole,
 } from "@/hooks/useCompany";
+import { PRODUCTS } from "@/config/products";
 import { useDevMode } from "@/hooks/useDevMode";
 import { toast } from "@/hooks/useToast";
 import { readCustomHistoryTabs } from "@/types/historical";
@@ -26,7 +27,7 @@ const slugifyFilter = (s: string) =>
   s.normalize("NFD").replace(/[̀-ͯ]/g, "")
     .toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
-type NavId = "perfil" | "identidade" | "conexao" | "contas" | "instagram" | "filtros" | "historico" | "tracking" | "colaboradores" | "devacesso" | "criarempresa";
+type NavId = "perfil" | "identidade" | "conexao" | "contas" | "instagram" | "filtros" | "historico" | "tracking" | "colaboradores" | "devacesso" | "criarempresa" | "produtos";
 
 interface HubSettingsProps {
   open: boolean;
@@ -59,6 +60,7 @@ const NAV: { group: string; items: { id: NavId; label: string; icon: typeof User
 ];
 
 const ADMIN_GROUP = { group: "Admin", items: [
+  { id: "produtos" as NavId,     label: "Produtos",      icon: Package, sub: "Produtos contratados desta empresa" },
   { id: "criarempresa" as NavId, label: "Criar empresa", icon: Plus, sub: "Provisionar acesso p/ novo cliente" },
 ]};
 
@@ -149,6 +151,8 @@ export function HubSettings({ open, onClose, userName, email, onUpdateProfile, o
               ? <DevAccessSection />
               : nav === "criarempresa"
               ? <CriarEmpresaSection />
+              : nav === "produtos"
+              ? <ProdutosAdminSection />
               : <EmpresaSections nav={nav} categories={categories} onCategoriesChange={onCategoriesChange} />}
           </div>
         </div>
@@ -419,6 +423,68 @@ const WIZARD_STEPS = [
   { icon: Mail,      label: "Acesso" },
   { icon: CheckCircle2, label: "Revisar" },
 ];
+
+// ─── Produtos contratados (só super admin; a segurança real é o trigger 071) ────
+function ProdutosAdminSection() {
+  const { company, isSuperAdmin } = useCompany();
+  const [busy, setBusy] = useState<string | null>(null);
+
+  if (!company) return null;
+  const owned = company.products ?? ["dash"];
+
+  const toggle = async (productId: string) => {
+    if (!isSuperAdmin) return;
+    const next = owned.includes(productId)
+      ? owned.filter((p) => p !== productId)
+      : [...owned, productId];
+    setBusy(productId);
+    try {
+      await setCompanyProducts(company.id, next);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao salvar produtos.");
+    } finally { setBusy(null); }
+  };
+
+  return (
+    <div className="rounded-2xl border p-5" style={{ background: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
+      <p className="mb-1 text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>Produtos de {company.name}</p>
+      <p className="mb-4 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
+        Ligue/desligue o que esta empresa contratou. Só super admin altera (trava no banco).
+      </p>
+      <div className="flex flex-col gap-2">
+        {PRODUCTS.map((p) => {
+          const on = owned.includes(p.id);
+          return (
+            <div key={p.id} className="flex items-center justify-between rounded-xl border px-3.5 py-3"
+              style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-elevated)" }}>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>{p.name}</span>
+                  {p.status === "soon" && (
+                    <span className="rounded-full px-2 py-0.5 text-[9px] font-bold" style={{ background: "rgba(100,116,139,0.14)", color: "var(--dm-text-tertiary)" }}>em breve</span>
+                  )}
+                </div>
+                <p className="truncate text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>{p.tagline}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void toggle(p.id)}
+                disabled={busy === p.id || !isSuperAdmin}
+                aria-pressed={on}
+                className="relative h-6 w-11 flex-shrink-0 rounded-full transition disabled:opacity-60"
+                style={{ background: on ? "var(--dm-primary)" : "var(--dm-border-default)" }}
+                title={on ? "Contratado" : "Não contratado"}
+              >
+                <span className="absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all shadow"
+                  style={{ left: on ? "22px" : "2px" }} />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 function CriarEmpresaSection() {
   const { switchCompany } = useCompany();

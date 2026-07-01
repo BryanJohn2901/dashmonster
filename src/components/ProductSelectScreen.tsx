@@ -6,6 +6,7 @@ import { ArrowRight, Building2, ChevronDown, LogOut, Settings, Sun, Moon } from 
 import { DashMonsterLogo } from "@/components/DashMonsterLogo";
 import { HubSettings } from "@/components/hub/HubSettings";
 import type { UserCategory } from "@/types/userConfig";
+import { PRODUCTS, canOpenProduct } from "@/config/products";
 
 interface ProductSelectScreenProps {
   userName: string;
@@ -15,6 +16,8 @@ interface ProductSelectScreenProps {
   onSignOut?: () => void;
   onUpdateProfile?: (name: string) => Promise<void>;
   categories?: UserCategory[];
+  /** Produtos contratados pela empresa ativa (ex.: ["dash","pipe"]). */
+  products?: string[];
 }
 
 // Estruturais usam tokens dm-* (viram com .dark sozinhos) → hub fica black/white.
@@ -49,7 +52,8 @@ function useHoverProgress(active: boolean, duration = 850): number {
   return p;
 }
 
-export function ProductSelectScreen({ userName, email, companyName, onOpenDash, onSignOut, onUpdateProfile, categories }: ProductSelectScreenProps) {
+export function ProductSelectScreen({ userName, email, companyName, onOpenDash, onSignOut, onUpdateProfile, categories, products = ["dash"] }: ProductSelectScreenProps) {
+  const hasDash = products.includes("dash");
   const first = (userName || "").trim().split(" ").filter(Boolean)[0] || "de volta";
   const initials = (userName || "U").trim().split(" ").filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join("") || "U";
   const [menuOpen, setMenuOpen] = useState(false);
@@ -125,18 +129,27 @@ export function ProductSelectScreen({ userName, email, companyName, onOpenDash, 
 
                 <div className="my-1.5 h-px" style={{ background: C.subtle }} />
 
-                {/* Produtos ativos */}
+                {/* Produtos ativos — data-driven pelo entitlement da empresa */}
                 <p className="px-2.5 pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: C.tm }}>Produtos ativos</p>
-                <div className="flex items-center justify-between px-2.5 py-1.5">
-                  <span className="text-sm" style={{ color: C.tp }}>DashMonster</span>
-                  <span className="flex items-center gap-1.5 text-xs font-medium" style={{ color: C.green }}>
-                    <span className="h-1.5 w-1.5 rounded-full" style={{ background: C.green }} /> Ativo
-                  </span>
-                </div>
-                <div className="flex items-center justify-between px-2.5 py-1.5">
-                  <span className="text-sm" style={{ color: C.ts }}>PipeFlow</span>
-                  <span className="text-xs font-medium" style={{ color: C.tm }}>Em breve</span>
-                </div>
+                {PRODUCTS.map((p) => {
+                  const soon = p.status === "soon";
+                  const owned = products.includes(p.id);
+                  // live + não contratado: não aparece. soon: teaser p/ todos.
+                  if (!soon && !owned) return null;
+                  const openable = canOpenProduct(p, products);
+                  return (
+                    <div key={p.id} className="flex items-center justify-between px-2.5 py-1.5">
+                      <span className="text-sm" style={{ color: openable ? C.tp : C.ts }}>{p.name}</span>
+                      {soon ? (
+                        <span className="text-xs font-medium" style={{ color: C.tm }}>Em breve</span>
+                      ) : (
+                        <span className="flex items-center gap-1.5 text-xs font-medium" style={{ color: C.green }}>
+                          <span className="h-1.5 w-1.5 rounded-full" style={{ background: C.green }} /> Ativo
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
 
                 <div className="my-1.5 h-px" style={{ background: C.subtle }} />
 
@@ -164,8 +177,9 @@ export function ProductSelectScreen({ userName, email, companyName, onOpenDash, 
         </div>
 
         <div className="grid grid-cols-1 items-stretch gap-6 md:grid-cols-2">
+          {/* PipeFlow: status "soon" → teaser p/ todos. DashMonster: só se contratado. */}
           <PipeCard />
-          <DashCard onOpen={onOpenDash} />
+          {hasDash && <DashCard onOpen={onOpenDash} />}
         </div>
 
         <p className="mt-8 text-center text-sm" style={{ color: C.tm }}>
