@@ -8,7 +8,7 @@ import { BreakdownChips, type TileBreakdown } from "@/components/ui/BreakdownChi
 
 // ─── Sparkline (SVG inline, sem libs) ─────────────────────────────────────────
 
-function Sparkline({ data, color }: { data: number[]; color: string }) {
+export function Sparkline({ data, color }: { data: number[]; color: string }) {
   // id estável por instância — evita Math.random impuro durante render
   const gid = useMemo(() => `spark-${Math.round(data.reduce((a, b) => a + b, 0))}-${data.length}`, [data]);
   if (data.length < 2) return <div className="h-7" />;
@@ -41,7 +41,7 @@ export function pctChange(data: number[]): number | null {
   return ((last - first) / Math.abs(first)) * 100;
 }
 
-function Delta({ value, invert }: { value: number | null; invert?: boolean }) {
+export function Delta({ value, invert }: { value: number | null; invert?: boolean }) {
   if (value == null || !isFinite(value)) return null;
   const good = invert ? value < 0 : value > 0;
   const flat = Math.abs(value) < 0.5;
