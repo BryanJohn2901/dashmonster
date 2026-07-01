@@ -139,19 +139,18 @@ async function withCompany<T extends Record<string, unknown>>(row: T): Promise<T
 // ─── Read ─────────────────────────────────────────────────────────────────────
 
 export async function fetchHistoricalRows(): Promise<HistoricalRow[]> {
-  const { data, error } = await client()
-    .from("historical_rows")
-    .select("*")
-    .order("month_key", { ascending: true });
+  // Isolamento: filtra pela empresa ativa (super admin vê todas via RLS).
+  const { company } = await getCompanyContext();
+  const base = client().from("historical_rows").select("*").order("month_key", { ascending: true });
+  const { data, error } = await (company ? base.eq("company_id", company.id) : base);
   if (error) throw new Error(`Erro ao buscar histórico: ${error.message}`);
   return (data ?? []).map((row) => reconstructFromSupabase(row as Record<string, unknown>));
 }
 
 export async function fetchHistoricalMetas(): Promise<HistoricalMeta[]> {
-  const { data, error } = await client()
-    .from("historical_metas")
-    .select("*")
-    .order("product", { ascending: true });
+  const { company } = await getCompanyContext();
+  const base = client().from("historical_metas").select("*").order("product", { ascending: true });
+  const { data, error } = await (company ? base.eq("company_id", company.id) : base);
   if (error) throw new Error(`Erro ao buscar metas: ${error.message}`);
   return (data ?? []).map(toMeta);
 }
@@ -195,9 +194,13 @@ export async function replaceHistoricalData(
 ): Promise<{ rows: HistoricalRow[]; metas: HistoricalMeta[] }> {
   const sb = client();
 
-  // Delete all existing data
-  await sb.from("historical_rows").delete().gte("year", 1900);
-  await sb.from("historical_metas").delete().neq("product", "__none__");
+  // Delete existing data DESTA empresa (sem company_id o super admin apagaria o
+  // histórico de todas as empresas).
+  const { company } = await getCompanyContext();
+  const delRows = sb.from("historical_rows").delete().gte("year", 1900);
+  await (company ? delRows.eq("company_id", company.id) : delRows);
+  const delMetas = sb.from("historical_metas").delete().neq("product", "__none__");
+  await (company ? delMetas.eq("company_id", company.id) : delMetas);
 
   let newRows: HistoricalRow[] = [];
   if (rows.length > 0) {

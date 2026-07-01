@@ -70,31 +70,35 @@ export const fetchSupabaseCampaigns = async (): Promise<FetchCampaignsResult> =>
   if (!supabaseClient) {
     throw new Error("Supabase não configurado. Defina NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY.");
   }
+  const sb = supabaseClient;
+
+  // Isolamento multi-tenant: super admin vê todas as empresas via RLS, então o
+  // read PRECISA filtrar pela empresa ativa — senão dados de outra empresa vazam.
+  const { company } = await getCompanyContext();
+  const cid = company?.id ?? null;
+  const scopedSelect = (select: string) => {
+    const base = sb.from("campaign_metrics").select(select);
+    return (cid ? base.eq("company_id", cid) : base).order("date", { ascending: true });
+  };
 
   // 1) Tenta com todas as colunas (leads + page_views).
-  const full = await supabaseClient
-    .from("campaign_metrics")
-    .select(SELECT_FULL)
-    .order("date", { ascending: true });
+  const full = await scopedSelect(SELECT_FULL);
 
   if (!full.error) {
     return {
-      campaigns: (full.data ?? []).map((row, index) => mapSupabaseRow(row as SupabaseCampaignRow, index)),
+      campaigns: (full.data ?? []).map((row, index) => mapSupabaseRow(row as unknown as SupabaseCampaignRow, index)),
       hasLeadsColumn: true,
     };
   }
 
   // 2) page_views ausente (migration 020 pendente) → busca com leads, page_views=0.
   if (isMissingPageViewsColumnError(full.error.message)) {
-    const withLeads = await supabaseClient
-      .from("campaign_metrics")
-      .select(SELECT_WITH_LEADS)
-      .order("date", { ascending: true });
+    const withLeads = await scopedSelect(SELECT_WITH_LEADS);
 
     if (!withLeads.error) {
       return {
         campaigns: (withLeads.data ?? []).map((row, index) =>
-          mapSupabaseRow({ ...(row as Omit<SupabaseCampaignRow, "page_views">), page_views: 0 }, index),
+          mapSupabaseRow({ ...(row as unknown as Omit<SupabaseCampaignRow, "page_views">), page_views: 0 }, index),
         ),
         hasLeadsColumn: true,
       };
@@ -103,10 +107,7 @@ export const fetchSupabaseCampaigns = async (): Promise<FetchCampaignsResult> =>
 
   // 3) leads ausente (migration 013 pendente) → legacy, leads e page_views = 0.
   if (isMissingLeadsColumnError(full.error.message)) {
-    const legacy = await supabaseClient
-      .from("campaign_metrics")
-      .select(SELECT_LEGACY)
-      .order("date", { ascending: true });
+    const legacy = await scopedSelect(SELECT_LEGACY);
 
     if (legacy.error) {
       throw new Error(`Erro ao buscar dados no Supabase: ${legacy.error.message}`);
@@ -114,7 +115,7 @@ export const fetchSupabaseCampaigns = async (): Promise<FetchCampaignsResult> =>
 
     return {
       campaigns: (legacy.data ?? []).map((row, index) =>
-        mapSupabaseRow({ ...(row as Omit<SupabaseCampaignRow, "leads" | "page_views">), leads: 0, page_views: 0 }, index),
+        mapSupabaseRow({ ...(row as unknown as Omit<SupabaseCampaignRow, "leads" | "page_views">), leads: 0, page_views: 0 }, index),
       ),
       hasLeadsColumn: false,
     };
@@ -154,12 +155,16 @@ export const replaceSupabaseCampaigns = async (
     throw new Error("Supabase não configurado.");
   }
 
-  // Multi-fonte: apaga só as linhas DESTA fonte. As demais (Meta, Eduzz, etc.)
-  // coexistem — antes este delete limpava a tabela inteira.
-  const { error: deleteError } = await supabaseClient
+  // RLS multi-tenant (migration 021): insert exige company_id da empresa do usuário
+  const { company } = await getCompanyContext();
+
+  // Multi-fonte: apaga só as linhas DESTA fonte E DESTA empresa. Sem o filtro de
+  // company_id, o super admin apagaria as linhas da fonte de TODAS as empresas.
+  const deleteBase = supabaseClient
     .from("campaign_metrics")
     .delete()
     .eq("source", source);
+  const { error: deleteError } = await (company ? deleteBase.eq("company_id", company.id) : deleteBase);
 
   if (deleteError) {
     throw new Error(`Erro ao limpar dados antigos: ${deleteError.message}`);
@@ -168,9 +173,6 @@ export const replaceSupabaseCampaigns = async (
   if (campaigns.length === 0) {
     return;
   }
-
-  // RLS multi-tenant (migration 021): insert exige company_id da empresa do usuário
-  const { company } = await getCompanyContext();
 
   const payload = campaigns.map((item) => ({
     date: item.date,

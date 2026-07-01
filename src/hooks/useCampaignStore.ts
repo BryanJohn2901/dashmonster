@@ -90,19 +90,12 @@ const DEFAULT_STATE: StoreState = {
 function loadStore(companyId: string | null): StoreState {
   if (typeof window === "undefined") return DEFAULT_STATE;
   try {
+    // Chaves globais antigas (não isoladas) são DESCARTADAS — adotá-las poderia
+    // atribuir dados de uma empresa a outra (super admin). O Supabase, agora
+    // filtrado por empresa, repopula o store correto.
+    LEGACY_GLOBAL_KEYS.forEach((k) => localStorage.removeItem(k));
     const scoped = localStorage.getItem(storeKeyFor(companyId));
     if (scoped) return { ...DEFAULT_STATE, ...JSON.parse(scoped) };
-
-    // Migração one-time: a chave global antiga (não isolada) é adotada pela
-    // empresa ativa e REMOVIDA — assim nenhuma outra empresa herda esses dados.
-    if (companyId) {
-      const legacy = LEGACY_GLOBAL_KEYS.map((k) => localStorage.getItem(k)).find(Boolean);
-      if (legacy) {
-        localStorage.setItem(storeKeyFor(companyId), legacy);
-        LEGACY_GLOBAL_KEYS.forEach((k) => localStorage.removeItem(k));
-        return { ...DEFAULT_STATE, ...JSON.parse(legacy) };
-      }
-    }
     return DEFAULT_STATE;
   } catch {
     return DEFAULT_STATE;

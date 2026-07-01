@@ -12,10 +12,13 @@ function client() {
 // ─── Account list ─────────────────────────────────────────────────────────────
 
 export async function fetchTrackedAccounts(): Promise<IGTrackedAccount[]> {
-  const { data, error } = await client()
+  // Isolamento: filtra pela empresa ativa (super admin vê todas via RLS).
+  const { company } = await getCompanyContext();
+  const base = client()
     .from("instagram_accounts")
     .select("id, instagram_business_account_id, username, name, biography, profile_picture_url, followers_count, follows_count, media_count, is_verified, engagement_rate, is_favorite, group_id, updated_at")
     .order("followers_count", { ascending: false });
+  const { data, error } = await (company ? base.eq("company_id", company.id) : base);
 
   if (error) throw new Error(`Erro ao buscar contas: ${error.message}`);
 
@@ -38,11 +41,12 @@ export async function fetchTrackedAccounts(): Promise<IGTrackedAccount[]> {
 }
 
 export async function getAccountByIBAId(ibaId: string): Promise<IGTrackedAccount | null> {
-  const { data, error } = await client()
+  const { company } = await getCompanyContext();
+  const base = client()
     .from("instagram_accounts")
     .select("id, instagram_business_account_id, username, name, biography, profile_picture_url, followers_count, follows_count, media_count, is_verified, engagement_rate, is_favorite, group_id, updated_at")
-    .eq("instagram_business_account_id", ibaId)
-    .maybeSingle();
+    .eq("instagram_business_account_id", ibaId);
+  const { data, error } = await (company ? base.eq("company_id", company.id) : base).maybeSingle();
 
   if (error) throw new Error(`Erro ao buscar conta: ${error.message}`);
   if (!data) return null;
@@ -137,10 +141,12 @@ export interface IGGroup {
 }
 
 export async function fetchGroups(): Promise<IGGroup[]> {
-  const { data, error } = await client()
+  const { company } = await getCompanyContext();
+  const base = client()
     .from("instagram_groups")
     .select("id, name, description, created_at")
     .order("name", { ascending: true });
+  const { data, error } = await (company ? base.eq("company_id", company.id) : base);
 
   if (error) throw new Error(`Erro ao buscar grupos: ${error.message}`);
   return (data ?? []).map((r: Record<string, unknown>) => ({

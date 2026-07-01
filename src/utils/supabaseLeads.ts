@@ -40,10 +40,10 @@ const mapLeadRow = (row: SupabaseLeadRow): LeadRow => ({
 export const fetchLeads = async (): Promise<LeadRow[]> => {
   if (!supabaseClient) throw new Error("Supabase não configurado.");
 
-  const { data, error } = await supabaseClient
-    .from("leads")
-    .select(LEADS_SELECT)
-    .order("date", { ascending: false });
+  // Isolamento: filtra pela empresa ativa (super admin vê todas via RLS).
+  const { company } = await getCompanyContext();
+  const base = supabaseClient.from("leads").select(LEADS_SELECT).order("date", { ascending: false });
+  const { data, error } = await (company ? base.eq("company_id", company.id) : base);
 
   if (error) {
     // Tabela ainda não criada (migration 028 pendente) → não bloqueia o app.

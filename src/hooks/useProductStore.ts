@@ -4,22 +4,21 @@ import { useCallback, useEffect, useState } from "react";
 import { ProductData } from "@/types/product";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { fetchProducts, upsertProduct, deleteProductRemote } from "@/utils/supabaseProducts";
+import { useCompany } from "@/hooks/useCompany";
+import { loadScoped, persistScoped } from "@/lib/companyScopedStorage";
 
-// ─── Local cache ───────────────────────────────────────────────────────────────
+// ─── Local cache (isolado por empresa) ─────────────────────────────────────────
 
-const STORAGE_KEY = "pta_products_v1";
+const STORAGE_PREFIX = "pta_products_v1";
+// empresa cujo cache local está ativo — persist grava sempre nela.
+let activeCid: string | null = null;
 
 function loadLocal(): ProductData[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as ProductData[]) : [];
-  } catch { return []; }
+  return loadScoped<ProductData[]>(STORAGE_PREFIX, activeCid, []);
 }
 
 function saveLocal(products: ProductData[]): void {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(products)); }
-  catch { /* unavailable */ }
+  persistScoped(STORAGE_PREFIX, activeCid, products);
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
@@ -27,6 +26,8 @@ function saveLocal(products: ProductData[]): void {
 export type ProductSyncStatus = "local" | "loading" | "synced" | "error";
 
 export function useProductStore() {
+  const { company } = useCompany();
+  const companyId = company?.id ?? null;
   const [products, setProductsRaw] = useState<ProductData[]>(loadLocal);
   const [syncStatus, setSyncStatus] = useState<ProductSyncStatus>(
     isSupabaseConfigured ? "loading" : "local",
@@ -38,15 +39,16 @@ export function useProductStore() {
     saveLocal(next);
   }, []);
 
-  // ── Load from Supabase on mount ──
+  // ── Carrega (e recarrega na troca de empresa) da empresa ativa ──
   useEffect(() => {
-    if (!isSupabaseConfigured) return;
+    activeCid = companyId;
+    if (!isSupabaseConfigured) { setProductsRaw(loadLocal()); return; }
     setSyncStatus("loading");
     fetchProducts()
       .then((remote) => { setProducts(remote); setSyncStatus("synced"); })
       .catch(() => setSyncStatus("error"));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [companyId]);
 
   const addProduct = useCallback(async (p: ProductData) => {
     // optimistic update using latest local state

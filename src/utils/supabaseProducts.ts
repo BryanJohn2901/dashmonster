@@ -6,10 +6,10 @@ import { ProductData } from "@/types/product";
 
 export async function fetchProducts(): Promise<ProductData[]> {
   if (!supabaseClient) return [];
-  const { data, error } = await supabaseClient
-    .from("products")
-    .select("data")
-    .order("created_at", { ascending: false });
+  // Isolamento: filtra pela empresa ativa (super admin vê todas via RLS).
+  const { company } = await getCompanyContext();
+  const base = supabaseClient.from("products").select("data").order("created_at", { ascending: false });
+  const { data, error } = await (company ? base.eq("company_id", company.id) : base);
   if (error) throw error;
   return (data ?? []).map((row) => row.data as ProductData);
 }
@@ -47,10 +47,9 @@ export async function fetchUserTags(): Promise<Record<HistoricalKind, string[]>>
     lancamento: [], evento: [], perpetuo: [], instagram: [],
   };
   if (!supabaseClient) return empty;
-  const { data, error } = await supabaseClient
-    .from("user_tags")
-    .select("kind, name")
-    .order("created_at", { ascending: true });
+  const { company } = await getCompanyContext();
+  const base = supabaseClient.from("user_tags").select("kind, name").order("created_at", { ascending: true });
+  const { data, error } = await (company ? base.eq("company_id", company.id) : base);
   if (error) return empty;
   const result = { ...empty };
   for (const row of data ?? []) {

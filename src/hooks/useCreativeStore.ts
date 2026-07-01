@@ -1,8 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useCompany } from "@/hooks/useCompany";
+import { loadScoped, persistScoped } from "@/lib/companyScopedStorage";
 
-const STORAGE_KEY = "pta_creatives_v1";
+const STORAGE_PREFIX = "pta_creatives_v1";
+let activeCid: string | null = null;
 
 export interface CreativeData {
   mediaUrl: string;  // URL to image / video thumbnail
@@ -17,19 +20,20 @@ export const EMPTY_CREATIVE: CreativeData = { mediaUrl: "", adLink: "", notes: "
 type CreativeStore = Record<string, CreativeData>; // key = campaignName
 
 export function useCreativeStore() {
+  const { company } = useCompany();
+  const companyId = company?.id ?? null;
   const [store, setStore] = useState<CreativeStore>({});
 
+  // Carrega (e recarrega na troca de empresa) o cache DELA — isolado por empresa.
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) setStore(JSON.parse(raw));
-    } catch {}
-  }, []);
+    activeCid = companyId;
+    setStore(loadScoped<CreativeStore>(STORAGE_PREFIX, companyId, {}));
+  }, [companyId]);
 
   const saveCreative = useCallback((campaignName: string, data: CreativeData) => {
     setStore((prev) => {
       const next = { ...prev, [campaignName]: data };
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch {}
+      persistScoped(STORAGE_PREFIX, activeCid, next);
       return next;
     });
   }, []);
@@ -38,7 +42,7 @@ export function useCreativeStore() {
     setStore((prev) => {
       const next = { ...prev };
       delete next[campaignName];
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch {}
+      persistScoped(STORAGE_PREFIX, activeCid, next);
       return next;
     });
   }, []);

@@ -203,22 +203,13 @@ const DEFAULT_STATE: CenterState = { entries: [] };
 function loadCache(): CenterState {
   if (typeof window === "undefined") return DEFAULT_STATE;
   try {
+    // Chave global antiga (não isolada) é DESCARTADA — adotá-la poderia atribuir
+    // campanhas de uma empresa a outra. O Supabase (filtrado por empresa) repopula.
+    localStorage.removeItem(LEGACY_CENTER_KEY);
     const scoped = localStorage.getItem(centerCacheKey());
     if (scoped) {
       const parsed = JSON.parse(scoped) as CenterState;
       return Array.isArray(parsed.entries) ? parsed : DEFAULT_STATE;
-    }
-    // Migração one-time: chave global antiga vira a da empresa ativa e é removida.
-    if (centerCompanyId) {
-      const legacy = localStorage.getItem(LEGACY_CENTER_KEY);
-      if (legacy) {
-        const parsed = JSON.parse(legacy) as CenterState;
-        if (Array.isArray(parsed.entries)) {
-          localStorage.setItem(centerCacheKey(), legacy);
-          localStorage.removeItem(LEGACY_CENTER_KEY);
-          return parsed;
-        }
-      }
     }
     return DEFAULT_STATE;
   } catch { return DEFAULT_STATE; }

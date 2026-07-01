@@ -65,10 +65,10 @@ function rowToEntry(row: any): UserAccountEntry {
 
 export async function fetchUserCategories(): Promise<UserCategory[]> {
   if (!supabaseClient) return [];
-  const { data, error } = await supabaseClient
-    .from("user_categories")
-    .select("*")
-    .order("position");
+  // Isolamento: filtra pela empresa ativa (super admin vê todas via RLS).
+  const companyId = await getCompanyId();
+  const base = supabaseClient.from("user_categories").select("*").order("position");
+  const { data, error } = await (companyId ? base.eq("company_id", companyId) : base);
   if (error) throw pgErr(error);
   return (data ?? []).map(rowToCategory);
 }
@@ -121,10 +121,10 @@ export async function deleteUserCategory(id: string): Promise<void> {
 
 export async function fetchUserAccountEntries(): Promise<UserAccountEntry[]> {
   if (!supabaseClient) return [];
-  const { data, error } = await supabaseClient
-    .from("user_account_entries")
-    .select("*")
-    .order("created_at");
+  // Isolamento: filtra pela empresa ativa (super admin vê todas via RLS).
+  const companyId = await getCompanyId();
+  const base = supabaseClient.from("user_account_entries").select("*").order("created_at");
+  const { data, error } = await (companyId ? base.eq("company_id", companyId) : base);
   if (error) throw pgErr(error);
   return (data ?? []).map(rowToEntry);
 }

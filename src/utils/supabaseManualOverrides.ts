@@ -65,9 +65,10 @@ function rowToFields(row: any): ManualOverrideFields {
 /** Carrega todos os overrides do usuário logado, indexados por chave de contexto. */
 export async function fetchManualOverrides(): Promise<Record<string, ManualOverrideFields>> {
   if (!supabaseClient) return {};
-  const { data, error } = await supabaseClient
-    .from("user_manual_overrides")
-    .select("*");
+  // Isolamento: filtra pela empresa ativa (super admin vê todas via RLS).
+  const { company } = await getCompanyContext();
+  const base = supabaseClient.from("user_manual_overrides").select("*");
+  const { data, error } = await (company ? base.eq("company_id", company.id) : base);
   if (error) throw pgErr(error);
   const out: Record<string, ManualOverrideFields> = {};
   for (const row of data ?? []) {

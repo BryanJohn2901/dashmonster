@@ -1,8 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useCompany } from "@/hooks/useCompany";
+import { scopedKey, persistScoped } from "@/lib/companyScopedStorage";
 
-const STORAGE_KEY = "pta_goals_v2"; // v2: per-group goals
+const STORAGE_PREFIX = "pta_goals_v2"; // v2: per-group goals
+let activeCid: string | null = null;
 
 export interface Goals {
   ctr: number | null;
@@ -40,10 +43,10 @@ interface GoalsState {
 
 const DEFAULT_STATE: GoalsState = { byGroup: {} };
 
-function load(): GoalsState {
+function load(companyId: string | null): GoalsState {
   if (typeof window === "undefined") return DEFAULT_STATE;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(scopedKey(STORAGE_PREFIX, companyId));
     if (!raw) return DEFAULT_STATE;
     const parsed = JSON.parse(raw);
     // v1 migration: if it looks like a flat Goals object, wrap it under "global"
@@ -53,13 +56,16 @@ function load(): GoalsState {
 }
 
 function persist(s: GoalsState): void {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); } catch {}
+  persistScoped(STORAGE_PREFIX, activeCid, s);
 }
 
 export function useGoalsStore() {
+  const { company } = useCompany();
+  const companyId = company?.id ?? null;
   const [state, setState] = useState<GoalsState>(DEFAULT_STATE);
 
-  useEffect(() => { setState(load()); }, []);
+  // Carrega (e recarrega na troca de empresa) as metas DELA — isolado por empresa.
+  useEffect(() => { activeCid = companyId; setState(load(companyId)); }, [companyId]);
 
   const getGoals = useCallback((groupId: string): Goals => {
     return state.byGroup[groupId] ?? DEFAULT_GOALS;

@@ -2140,11 +2140,12 @@ export function Dashboard({
   const isFilterExplicit = selectedGroup !== "all" && selectedGroup in selectedCampaignsByGroup;
 
   // Merge static groups with custom-created ones
-  // Empresa nova (blankTaxonomy) não herda os filtros PTA hardcoded — só mostra
-  // o que ela mesma criar (categorias/grupos custom). PTA segue com CAMPAIGN_GROUPS.
-  const blankTaxonomy = activeCompany?.settings?.blankTaxonomy === true;
+  // CAMPAIGN_GROUPS (biomecânica, mentoria…) é a taxonomia da empresa ORIGINAL
+  // (PTA, slug "principal"). Qualquer outra empresa NÃO a herda — monta os
+  // próprios filtros. Gate por slug é robusto (não depende de flag em settings).
+  const usesPtaTaxonomy = activeCompany?.slug === "principal";
   const allGroups = useMemo<GroupConfig[]>(() => [
-    ...(blankTaxonomy ? [] : CAMPAIGN_GROUPS),
+    ...(usesPtaTaxonomy ? CAMPAIGN_GROUPS : []),
     ...customGroups.map((cg): GroupConfig => {
       const isBuiltin = cg.section in SECTION_DEFAULTS;
       if (isBuiltin) {
@@ -2156,7 +2157,7 @@ export function Dashboard({
       const ResolvedIcon = ICON_MAP[customSec?.iconName ?? "Package"] ?? Package;
       return { ...colorCfg, icon: ResolvedIcon, id: cg.id, label: cg.label, section: cg.section as GroupSection };
     }),
-  ], [customGroups, customSections, blankTaxonomy]);
+  ], [customGroups, customSections, usesPtaTaxonomy]);
 
   // ── Account → section map for Meta data ──────────────────────────────────────
   const accountSectionMap = useMemo<Record<string, ProductCategory>>(() => {

@@ -2,8 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { fetchProfilesFromDB, saveProfilesToDB } from "@/utils/supabaseProfiles";
+import { useCompany } from "@/hooks/useCompany";
+import { loadScoped, persistScoped } from "@/lib/companyScopedStorage";
 
-const STORAGE_KEY = "pta_advertiser_profiles_v2";
+const STORAGE_PREFIX = "pta_advertiser_profiles_v2";
+// empresa cujo cache local está ativo — persist grava sempre nela.
+let activeCid: string | null = null;
 
 /** action_type to use as primary "Resultado" for this campaign */
 export type ResultType =
@@ -41,71 +45,43 @@ export interface AdvertiserProfile {
   createdAt: string;
 }
 
-// Migrate old v1 profiles (had activeCampaign: string)
-function migrate(raw: unknown[]): AdvertiserProfile[] {
-  return raw.map((p: unknown) => {
-    const obj = p as Record<string, unknown>;
-    if (obj.campaigns) return obj as unknown as AdvertiserProfile;
-    const legacy = obj.activeCampaign as string | undefined;
-    return {
-      id:          obj.id as string,
-      name:        obj.name as string,
-      product:     (obj.product as string) ?? "",
-      adAccountId: (obj.adAccountId as string) ?? "",
-      groupId:     (obj.groupId as string) ?? "",
-      campaigns:   legacy ? [{ id: legacy, name: legacy }] : [],
-      createdAt:   (obj.createdAt as string) ?? new Date().toISOString(),
-    };
-  });
-}
-
 function loadProfiles(): AdvertiserProfile[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      // try migrating from v1
-      const v1 = localStorage.getItem("pta_advertiser_profiles_v1");
-      if (!v1) return [];
-      return migrate(JSON.parse(v1) as unknown[]);
-    }
-    return JSON.parse(raw) as AdvertiserProfile[];
-  } catch {
-    return [];
-  }
+  return loadScoped<AdvertiserProfile[]>(STORAGE_PREFIX, activeCid, []);
 }
 
 function persist(profiles: AdvertiserProfile[]): void {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(profiles)); } catch { /* noop */ }
-  // Background Supabase sync — fire-and-forget, errors silently ignored
+  persistScoped(STORAGE_PREFIX, activeCid, profiles);
+  // Background Supabase sync — fire-and-forget, errors silently ignored.
+  // saveProfilesToDB grava na empresa ativa (advertiser_profiles by company_id).
   saveProfilesToDB(profiles).catch(() => {});
 }
 
 export function useAdvertiserStore() {
+  const { company } = useCompany();
+  const companyId = company?.id ?? null;
   // Synchronous init from localStorage (same pattern as useCampaignStore) so the
   // profile list never flashes the empty-state on first render.
   const [profiles, setProfiles] = useState<AdvertiserProfile[]>(loadProfiles);
 
-  // ── On mount: merge profiles from Supabase with localStorage ───────────────
-  // Merge rule: LOCAL wins for IDs that exist in both (preserva edições feitas neste
-  // device antes do DB sync confirmar); DB contribui apenas perfis ausentes no local.
-  // Isso evita sobrescrever uma edição local recente com uma versão stale do Supabase
-  // (que ainda não recebeu o fire-and-forget write do localStorage).
+  // ── Carrega (e recarrega na troca de empresa) mesclando cache local + Supabase ─
+  // Local wins por ID (preserva edição recente antes do sync); DB contribui os
+  // ausentes. Ambos JÁ escopados por empresa, então nada de outra empresa entra.
   useEffect(() => {
+    activeCid = companyId;
+    const local = loadProfiles();
+    setProfiles(local);
     fetchProfilesFromDB()
       .then((dbProfiles) => {
         if (dbProfiles.length === 0) return;
-        setProfiles((local) => {
-          const localIds = new Set(local.map((p) => p.id));
-          // Local mantém seus IDs; DB contribui apenas os que não existem localmente
-          const merged = [...local, ...dbProfiles.filter((p) => !localIds.has(p.id))];
-          try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch {}
+        setProfiles((cur) => {
+          const ids = new Set(cur.map((p) => p.id));
+          const merged = [...cur, ...dbProfiles.filter((p) => !ids.has(p.id))];
+          persistScoped(STORAGE_PREFIX, companyId, merged);
           return merged;
         });
       })
       .catch(() => { /* not authenticated or Supabase not configured — ignore */ });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [companyId]);
 
   const addProfile = useCallback((data: Omit<AdvertiserProfile, "id" | "createdAt">) => {
     const profile: AdvertiserProfile = {
