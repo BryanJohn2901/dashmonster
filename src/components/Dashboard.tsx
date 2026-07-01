@@ -1211,16 +1211,22 @@ function ContextBar({
 
   // Dedup por id: a mesma campanha aparece em vários grupos que dividem a conta.
   // Sem dedup, keys do React se repetem e a lista não re-renderiza ao filtrar.
+  // Com um grupo selecionado, lista SÓ as campanhas dele — a seleção é por grupo
+  // (Dashboard reconcilia contra o grupo atual), então oferecer campanhas de
+  // outros grupos fazia o clique "não marcar" (a reconciliação descartava o id).
   const allCampaigns = useMemo(() => {
+    const source = selectedGroup === "all"
+      ? Object.values(campaignsByGroup).flat()
+      : (campaignsByGroup[selectedGroup] ?? []);
     const seen = new Set<string>();
     const out: { id: string; name: string; status?: string }[] = [];
-    for (const c of Object.values(campaignsByGroup).flat()) {
+    for (const c of source) {
       if (!c || seen.has(c.id)) continue;
       seen.add(c.id);
       out.push(c);
     }
     return out;
-  }, [campaignsByGroup]);
+  }, [campaignsByGroup, selectedGroup]);
   const [campSearch, setCampSearch] = useState("");
   const visibleCampaigns = useMemo(() => {
     const q = campSearch.trim().toLowerCase();
@@ -2077,17 +2083,27 @@ export function Dashboard({
         setCampaignsForGroup(gid, summaries);
         if (subset) setCampaignSelectionForGroup(gid, entry.selectedCampaignIds);
         else clearCampaignSelectionForGroup(gid);
-        return;
+      } else {
+        const slug = categorySlug as ProductCategory;
+        const groupId = mapPainelInternalFilterToDashboardGroupId(categorySlug, entry.internalFilter);
+        setSelectedCategory(slug);
+        setSelectedGroup(groupId);
+        setCampaignConfig(groupId, { adAccountId: entry.adAccountId });
+        setCampaignsForGroup(groupId, summaries);
+        if (subset) setCampaignSelectionForGroup(groupId, entry.selectedCampaignIds);
+        else clearCampaignSelectionForGroup(groupId);
       }
 
-      const slug = categorySlug as ProductCategory;
-      const groupId = mapPainelInternalFilterToDashboardGroupId(categorySlug, entry.internalFilter);
-      setSelectedCategory(slug);
-      setSelectedGroup(groupId);
-      setCampaignConfig(groupId, { adAccountId: entry.adAccountId });
-      setCampaignsForGroup(groupId, summaries);
-      if (subset) setCampaignSelectionForGroup(groupId, entry.selectedCampaignIds);
-      else clearCampaignSelectionForGroup(groupId);
+      // Wizard interno (syncAfter): o disparador NÃO está no page.tsx, então é
+      // o Dashboard que precisa colocar a entry na lista e puxar as métricas.
+      // O Painel (page.tsx) já faz isso — lá vem sem syncAfter, evitando duplicar.
+      if (d.syncAfter) {
+        const merged = accountEntries.some((e) => e.id === entry.id)
+          ? accountEntries.map((e) => (e.id === entry.id ? entry : e))
+          : [...accountEntries, entry];
+        onEntriesChange?.(merged);
+        void onRefresh?.();
+      }
     };
 
     window.addEventListener(PTA_PAINEL_SAVE_NAV_EVENT, onApply);
@@ -2100,6 +2116,9 @@ export function Dashboard({
     setCampaignSelectionForGroup,
     clearCampaignSelectionForGroup,
     setMainTab,
+    accountEntries,
+    onEntriesChange,
+    onRefresh,
   ]);
 
   // Persist sidebar checkbox changes back to the store so they survive remounts.
@@ -2121,8 +2140,11 @@ export function Dashboard({
   const isFilterExplicit = selectedGroup !== "all" && selectedGroup in selectedCampaignsByGroup;
 
   // Merge static groups with custom-created ones
+  // Empresa nova (blankTaxonomy) não herda os filtros PTA hardcoded — só mostra
+  // o que ela mesma criar (categorias/grupos custom). PTA segue com CAMPAIGN_GROUPS.
+  const blankTaxonomy = activeCompany?.settings?.blankTaxonomy === true;
   const allGroups = useMemo<GroupConfig[]>(() => [
-    ...CAMPAIGN_GROUPS,
+    ...(blankTaxonomy ? [] : CAMPAIGN_GROUPS),
     ...customGroups.map((cg): GroupConfig => {
       const isBuiltin = cg.section in SECTION_DEFAULTS;
       if (isBuiltin) {
@@ -2134,7 +2156,7 @@ export function Dashboard({
       const ResolvedIcon = ICON_MAP[customSec?.iconName ?? "Package"] ?? Package;
       return { ...colorCfg, icon: ResolvedIcon, id: cg.id, label: cg.label, section: cg.section as GroupSection };
     }),
-  ], [customGroups, customSections]);
+  ], [customGroups, customSections, blankTaxonomy]);
 
   // ── Account → section map for Meta data ──────────────────────────────────────
   const accountSectionMap = useMemo<Record<string, ProductCategory>>(() => {
@@ -3652,6 +3674,7 @@ export function Dashboard({
         onUpdateProfile={onUpdateProfile}
         onSignOut={onSignOut}
         categories={categories}
+        onCategoriesChange={onCategoriesChange}
       />
 
       {pickCategoryOpen && (

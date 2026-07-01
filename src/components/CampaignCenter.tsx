@@ -18,6 +18,8 @@ import {
   type MetaCampaign, type MetaAdAccount,
 } from "@/utils/metaApi";
 import { TabAccounts, type TabAccountsProps } from "@/components/ControlPanel";
+import { CampaignWizard } from "@/components/CampaignWizard";
+import { useUserConfig } from "@/hooks/useUserConfig";
 import {
   fetchUserAccountEntries, fetchUserCategories,
   upsertUserCategory, upsertUserAccountEntry,
@@ -73,6 +75,10 @@ const UNIT_PLACEHOLDER: Record<string, string> = {
 
 type ConnectTab = "linked" | "new";
 
+// ponytail: fluxo Meta antigo (drawer lateral) — substituído pelo CampaignWizard
+// inline. Mantido temporariamente; remover junto dos imports só-dele (createPortal,
+// fetchMeta*, loadMeta*, etc.) quando o wizard estiver validado em produção.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function ConnectDrawer({ onClose, onImport }: {
   onClose: () => void;
   onImport: (entries: CampaignCenterEntry[]) => void;
@@ -314,8 +320,9 @@ function ConnectDrawer({ onClose, onImport }: {
 
   return createPortal(
     <>
-      <div className="fixed inset-0 z-40 bg-black/30 backdrop-blur-[2px]" onClick={onClose} />
-      <div className="fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l shadow-2xl sm:max-w-[460px]"
+      {/* z acima do modal de Configurações (z-[100]) — senão o drawer abria atrás e não dava pra usar */}
+      <div className="fixed inset-0 z-[130] bg-black/40 backdrop-blur-[2px]" onClick={onClose} />
+      <div className="fixed inset-y-0 right-0 z-[140] flex w-full flex-col border-l shadow-2xl sm:max-w-[460px]"
         style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
 
         {/* Header */}
@@ -608,7 +615,7 @@ function CompanyBadge() {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function CampaignCenter() {
+export function CampaignCenter({ onConnectingChange }: { onConnectingChange?: (connecting: boolean) => void } = {}) {
   const { entries, upsertEntries, updateEntry, removeEntry, clearAll } = useCampaignCenter();
   const { canWrite, company } = useCompany();
   // sem empresa configurada (migration pendente) ninguém é bloqueado
@@ -616,14 +623,16 @@ export function CampaignCenter() {
   // Colapsado por padrão: só o card aberto monta os controles (DOM enxuto)
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [showConnect, setShowConnect] = useState(false);
+  // Avisa o pai (Configurações) p/ esconder o resto e o wizard ocupar a janela.
+  useEffect(() => { onConnectingChange?.(showConnect); }, [showConnect, onConnectingChange]);
 
-  // Grupos = filtros/categorias do Painel (mesmo setup, sem retrabalho)
-  const [categoryGroups, setCategoryGroups] = useState<string[]>([]);
-  useEffect(() => {
-    void fetchUserCategories()
-      .then((cats) => setCategoryGroups(cats.filter((c) => c.isEnabled).map((c) => c.slug)))
-      .catch(() => {});
-  }, []);
+  // Grupos = filtros/categorias do Painel (mesmo setup, sem retrabalho).
+  // Store global → atualiza ao vivo quando um filtro é criado em qualquer tela.
+  const { categories: liveCategories } = useUserConfig();
+  const categoryGroups = useMemo(
+    () => liveCategories.filter((c) => c.isEnabled).map((c) => c.slug),
+    [liveCategories],
+  );
   const groupOptions = useMemo(() => {
     const set = new Set<string>(categoryGroups);
     entries.forEach((e) => { if (e.groupId) set.add(e.groupId); });
@@ -657,6 +666,17 @@ export function CampaignCenter() {
     });
   };
 
+  // Conectar conta → wizard inline ocupando a janela (substitui o drawer lateral)
+  if (showConnect) {
+    return (
+      <CampaignWizard
+        onClose={() => setShowConnect(false)}
+        onSave={(newEntries) => upsertEntries(newEntries)}
+        nameSuggestions={[...new Set(entries.map((e) => e.campaignName.trim()).filter(Boolean))]}
+      />
+    );
+  }
+
   return (
     <div className="flex flex-col gap-5">
       {/* Header */}
@@ -669,29 +689,29 @@ export function CampaignCenter() {
             Conta, filtro, ACT e campanhas — tudo configurado de uma vez em Conectar conta.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <CompanyBadge />
           {!readOnly && (<>
           <button type="button" onClick={() => setShowConnect(true)}
-            className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-semibold text-white transition hover:opacity-90"
+            className="flex items-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-1.5 text-[11px] font-semibold text-white transition hover:opacity-90"
             style={{ background: "var(--dm-btn-primary-bg)" }}>
             <Plug size={12} /> Conectar conta
           </button>
           {entries.length > 0 && (
             <button type="button" onClick={autoConfigureAll}
-              className="flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-[11px] font-semibold transition hover:opacity-80"
+              className="flex items-center gap-1.5 whitespace-nowrap rounded-xl border px-3 py-1.5 text-[11px] font-semibold transition hover:opacity-80"
               style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)", backgroundColor: "var(--dm-bg-elevated)" }}>
-              <Sparkles size={12} /> Auto-configurar tudo
+              <Sparkles size={12} /> Auto-configurar
             </button>
           )}
           <button type="button" onClick={seedMock}
-            className="flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-[11px] font-semibold transition hover:opacity-80"
+            className="flex items-center gap-1.5 whitespace-nowrap rounded-xl border px-3 py-1.5 text-[11px] font-semibold transition hover:opacity-80"
             style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)", backgroundColor: "var(--dm-bg-elevated)" }}>
-            <FlaskConical size={12} /> Carregar dados de teste
+            <FlaskConical size={12} /> Dados de teste
           </button>
           {entries.length > 0 && (
             <button type="button" onClick={clearAll}
-              className="flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-[11px] font-semibold transition hover:opacity-80"
+              className="flex items-center gap-1.5 whitespace-nowrap rounded-xl border px-3 py-1.5 text-[11px] font-semibold transition hover:opacity-80"
               style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-tertiary)", backgroundColor: "transparent" }}>
               <Trash2 size={12} /> Limpar
             </button>
@@ -929,10 +949,6 @@ export function CampaignCenter() {
           })}
         </div>
       ))}
-
-      {showConnect && (
-        <ConnectDrawer onClose={() => setShowConnect(false)} onImport={upsertEntries} />
-      )}
     </div>
   );
 }

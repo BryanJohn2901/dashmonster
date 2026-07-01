@@ -183,10 +183,10 @@ export async function deleteUserAccountEntry(id: string): Promise<void> {
  * o dashboard refaz o fetch e atualiza sem refresh manual.
  * Retorna função de unsubscribe.
  */
-export function subscribeUserConfig(onChange: () => void): () => void {
+export function subscribeUserConfig(onChange: () => void, channelName = "user-config-realtime"): () => void {
   if (!supabaseClient) return () => {};
   const channel = supabaseClient
-    .channel("user-config-realtime")
+    .channel(channelName)
     .on("postgres_changes",
       { event: "*", schema: "public", table: "user_categories" }, onChange)
     .on("postgres_changes",

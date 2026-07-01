@@ -313,9 +313,12 @@ export async function createCompany(name: string, ownerEmail?: string): Promise<
   const slug =
     clean.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) +
     "-" + Math.random().toString(36).slice(2, 7);
+  // blankTaxonomy: empresa nova nasce SEM os filtros padrão PTA (Biomecânica,
+  // Mentoria…). O dono monta os próprios filtros na aba Filtros / no wizard.
+  // Empresas antigas (sem a flag) seguem com a taxonomia PTA hardcoded.
   const { data, error } = await supabaseClient
     .from("companies")
-    .insert({ name: clean, slug })
+    .insert({ name: clean, slug, settings: { blankTaxonomy: true } })
     .select("id, name, slug, logo_url, settings")
     .single();
   if (error) throw new Error(error.message);

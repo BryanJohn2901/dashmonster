@@ -81,6 +81,8 @@ export default function Home() {
   const [showOnboarding,     setShowOnboarding]     = useState(false);
   const [userCategories,     setUserCategories]     = useState<UserCategory[]>([]);
   const [userAccountEntries, setUserAccountEntries] = useState<UserAccountEntry[]>([]);
+  /** true enquanto carrega os dados de uma empresa recém-selecionada. */
+  const [switchingCompany,   setSwitchingCompany]   = useState(false);
   /** false até aplicar supabase/migrations/013_campaign_metrics_leads.sql */
   const [campaignMetricsHasLeadsColumn, setCampaignMetricsHasLeadsColumn] = useState(true);
 
@@ -687,11 +689,13 @@ export default function Home() {
     if (companyLoadedRef.current === activeCompanyId) return;
     companyLoadedRef.current = activeCompanyId;
 
+    setSwitchingCompany(true);
     void (async () => {
       try {
-        const localToken = loadMetaCredentials().accessToken;
+        // Substitui o token pelo da empresa nova SEMPRE — se ela não tem token,
+        // limpa o cache (senão o token da empresa anterior vazaria pra esta).
         const dbToken = await fetchMetaTokenFromDB().catch(() => "");
-        if (dbToken && dbToken !== localToken) cacheMetaCredentials({ accessToken: dbToken });
+        cacheMetaCredentials({ accessToken: dbToken });
 
         await loadSupabaseData();
         const [cats, entries] = await Promise.all([fetchUserCategories(), fetchUserAccountEntries()]);
@@ -699,6 +703,8 @@ export default function Home() {
         replaceUserAccountEntries(entries);
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Falha ao trocar de empresa.");
+      } finally {
+        setSwitchingCompany(false);
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -774,6 +780,26 @@ export default function Home() {
         onUpdateProfile={handleUpdateProfile}
         categories={userCategories}
       />
+    );
+  }
+
+  // Troca de empresa: tela de loading enquanto os dados da nova empresa carregam.
+  // Garante que nada da empresa anterior fica visível durante a transição.
+  if (switchingCompany) {
+    const switchingName = memberships.find((m) => m.company.id === activeCompanyId)?.company.name;
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 px-4"
+        style={{ background: "var(--dm-bg-page)" }}>
+        <div className="h-10 w-10 animate-spin rounded-full border-2 border-[#16A34A] border-t-transparent" aria-hidden />
+        <div className="text-center">
+          <p className="text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>
+            Carregando {switchingName ?? "a empresa"}…
+          </p>
+          <p className="mt-1 text-[12px]" style={{ color: "var(--dm-text-tertiary)" }}>
+            Preparando os dados desta empresa
+          </p>
+        </div>
+      </div>
     );
   }
 

@@ -1,6 +1,8 @@
 "use client";
 
-import { Building2, LogOut, ChevronRight } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useTheme } from "next-themes";
+import { Building2, LogOut, ChevronRight, Sun, Moon } from "lucide-react";
 import type { CompanyMembership, CompanyRole } from "@/hooks/useCompany";
 
 const ROLE_LABELS: Record<CompanyRole, string> = {
@@ -25,12 +27,31 @@ export function CompanySelectScreen({
   onSelect: (companyId: string) => void;
   onSignOut: () => Promise<void> | void;
 }) {
+  const { resolvedTheme, setTheme } = useTheme();
+  // resolvedTheme só existe após o mount (next-themes lê no client) — evita
+  // mismatch de hidratação mostrando o ícone só quando montado.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+  const isDark = mounted && resolvedTheme === "dark";
+
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center px-4 py-10"
-      style={{ background: "var(--dm-bg-base, #0C0C0C)" }}>
+    <div className="relative flex min-h-screen flex-col items-center justify-center px-4 py-10"
+      style={{ background: "var(--dm-bg-page)" }}>
+      {/* Toggle de tema preto/branco */}
+      <button
+        type="button"
+        onClick={() => setTheme(isDark ? "light" : "dark")}
+        aria-label={isDark ? "Tema claro" : "Tema escuro"}
+        title={isDark ? "Tema claro" : "Tema escuro"}
+        className="absolute right-5 top-5 flex h-10 w-10 items-center justify-center rounded-full border transition hover:opacity-80"
+        style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)", color: "var(--dm-text-secondary)" }}
+      >
+        {mounted && (isDark ? <Sun size={17} /> : <Moon size={17} />)}
+      </button>
+
       <div className="w-full" style={{ maxWidth: 460 }}>
         {/* Header */}
-        <div className="mb-7 text-center">
+        <div className="dm-reveal mb-7 text-center">
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl"
             style={{ background: "var(--dm-btn-primary-bg)" }}>
             <Building2 size={26} className="text-white" />
@@ -46,18 +67,19 @@ export function CompanySelectScreen({
 
         {/* Lista de empresas */}
         <div className="flex flex-col gap-2.5">
-          {memberships.map(({ company, role }) => {
+          {memberships.map(({ company, role }, i) => {
             const active = company.id === activeCompanyId;
             return (
               <button
                 key={company.id}
                 type="button"
                 onClick={() => onSelect(company.id)}
-                className="group flex items-center gap-3.5 rounded-2xl border p-4 text-left transition-all hover:opacity-95 active:scale-[0.99]"
+                className="dm-reveal group flex items-center gap-3.5 rounded-2xl border p-4 text-left transition-all hover:-translate-y-0.5 hover:opacity-95 active:scale-[0.99]"
                 style={{
                   background: "var(--dm-bg-surface)",
                   borderColor: active ? "#16A34A" : "var(--dm-border-default)",
                   boxShadow: active ? "0 0 0 3px rgba(22,163,74,0.15)" : "0 4px 16px rgba(0,0,0,0.08)",
+                  animationDelay: `${80 + i * 70}ms`,
                 }}
               >
                 <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl text-base font-bold text-white"
@@ -86,8 +108,8 @@ export function CompanySelectScreen({
         <button
           type="button"
           onClick={() => void onSignOut()}
-          className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl border py-2.5 text-[13px] font-semibold transition hover:bg-red-50 hover:border-red-300 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:border-red-800 dark:hover:text-red-400"
-          style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}
+          className="dm-reveal mt-6 flex w-full items-center justify-center gap-2 rounded-xl border py-2.5 text-[13px] font-semibold transition hover:bg-red-50 hover:border-red-300 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:border-red-800 dark:hover:text-red-400"
+          style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)", animationDelay: `${80 + memberships.length * 70}ms` }}
         >
           <LogOut size={14} />
           Sair da conta
