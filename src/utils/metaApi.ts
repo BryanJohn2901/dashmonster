@@ -49,6 +49,36 @@ export async function fetchMetaCampaigns(
   return body as MetaCampaign[];
 }
 
+// ─── Status real (ACTIVE/PAUSED) de conjuntos de anúncio e anúncios ───────────
+
+export interface MetaEntityStatus {
+  id:               string;
+  name:             string;
+  status:           string; // toggle próprio: ACTIVE | PAUSED | DELETED | ARCHIVED
+  effective_status: string; // estado real (inclui pausa herdada do pai):
+                            // ACTIVE | PAUSED | CAMPAIGN_PAUSED | ADSET_PAUSED | …
+}
+
+/**
+ * Busca o status real (toggle ligado/desligado no Gerenciador de Anúncios) de
+ * conjuntos de anúncio ou anúncios, escopado às campanhas informadas.
+ * Proxied through /api/meta/status para evitar CORS.
+ */
+export async function fetchMetaEntityStatus(
+  adAccountId: string,
+  accessToken: string,
+  level: "adset" | "ad",
+  campaignIds?: string[],
+): Promise<MetaEntityStatus[]> {
+  if (!adAccountId || !accessToken) return [];
+  const params: Record<string, string> = { adAccountId, accessToken, level };
+  if (campaignIds && campaignIds.length > 0) params.campaignIds = campaignIds.join(",");
+  const res  = await fetch(`/api/meta/status?${new URLSearchParams(params)}`);
+  const body = await res.json() as MetaEntityStatus[] | { error: string };
+  if (!res.ok) throw new Error((body as { error: string }).error ?? `Meta API error ${res.status}`);
+  return body as MetaEntityStatus[];
+}
+
 // ─── Objetivo real das campanhas (optimization_goal + promoted_object) ─────────
 
 import type { CampaignGoal } from "@/lib/resultDetection";
