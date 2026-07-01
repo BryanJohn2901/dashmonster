@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, Plus, SlidersHorizontal, Trash2, Edit2, X, Search, GripVertical } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, ExternalLink, Plus, SlidersHorizontal, Trash2, Edit2, X, Search, GripVertical } from "lucide-react";
 import { ALL_KPI_OPTIONS, KPI_GROUPS } from "@/lib/templates";
 import {
   evaluateFormula, validateFormula, formatCustom, newCustomMetricId,
@@ -10,6 +10,7 @@ import {
 
 const TABLE_CONFIG_KEY = "pta_profile_table_config_v1";
 const DEFAULT_COLS = ["spend", "reach", "leads", "sales", "revenue", "roas"];
+const ITEMS_PER_PAGE = 15;
 
 const ROAS_GREEN = "#05CD99";
 const ROAS_AMBER = "#F4A60D";
@@ -75,13 +76,41 @@ function loadConfig(profileId: string): TableConfig {
 
 // ─── Componente ───────────────────────────────────────────────────────────────
 
+type BreakdownView = "campaign" | "adset" | "ad";
+
+const VIEW_OPTIONS: { value: BreakdownView; label: string; labelPlural: string }[] = [
+  { value: "campaign", label: "Campanha",            labelPlural: "campanhas" },
+  { value: "adset",    label: "Conjunto de anúncio", labelPlural: "conjuntos" },
+  { value: "ad",       label: "Anúncio",             labelPlural: "anúncios"  },
+];
+
 export function CampaignMetricsTable({
-  profileId, campaignRows, totalsValues,
+  profileId, campaignRows, adsetRows, adRows, totalsValues,
+  adLinks, adLinksLoading, statusByView, onViewChange,
 }: {
   profileId: string;
   campaignRows: CampaignRow[];
+  adsetRows?: CampaignRow[];
+  adRows?: CampaignRow[];
   totalsValues: Record<string, number>;
+  /** Mapa adId → URL externa do criativo (ex: post do Instagram). Só usado na view "Anúncio". */
+  adLinks?: Record<string, string>;
+  /** Indica que adLinks ainda está carregando — exibido como dica sutil no header. */
+  adLinksLoading?: boolean;
+  /** Status real (ACTIVE/PAUSED/...) por nível e por id — sobrepõe a heurística de entrega quando disponível. */
+  statusByView?: Partial<Record<BreakdownView, Record<string, string>>>;
+  /** Notifica o pai quando a view muda — usado pra disparar fetch lazy de adLinks/status. */
+  onViewChange?: (view: BreakdownView) => void;
 }) {
+  const [view, setView] = useState<BreakdownView>("campaign");
+  const [page, setPage] = useState(1);
+
+  const changeView = (v: BreakdownView) => {
+    setView(v);
+    onViewChange?.(v);
+  };
+
+  useEffect(() => setPage(1), [view]);
   const [config, setConfig] = useState<TableConfig>(() => loadConfig(profileId));
   const { cols, custom, sort } = config;
 
@@ -118,6 +147,10 @@ export function CampaignMetricsTable({
     return typeof v === "number" && Number.isFinite(v) ? v : 0;
   };
 
+  // ── Rows ativas conforme view selecionada ──────────────────────────────────
+  const activeRows = view === "adset" ? (adsetRows ?? campaignRows) : view === "ad" ? (adRows ?? campaignRows) : campaignRows;
+  const viewMeta   = VIEW_OPTIONS.find((v) => v.value === view)!;
+
   // ── Ordenação ──────────────────────────────────────────────────────────────
   const handleSort = (col: string) => {
     const next: TableConfig["sort"] =
@@ -128,10 +161,10 @@ export function CampaignMetricsTable({
   };
 
   const sortedRows = useMemo(() => {
-    if (!sort) return campaignRows;
+    if (!sort) return activeRows;
     const dir = sort.dir === "asc" ? 1 : -1;
     const m = sort.col === "campaign" ? null : resolveMetric(sort.col);
-    return [...campaignRows].sort((a, b) => {
+    return [...activeRows].sort((a, b) => {
       if (sort.col === "campaign") return a.name.localeCompare(b.name) * dir;
       if (!m) return 0;
       const va = metricValue(m, a.values) ?? 0;
@@ -139,7 +172,7 @@ export function CampaignMetricsTable({
       return (va - vb) * dir;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [campaignRows, sort, custom]);
+  }, [activeRows, sort, custom]);
 
   // ── Menu de contexto ───────────────────────────────────────────────────────
   const [menu, setMenu] = useState<{ x: number; y: number; index: number; mode: "root" | "replace" | "add" } | null>(null);
@@ -223,104 +256,242 @@ export function CampaignMetricsTable({
   // ── Render célula ──────────────────────────────────────────────────────────
   const renderCell = (id: string, values: Record<string, number>, isFooter = false) => {
     const m = resolveMetric(id);
-    if (!m) return <span style={{ color: "var(--dm-text-tertiary)" }}>—</span>;
+    if (!m) return <span className="text-slate-400 dark:text-slate-600">—</span>;
     const val = metricValue(m, values);
 
-    // ROAS mantém o badge colorido por faixa.
     if (id === "roas") {
       const spend = values.spend ?? 0;
-      if (spend <= 0 || val == null) return <span style={{ color: "var(--dm-text-tertiary)" }}>—</span>;
-      const c = val >= 2 ? ROAS_GREEN : val >= 1 ? ROAS_AMBER : ROAS_RED;
+      if (spend <= 0 || val == null || val === 0) return <span className="text-slate-400 dark:text-slate-600">—</span>;
+      const cls = val >= 3   ? "bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 ring-emerald-500/20"
+                : val >= 1.5 ? "bg-slate-500/10 text-slate-600 dark:bg-slate-500/20 dark:text-slate-300 ring-slate-500/20"
+                : val >= 1   ? "bg-amber-500/10 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400 ring-amber-500/20"
+                :              "bg-red-500/10 text-red-600 dark:bg-red-500/20 dark:text-red-400 ring-red-500/20";
       return (
-        <span className={`rounded-full px-2.5 py-0.5 font-bold ${isFooter ? "text-[11px]" : "text-[11px]"}`}
-          style={{ backgroundColor: c + "1a", color: c }}>
+        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold ring-1 ${cls}`}
+          style={{ fontFamily: "var(--font-display)" }}>
           {val.toFixed(2)}x
         </span>
       );
     }
 
-    if (val == null || val === 0) return <span style={{ color: "var(--dm-text-tertiary)" }}>—</span>;
-    return <span>{m.fmt(val)}</span>;
+    if (id === "ctr" || id === "ctr_all") {
+      if (val == null || val === 0) return <span className="text-slate-400 dark:text-slate-600">—</span>;
+      const cls = val >= 3   ? "bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400"
+                : val >= 1.5 ? "bg-slate-500/10 text-slate-600 dark:bg-slate-500/20 dark:text-slate-300"
+                : val >= 0.5 ? "bg-slate-500/10 text-slate-600 dark:bg-slate-500/20 dark:text-slate-400"
+                :              "bg-red-500/10 text-red-600 dark:bg-red-500/20 dark:text-red-400";
+      return (
+        <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-bold ${cls}`}
+          style={{ fontFamily: "var(--font-display)" }}>
+          {val.toFixed(2)}%
+        </span>
+      );
+    }
+
+    if (val == null || val === 0) {
+      if (isFooter) return <span className="text-slate-400 dark:text-slate-600">—</span>;
+      return <span className="text-slate-400 dark:text-slate-600">—</span>;
+    }
+    return (
+      <span style={{ fontFamily: "var(--font-display)" }}>{m.fmt(val)}</span>
+    );
   };
 
-  const showTotals = campaignRows.length > 1;
+  const totalPages  = Math.max(1, Math.ceil(activeRows.length / ITEMS_PER_PAGE));
+  const currentPage = Math.min(page, totalPages);
+  const visibleRows = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return sortedRows.slice(start, start + ITEMS_PER_PAGE);
+  }, [sortedRows, currentPage]);
+  const firstIdx = (currentPage - 1) * ITEMS_PER_PAGE + 1;
+  const lastIdx  = Math.min(currentPage * ITEMS_PER_PAGE, activeRows.length);
+  const showTotals = activeRows.length > 0;
 
   return (
-    <article className="overflow-hidden rounded-[20px] border shadow-horizon"
-      style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
+    <article className="glass-panel w-full min-w-0 overflow-hidden rounded-3xl shadow-lg">
       {/* Header */}
-      <div className="flex items-center justify-between border-b px-5 py-4" style={{ borderColor: "var(--dm-border-subtle)" }}>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/50 px-5 py-4 sm:px-6 sm:py-5 dark:border-slate-700/50">
         <div>
-          <h3 className="text-sm font-bold" style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>
-            Vendas por Campanha
+          <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100"
+            style={{ fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>
+            Performance por {viewMeta.label}
           </h3>
-          <p className="mt-0.5 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
-            {campaignRows.length} campanha{campaignRows.length !== 1 ? "s" : ""} · clique no cabeçalho ordena · botão direito edita
+          <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">
+            {firstIdx}–{lastIdx} de {activeRows.length} {viewMeta.labelPlural} · clique no cabeçalho ordena · botão direito edita
+            {view === "ad" && adLinksLoading && " · carregando links dos criativos…"}
           </p>
         </div>
-        <button type="button" onClick={() => setShowCols(true)}
-          className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-semibold transition hover:opacity-80"
-          style={{ backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)", border: "1px solid var(--dm-border-default)" }}>
-          <SlidersHorizontal size={11} />
-          Colunas
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Seletor de nível */}
+          <div className="flex rounded-[10px] p-0.5" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
+            {VIEW_OPTIONS.map((opt) => (
+              <button key={opt.value} type="button" onClick={() => changeView(opt.value)}
+                className="rounded-[8px] px-3 py-1.5 text-[11px] font-semibold transition-all"
+                style={view === opt.value
+                  ? { background: BRAND_GRAD, color: "#fff", boxShadow: "0 2px 8px rgba(22,163,74,0.28)" }
+                  : { color: "var(--dm-text-tertiary)" }}>
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          {/* Paginação */}
+          {totalPages > 1 && (
+            <div className="flex items-center gap-1">
+              <button type="button" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1}
+                className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50 disabled:opacity-30 dark:border-slate-600 dark:text-slate-400 dark:hover:bg-slate-700">
+                <ChevronLeft size={14} />
+              </button>
+              <span className="min-w-[44px] text-center text-xs font-semibold text-slate-600 dark:text-slate-400">
+                {currentPage} / {totalPages}
+              </span>
+              <button type="button" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}
+                className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50 disabled:opacity-30 dark:border-slate-600 dark:text-slate-400 dark:hover:bg-slate-700">
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          )}
+          <button type="button" onClick={() => setShowCols(true)}
+            className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-semibold transition hover:opacity-80"
+            style={{ backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)", border: "1px solid var(--dm-border-default)" }}>
+            <SlidersHorizontal size={11} />
+            Colunas
+          </button>
+        </div>
       </div>
 
       {/* Tabela */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs border-collapse">
+      <div className="w-full overflow-x-auto">
+        <table className="w-full min-w-[600px] text-sm">
           <thead>
-            <tr style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
+            <tr className="bg-slate-100/50 text-left dark:bg-slate-800/50">
               <th onClick={() => handleSort("campaign")}
-                className="cursor-pointer select-none border-b px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider whitespace-nowrap transition hover:opacity-70"
-                style={{ borderColor: "var(--dm-border-subtle)", color: "var(--dm-text-tertiary)" }}>
-                Campanha
+                className="cursor-pointer select-none border-b border-slate-200/50 px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider whitespace-nowrap text-slate-500 transition hover:opacity-70 dark:border-slate-700/50 dark:text-slate-400">
+                {viewMeta.label}
               </th>
               {cols.map((id, index) => {
                 const m = resolveMetric(id);
+                const isBadge = id === "roas" || id === "ctr" || id === "ctr_all";
                 return (
                   <th key={id + index}
                     onClick={() => handleSort(id)}
                     onContextMenu={(e) => openMenu(e, index)}
                     title={m?.tooltip}
-                    className="cursor-pointer select-none border-b px-4 py-2.5 text-right text-[10px] font-bold uppercase tracking-wider whitespace-nowrap transition hover:opacity-70"
-                    style={{ borderColor: "var(--dm-border-subtle)", color: "var(--dm-text-tertiary)" }}>
+                    className={`cursor-pointer select-none border-b border-slate-200/50 px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider whitespace-nowrap text-slate-500 transition hover:opacity-70 dark:border-slate-700/50 dark:text-slate-400 ${isBadge ? "text-center" : "text-right"}`}>
                     {m?.label ?? id}
                   </th>
                 );
               })}
             </tr>
           </thead>
-          <tbody>
-            {sortedRows.map((row) => (
-              <tr key={row.id} className="border-b transition-colors hover:bg-white/5" style={{ borderColor: "var(--dm-border-subtle)" }}>
-                <td className="px-4 py-3 max-w-[260px] truncate font-medium" style={{ color: "var(--dm-text-primary)" }} title={row.name}>
-                  {row.name.length > 42 ? row.name.slice(0, 42) + "…" : row.name}
+          <tbody className="divide-y divide-slate-100/50 dark:divide-slate-700/50">
+            {visibleRows.map((row) => {
+              const hasSpend   = (row.values.spend ?? 0) > 0;
+              const hasImps    = (row.values.impressions ?? 0) > 0;
+              // effective_status propaga pausa do pai para baixo na hierarquia:
+              // - "ACTIVE"          → o próprio item e todos os pais estão ativos
+              // - "PAUSED"          → pausado pelo seu próprio toggle
+              // - "CAMPAIGN_PAUSED" → campanha pai pausada (adset/anúncio seria ativo)
+              // - "ADSET_PAUSED"    → conjunto pai pausado (anúncio seria ativo)
+              // - "DISAPPROVED"     → reprovado pela Meta
+              // - "PENDING_REVIEW"  → aguardando análise
+              // - "WITH_ISSUES"     → com problemas
+              const realStatus = statusByView?.[view]?.[row.id];
+              let dotColor: string;
+              let dotTip: string;
+              if (realStatus === "ACTIVE") {
+                dotColor = "#16A34A"; dotTip = "Ativo";
+              } else if (realStatus === "PAUSED") {
+                dotColor = "#94a3b8"; dotTip = "Pausado";
+              } else if (realStatus === "CAMPAIGN_PAUSED") {
+                dotColor = "#94a3b8"; dotTip = "Pausado · campanha pai pausada";
+              } else if (realStatus === "ADSET_PAUSED") {
+                dotColor = "#94a3b8"; dotTip = "Pausado · conjunto pai pausado";
+              } else if (realStatus === "DISAPPROVED") {
+                dotColor = "#EE5D50"; dotTip = "Reprovado pela Meta";
+              } else if (realStatus === "PENDING_REVIEW" || realStatus === "IN_PROCESS" || realStatus === "PREAPPROVED") {
+                dotColor = "#F4A60D"; dotTip = "Em análise";
+              } else if (realStatus === "WITH_ISSUES") {
+                dotColor = "#F4A60D"; dotTip = "Com problemas";
+              } else if (realStatus === "DELETED") {
+                dotColor = "#64748b"; dotTip = "Removido";
+              } else if (realStatus === "ARCHIVED") {
+                dotColor = "#64748b"; dotTip = "Arquivado";
+              } else {
+                // Status real ainda não carregado ou indisponível — usa entrega no
+                // período como aproximação (comportamento anterior).
+                dotColor = hasSpend ? "#16A34A" : hasImps ? "#F4A60D" : "#94a3b8";
+                dotTip   = hasSpend ? "Com entrega no período"
+                         : hasImps  ? "Impressões sem investimento"
+                         :            "Sem entrega no período";
+              }
+              const creativeLink = view === "ad" ? adLinks?.[row.id] : undefined;
+              return (
+              <tr key={row.id} className="transition-all hover:bg-white/50 dark:hover:bg-slate-800/50">
+                <td className="px-5 py-3.5">
+                  <div className="flex items-center gap-2.5 min-w-0 group/name">
+                    <span
+                      title={dotTip}
+                      className="flex-shrink-0 h-2 w-2 rounded-full"
+                      style={{ backgroundColor: dotColor, boxShadow: dotColor === "#16A34A" ? `0 0 0 3px ${dotColor}22` : undefined }}
+                    />
+                    {creativeLink ? (
+                      <a
+                        href={creativeLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={creativeLink}
+                        onClick={(e) => e.stopPropagation()}
+                        className="flex min-w-0 items-center gap-1 text-[13px] font-semibold text-slate-800 transition-colors hover:text-emerald-600 hover:underline dark:text-slate-200 dark:hover:text-emerald-400"
+                      >
+                        <span className="truncate max-w-[240px]">{row.name}</span>
+                        <ExternalLink size={11} className="flex-shrink-0 opacity-0 transition-opacity group-hover/name:opacity-60" />
+                      </a>
+                    ) : (
+                      <span title={row.name} className="truncate max-w-[260px] text-[13px] font-semibold text-slate-800 dark:text-slate-200">
+                        {row.name}
+                      </span>
+                    )}
+                  </div>
                 </td>
-                {cols.map((id, index) => (
-                  <td key={id + index} className="px-4 py-3 text-right tabular-nums" style={{ color: "var(--dm-text-secondary)" }}>
-                    {renderCell(id, row.values)}
-                  </td>
-                ))}
+                {cols.map((id, index) => {
+                  const isBadge = id === "roas" || id === "ctr" || id === "ctr_all";
+                  return (
+                    <td key={id + index}
+                      className={`whitespace-nowrap px-5 py-3.5 text-[13px] text-slate-600 dark:text-slate-400 ${isBadge ? "text-center" : "text-right tabular-nums"}`}>
+                      {renderCell(id, row.values)}
+                    </td>
+                  );
+                })}
               </tr>
-            ))}
+              );
+            })}
           </tbody>
-          {showTotals && (
-            <tfoot>
-              <tr style={{ background: "linear-gradient(135deg, rgba(49,52,145,0.06) 0%, rgba(99,102,200,0.04) 100%)", borderTop: "2px solid var(--dm-border-default)" }}>
-                <td className="px-4 py-3">
-                  <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-brand-500)" }}>Total</span>
-                </td>
-                {cols.map((id, index) => (
-                  <td key={id + index} className="px-4 py-3 text-right tabular-nums text-[12px] font-bold" style={{ color: "var(--dm-text-primary)" }}>
-                    {renderCell(id, totalsValues, true)}
-                  </td>
-                ))}
-              </tr>
-            </tfoot>
-          )}
         </table>
       </div>
+
+      {/* Footer totais */}
+      {showTotals && (
+        <div className="flex flex-col items-start justify-between gap-2 border-t border-slate-200/50 bg-slate-100/30 px-5 py-4 sm:flex-row sm:items-center sm:px-6 dark:border-slate-700/50 dark:bg-slate-800/30">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+            Total período ({activeRows.length} {viewMeta.labelPlural})
+          </p>
+          <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs">
+            {cols.slice(0, 5).map((id) => {
+              const m = resolveMetric(id);
+              if (!m) return null;
+              const isBadge = id === "roas" || id === "ctr" || id === "ctr_all";
+              return (
+                <span key={id} className="text-slate-500 dark:text-slate-400">
+                  {m.label}:{" "}
+                  <span className="font-bold text-slate-800 dark:text-slate-200">
+                    {isBadge ? renderCell(id, totalsValues, true) : (metricValue(m, totalsValues) ?? 0) > 0 ? m.fmt(metricValue(m, totalsValues)!) : "—"}
+                  </span>
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Menu de contexto */}
       {menu && (
