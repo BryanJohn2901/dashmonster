@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/trackingAuth";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { decryptToken } from "@/lib/crypto";
 import { todayStr, toUnix } from "@/lib/meta";
@@ -15,6 +16,8 @@ export const runtime = "nodejs";
  * guardado no banco; nunca recebe token na requisição.
  */
 export async function POST(request: NextRequest) {
+  const auth = await requireAuth(request);
+  if (!auth.ok) return auth.response;
   let body: { accountId?: string };
   try {
     body = await request.json() as typeof body;

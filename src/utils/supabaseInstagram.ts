@@ -1,5 +1,6 @@
 import { supabaseClient } from "@/lib/supabase";
 import { getCompanyContext } from "@/hooks/useCompany";
+import { authedFetch, metaFetch } from "@/lib/authedFetch";
 import type { IGTrackedAccount, IGHistoryPoint } from "@/app/api/instagram/history/route";
 
 export type { IGTrackedAccount, IGHistoryPoint };
@@ -182,10 +183,11 @@ export async function deleteGroup(groupId: string): Promise<void> {
 
 /** Registers an account for tracking + backfills 30 days of history */
 export async function registerAccount(ibaId: string, accessToken: string) {
-  const res = await fetch("/api/instagram/accounts/register", {
+  const { company } = await getCompanyContext();
+  const res = await authedFetch("/api/instagram/accounts/register", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ instagramBusinessAccountId: ibaId, accessToken }),
+    body: JSON.stringify({ instagramBusinessAccountId: ibaId, accessToken, companyId: company?.id }),
   });
   if (!res.ok) {
     const err = await res.json() as { error?: string };
@@ -196,7 +198,7 @@ export async function registerAccount(ibaId: string, accessToken: string) {
 
 /** Forces immediate sync of a tracked account */
 export async function refreshAccount(accountId: string) {
-  const res = await fetch("/api/instagram/accounts/refresh", {
+  const res = await authedFetch("/api/instagram/accounts/refresh", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ accountId }),
@@ -210,8 +212,8 @@ export async function refreshAccount(accountId: string) {
 
 /** Looks up Instagram Business Account ID by @username */
 export async function lookupByUsername(username: string, accessToken: string) {
-  const params = new URLSearchParams({ username, accessToken });
-  const res = await fetch(`/api/instagram/accounts/lookup?${params}`);
+  const params = new URLSearchParams({ username });
+  const res = await metaFetch(`/api/instagram/accounts/lookup?${params}`, accessToken);
   if (!res.ok) {
     const err = await res.json() as { error?: string };
     throw new Error(err.error ?? "Conta não encontrada.");

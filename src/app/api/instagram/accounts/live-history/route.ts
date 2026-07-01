@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/trackingAuth";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { decryptToken } from "@/lib/crypto";
 import { META_API_VERSION, daysAgoStr as daysAgo, todayStr, toUnix } from "@/lib/meta";
@@ -22,6 +23,8 @@ type InsightsData = Array<{
  * Returns: { history: IGHistoryPoint[]; followersCount: number }
  */
 export async function GET(request: NextRequest) {
+  const auth = await requireAuth(request);
+  if (!auth.ok) return auth.response;
   const ibaId = request.nextUrl.searchParams.get("ibaId");
   if (!ibaId) {
     return NextResponse.json({ error: "ibaId é obrigatório." }, { status: 400 });

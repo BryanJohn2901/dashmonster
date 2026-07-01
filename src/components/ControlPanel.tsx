@@ -35,7 +35,8 @@ import {
 } from "@/utils/instagramApi";
 import type { MetaSyncResult } from "@/utils/supabaseCampaigns";
 import { useAdvertiserStore } from "@/hooks/useAdvertiserStore";
-import { useCompany, readAdAccountSuggestions, updateCompanySettings, refreshCompany } from "@/hooks/useCompany";
+import { useCompany, readAdAccountSuggestions, updateCompanySettings, refreshCompany, getCompanyContext } from "@/hooks/useCompany";
+import { authedFetch } from "@/lib/authedFetch";
 import { LEADS_SHEET_URL_KEY, syncLeadsSheet } from "@/utils/supabaseLeads";
 import {
   useCampaignCenter, detectIntent, INTENT_META, INTENT_OPTIONS,
@@ -1751,7 +1752,7 @@ function InstagramIntegrationSection() {
   const loadAccounts = useCallback(async () => {
     setLoading(true);
     try {
-      const res  = await fetch("/api/instagram/history", { method: "POST" });
+      const res  = await authedFetch("/api/instagram/history", { method: "POST" });
       const json = await res.json() as IgConnectedAccount[] | { error?: string };
       if (Array.isArray(json)) setAccounts(json);
     } catch { /* silent */ } finally { setLoading(false); }
@@ -1787,7 +1788,7 @@ function InstagramIntegrationSection() {
   const doRefresh = async (accountId: string) => {
     setRefreshingId(accountId);
     try {
-      const res = await fetch("/api/instagram/accounts/refresh", {
+      const res = await authedFetch("/api/instagram/accounts/refresh", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ accountId }),
       });
@@ -1802,7 +1803,7 @@ function InstagramIntegrationSection() {
   const doSyncAll = async () => {
     setSyncing(true); setSyncResult(null);
     try {
-      const res  = await fetch("/api/instagram/accounts/sync-all", { method: "POST" });
+      const res  = await authedFetch("/api/instagram/accounts/sync-all", { method: "POST" });
       const json = await res.json() as { synced?: number; failed?: number; error?: string };
       if (!res.ok || json.error) throw new Error(json.error ?? "Erro desconhecido");
       setSyncResult(`${json.synced ?? 0} sincronizada(s)${(json.failed ?? 0) > 0 ? ` · ${json.failed} falha(s)` : ""}`);
@@ -1824,9 +1825,10 @@ function InstagramIntegrationSection() {
     if (!token || !ibaId.trim()) return;
     setManualStatuses(prev => ({ ...prev, [ibaId]: { ibaId, state: "loading" } }));
     try {
-      const res = await fetch("/api/instagram/accounts/register", {
+      const { company } = await getCompanyContext();
+      const res = await authedFetch("/api/instagram/accounts/register", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ instagramBusinessAccountId: ibaId.trim(), accessToken: token }),
+        body: JSON.stringify({ instagramBusinessAccountId: ibaId.trim(), accessToken: token, companyId: company?.id }),
       });
       const json = await res.json() as { account?: { username: string }; daysBackfilled?: number; error?: string };
       if (!res.ok || json.error) throw new Error(json.error ?? "Erro desconhecido");

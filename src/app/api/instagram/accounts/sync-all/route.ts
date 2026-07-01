@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/trackingAuth";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { decryptToken } from "@/lib/crypto";
 import { todayStr, toUnix } from "@/lib/meta";
@@ -121,12 +122,14 @@ async function syncAccount(
  * Protegido por CRON_SECRET ("Authorization: Bearer <CRON_SECRET>").
  */
 export async function POST(request: NextRequest) {
-  // A Vercel Cron envia "Authorization: Bearer <CRON_SECRET>". Quando há header,
-  // ele precisa bater. Disparo manual pela UI (sem header) é permitido — assim
-  // como /refresh, que também sincroniza dados públicos do próprio painel.
-  const auth = request.headers.get("authorization");
-  if (auth && CRON_SECRET && auth !== `Bearer ${CRON_SECRET}`) {
-    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  // Aceita DOIS disparadores: a Vercel Cron (Authorization: Bearer <CRON_SECRET>)
+  // OU um usuário logado (botão manual no painel). Antes era fail-open: sem header
+  // qualquer um disparava o sync de TODAS as contas (service_role).
+  const authHeader = request.headers.get("authorization");
+  const isCron = Boolean(CRON_SECRET) && authHeader === `Bearer ${CRON_SECRET}`;
+  if (!isCron) {
+    const userAuth = await requireAuth(request);
+    if (!userAuth.ok) return userAuth.response;
   }
 
   const sb = supabaseAdmin();

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/trackingAuth";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { decryptToken } from "@/lib/crypto";
 import { META_API_VERSION, daysAgoStr as daysAgo, todayStr, toUnix } from "@/lib/meta";
@@ -22,8 +23,10 @@ type SeriesPoint = { x: number; y: number };
  * permission error (#100 — Advanced required) never blocks the main metrics.
  */
 export async function GET(request: NextRequest) {
+  const auth = await requireAuth(request);
+  if (!auth.ok) return auth.response;
   const { searchParams } = request.nextUrl;
-  let accessToken = searchParams.get("accessToken");
+  let accessToken = request.headers.get("x-meta-token");
   const igUserId  = searchParams.get("igUserId");
 
   if (!igUserId) {

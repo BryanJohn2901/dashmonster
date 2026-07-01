@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/trackingAuth";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { decryptToken } from "@/lib/crypto";
 import { META_API_VERSION, daysAgoStr as daysAgo, todayStr, toUnix } from "@/lib/meta";
@@ -22,6 +23,8 @@ type InsightsData = Array<{ name: string; values: InsightValue[] }>;
  * Returns: { daysInserted: number; daysUpdated: number; dateRange: [string, string] }
  */
 export async function POST(request: NextRequest) {
+  const auth = await requireAuth(request);
+  if (!auth.ok) return auth.response;
   let body: { ibaId?: string };
   try {
     body = await request.json() as { ibaId?: string };

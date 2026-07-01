@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireCompanyAccess } from "@/lib/trackingAuth";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { encryptToken } from "@/lib/crypto";
 import { META_API_VERSION, daysAgoStr as daysAgo, todayStr, toUnix } from "@/lib/meta";
@@ -16,12 +17,17 @@ export const runtime = "nodejs";
  * Returns: { account: IGAccount; daysBackfilled: number }
  */
 export async function POST(request: NextRequest) {
-  let body: { instagramBusinessAccountId?: string; accessToken?: string };
+  let body: { instagramBusinessAccountId?: string; accessToken?: string; companyId?: string };
   try {
     body = await request.json() as typeof body;
   } catch {
     return NextResponse.json({ error: "Body inválido." }, { status: 400 });
   }
+
+  // Fecha + escopa: usuário com acesso de escrita à empresa; a conta IG nasce
+  // com company_id (antes gravava sem empresa, virando registro órfão).
+  const auth = await requireCompanyAccess(request, { companyId: body.companyId, write: true });
+  if (!auth.ok) return auth.response;
 
   const { instagramBusinessAccountId: ibaId, accessToken } = body;
   if (!ibaId || !accessToken) {
@@ -91,6 +97,7 @@ export async function POST(request: NextRequest) {
         engagement_rate:    0,
         access_token:       encryptToken(accessToken),
         connection_status:  "active",
+        company_id:         auth.companyId,
         updated_at:         new Date().toISOString(),
       },
       { onConflict: "instagram_business_account_id" },

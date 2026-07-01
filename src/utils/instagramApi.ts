@@ -1,3 +1,5 @@
+import { metaFetch } from "@/lib/authedFetch";
+
 const LS_KEY = "pta_instagram_creds_v1";
 
 export interface InstagramCredentials {
@@ -65,7 +67,7 @@ export function saveInstagramCredentials(creds: InstagramCredentials): void {
 }
 
 export async function fetchInstagramAccounts(accessToken: string): Promise<InstagramAccount[]> {
-  const res = await fetch(`/api/instagram/accounts?accessToken=${encodeURIComponent(accessToken)}`);
+  const res = await metaFetch(`/api/instagram/accounts`, accessToken);
   const json = await res.json() as InstagramAccount[] | { error: string };
   if (!res.ok || "error" in json) {
     throw new Error(("error" in json ? json.error : null) ?? "Erro ao buscar contas Instagram.");
@@ -79,10 +81,10 @@ export async function fetchInstagramInsights(
   dateFrom?: string,
   dateTo?: string,
 ): Promise<InstagramProfileInsights> {
-  const params = new URLSearchParams({ igUserId, accessToken });
+  const params = new URLSearchParams({ igUserId });
   if (dateFrom) params.set("dateFrom", dateFrom);
   if (dateTo) params.set("dateTo", dateTo);
-  const res = await fetch(`/api/instagram/insights?${params.toString()}`);
+  const res = await metaFetch(`/api/instagram/insights?${params.toString()}`, accessToken);
   const json = await res.json() as InstagramProfileInsights | { error: string };
   if (!res.ok || "error" in json) {
     throw new Error(("error" in json ? json.error : null) ?? "Erro ao buscar insights Instagram.");

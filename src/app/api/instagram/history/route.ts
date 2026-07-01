@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/trackingAuth";
 import { createClient } from "@supabase/supabase-js";
 
 function supabase() {
@@ -56,6 +57,8 @@ export interface IGTrackedAccount {
  * Returns: { account: IGTrackedAccount; history: IGHistoryPoint[] }
  */
 export async function GET(request: NextRequest) {
+  const auth = await requireAuth(request);
+  if (!auth.ok) return auth.response;
   const { searchParams } = request.nextUrl;
   const accountId = searchParams.get("accountId");
 
@@ -128,6 +131,8 @@ export async function GET(request: NextRequest) {
  * Lists all tracked accounts (summary, no history).
  */
 export async function POST(request: NextRequest) {
+  const auth = await requireAuth(request);
+  if (!auth.ok) return auth.response;
   // POST = list all accounts (avoids cluttering URL with complex params)
   void request;
   const sb = supabase();

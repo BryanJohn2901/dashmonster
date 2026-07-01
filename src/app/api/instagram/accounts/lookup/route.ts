@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/trackingAuth";
 import { discoverInstagramAccounts } from "@/lib/instagramDiscovery";
 
 export const runtime = "nodejs";
@@ -12,8 +13,10 @@ export const runtime = "nodejs";
  * Retorna: { id, username, name, followersCount, profilePictureUrl } | 404
  */
 export async function GET(request: NextRequest) {
+  const auth = await requireAuth(request);
+  if (!auth.ok) return auth.response;
   const { searchParams } = request.nextUrl;
-  const accessToken = searchParams.get("accessToken");
+  const accessToken = request.headers.get("x-meta-token");
   const username    = searchParams.get("username")?.replace(/^@/, "").toLowerCase().trim();
 
   if (!accessToken || !username) {

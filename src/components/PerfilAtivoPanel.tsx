@@ -10,6 +10,7 @@ import {
   MessageCircle, TrendingDown, TrendingUp, Users, UserMinus, Zap,
 } from "lucide-react";
 import type { IGHistoryPoint, IGTrackedAccount } from "@/app/api/instagram/history/route";
+import { authedFetch } from "@/lib/authedFetch";
 
 // ─── Gradiente IG ────────────────────────────────────────────────────────────
 const IG_GRADIENT = "linear-gradient(135deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%)";
@@ -158,7 +159,7 @@ export function PerfilAtivoPanel({
     if (!igUserId) return;
     setLoading(true); setNotFound(false); setErrorMsg(null);
 
-    fetch("/api/instagram/history", { method: "POST" })
+    authedFetch("/api/instagram/history", { method: "POST" })
       .then(r => r.json())
       .then(async (accounts: Array<IGTrackedAccount & { connectionStatus?: string }>) => {
         const match = accounts.find(a => a.instagramBusinessAccountId === igUserId);
@@ -173,7 +174,7 @@ export function PerfilAtivoPanel({
         const params = new URLSearchParams({ accountId: match.id });
         if (dateFrom) params.set("dateFrom", dateFrom);
         if (dateTo)   params.set("dateTo",   dateTo);
-        const res = await fetch(`/api/instagram/history?${params}`);
+        const res = await authedFetch(`/api/instagram/history?${params}`);
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
           throw new Error((err as { error?: string }).error ?? `HTTP ${res.status}`);
@@ -185,7 +186,7 @@ export function PerfilAtivoPanel({
         // 2. If Supabase history is sparse (< 7 days), augment with live Meta API data
         if (storedHistory.length < 7) {
           try {
-            const liveRes = await fetch(
+            const liveRes = await authedFetch(
               `/api/instagram/accounts/live-history?ibaId=${encodeURIComponent(igUserId)}`,
             );
             const liveData = await liveRes.json() as {
@@ -232,7 +233,7 @@ export function PerfilAtivoPanel({
     setBackfilling(true);
     setBackfillMsg(null);
     try {
-      const res = await fetch("/api/instagram/accounts/backfill", {
+      const res = await authedFetch("/api/instagram/accounts/backfill", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ibaId: igUserId }),
@@ -249,12 +250,12 @@ export function PerfilAtivoPanel({
         setBackfillMsg(`✓ ${data.daysInserted ?? 0} dias importados (${data.dateRange?.[0]} → ${data.dateRange?.[1]})`);
         // Reload history
         setLoading(true);
-        const r = await fetch("/api/instagram/history", { method: "POST" });
+        const r = await authedFetch("/api/instagram/history", { method: "POST" });
         const accounts = await r.json() as IGTrackedAccount[];
         const match = accounts.find(a => a.instagramBusinessAccountId === igUserId);
         if (match) setAccount(match);
         const params = new URLSearchParams({ ibaId: igUserId, dateFrom, dateTo });
-        const hr = await fetch(`/api/instagram/history?${params}`);
+        const hr = await authedFetch(`/api/instagram/history?${params}`);
         const hd = await hr.json() as { history?: IGHistoryPoint[] };
         if (hd.history) setHistory(hd.history);
         setLoading(false);
