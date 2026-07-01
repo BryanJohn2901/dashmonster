@@ -76,13 +76,40 @@ export function DevtoolsGuard() {
       getterHit = false;
       console.log("%c", bait);
       console.clear();
-      if (getterHit || sizeOpen()) engage();
+      // Heurística do debugger: com DevTools aberto, o `debugger` PAUSA a execução;
+      // fechado, é no-op (rápido). Timing alto = alguém inspecionando.
+      // new Function() em runtime pra o minificador do Next não remover o debugger.
+      const t0 = performance.now();
+      try { (new Function("debugger"))(); } catch { /* CSP/eval bloqueado — ignora */ }
+      const debuggerPaused = performance.now() - t0 > 120;
+      if (getterHit || sizeOpen() || debuggerPaused) engage();
       raf = window.setTimeout(probe, 1000);
     };
     probe();
 
     return () => window.clearTimeout(raf);
   }, [engage]);
+
+  // Bloqueio de atalhos de inspeção + menu de contexto. Deterrência extra —
+  // burlável (menu do browser, proxy), mas eleva a barra pra cópia casual.
+  useEffect(() => {
+    try { if (localStorage.getItem(BYPASS_KEY) === "1") return; } catch {}
+    const onKey = (e: KeyboardEvent) => {
+      const k = e.key.toLowerCase();
+      const blocked =
+        e.key === "F12" ||
+        (e.ctrlKey && e.shiftKey && (k === "i" || k === "j" || k === "c")) ||
+        (e.ctrlKey && (k === "u" || k === "s"));
+      if (blocked) { e.preventDefault(); e.stopPropagation(); }
+    };
+    const onCtx = (e: MouseEvent) => e.preventDefault();
+    window.addEventListener("keydown", onKey, true);
+    window.addEventListener("contextmenu", onCtx, true);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("contextmenu", onCtx, true);
+    };
+  }, []);
 
   // Countdown do overlay; ao zerar, libera (reload p/ estado limpo).
   useEffect(() => {

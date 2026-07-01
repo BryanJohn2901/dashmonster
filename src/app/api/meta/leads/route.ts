@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/trackingAuth";
 
 const META_API_VERSION = "v21.0";
 const META_BASE = `https://graph.facebook.com/${META_API_VERSION}`;
@@ -46,8 +47,10 @@ function parseLead(raw: RawLead, fallbackCampaignId: string): MetaLeadRow {
 }
 
 export async function GET(req: NextRequest) {
+  const auth = await requireAuth(req);
+  if (!auth.ok) return auth.response;
   const sp           = req.nextUrl.searchParams;
-  const accessToken  = sp.get("accessToken");
+  const accessToken  = req.headers.get("x-meta-token");
   const campaignIds  = sp.get("campaignIds");
   const dateFrom     = sp.get("dateFrom");
   const dateTo       = sp.get("dateTo");

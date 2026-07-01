@@ -8,6 +8,7 @@ import {
   type MetaAction,
 } from "@/lib/metaTransform";
 import { saveMetaTokenToDB } from "@/utils/supabaseProfiles";
+import { metaFetch } from "@/lib/authedFetch";
 
 // Reexporta a transformação canônica — fonte única em lib/metaTransform,
 // compartilhada com o cron server-side (lib/metaSync.ts).
@@ -43,7 +44,7 @@ export async function fetchMetaCampaigns(
   if (!adAccountId) throw new Error("Informe o Ad Account ID.");
   if (!accessToken) throw new Error("Informe o Access Token antes de buscar campanhas.");
 
-  const res  = await fetch(`/api/meta/campaigns?${new URLSearchParams({ adAccountId, accessToken })}`);
+  const res  = await metaFetch(`/api/meta/campaigns?${new URLSearchParams({ adAccountId })}`, accessToken);
   const body = await res.json() as MetaCampaign[] | { error: string };
   if (!res.ok) throw new Error((body as { error: string }).error ?? `Meta API error ${res.status}`);
   return body as MetaCampaign[];
@@ -71,9 +72,9 @@ export async function fetchMetaEntityStatus(
   campaignIds?: string[],
 ): Promise<MetaEntityStatus[]> {
   if (!adAccountId || !accessToken) return [];
-  const params: Record<string, string> = { adAccountId, accessToken, level };
+  const params: Record<string, string> = { adAccountId, level };
   if (campaignIds && campaignIds.length > 0) params.campaignIds = campaignIds.join(",");
-  const res  = await fetch(`/api/meta/status?${new URLSearchParams(params)}`);
+  const res  = await metaFetch(`/api/meta/status?${new URLSearchParams(params)}`, accessToken);
   const body = await res.json() as MetaEntityStatus[] | { error: string };
   if (!res.ok) throw new Error((body as { error: string }).error ?? `Meta API error ${res.status}`);
   return body as MetaEntityStatus[];
@@ -95,9 +96,9 @@ export async function fetchCampaignGoals(
 ): Promise<Record<string, CampaignGoal>> {
   if (!adAccountId || !accessToken) return {};
   try {
-    const params = new URLSearchParams({ adAccountId, accessToken });
+    const params = new URLSearchParams({ adAccountId });
     if (campaignIds && campaignIds.length > 0) params.set("campaignIds", campaignIds.join(","));
-    const res = await fetch(`/api/meta/adset-goals?${params}`);
+    const res = await metaFetch(`/api/meta/adset-goals?${params}`, accessToken);
     if (!res.ok) return {};
     return (await res.json()) as Record<string, CampaignGoal>;
   } catch {
@@ -117,7 +118,7 @@ export interface MetaAdAccount {
 /** Fetches all ad accounts accessible by the given token (proxied to avoid CORS). */
 export async function fetchMetaAdAccounts(accessToken: string): Promise<MetaAdAccount[]> {
   if (!accessToken) throw new Error("Informe o Access Token antes de buscar as contas.");
-  const res  = await fetch(`/api/meta/accounts?${new URLSearchParams({ accessToken })}`);
+  const res  = await metaFetch(`/api/meta/accounts`, accessToken);
   const body = await res.json() as MetaAdAccount[] | { error: string };
   if (!res.ok) throw new Error((body as { error: string }).error ?? `Meta API error ${res.status}`);
   return body as MetaAdAccount[];
@@ -210,14 +211,14 @@ export async function fetchMetaInsights(
     ? { campaignIds: campaignIdsOrOptions }
     : (campaignIdsOrOptions ?? {});
 
-  const params = new URLSearchParams({ adAccountId, dateFrom, dateTo, accessToken });
+  const params = new URLSearchParams({ adAccountId, dateFrom, dateTo });
   if (opts.campaignIds && opts.campaignIds.length > 0) {
     params.set("campaignIds", opts.campaignIds.join(","));
   }
   if (opts.level)         params.set("level",         opts.level);
   if (opts.timeIncrement) params.set("timeIncrement", opts.timeIncrement);
 
-  const res = await fetch(`/api/meta/insights?${params.toString()}`);
+  const res = await metaFetch(`/api/meta/insights?${params.toString()}`, accessToken);
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -263,9 +264,9 @@ export async function fetchMetaCreativesPage(
   cursor?: string,
 ): Promise<{ data: MetaCampaignCreative[]; nextCursor?: string }> {
   if (!adAccountId || !accessToken) return { data: [] };
-  const params: Record<string, string> = { adAccountId, accessToken };
+  const params: Record<string, string> = { adAccountId };
   if (cursor) params.cursor = cursor;
-  const res  = await fetch(`/api/meta/creatives?${new URLSearchParams(params)}`);
+  const res  = await metaFetch(`/api/meta/creatives?${new URLSearchParams(params)}`, accessToken);
   const body = await res.json() as { data: MetaCampaignCreative[]; nextCursor?: string } | { error: string };
   if (!res.ok) throw new Error((body as { error: string }).error ?? `Meta API error ${res.status}`);
   return body as { data: MetaCampaignCreative[]; nextCursor?: string };
@@ -302,12 +303,12 @@ export async function fetchAdInsights(
   if (!adAccountId || !accessToken || !dateFrom || !dateTo) return [];
 
   const params = new URLSearchParams({
-    adAccountId, accessToken, dateFrom, dateTo,
+    adAccountId, dateFrom, dateTo,
     level: "ad",
     timeIncrement: "all_days",
   });
 
-  const res = await fetch(`/api/meta/insights?${params.toString()}`);
+  const res = await metaFetch(`/api/meta/insights?${params.toString()}`, accessToken);
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error((body as { error?: string }).error ?? `Meta API error ${res.status}`);

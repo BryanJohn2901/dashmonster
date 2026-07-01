@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/trackingAuth";
 import { fetchMetaInsightsServer } from "@/lib/metaSync";
 
 export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
+  const auth = await requireAuth(request);
+  if (!auth.ok) return auth.response;
   const sp          = request.nextUrl.searchParams;
-  const accessToken = sp.get("accessToken");
+  const accessToken = request.headers.get("x-meta-token");
   const adAccountId = sp.get("adAccountId");
   const dateFrom    = sp.get("dateFrom");
   const dateTo      = sp.get("dateTo");

@@ -1,12 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-// service_role: rota server-side precisa atravessar o RLS multi-tenant
-const supabaseKey =
-  process.env.SUPABASE_SERVICE_ROLE_KEY ??
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+import { requireCompanyAccess } from "@/lib/trackingAuth";
 
 /**
  * POST /api/save-creative
@@ -15,20 +8,23 @@ const supabaseKey =
  * uploads to Supabase Storage bucket "creatives", and upserts
  * a record in campaign_creatives.
  *
- * Body: { thumbnailUrl, campaignName, adAccountId, adLink }
+ * Auth: exige sessão Supabase (Bearer) + membership na empresa (write).
+ * Body: { thumbnailUrl, campaignName, adAccountId, adLink, companyId }
  * Returns: { storageUrl, path }
  */
 export async function POST(request: NextRequest) {
-  if (!supabaseUrl || !supabaseKey) {
-    return NextResponse.json({ error: "Supabase não configurado." }, { status: 503 });
-  }
-
-  let body: { thumbnailUrl?: string; campaignName?: string; adAccountId?: string; adLink?: string };
+  let body: { thumbnailUrl?: string; campaignName?: string; adAccountId?: string; adLink?: string; companyId?: string };
   try {
     body = await request.json() as typeof body;
   } catch {
     return NextResponse.json({ error: "Body inválido." }, { status: 400 });
   }
+
+  // Fecha a rota: só usuário logado com acesso de escrita à empresa. Antes era
+  // um endpoint aberto que gravava no banco com service_role (bypassa RLS).
+  const auth = await requireCompanyAccess(request, { companyId: body.companyId, write: true });
+  if (!auth.ok) return auth.response;
+  const supabase = auth.db;
 
   const { thumbnailUrl, campaignName, adAccountId = "", adLink = "" } = body;
 
@@ -69,8 +65,6 @@ export async function POST(request: NextRequest) {
   const arrayBuffer = await imgRes.arrayBuffer();
   const fileData = new Uint8Array(arrayBuffer);
 
-  const supabase = createClient(supabaseUrl, supabaseKey);
-
   // Build a safe filename
   const safeName = campaignName
     .replace(/[^a-zA-Z0-9_-]/g, "_")
@@ -102,6 +96,7 @@ export async function POST(request: NextRequest) {
         storage_path:  path,
         storage_url:   storageUrl,
         ad_link:       adLink,
+        company_id:    auth.companyId,
         updated_at:    new Date().toISOString(),
       },
       { onConflict: "campaign_name" },

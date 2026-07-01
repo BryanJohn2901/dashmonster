@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Search, RefreshCw, Calendar, User } from "lucide-react";
 import { loadMetaCredentials } from "@/utils/metaApi";
+import { metaFetch } from "@/lib/authedFetch";
 import { DateRangePicker } from "@/components/DateRangePicker";
 import { useAdvertiserStore } from "@/hooks/useAdvertiserStore";
 import { classifyCampaign, classifyCourse } from "@/utils/campaignClassifier";
@@ -150,12 +151,11 @@ export function LeadsView() {
 
     try {
       const params = new URLSearchParams({
-        accessToken,
         campaignIds: campaignIds.join(","),
         dateFrom,
         dateTo,
       });
-      const res  = await fetch(`/api/meta/leads?${params}`);
+      const res  = await metaFetch(`/api/meta/leads?${params}`, accessToken);
       const json = (await res.json()) as { leads: MetaLeadRow[]; errors?: string[] };
 
       const enriched: EnrichedLead[] = (json.leads ?? []).map((lead) => ({

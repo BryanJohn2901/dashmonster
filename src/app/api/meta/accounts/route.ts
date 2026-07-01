@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/trackingAuth";
 
 const META_API_VERSION = "v21.0";
 
@@ -14,7 +15,10 @@ export interface MetaAdAccount {
  * Returns ALL ad accounts accessible by the token, following pagination cursors.
  */
 export async function GET(request: NextRequest) {
-  const accessToken = request.nextUrl.searchParams.get("accessToken");
+  const auth = await requireAuth(request);
+  if (!auth.ok) return auth.response;
+
+  const accessToken = request.headers.get("x-meta-token");
 
   if (!accessToken) {
     return NextResponse.json({ error: "accessToken é obrigatório." }, { status: 400 });

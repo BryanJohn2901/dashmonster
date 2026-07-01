@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/trackingAuth";
 import type { MetaCampaignCreative } from "@/utils/metaApi";
 
 const META_API_VERSION = "v21.0";
@@ -77,8 +78,10 @@ function detectMediaType(ad: MetaAdRaw): MetaCampaignCreative["mediaType"] {
  *              Ausente quando não há mais páginas.
  */
 export async function GET(request: NextRequest) {
+  const auth = await requireAuth(request);
+  if (!auth.ok) return auth.response;
   const sp          = request.nextUrl.searchParams;
-  const accessToken = sp.get("accessToken");
+  const accessToken = request.headers.get("x-meta-token");
   const adAccountId = sp.get("adAccountId");
   const cursorB64   = sp.get("cursor");   // base64-encoded next-page URL from Meta
 

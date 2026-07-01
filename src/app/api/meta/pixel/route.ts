@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/trackingAuth";
 
 const META_API_VERSION = "v21.0";
 
@@ -24,9 +25,11 @@ function pickAction(actions: Record<string, number>, ...keys: string[]): number 
 }
 
 export async function GET(request: NextRequest) {
+  const auth = await requireAuth(request);
+  if (!auth.ok) return auth.response;
   const sp          = request.nextUrl.searchParams;
   const adAccountId = sp.get("adAccountId");
-  const accessToken = sp.get("accessToken");
+  const accessToken = request.headers.get("x-meta-token");
   const dateFrom    = sp.get("dateFrom");
   const dateTo      = sp.get("dateTo");
 

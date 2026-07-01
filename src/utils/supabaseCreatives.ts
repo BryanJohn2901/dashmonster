@@ -1,5 +1,6 @@
 import { supabaseClient } from "@/lib/supabase";
 import { getCompanyContext } from "@/hooks/useCompany";
+import { authedFetch } from "@/lib/authedFetch";
 
 export interface SupabaseCreative {
   campaign_name: string;
@@ -32,10 +33,11 @@ export async function saveCreativeToSupabase(
   adAccountId: string,
   adLink: string,
 ): Promise<string> {
-  const res = await fetch("/api/save-creative", {
+  const { company } = await getCompanyContext();
+  const res = await authedFetch("/api/save-creative", {
     method:  "POST",
     headers: { "Content-Type": "application/json" },
-    body:    JSON.stringify({ thumbnailUrl, campaignName, adAccountId, adLink }),
+    body:    JSON.stringify({ thumbnailUrl, campaignName, adAccountId, adLink, companyId: company?.id }),
   });
   const body = await res.json() as { storageUrl?: string; error?: string };
   if (!res.ok || !body.storageUrl) {

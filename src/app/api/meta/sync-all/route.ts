@@ -122,8 +122,11 @@ async function syncCompany(
  * Disparado pela Vercel Cron. Protegido por CRON_SECRET (Authorization: Bearer).
  */
 export async function POST(request: NextRequest) {
+  // Fail-closed: só a Vercel Cron (que manda Authorization: Bearer <CRON_SECRET>).
+  // Antes `if (auth && CRON_SECRET && ...)` DEIXAVA PASSAR sem header nenhum →
+  // qualquer um disparava um sync completo (service_role em todas as empresas).
   const auth = request.headers.get("authorization");
-  if (auth && CRON_SECRET && auth !== `Bearer ${CRON_SECRET}`) {
+  if (!CRON_SECRET || auth !== `Bearer ${CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 

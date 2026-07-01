@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/trackingAuth";
 
 const META_API_VERSION = "v21.0";
 
@@ -13,9 +14,11 @@ const META_API_VERSION = "v21.0";
  * Token: existing Meta Ads user access token works — no extra scope needed.
  */
 export async function GET(request: NextRequest) {
+  const auth = await requireAuth(request);
+  if (!auth.ok) return auth.response;
   const sp          = request.nextUrl.searchParams;
   const url         = sp.get("url");
-  const accessToken = sp.get("accessToken");
+  const accessToken = request.headers.get("x-meta-token");
 
   if (!url || !accessToken) {
     return NextResponse.json({ error: "url e accessToken são obrigatórios." }, { status: 400 });

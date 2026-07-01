@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { ChevronRight, Eye, Loader2, MousePointerClick, ShoppingCart, CreditCard, Trophy } from "lucide-react";
 import { loadMetaCredentials } from "@/utils/metaApi";
+import { metaFetch } from "@/lib/authedFetch";
 import type { PixelFunnelResponse } from "@/app/api/meta/pixel/route";
 
 interface FunnelStepProps {
@@ -75,8 +76,8 @@ export function PixelFunnelSection({ adAccountId, dateFrom, dateTo }: Props) {
     setLoading(true);
     setError(null);
 
-    const params = new URLSearchParams({ adAccountId, accessToken, dateFrom: from, dateTo: to });
-    fetch(`/api/meta/pixel?${params}`)
+    const params = new URLSearchParams({ adAccountId, dateFrom: from, dateTo: to });
+    metaFetch(`/api/meta/pixel?${params}`, accessToken)
       .then(async (r) => {
         const body = await r.json();
         if (!r.ok) throw new Error(body.error ?? "Erro ao buscar dados do pixel.");

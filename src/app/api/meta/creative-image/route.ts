@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/trackingAuth";
 
 const META_API_VERSION = "v21.0";
 
@@ -12,9 +13,11 @@ const META_API_VERSION = "v21.0";
  * - imageUrl: null for video ads (no static image_url at creative level)
  */
 export async function GET(request: NextRequest) {
+  const auth = await requireAuth(request);
+  if (!auth.ok) return auth.response;
   const sp          = request.nextUrl.searchParams;
   const creativeId  = sp.get("creativeId");
-  const accessToken = sp.get("accessToken");
+  const accessToken = request.headers.get("x-meta-token");
 
   if (!creativeId || !accessToken) {
     return NextResponse.json(

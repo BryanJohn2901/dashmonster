@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 
 import { AggregatedCampaign } from "@/types/campaign";
+import { metaFetch } from "@/lib/authedFetch";
 import { useCreativeStore } from "@/hooks/useCreativeStore";
 import { logSilentError } from "@/utils/logSilentError";
 import type { MetaCampaignCreative, AdInsight } from "@/utils/metaApi";
@@ -171,7 +172,7 @@ function useCardThumbnail(
 
         if (ad.mediaType === "video" && ad.videoId) {
           // Vídeo: prioriza thumbnail própria do vídeo (normalmente mais nítida que oEmbed)
-          fetch(`/api/meta/video-thumbnail?${new URLSearchParams({ videoId: ad.videoId, accessToken })}`)
+          metaFetch(`/api/meta/video-thumbnail?${new URLSearchParams({ videoId: ad.videoId })}`, accessToken)
             .then((r) => r.json())
             .then((j: { thumbnailUrl?: string }) => {
               if (j.thumbnailUrl) { persistOEmbedUrl(ad.adId, j.thumbnailUrl); setHiRes(j.thumbnailUrl); }
@@ -179,7 +180,7 @@ function useCardThumbnail(
             .catch(() => {});
         } else if (ad.mediaType === "image" && ad.creativeId) {
           // Imagem: prioriza asset original do creative para máxima nitidez
-          fetch(`/api/meta/creative-image?${new URLSearchParams({ creativeId: ad.creativeId, accessToken })}`)
+          metaFetch(`/api/meta/creative-image?${new URLSearchParams({ creativeId: ad.creativeId })}`, accessToken)
             .then((r) => r.json())
             .then((j: { imageUrl?: string }) => {
               if (j.imageUrl) { persistOEmbedUrl(ad.adId, j.imageUrl); setHiRes(j.imageUrl); }
@@ -187,7 +188,7 @@ function useCardThumbnail(
             .catch(() => {});
         } else if (ad.instagramUrl) {
           // Instagram oEmbed → up to ~640px; also captures thumbnail dimensions for ratio detection
-          fetch(`/api/meta/ig-oembed?${new URLSearchParams({ url: ad.instagramUrl, accessToken })}`)
+          metaFetch(`/api/meta/ig-oembed?${new URLSearchParams({ url: ad.instagramUrl })}`, accessToken)
             .then((r) => r.json())
             .then((j: { thumbnailUrl?: string; thumbnailWidth?: number; thumbnailHeight?: number }) => {
               if (j.thumbnailUrl) { persistOEmbedUrl(ad.adId, j.thumbnailUrl); setHiRes(j.thumbnailUrl); }
@@ -196,7 +197,7 @@ function useCardThumbnail(
             .catch(() => {});
         } else if (ad.creativeId) {
           // AdCreative image_url — last resort (often returns ~64px)
-          fetch(`/api/meta/creative-image?${new URLSearchParams({ creativeId: ad.creativeId, accessToken })}`)
+          metaFetch(`/api/meta/creative-image?${new URLSearchParams({ creativeId: ad.creativeId })}`, accessToken)
             .then((r) => r.json())
             .then((j: { imageUrl?: string }) => {
               if (j.imageUrl) { persistOEmbedUrl(ad.adId, j.imageUrl); setHiRes(j.imageUrl); }
@@ -291,7 +292,7 @@ function AdIframe({ ad, accessToken }: { ad: MetaCampaignCreative; accessToken: 
   useEffect(() => {
     if (src || !accessToken) return;
     setLoading(true);
-    fetch(`/api/meta/ad-preview?${new URLSearchParams({ adId: ad.adId, accessToken })}`)
+    metaFetch(`/api/meta/ad-preview?${new URLSearchParams({ adId: ad.adId })}`, accessToken)
       .then((r) => r.json())
       .then((j: { iframeSrc?: string }) => {
         if (j.iframeSrc) { iframeCache.set(ad.adId, j.iframeSrc); setSrc(j.iframeSrc); }
@@ -436,7 +437,7 @@ function useCreativeRatio(ad: MetaCampaignCreative, accessToken: string): string
     if (cached) { setRatio(cached); return; }
     if (!ad.instagramUrl || !accessToken) return;
 
-    fetch(`/api/meta/ig-oembed?${new URLSearchParams({ url: ad.instagramUrl, accessToken })}`)
+    metaFetch(`/api/meta/ig-oembed?${new URLSearchParams({ url: ad.instagramUrl })}`, accessToken)
       .then((r) => r.json())
       .then((j: { thumbnailUrl?: string; thumbnailWidth?: number; thumbnailHeight?: number }) => {
         if (j.thumbnailUrl) persistOEmbedUrl(ad.adId, j.thumbnailUrl);
@@ -730,21 +731,21 @@ function useDirectImage(ad: MetaCampaignCreative, accessToken: string): string {
     setHiRes("");
 
     if (ad.mediaType === "video" && ad.videoId) {
-      fetch(`/api/meta/video-source?${new URLSearchParams({ videoId: ad.videoId, accessToken })}`)
+      metaFetch(`/api/meta/video-source?${new URLSearchParams({ videoId: ad.videoId })}`, accessToken)
         .then((r) => r.json())
         .then((j: { thumbnailUrl?: string }) => {
           if (j.thumbnailUrl) { persistOEmbedUrl(ad.adId, j.thumbnailUrl); setHiRes(j.thumbnailUrl); }
         })
         .catch(() => {});
     } else if (ad.mediaType === "image" && ad.creativeId) {
-      fetch(`/api/meta/creative-image?${new URLSearchParams({ creativeId: ad.creativeId, accessToken })}`)
+      metaFetch(`/api/meta/creative-image?${new URLSearchParams({ creativeId: ad.creativeId })}`, accessToken)
         .then((r) => r.json())
         .then((j: { imageUrl?: string }) => {
           if (j.imageUrl) { persistOEmbedUrl(ad.adId, j.imageUrl); setHiRes(j.imageUrl); }
         })
         .catch(() => {});
     } else if (ad.instagramUrl) {
-      fetch(`/api/meta/ig-oembed?${new URLSearchParams({ url: ad.instagramUrl, accessToken })}`)
+      metaFetch(`/api/meta/ig-oembed?${new URLSearchParams({ url: ad.instagramUrl })}`, accessToken)
         .then((r) => r.json())
         .then((j: { thumbnailUrl?: string; thumbnailWidth?: number; thumbnailHeight?: number }) => {
           if (j.thumbnailUrl) { persistOEmbedUrl(ad.adId, j.thumbnailUrl); setHiRes(j.thumbnailUrl); }
@@ -752,7 +753,7 @@ function useDirectImage(ad: MetaCampaignCreative, accessToken: string): string {
         })
         .catch(() => {});
     } else if (ad.creativeId) {
-      fetch(`/api/meta/creative-image?${new URLSearchParams({ creativeId: ad.creativeId, accessToken })}`)
+      metaFetch(`/api/meta/creative-image?${new URLSearchParams({ creativeId: ad.creativeId })}`, accessToken)
         .then((r) => r.json())
         .then((j: { imageUrl?: string }) => {
           if (j.imageUrl) { persistOEmbedUrl(ad.adId, j.imageUrl); setHiRes(j.imageUrl); }
@@ -796,7 +797,7 @@ function VideoPlayer({
   useEffect(() => {
     if (!ad.videoId || !accessToken || videoSrcCache.has(ad.adId)) return;
     setLoading(true);
-    fetch(`/api/meta/video-source?${new URLSearchParams({ videoId: ad.videoId, accessToken })}`)
+    metaFetch(`/api/meta/video-source?${new URLSearchParams({ videoId: ad.videoId })}`, accessToken)
       .then((r) => r.json())
       .then((j: { videoSrc?: string }) => {
         const src = j.videoSrc ?? null;
