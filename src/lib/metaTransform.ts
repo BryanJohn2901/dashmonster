@@ -14,6 +14,7 @@ export interface MetaInsight {
   campaign_id:   string;
   ad_id?:        string;
   ad_name?:      string;
+  adset_id?:     string;
   adset_name?:   string;
   impressions:   string | number;
   reach:         string | number;
