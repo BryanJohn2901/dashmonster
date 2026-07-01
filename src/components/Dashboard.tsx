@@ -1211,16 +1211,22 @@ function ContextBar({
 
   // Dedup por id: a mesma campanha aparece em vários grupos que dividem a conta.
   // Sem dedup, keys do React se repetem e a lista não re-renderiza ao filtrar.
+  // Com um grupo selecionado, lista SÓ as campanhas dele — a seleção é por grupo
+  // (Dashboard reconcilia contra o grupo atual), então oferecer campanhas de
+  // outros grupos fazia o clique "não marcar" (a reconciliação descartava o id).
   const allCampaigns = useMemo(() => {
+    const source = selectedGroup === "all"
+      ? Object.values(campaignsByGroup).flat()
+      : (campaignsByGroup[selectedGroup] ?? []);
     const seen = new Set<string>();
     const out: { id: string; name: string; status?: string }[] = [];
-    for (const c of Object.values(campaignsByGroup).flat()) {
+    for (const c of source) {
       if (!c || seen.has(c.id)) continue;
       seen.add(c.id);
       out.push(c);
     }
     return out;
-  }, [campaignsByGroup]);
+  }, [campaignsByGroup, selectedGroup]);
   const [campSearch, setCampSearch] = useState("");
   const visibleCampaigns = useMemo(() => {
     const q = campSearch.trim().toLowerCase();
