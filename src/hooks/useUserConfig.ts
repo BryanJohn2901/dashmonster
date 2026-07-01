@@ -17,24 +17,32 @@ import type { UserCategory, UserAccountEntry } from "@/types/userConfig";
 
 let cfgCategories: UserCategory[] = [];
 let cfgEntries: UserAccountEntry[] = [];
-let cfgHydrated = false;
+let cfgLoadedCid: string | null | undefined = undefined;
 let cfgRealtime = false;
 const cfgListeners = new Set<() => void>();
 
 function emit() { cfgListeners.forEach((l) => l()); }
 
 async function refetchConfig(): Promise<void> {
+  // fetch* leem a empresa ativa (getCompanyContext) no momento da chamada.
+  const cidAtStart = cfgLoadedCid;
   try {
     const [cats, entries] = await Promise.all([fetchUserCategories(), fetchUserAccountEntries()]);
+    // descarta resultado se a empresa mudou durante o fetch (evita vazamento).
+    if (cfgLoadedCid !== cidAtStart) return;
     cfgCategories = cats;
     cfgEntries = entries;
     emit();
   } catch { /* mantém o cache atual */ }
 }
 
-function hydrateConfig() {
-  if (cfgHydrated) return;
-  cfgHydrated = true;
+// Troca de empresa: ZERA na hora (nada da anterior fica na tela) e recarrega.
+function loadConfigForCompany(companyId: string | null): void {
+  if (cfgLoadedCid === companyId) return;
+  cfgLoadedCid = companyId;
+  cfgCategories = [];
+  cfgEntries = [];
+  emit();
   void refetchConfig();
 }
 
@@ -51,14 +59,12 @@ export function useUserConfig() {
 
   useEffect(() => {
     cfgListeners.add(force);
-    hydrateConfig();
     startConfigRealtime();
     return () => { cfgListeners.delete(force); };
   }, []);
 
-  // Trocar de empresa busca os dados da nova — o store é módulo único e não
-  // remonta sozinho na troca.
-  useEffect(() => { void refetchConfig(); }, [company?.id]);
+  // Carrega (ou recarrega, na troca de empresa) os dados da empresa ativa.
+  useEffect(() => { loadConfigForCompany(company?.id ?? null); }, [company?.id]);
 
   const setCategories = useCallback((next: UserCategory[]) => { cfgCategories = next; emit(); }, []);
   const setAccountEntries = useCallback((next: UserAccountEntry[]) => { cfgEntries = next; emit(); }, []);

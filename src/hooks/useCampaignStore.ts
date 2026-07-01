@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useCompany } from "@/hooks/useCompany";
 import { ProductCategory } from "@/types/campaign";
 import type { UserAccountEntry, UserCategory } from "@/types/userConfig";
 import {
@@ -9,7 +10,16 @@ import {
 } from "@/config/categoryInternalFilters";
 import { mapPainelInternalFilterToDashboardGroupId } from "@/utils/painelDashboardNavigation";
 
-const STORAGE_KEY = "pta_campaign_store_v2";
+// Persistência POR EMPRESA: cada empresa tem sua própria chave. Sem isso, o
+// estado (grupos, adAccountId em campaignConfigs, seleções) de uma empresa
+// vazava pro dashboard de outra ao trocar. `activeStoreCompanyId` diz pra qual
+// empresa o persist() grava — atualizado no render do hook.
+const STORAGE_PREFIX = "pta_campaign_store_v2";
+const LEGACY_GLOBAL_KEYS = ["pta_campaign_store_v2", "pta_campaign_store_v1"];
+let activeStoreCompanyId: string | null = null;
+
+const storeKeyFor = (companyId: string | null): string =>
+  `${STORAGE_PREFIX}:${companyId ?? "none"}`;
 
 export interface CampaignConfig {
   adAccountId: string;
@@ -77,13 +87,23 @@ const DEFAULT_STATE: StoreState = {
   panelSectionIds: [],
 };
 
-function loadStore(): StoreState {
+function loadStore(companyId: string | null): StoreState {
   if (typeof window === "undefined") return DEFAULT_STATE;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-      ?? localStorage.getItem("pta_campaign_store_v1");
-    if (!raw) return DEFAULT_STATE;
-    return { ...DEFAULT_STATE, ...JSON.parse(raw) };
+    const scoped = localStorage.getItem(storeKeyFor(companyId));
+    if (scoped) return { ...DEFAULT_STATE, ...JSON.parse(scoped) };
+
+    // Migração one-time: a chave global antiga (não isolada) é adotada pela
+    // empresa ativa e REMOVIDA — assim nenhuma outra empresa herda esses dados.
+    if (companyId) {
+      const legacy = LEGACY_GLOBAL_KEYS.map((k) => localStorage.getItem(k)).find(Boolean);
+      if (legacy) {
+        localStorage.setItem(storeKeyFor(companyId), legacy);
+        LEGACY_GLOBAL_KEYS.forEach((k) => localStorage.removeItem(k));
+        return { ...DEFAULT_STATE, ...JSON.parse(legacy) };
+      }
+    }
+    return DEFAULT_STATE;
   } catch {
     return DEFAULT_STATE;
   }
@@ -91,7 +111,7 @@ function loadStore(): StoreState {
 
 function persist(state: StoreState): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(storeKeyFor(activeStoreCompanyId), JSON.stringify(state));
   } catch { /* storage unavailable */ }
 }
 
@@ -121,7 +141,22 @@ function resolvePanelEntryGroupId(entry: UserAccountEntry, category: UserCategor
 }
 
 export function useCampaignStore() {
-  const [state, setState] = useState<StoreState>(loadStore);
+  const { company } = useCompany();
+  const companyId = company?.id ?? null;
+
+  const [state, setState] = useState<StoreState>(() => loadStore(companyId));
+
+  // Trocar de empresa recarrega o store DELA (ou vazio, se nova) e aponta o
+  // persist() pra ela. Impede que grupos/contas/seleções de uma empresa
+  // apareçam no dashboard de outra.
+  const loadedCidRef = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    activeStoreCompanyId = companyId;
+    if (loadedCidRef.current === undefined) { loadedCidRef.current = companyId; return; }
+    if (loadedCidRef.current === companyId) return;
+    loadedCidRef.current = companyId;
+    setState(loadStore(companyId));
+  }, [companyId]);
 
   const setSelectedGroup = useCallback((group: string) => {
     setState((prev) => {

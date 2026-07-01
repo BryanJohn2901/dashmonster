@@ -2,10 +2,16 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { supabaseClient } from "@/lib/supabase";
-import { getCompanyContext } from "@/hooks/useCompany";
+import { getCompanyContext, useCompany } from "@/hooks/useCompany";
 import type { ResultType } from "@/hooks/useAdvertiserStore";
 
-const STORAGE_KEY = "dm_campaign_center_v1";
+// Cache POR EMPRESA — sem isso, as campanhas de uma empresa (localStorage global)
+// apareciam na Central de outra ao trocar. `centerCompanyId` diz a qual empresa
+// o cache atual pertence.
+const STORAGE_PREFIX = "dm_campaign_center_v1";
+const LEGACY_CENTER_KEY = "dm_campaign_center_v1";
+let centerCompanyId: string | null = null;
+const centerCacheKey = () => `${STORAGE_PREFIX}:${centerCompanyId ?? "none"}`;
 
 // ─── Intenção da campanha — o que torna a configuração inteligente ───────────
 
@@ -197,15 +203,29 @@ const DEFAULT_STATE: CenterState = { entries: [] };
 function loadCache(): CenterState {
   if (typeof window === "undefined") return DEFAULT_STATE;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return DEFAULT_STATE;
-    const parsed = JSON.parse(raw) as CenterState;
-    return Array.isArray(parsed.entries) ? parsed : DEFAULT_STATE;
+    const scoped = localStorage.getItem(centerCacheKey());
+    if (scoped) {
+      const parsed = JSON.parse(scoped) as CenterState;
+      return Array.isArray(parsed.entries) ? parsed : DEFAULT_STATE;
+    }
+    // Migração one-time: chave global antiga vira a da empresa ativa e é removida.
+    if (centerCompanyId) {
+      const legacy = localStorage.getItem(LEGACY_CENTER_KEY);
+      if (legacy) {
+        const parsed = JSON.parse(legacy) as CenterState;
+        if (Array.isArray(parsed.entries)) {
+          localStorage.setItem(centerCacheKey(), legacy);
+          localStorage.removeItem(LEGACY_CENTER_KEY);
+          return parsed;
+        }
+      }
+    }
+    return DEFAULT_STATE;
   } catch { return DEFAULT_STATE; }
 }
 
 function persistCache(s: CenterState): void {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); } catch {}
+  try { localStorage.setItem(centerCacheKey(), JSON.stringify(s)); } catch {}
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -282,7 +302,7 @@ async function syncDelete(campaignIds: string[]): Promise<void> {
 // Realtime do Supabase mantém o estado em sincronia entre usuários/devices.
 
 let centerState: CenterState = DEFAULT_STATE;
-let centerHydrated = false;
+let centerLoadedCid: string | null | undefined = undefined;
 let realtimeStarted = false;
 const centerListeners = new Set<(s: CenterState) => void>();
 
@@ -292,14 +312,17 @@ function setCenterState(next: CenterState): void {
   centerListeners.forEach((l) => l(next));
 }
 
-function hydrateCenter(): void {
-  if (!centerHydrated) {
-    centerHydrated = true;
-    centerState = loadCache();
-    centerListeners.forEach((l) => l(centerState));
-  }
+// Carrega a Central da empresa dada. Se a empresa mudou, ZERA e recarrega —
+// nada da empresa anterior sobra visível.
+function ensureCenterForCompany(companyId: string | null): void {
+  if (centerLoadedCid === companyId) return;
+  centerLoadedCid = companyId;
+  centerCompanyId = companyId;
+  centerState = loadCache();
+  centerListeners.forEach((l) => l(centerState));
   void fetchRemote().then((remote) => {
-    if (remote) setCenterState({ entries: remote });
+    // só aplica se ainda estamos na mesma empresa (evita corrida na troca rápida)
+    if (remote && centerLoadedCid === companyId) setCenterState({ entries: remote });
   });
 }
 
@@ -321,14 +344,16 @@ function startRealtime(): void {
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useCampaignCenter() {
+  const { company } = useCompany();
+  const companyId = company?.id ?? null;
   const [state, setState] = useState<CenterState>(centerState);
 
   useEffect(() => {
     centerListeners.add(setState);
-    hydrateCenter();
+    ensureCenterForCompany(companyId);
     startRealtime();
     return () => { centerListeners.delete(setState); };
-  }, []);
+  }, [companyId]);
 
   const upsertEntries = useCallback((incoming: CampaignCenterEntry[]) => {
     const byId = new Map(centerState.entries.map((e) => [e.campaignId, e]));
