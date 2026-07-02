@@ -60,7 +60,9 @@ const DATES_LS_KEY               = "pta_profile_dates_v1";
 const FUNNEL_CONFIG_LS_KEY       = "pta_profile_funnel_v1";
 const LINKED_FUNNEL_LS_KEY       = "pta_profile_linked_funnel_v1";
 const PRODUCT_LINKS_LS_KEY       = "pta_profile_product_links_v1";
-const GOALS_LS_KEY         = "pta_profile_goals_v1";
+const GOALS_LS_KEY               = "pta_profile_goals_v1";
+const PROFILE_TAB_LS_KEY         = "pta_profile_tab_v1";
+const OV_TIMELINE_LS_KEY         = "pta_ov_timeline_v1";
 
 type ProfileFunnelStepId = "reach" | "impressions" | "clicks" | "page_views" | "leads" | "sales" | "purchases" | "profile_visits" | "new_followers";
 
@@ -1600,11 +1602,38 @@ function ProfileOverviewPanel({
   const [showKpiPanel, setShowKpiPanel]   = useState(false);
   const [draggingKpiId, setDraggingKpiId] = useState<string | null>(null);
   const [dragOverKpiId, setDragOverKpiId] = useState<string | null>(null);
-  const [ovTimelineMetric, setOvTimelineMetric] = useState<"spend" | "impressions" | "reach" | "clicks" | "leads" | "result" | "sales_eduzz" | "cpr">("spend");
-  const [ovTimelineVisible, setOvTimelineVisible] = useState<Set<string>>(() => new Set(["spend", "leads", "result"]));
+  const [ovTimelineMetric, setOvTimelineMetric] = useState<"spend" | "impressions" | "reach" | "clicks" | "leads" | "result" | "sales_eduzz" | "cpr">(() => {
+    if (typeof window === "undefined") return "spend";
+    try {
+      const stored = JSON.parse(localStorage.getItem(OV_TIMELINE_LS_KEY) ?? "{}") as Record<string, { metric?: string; visible?: string[] }>;
+      return (stored[profileId]?.metric as "spend" | "impressions" | "reach" | "clicks" | "leads" | "result" | "sales_eduzz" | "cpr") ?? "spend";
+    } catch { return "spend"; }
+  });
+  const [ovTimelineVisible, setOvTimelineVisible] = useState<Set<string>>(() => {
+    if (typeof window === "undefined") return new Set(["spend", "leads", "result"]);
+    try {
+      const stored = JSON.parse(localStorage.getItem(OV_TIMELINE_LS_KEY) ?? "{}") as Record<string, { metric?: string; visible?: string[] }>;
+      const saved = stored[profileId]?.visible;
+      return saved ? new Set(saved) : new Set(["spend", "leads", "result"]);
+    } catch { return new Set(["spend", "leads", "result"]); }
+  });
   const [ovTimelineConfigOpen, setOvTimelineConfigOpen] = useState(false);
   const ovTheme = useChartTheme();
   const dragKpiIdRef                      = useRef<string | null>(null);
+
+  const persistOvTimeline = (metric?: string, visible?: Set<string>) => {
+    try {
+      const stored = JSON.parse(localStorage.getItem(OV_TIMELINE_LS_KEY) ?? "{}") as Record<string, { metric?: string; visible?: string[] }>;
+      localStorage.setItem(OV_TIMELINE_LS_KEY, JSON.stringify({
+        ...stored,
+        [profileId]: {
+          ...(stored[profileId] ?? {}),
+          ...(metric   !== undefined ? { metric }                    : {}),
+          ...(visible  !== undefined ? { visible: Array.from(visible) } : {}),
+        },
+      }));
+    } catch {}
+  };
 
   const persistKpiOrder = (newOrder: string[]) => {
     setKpiOrder(newOrder);
@@ -1643,6 +1672,19 @@ function ProfileOverviewPanel({
     [arr[idx], arr[next]] = [arr[next], arr[idx]];
     persistFunnelSteps(arr);
   };
+
+  // Sincroniza kpiOrder quando o template muda (sem remontar o componente):
+  // adiciona KPIs novos do template que ainda não estão na ordem salva.
+  const prevTemplateIdRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (prevTemplateIdRef.current === template.id) return;
+    prevTemplateIdRef.current = template.id;
+    setKpiOrder((prev) => {
+      const valid = prev.filter(id => ALL_KPI_OPTIONS.some(k => k.id === id));
+      const newFromTemplate = template.kpis.map(k => k.id).filter(id => !valid.includes(id));
+      return [...valid, ...newFromTemplate];
+    });
+  }, [template.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Fetch at campaign level (one row per campaign — fixes duplicate bug) ──
   useEffect(() => {
@@ -2249,7 +2291,7 @@ function ProfileOverviewPanel({
                     {ovTlVisible.length > 0 && (
                       <div className="flex gap-0.5 rounded-lg p-0.5" style={{ background: "var(--dm-bg-elevated)" }}>
                         {ovTlVisible.map(({ id, label }) => (
-                          <button key={id} type="button" onClick={() => setOvTimelineMetric(id)}
+                          <button key={id} type="button" onClick={() => { setOvTimelineMetric(id); persistOvTimeline(id, undefined); }}
                             className="rounded-md px-2.5 py-1 text-[11px] font-semibold transition-all duration-200"
                             style={ovTimelineMetric === id
                               ? { background: "var(--dm-bg-surface)", color: "var(--dm-primary)", boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }
@@ -2300,10 +2342,11 @@ function ProfileOverviewPanel({
                                         next.add(id);
                                       }
                                       setOvTimelineVisible(next);
+                                      persistOvTimeline(undefined, next);
                                       // Se a métrica selecionada foi removida, vai para a primeira visível
                                       if (ovTimelineMetric === id && !next.has(id)) {
                                         const first = OV_TL_ALL.find((m) => next.has(m.id));
-                                        if (first) setOvTimelineMetric(first.id);
+                                        if (first) { setOvTimelineMetric(first.id); persistOvTimeline(first.id, undefined); }
                                       }
                                     }}
                                   >
@@ -4190,7 +4233,20 @@ function ProfileDetailView({
   const addCampaignToProfile    = onAddCampaign;
   const removeCampaignFromProfile = onRemoveCampaign;
   const updateProfile           = onUpdateProfile;
-  const [profileTab, setProfileTab] = useState<"overview" | "nova" | "instagram">("overview");
+  const [profileTab, setProfileTabRaw] = useState<"overview" | "nova" | "instagram">(() => {
+    if (typeof window === "undefined") return "overview";
+    try {
+      const stored = JSON.parse(localStorage.getItem(PROFILE_TAB_LS_KEY) ?? "{}") as Record<string, string>;
+      return (stored[profile.id] as "overview" | "nova" | "instagram") ?? "overview";
+    } catch { return "overview"; }
+  });
+  const setProfileTab = (tab: "overview" | "nova" | "instagram") => {
+    setProfileTabRaw(tab);
+    try {
+      const stored = JSON.parse(localStorage.getItem(PROFILE_TAB_LS_KEY) ?? "{}") as Record<string, string>;
+      localStorage.setItem(PROFILE_TAB_LS_KEY, JSON.stringify({ ...stored, [profile.id]: tab }));
+    } catch {}
+  };
 
   // ── Funil de Tracking vinculado ao perfil ────────────────────────────────
   const { companyId } = useCompany();
@@ -4304,8 +4360,12 @@ function ProfileDetailView({
     } catch {}
   };
 
-  // Resolved template — personalizado is built from config, others are static
-  const resolvedTemplate = getTemplate(templateId, personalizadoConfig);
+  // Resolved template — memoized so reference is stable between renders.
+  // Prevents ProfileOverviewPanel's template.id useEffect from firing unnecessarily.
+  const resolvedTemplate = useMemo(
+    () => getTemplate(templateId, personalizadoConfig),
+    [templateId, personalizadoConfig], // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   const handleAddCampaign = (camp: ActiveCampaign) => {
     addCampaignToProfile(profile.id, camp);
@@ -4572,7 +4632,7 @@ function ProfileDetailView({
       {profileTab === "overview" && (
         hasToken && profile.campaigns.length > 0 ? (
           <ProfileOverviewPanel
-            key={`overview-${profile.id}-${dateFrom}-${dateTo}-${templateId}`}
+            key={`overview-${profile.id}`}
             profileId={profile.id}
             adAccountId={profile.adAccountId}
             campaigns={profile.campaigns}
