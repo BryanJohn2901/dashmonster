@@ -436,7 +436,7 @@ function isVisibleTrackingEvent(e: TrackingEvent): boolean {
   return e.value !== e.installment_value;
 }
 
-function groupByVisitor(events: TrackingEvent[]): Visitor[] {
+export function groupByVisitor(events: TrackingEvent[]): Visitor[] {
   const map = new Map<string, TrackingEvent[]>();
   for (const e of events) {
     const list = map.get(e.fingerprint_id);

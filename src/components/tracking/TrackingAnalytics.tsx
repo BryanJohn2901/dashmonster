@@ -248,16 +248,17 @@ type TimelineMetric = "events" | "users" | "leads" | "sales";
 type GeoDim = "country" | "region" | "city";
 type GeoMode = "users" | "sales";
 type DeviceDim = "device" | "os" | "browser";
-type SourceDim = "utm_source" | "utm_medium";
-type UtmDim = "utm_source" | "utm_medium" | "utm_campaign" | "utm_content" | "utm_term" | "utm_ad_id";
+type SourceDim = "utm_source" | "utm_medium" | "utm_campaign" | "utm_content" | "utm_term" | "utm_placement";
+type UtmDim = "utm_source" | "utm_medium" | "utm_campaign" | "utm_content" | "utm_term" | "utm_placement";
 type UtmSortCol = "users" | "leads" | "sales" | "revenue";
 
 // ─── Componente principal ─────────────────────────────────────────────────────
-export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasProductNames = true }: {
+export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasProductNames = true, hideScores = false }: {
   visitors: Visitor[];
   events: TrackingEvent[];
   eventsCapped: boolean;
   funnelHasProductNames?: boolean;
+  hideScores?: boolean;
 }) {
   const theme = useChartTheme();
   const areaShown = useMounted();
@@ -447,7 +448,8 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
         const d = parseUserAgent(v.lastUserAgent);
         key = d ? (d.device === "mobile" ? "Celular" : d.device === "tablet" ? "Tablet" : "Desktop") : null;
       } else if (deviceDim === "os") {
-        key = parseOS(v.lastUserAgent);
+        const raw = parseOS(v.lastUserAgent);
+        key = raw?.startsWith("Android") ? "Android" : raw;
       } else {
         key = parseBrowser(v.lastUserAgent);
       }
@@ -502,9 +504,9 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
     utm_source: "Origem",
     utm_medium: "Mídia",
     utm_campaign: "Campanha",
-    utm_content: "Conteúdo",
-    utm_term: "Termo",
-    utm_ad_id: "Anúncio",
+    utm_content: "Anúncio",
+    utm_term: "Conjunto",
+    utm_placement: "Posicionamento",
   };
 
   if (visitors.length === 0) {
@@ -530,14 +532,16 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
       )}
 
       {/* Scorecards */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <ScoreCard label="Usuários únicos" count={totals.uniqueUsers} format={fmtInt} icon={Users} accent={C.slate} delay={0} />
-        <ScoreCard label="Eventos" count={totals.totalEvents} format={fmtInt} icon={Activity} accent={C.teal} delay={50} />
-        <ScoreCard label="Leads" count={totals.leads} format={fmtInt} icon={UserCheck} accent={C.teal} delay={100} />
-        <ScoreCard label="Vendas" count={totals.sales} format={fmtInt} icon={ShoppingBag} accent={C.amber} delay={150} />
-        <ScoreCard label="Receita" count={totals.revenue} format={(n) => formatMoney(n, currency)} icon={DollarSign} accent={C.money} featured delay={200} />
-        <ScoreCard label="Conversão" count={totals.convRate} format={fmtPct} icon={TrendingUp} accent={C.green} delay={250} />
-      </div>
+      {!hideScores && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <ScoreCard label="Usuários únicos" count={totals.uniqueUsers} format={fmtInt} icon={Users} accent={C.slate} delay={0} />
+          <ScoreCard label="Eventos" count={totals.totalEvents} format={fmtInt} icon={Activity} accent={C.teal} delay={50} />
+          <ScoreCard label="Leads" count={totals.leads} format={fmtInt} icon={UserCheck} accent={C.teal} delay={100} />
+          <ScoreCard label="Vendas" count={totals.sales} format={fmtInt} icon={ShoppingBag} accent={C.amber} delay={150} />
+          <ScoreCard label="Receita" count={totals.revenue} format={(n) => formatMoney(n, currency)} icon={DollarSign} accent={C.money} featured delay={200} />
+          <ScoreCard label="Conversão" count={totals.convRate} format={fmtPct} icon={TrendingUp} accent={C.green} delay={250} />
+        </div>
+      )}
 
       {/* Timeline */}
       <Panel
@@ -668,8 +672,12 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
               value={sourceDim}
               onChange={setSourceDim}
               options={[
-                { value: "utm_source", label: "Origem" },
-                { value: "utm_medium", label: "Mídia" },
+                { value: "utm_source",    label: "Origem" },
+                { value: "utm_medium",    label: "Mídia" },
+                { value: "utm_campaign",  label: "Campanha" },
+                { value: "utm_term",      label: "Conjunto" },
+                { value: "utm_content",   label: "Anúncio" },
+                { value: "utm_placement", label: "Posicionamento" },
               ]}
             />
           }
@@ -758,12 +766,12 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
             value={utmDim}
             onChange={setUtmDim}
             options={[
-              { value: "utm_source", label: "Origem" },
-              { value: "utm_medium", label: "Mídia" },
+              { value: "utm_source",   label: "Origem" },
+              { value: "utm_medium",   label: "Mídia" },
               { value: "utm_campaign", label: "Campanha" },
-              { value: "utm_content", label: "Conteúdo" },
-              { value: "utm_term", label: "Termo" },
-              { value: "utm_ad_id", label: "Anúncio" },
+              { value: "utm_term",     label: "Conjunto" },
+              { value: "utm_content",  label: "Anúncio" },
+              { value: "utm_placement", label: "Posicionamento" },
             ]}
           />
         }

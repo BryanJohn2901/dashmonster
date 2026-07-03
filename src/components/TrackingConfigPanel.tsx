@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Loader2, Save, Plus, Trash2, Star, Download, AlertTriangle, CheckCircle2, XCircle, ChevronDown, Code2, Send, Globe, Webhook, Info, Copy, X, RefreshCw } from "lucide-react";
 import { toast } from "@/hooks/useToast";
+import { authedFetch } from "@/lib/authedFetch";
 import {
   fetchTrackingPixels, createTrackingPixel, updateTrackingPixel, deleteTrackingPixel, setDefaultTrackingPixel, verifyMetaToken, normalizeHostname,
   generateWebhookSecret, clearWebhookSecret,
@@ -124,6 +125,7 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
   const [testUrl, setTestUrl] = useState("");
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<TestProxyResult | null>(null);
+  const [sendingTestCapi, setSendingTestCapi] = useState(false);
   const [generatingSecret, setGeneratingSecret] = useState(false);
   const [newWebhookSecret, setNewWebhookSecret] = useState<string | null>(null);
   const [webhookSecretCopied, setWebhookSecretCopied] = useState(false);
@@ -281,7 +283,7 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
     setTesting(true);
     setTestResult(null);
     try {
-      const res = await fetch("/api/tracking/test-proxy", {
+      const res = await authedFetch("/api/tracking/test-proxy", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: testUrl.trim(), companySlug: company.slug, pixelSlug: pixel.slug }),
@@ -296,6 +298,27 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
       toast.error("Não foi possível rodar o teste.");
     } finally {
       setTesting(false);
+    }
+  };
+
+  const runCapiTest = async () => {
+    setSendingTestCapi(true);
+    try {
+      const res = await authedFetch("/api/tracking/test-capi", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ companySlug: company.slug, pixelSlug: pixel.slug }),
+      });
+      const json = (await res.json()) as { success?: boolean; error?: string };
+      if (!res.ok || json.error) {
+        toast.error(json.error ?? "Erro ao enviar evento de teste.");
+      } else {
+        toast.success("Purchase de teste enviado! Verifique em Eventos de teste no Events Manager.");
+      }
+    } catch {
+      toast.error("Não foi possível conectar.");
+    } finally {
+      setSendingTestCapi(false);
     }
   };
 
@@ -445,6 +468,25 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
           <input value={testEventCode} disabled={!canEdit} onChange={(e) => setTestEventCode(e.target.value)} placeholder="TEST12345" className={`${inputCls} h-10 font-mono disabled:opacity-60`} style={inputStyle} />
           <span className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>Da aba <strong style={{ color: "var(--dm-text-secondary)" }}>Eventos de teste</strong> do Events Manager. Apague depois de validar.</span>
         </label>
+        {testEventCode.trim() && (
+          <div className="space-y-2 rounded-xl border px-3 py-2.5" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
+            <button
+              type="button"
+              onClick={() => void runCapiTest()}
+              disabled={sendingTestCapi}
+              className="flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[10px] font-bold transition-opacity hover:opacity-80 disabled:opacity-40"
+              style={{ borderColor: BRAND, color: BRAND }}
+            >
+              {sendingTestCapi ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+              Enviar Purchase de teste
+            </button>
+            <p className="text-[10px] leading-relaxed" style={{ color: "var(--dm-text-tertiary)" }}>
+              Envia um evento <strong style={{ color: "var(--dm-text-secondary)" }}>Purchase</strong> fictício direto pra Meta com o código de teste acima.{" "}
+              <strong style={{ color: "var(--dm-text-secondary)" }}>Lead</strong> e{" "}
+              <strong style={{ color: "var(--dm-text-secondary)" }}>PageView</strong> devem ser testados abrindo a página real do site com o código ativo.
+            </p>
+          </div>
+        )}
       </Collapsible>
 
       {/* ── Passo 3 — Webhook (formulários externos) ── */}

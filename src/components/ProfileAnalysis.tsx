@@ -50,7 +50,8 @@ import {
 import { useCompany, fetchTrackingFunnels, fetchEduzzCatalog, type TrackingFunnel, type EduzzProduct } from "@/hooks/useCompany";
 import { supabaseClient } from "@/lib/supabase";
 import { useChartTheme, shortDate, xInterval } from "@/components/charts/useChartTheme";
-import { eventMatchesFunnel, type TrackingEvent } from "@/components/TrackingEventsView";
+import { eventMatchesFunnel, groupByVisitor, type TrackingEvent } from "@/components/TrackingEventsView";
+import { TrackingAnalytics } from "@/components/tracking/TrackingAnalytics";
 
 const formatCurrency = formatBRL;
 const formatNumber = formatInt;
@@ -1263,6 +1264,7 @@ function ProfileOverviewPanel({
   const [adLevelRows, setAdLevelRows] = useState<AdsetRow[]>([]);
   const [loading, setLoading]         = useState(false);
   const [error, setError]             = useState<string | null>(null);
+  const [refreshTick, setRefreshTick] = useState(0);
 
   // ── Eventos de tracking (Supabase) para o funil vinculado ─────────────────
   // Só busca quando um TrackingFunnel está vinculado ao perfil. Falha silenciosa.
@@ -1724,7 +1726,7 @@ function ProfileOverviewPanel({
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Erro ao buscar dados."))
       .finally(() => setLoading(false));
-  }, [adAccountId, campaigns, dateFrom, dateTo, dominantResultType]);
+  }, [adAccountId, campaigns, dateFrom, dateTo, dominantResultType, refreshTick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Aggregate totals ──────────────────────────────────────────────────────
   const totals = useMemo(() => {
@@ -2020,6 +2022,15 @@ function ProfileOverviewPanel({
             Indicadores principais
           </h2>
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setRefreshTick((t) => t + 1)}
+              disabled={loading}
+              className="flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[11px] font-semibold transition hover:opacity-80 disabled:opacity-40"
+              style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)", color: "var(--dm-text-secondary)" }}
+            >
+              <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
+            </button>
             <button
               type="button"
               onClick={() => setShowKpiPanel(true)}
@@ -2600,84 +2611,6 @@ function ProfileOverviewPanel({
         </div>
       </section>
 
-      {/* ── Funil de Tracking vinculado ─────────────────────────────────────── */}
-      {linkedFunnel && (
-        <article className="overflow-hidden rounded-[20px] border shadow-horizon"
-          style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
-          {/* Header */}
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4"
-            style={{ borderColor: "var(--dm-border-subtle)" }}>
-            <div className="flex items-center gap-2.5 min-w-0">
-              <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
-                style={{ backgroundColor: linkedFunnel.color + "22" }}>
-                <Activity size={14} style={{ color: linkedFunnel.color }} />
-              </span>
-              <div className="min-w-0">
-                <h3 className="text-sm font-bold truncate" style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>
-                  {linkedFunnel.label}
-                </h3>
-                <p className="mt-0.5 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
-                  Funil de tracking · dados do pixel
-                  {trackingLoading && " · carregando…"}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Conteúdo */}
-          {trackingLoading ? (
-            <div className="flex items-center justify-center py-10">
-              <Loader2 size={16} className="animate-spin" style={{ color: "var(--dm-text-tertiary)" }} />
-            </div>
-          ) : trackingStats ? (
-            <div className="p-5">
-              {/* Funil visual */}
-              <div className="grid grid-cols-3 gap-3 sm:grid-cols-3 mb-5">
-                {[
-                  { label: "Visitantes", value: trackingStats.visitors, sub: undefined, color: "#0D9488" },
-                  { label: "Leads",      value: trackingStats.leads,
-                    sub: trackingStats.visitors > 0 ? `${formatPercent((trackingStats.leads / trackingStats.visitors) * 100)} captura` : undefined,
-                    color: "#f59e0b" },
-                  { label: "Vendas",     value: trackingStats.sales,
-                    sub: trackingStats.leads > 0 ? `${formatPercent((trackingStats.sales / trackingStats.leads) * 100)} conversão` : undefined,
-                    color: "#16A34A" },
-                ].map((s) => (
-                  <div key={s.label} className="flex flex-col gap-1.5 rounded-[14px] border p-4"
-                    style={{ backgroundColor: "var(--dm-bg-elevated)", borderColor: "var(--dm-border-subtle)" }}>
-                    <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>{s.label}</span>
-                    <span className="text-[22px] font-bold tabular-nums" style={{ color: s.color, fontFamily: "var(--font-poppins)" }}>
-                      {s.value > 0 ? formatInt(s.value) : "—"}
-                    </span>
-                    {s.sub && <span className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>{s.sub}</span>}
-                  </div>
-                ))}
-              </div>
-              {/* Métricas derivadas */}
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {[
-                  { label: "Receita (pixel)",  value: trackingStats.revenue > 0 ? formatBRL(trackingStats.revenue) : "—", accent: "#16A34A" },
-                  { label: "Custo por Lead",   value: totals.inv > 0 && trackingStats.leads > 0 ? formatBRL(totals.inv / trackingStats.leads) : "—", accent: "#f59e0b" },
-                  { label: "Custo por Venda",  value: totals.inv > 0 && trackingStats.sales > 0 ? formatBRL(totals.inv / trackingStats.sales) : "—", accent: "#f59e0b" },
-                  { label: "ROAS (pixel)",     value: totals.inv > 0 && trackingStats.revenue > 0 ? `${(trackingStats.revenue / totals.inv).toFixed(2)}x` : "—", accent: "#16A34A" },
-                ].map((m) => (
-                  <div key={m.label} className="rounded-[12px] border px-3 py-2.5"
-                    style={{ backgroundColor: "var(--dm-bg-elevated)", borderColor: "var(--dm-border-subtle)" }}>
-                    <p className="text-[10px] uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>{m.label}</p>
-                    <p className="mt-1 text-[15px] font-bold tabular-nums" style={{ color: m.accent }}>{m.value}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center gap-2 px-5 py-8 text-center">
-              <Activity size={18} style={{ color: "var(--dm-text-tertiary)" }} />
-              <p className="text-[12px]" style={{ color: "var(--dm-text-tertiary)" }}>
-                Nenhum evento encontrado para este funil no período selecionado.
-              </p>
-            </div>
-          )}
-        </article>
-      )}
 
       {/* ── VENDAS POR CAMPANHA — colunas configuráveis, sort e métricas custom ── */}
       {campaigns.length > 0 && rows.length > 0 && (
@@ -4196,6 +4129,391 @@ export function InstagramInsightsPanel({
   );
 }
 
+// ─── Profile Analytics Panel ─────────────────────────────────────────────────
+// Vista cruzada: dados de campanha Meta Ads + TrackingAnalytics completo do funil.
+
+const ANALYTICS_EVENTS_SELECT =
+  "id, event_name, fingerprint_id, event_url, page_title, user_data, lead_email, lead_phone, lead_name, extra_fields, " +
+  "country, country_region, city, event_id, utm_source, utm_medium, utm_campaign, utm_content, utm_term, " +
+  "utm_placement, utm_campaign_id, utm_adset_id, utm_ad_id, value, currency, external_transaction_id, source, " +
+  "payment_method, installments, installment_number, installment_value, recurrence_key, product_name, " +
+  "product_parent_id, is_order_bump, main_sale_transaction_id, client_user_agent, via, pixel_id, capi_status, capi_error, created_at";
+
+const ANALYTICS_EVENTS_LIMIT = 1000;
+const ANALYTICS_METRICS_LS_KEY = "pta_analytics_metrics_v1";
+
+const ANALYTICS_METRIC_DEFS = [
+  // pixel / Eduzz
+  { id: "receita",      label: "Receita",          group: "Pixel / Eduzz", dot: "#16A34A" },
+  { id: "vendas",       label: "Vendas únicas",     group: "Pixel / Eduzz", dot: "#16A34A" },
+  { id: "leads",        label: "Leads únicos",      group: "Pixel / Eduzz", dot: "#16A34A" },
+  { id: "visitantes",   label: "Visitantes",         group: "Pixel / Eduzz", dot: "#0D9488" },
+  { id: "conversao",    label: "Conversão %",        group: "Pixel / Eduzz", dot: undefined },
+  { id: "roas",         label: "ROAS",              group: "Pixel / Eduzz", dot: "#16A34A" },
+  // meta ads
+  { id: "investimento", label: "Investimento",      group: "Meta Ads",      dot: "#1877F2" },
+  { id: "impressoes",   label: "Impressões",        group: "Meta Ads",      dot: "#1877F2" },
+  { id: "cliques",      label: "Cliques no link",   group: "Meta Ads",      dot: "#1877F2" },
+  { id: "leads_meta",   label: "Leads (Meta)",      group: "Meta Ads",      dot: "#1877F2" },
+  // cruzamento
+  { id: "cpl_meta",     label: "CPL Meta",          group: "Cruzamento",    dot: "#D97706" },
+  { id: "cpl_real",     label: "CPL Real",          group: "Cruzamento",    dot: "#D97706" },
+  { id: "cpv",          label: "Custo por Venda",   group: "Cruzamento",    dot: "#D97706" },
+  { id: "cobertura",    label: "Cobertura",         group: "Cruzamento",    dot: undefined },
+] as const;
+
+type AnalyticsMetricId = typeof ANALYTICS_METRIC_DEFS[number]["id"];
+
+const ANALYTICS_DEFAULT_ORDER: AnalyticsMetricId[] = [
+  "receita", "vendas", "leads", "visitantes", "conversao",
+  "investimento", "impressoes", "cliques", "cpl_real", "cpv",
+];
+
+function ProfileAnalyticsPanel({
+  adAccountId, campaigns, dateFrom, dateTo, linkedFunnel, companyId,
+}: {
+  adAccountId: string;
+  campaigns: ActiveCampaign[];
+  dateFrom: string;
+  dateTo: string;
+  linkedFunnel: TrackingFunnel;
+  companyId: string;
+}) {
+  // ── Meta Ads ──────────────────────────────────────────────────────────────
+  const [metaLoading, setMetaLoading] = useState(false);
+  const [metaError,   setMetaError]   = useState<string | null>(null);
+  const [spend,       setSpend]       = useState(0);
+  const [impressions, setImpressions] = useState(0);
+  const [linkClicks,  setLinkClicks]  = useState(0);
+  const [metaLeads,   setMetaLeads]   = useState(0);
+
+  useEffect(() => {
+    if (!adAccountId || campaigns.length === 0) return;
+    const { accessToken } = loadMetaCredentials();
+    if (!accessToken) return;
+    setMetaLoading(true); setMetaError(null);
+    const ids = campaigns.map((c) => c.id);
+    fetchMetaInsights(adAccountId, dateFrom, dateTo, { level: "campaign", timeIncrement: "all_days", campaignIds: ids })
+      .then((data) => {
+        setSpend(data.reduce((s, r) => s + parseMetaNum(r.spend), 0));
+        setImpressions(data.reduce((s, r) => s + parseMetaNum(r.impressions), 0));
+        setLinkClicks(data.reduce((s, r) => s + (r.inline_link_clicks != null ? parseMetaNum(r.inline_link_clicks) : parseMetaNum(r.clicks)), 0));
+        setMetaLeads(data.reduce((s, r) => s + extractLeads(r.actions), 0));
+      })
+      .catch((e) => setMetaError(e instanceof Error ? e.message : "Erro ao buscar dados Meta."))
+      .finally(() => setMetaLoading(false));
+  }, [adAccountId, campaigns, dateFrom, dateTo]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Tracking events (full fields) ─────────────────────────────────────────
+  const [trkLoading,    setTrkLoading]    = useState(false);
+  const [allEvents,     setAllEvents]     = useState<TrackingEvent[]>([]);
+  const [eventsCapped,  setEventsCapped]  = useState(false);
+
+  useEffect(() => {
+    if (!supabaseClient) return;
+    let alive = true;
+    setTrkLoading(true);
+    void (async () => {
+      try {
+        const { data } = await supabaseClient
+          .from("events_log")
+          .select(ANALYTICS_EVENTS_SELECT)
+          .eq("company_id", companyId)
+          .or("sale_confirmed.is.null,sale_confirmed.eq.true")
+          .neq("event_name", "Renewal")
+          .gte("created_at", new Date(`${dateFrom}T00:00:00`).toISOString())
+          .lte("created_at", new Date(`${dateTo}T23:59:59.999`).toISOString())
+          .order("created_at", { ascending: false })
+          .limit(ANALYTICS_EVENTS_LIMIT);
+        if (!alive) return;
+        const rows = (data ?? []) as unknown as TrackingEvent[];
+        setAllEvents(rows);
+        setEventsCapped(rows.length >= ANALYTICS_EVENTS_LIMIT);
+      } catch {
+        if (alive) setAllEvents([]);
+      } finally {
+        if (alive) setTrkLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [companyId, dateFrom, dateTo]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Filter by funnel + derive analytics inputs ────────────────────────────
+  const filteredEvents = useMemo(
+    () => allEvents.filter((e) => eventMatchesFunnel(e, linkedFunnel)),
+    [allEvents, linkedFunnel], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  const analyticsVisitors = useMemo(() => groupByVisitor(filteredEvents), [filteredEvents]);
+
+  // ── Cross-metrics ─────────────────────────────────────────────────────────
+  const trkLeads   = useMemo(() => new Set(filteredEvents.filter((e) => e.event_name === "Lead").map((e) => e.fingerprint_id)).size, [filteredEvents]);
+  const trkSales   = useMemo(() => new Set(filteredEvents.filter((e) => e.event_name === "Purchase").map((e) => e.fingerprint_id)).size, [filteredEvents]);
+  const trkRevenue = useMemo(() => filteredEvents.filter((e) => e.event_name === "Purchase" && e.value != null).reduce((s, e) => s + (e.value ?? 0), 0), [filteredEvents]);
+
+  const cplMeta   = spend > 0 && metaLeads > 0 ? spend / metaLeads : null;
+  const cplReal   = spend > 0 && trkLeads  > 0 ? spend / trkLeads  : null;
+  const cpvReal   = spend > 0 && trkSales  > 0 ? spend / trkSales  : null;
+  const cobertura = metaLeads > 0               ? (trkLeads / metaLeads) * 100 : null;
+
+  const loading = metaLoading || trkLoading;
+
+  // derived
+  const visitors = analyticsVisitors.length;
+  const convRate = visitors > 0 ? (trkLeads / visitors) * 100 : 0;
+  const roas     = spend > 0 && trkRevenue > 0 ? trkRevenue / spend : null;
+
+  // ── Metrics order (persisted globally) ───────────────────────────────────
+  const [metricsOrder, setMetricsOrder] = useState<AnalyticsMetricId[]>(() => {
+    if (typeof window === "undefined") return ANALYTICS_DEFAULT_ORDER;
+    try {
+      const saved = JSON.parse(localStorage.getItem(ANALYTICS_METRICS_LS_KEY) ?? "null") as AnalyticsMetricId[] | null;
+      if (Array.isArray(saved) && saved.length > 0) return saved;
+    } catch {}
+    return ANALYTICS_DEFAULT_ORDER;
+  });
+  const [showMetricsConfig, setShowMetricsConfig] = useState(false);
+
+  const persistMetricsOrder = (next: AnalyticsMetricId[]) => {
+    setMetricsOrder(next);
+    try { localStorage.setItem(ANALYTICS_METRICS_LS_KEY, JSON.stringify(next)); } catch {}
+  };
+
+  const toggleMetric = (id: AnalyticsMetricId) => {
+    persistMetricsOrder(
+      metricsOrder.includes(id)
+        ? metricsOrder.filter((m) => m !== id)
+        : [...metricsOrder, id],
+    );
+  };
+
+  // drag-to-reorder in config modal
+  const dragMetricRef = useRef<string | null>(null);
+  const [dragOverMetric, setDragOverMetric] = useState<string | null>(null);
+
+  const handleMetricDrop = (targetId: string) => {
+    const src = dragMetricRef.current;
+    if (!src || src === targetId) { dragMetricRef.current = null; setDragOverMetric(null); return; }
+    const next = [...metricsOrder];
+    const from = next.indexOf(src as AnalyticsMetricId);
+    const to   = next.indexOf(targetId as AnalyticsMetricId);
+    if (from === -1 || to === -1) { dragMetricRef.current = null; setDragOverMetric(null); return; }
+    next.splice(from, 1);
+    next.splice(to, 0, src as AnalyticsMetricId);
+    persistMetricsOrder(next);
+    dragMetricRef.current = null;
+    setDragOverMetric(null);
+  };
+
+  // build metric card props
+  const getMetricCard = useCallback((id: AnalyticsMetricId) => {
+    const def = ANALYTICS_METRIC_DEFS.find((d) => d.id === id);
+    switch (id) {
+      case "receita":      return { label: def!.label, dot: def!.dot, featured: true,  value: trkRevenue > 0 ? formatBRL(trkRevenue) : "—", sub: roas != null ? `ROAS ${roas.toFixed(2)}x` : "pixel + Eduzz" };
+      case "vendas":       return { label: def!.label, dot: def!.dot, featured: false, value: trkSales > 0 ? formatInt(trkSales) : "—",    sub: trkLeads > 0 && trkSales > 0 ? `${formatPercent((trkSales / trkLeads) * 100)} conv.` : "pixel" };
+      case "leads":        return { label: def!.label, dot: def!.dot, featured: false, value: trkLeads > 0 ? formatInt(trkLeads) : "—",    sub: visitors > 0 && trkLeads > 0 ? `${formatPercent((trkLeads / visitors) * 100)} captura` : "pixel" };
+      case "visitantes":   return { label: def!.label, dot: def!.dot, featured: false, value: visitors > 0 ? formatInt(visitors) : "—",    sub: "pixel" };
+      case "conversao":    return { label: def!.label, dot: def!.dot, featured: false, value: convRate > 0 ? formatPercent(convRate) : "—", sub: "leads / visitantes" };
+      case "roas":         return { label: def!.label, dot: def!.dot, featured: false, value: roas != null ? `${roas.toFixed(2)}x` : "—",  sub: "receita ÷ investimento" };
+      case "investimento": return { label: def!.label, dot: def!.dot, featured: false, value: spend > 0 ? formatBRL(spend) : "—",          sub: "Meta Ads" };
+      case "impressoes":   return { label: def!.label, dot: def!.dot, featured: false, value: impressions > 0 ? formatInt(impressions) : "—", sub: linkClicks > 0 && impressions > 0 ? `CTR ${formatPercent((linkClicks / impressions) * 100)}` : "Meta Ads" };
+      case "cliques":      return { label: def!.label, dot: def!.dot, featured: false, value: linkClicks > 0 ? formatInt(linkClicks) : "—", sub: metaLeads > 0 && linkClicks > 0 ? `${formatPercent((metaLeads / linkClicks) * 100)} lead Meta` : "Meta Ads" };
+      case "leads_meta":   return { label: def!.label, dot: def!.dot, featured: false, value: metaLeads > 0 ? formatInt(metaLeads) : "—",  sub: linkClicks > 0 && metaLeads > 0 ? `${formatPercent((metaLeads / linkClicks) * 100)} conv.` : "Meta Ads" };
+      case "cpl_meta":     return { label: def!.label, dot: def!.dot, featured: false, value: cplMeta != null ? formatBRL(cplMeta) : "—",  sub: "invest ÷ leads Meta" };
+      case "cpl_real":     return { label: def!.label, dot: def!.dot, featured: false, value: cplReal != null ? formatBRL(cplReal) : "—",  sub: cplMeta != null ? `vs Meta: ${formatBRL(cplMeta)}` : "invest ÷ leads pixel" };
+      case "cpv":          return { label: def!.label, dot: def!.dot, featured: false, value: cpvReal != null ? formatBRL(cpvReal) : "—",  sub: cobertura != null ? `Cobertura ${formatPercent(cobertura)}` : "invest ÷ vendas pixel" };
+      case "cobertura":    return { label: def!.label, dot: def!.dot, featured: false, value: cobertura != null ? formatPercent(cobertura) : "—", sub: cobertura != null ? `${trkLeads} de ${metaLeads} leads` : "leads pixel / leads Meta" };
+    }
+  }, [trkRevenue, trkSales, trkLeads, visitors, convRate, roas, spend, impressions, linkClicks, metaLeads, cplMeta, cplReal, cpvReal, cobertura]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div className="space-y-6">
+      {/* header */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="rounded-full px-3 py-1 text-[11px] font-semibold"
+            style={{ background: "rgba(22,163,74,0.12)", color: "var(--dm-brand-500)" }}>
+            {campaigns.length} campanha{campaigns.length !== 1 ? "s" : ""} · analytics
+          </span>
+          <span className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>{dateFrom} → {dateTo}</span>
+          {loading && <Loader2 size={11} className="animate-spin" style={{ color: "var(--dm-text-tertiary)" }} />}
+          {eventsCapped && (
+            <span className="text-[10px]" style={{ color: "#D97706" }}>
+              · mostrando os {ANALYTICS_EVENTS_LIMIT} eventos mais recentes
+            </span>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowMetricsConfig(true)}
+          className="flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[11px] font-semibold transition hover:opacity-80"
+          style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)", color: "var(--dm-text-secondary)" }}
+        >
+          <SlidersHorizontal size={12} /> Configurar
+        </button>
+      </div>
+
+      {metaError && (
+        <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">
+          <AlertCircle size={14} className="mt-0.5 shrink-0" /> {metaError}
+        </div>
+      )}
+
+      {/* ── Grid dinâmico ── */}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+        {metricsOrder.map((id) => {
+          const card = getMetricCard(id);
+          if (!card) return null;
+          return (
+            <div key={id} className="rounded-xl border p-4" style={{
+              borderColor: card.featured ? "#16A34A" : "var(--dm-border-default)",
+              backgroundColor: card.featured ? "rgba(22,163,74,0.06)" : "var(--dm-bg-surface)",
+            }}>
+              <div className="flex items-center gap-1.5 mb-1.5">
+                {card.dot && <span className="h-1.5 w-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: card.dot }} />}
+                <p className="text-[10px] uppercase tracking-wide font-semibold leading-tight" style={{ color: "var(--dm-text-tertiary)" }}>{card.label}</p>
+              </div>
+              <p className="text-xl font-bold leading-none" style={{ color: card.featured ? "#16A34A" : "var(--dm-text-primary)" }}>{card.value}</p>
+              {card.sub && <p className="mt-1 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>{card.sub}</p>}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── Config modal ── */}
+      {showMetricsConfig && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setShowMetricsConfig(false)}>
+          <div className="flex w-full max-w-lg flex-col overflow-hidden rounded-[20px] shadow-horizon"
+            style={{ backgroundColor: "var(--dm-bg-surface)", border: "1px solid var(--dm-border-default)", maxHeight: "85vh" }}
+            onClick={(e) => e.stopPropagation()}>
+            <div className="h-1.5 w-full flex-shrink-0" style={{ background: "linear-gradient(135deg,#16A34A 0%,#15803D 100%)" }} />
+            <div className="flex flex-shrink-0 items-center justify-between px-6 py-4"
+              style={{ borderBottom: "1px solid var(--dm-border-default)" }}>
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-[10px]"
+                  style={{ background: "linear-gradient(135deg,#16A34A 0%,#15803D 100%)" }}>
+                  <SlidersHorizontal size={15} className="text-white" />
+                </div>
+                <div>
+                  <h2 className="text-[15px] font-bold" style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins),Poppins,sans-serif" }}>
+                    Métricas do Analytics
+                  </h2>
+                  <p className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                    {metricsOrder.length} de {ANALYTICS_METRIC_DEFS.length} · arraste para reordenar
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => setShowMetricsConfig(false)}
+                className="flex h-8 w-8 items-center justify-center rounded-full transition hover:opacity-70"
+                style={{ backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)" }}>
+                <X size={15} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+              {/* Ativas — drag para reordenar */}
+              {metricsOrder.length > 0 && (
+                <div>
+                  <p className="mb-2 text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>
+                    Ativas · arraste para reordenar
+                  </p>
+                  <div className="flex flex-col gap-1">
+                    {metricsOrder.map((id) => {
+                      const def = ANALYTICS_METRIC_DEFS.find((d) => d.id === id)!;
+                      const isOver = dragOverMetric === id;
+                      return (
+                        <div key={id}
+                          draggable
+                          onDragStart={() => { dragMetricRef.current = id; }}
+                          onDragOver={(e) => { e.preventDefault(); setDragOverMetric(id); }}
+                          onDragLeave={() => setDragOverMetric(null)}
+                          onDrop={() => handleMetricDrop(id)}
+                          onDragEnd={() => { dragMetricRef.current = null; setDragOverMetric(null); }}
+                          className="flex cursor-grab items-center justify-between gap-3 rounded-[10px] border px-3 py-2 transition-all active:cursor-grabbing"
+                          style={{
+                            borderColor: isOver ? "#16A34A" : "rgba(22,163,74,0.30)",
+                            background: isOver ? "rgba(22,163,74,0.08)" : "rgba(22,163,74,0.04)",
+                          }}>
+                          <div className="flex items-center gap-2 min-w-0">
+                            {def.dot && <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: def.dot }} />}
+                            <span className="text-[12px] font-medium truncate" style={{ color: "var(--dm-brand-500)" }}>{def.label}</span>
+                            <span className="text-[10px] flex-shrink-0" style={{ color: "var(--dm-text-tertiary)" }}>{def.group}</span>
+                          </div>
+                          <button type="button" onClick={() => toggleMetric(id)}
+                            className="flex-shrink-0 rounded-full p-0.5 transition hover:opacity-70"
+                            style={{ color: "var(--dm-text-tertiary)" }}>
+                            <X size={12} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Disponíveis — agrupadas */}
+              {(["Pixel / Eduzz", "Meta Ads", "Cruzamento"] as const).map((group) => {
+                const available = ANALYTICS_METRIC_DEFS.filter((d) => d.group === group && !metricsOrder.includes(d.id));
+                if (available.length === 0) return null;
+                return (
+                  <div key={group}>
+                    <p className="mb-2 text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>{group}</p>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {available.map((def) => (
+                        <button key={def.id} type="button" onClick={() => toggleMetric(def.id)}
+                          className="flex items-center gap-2 rounded-[10px] border px-3 py-2 text-left text-[12px] transition hover:opacity-80"
+                          style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-elevated)", color: "var(--dm-text-secondary)" }}>
+                          {def.dot && <span className="h-1.5 w-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: def.dot }} />}
+                          <span className="truncate font-medium">{def.label}</span>
+                          <Plus size={11} className="ml-auto flex-shrink-0" style={{ color: "var(--dm-text-tertiary)" }} />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Reset */}
+              <div className="flex justify-end pt-1">
+                <button type="button"
+                  onClick={() => persistMetricsOrder(ANALYTICS_DEFAULT_ORDER)}
+                  className="text-[11px] transition hover:opacity-70"
+                  style={{ color: "var(--dm-text-tertiary)" }}>
+                  Restaurar padrão
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Tracking Analytics completo (sem scorecards duplicados) ── */}
+      {trkLoading && filteredEvents.length === 0 ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 size={18} className="animate-spin" style={{ color: "var(--dm-text-tertiary)" }} />
+          <span className="ml-2 text-sm" style={{ color: "var(--dm-text-tertiary)" }}>Carregando eventos…</span>
+        </div>
+      ) : filteredEvents.length > 0 ? (
+        <TrackingAnalytics
+          visitors={analyticsVisitors}
+          events={filteredEvents}
+          eventsCapped={eventsCapped}
+          funnelHasProductNames={(linkedFunnel.productNames?.length ?? 0) > 0}
+          hideScores
+        />
+      ) : !trkLoading ? (
+        <div className="flex flex-col items-center gap-3 rounded-xl border p-8 text-center"
+          style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
+          <Activity size={18} style={{ color: "var(--dm-text-tertiary)" }} />
+          <p className="text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>Sem eventos no período</p>
+          <p className="mt-0.5 text-xs" style={{ color: "var(--dm-text-secondary)" }}>Nenhum evento do funil <strong>{linkedFunnel.label}</strong> encontrado neste intervalo de datas.</p>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 // ─── Profile Detail View ──────────────────────────────────────────────────────
 
 function ProfileDetailView({
@@ -4614,7 +4932,7 @@ function ProfileDetailView({
       <div className="flex gap-1 rounded-[14px] p-1" style={{ backgroundColor: "var(--dm-bg-elevated)" }}>
         {([
           ["overview",   "Visão Geral"],
-          ["nova",       "Nova Aba"],
+          ["nova",       linkedFunnel ? "Analytics" : "Nova Aba"],
           ...(profile.instagramUserId ? [["instagram", "Perfil Ativo"]] : []),
         ] as [string, string][]).map(([id, label]) => (
           <button key={id} type="button"
@@ -4664,16 +4982,43 @@ function ProfileDetailView({
         )
       )}
 
-      {/* ── Nova Aba — em desenvolvimento ── */}
+      {/* ── Analytics — cruzamento Meta Ads + Tracking ── */}
       {profileTab === "nova" && (
-        <div className="flex flex-col items-center gap-3 rounded-xl border p-10 text-center"
-          style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
-          <SlidersHorizontal size={20} style={{ color: "var(--dm-text-tertiary)" }} />
-          <p className="text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>Em desenvolvimento</p>
-          <p className="mt-1 text-xs" style={{ color: "var(--dm-text-secondary)" }}>
-            Essa aba ainda está sendo construída.
-          </p>
-        </div>
+        linkedFunnel && hasToken && profile.campaigns.length > 0 ? (
+          <ProfileAnalyticsPanel
+            key={`analytics-${profile.id}-${linkedFunnel.id}`}
+            adAccountId={profile.adAccountId}
+            campaigns={profile.campaigns}
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            linkedFunnel={linkedFunnel}
+            companyId={companyId ?? ""}
+          />
+        ) : !linkedFunnel ? (
+          <div className="flex flex-col items-center gap-3 rounded-xl border p-10 text-center"
+            style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
+            <Activity size={20} style={{ color: "var(--dm-text-tertiary)" }} />
+            <p className="text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>Selecione um Funil</p>
+            <p className="mt-1 text-xs" style={{ color: "var(--dm-text-secondary)" }}>
+              Escolha um funil de tracking acima para ativar o Analytics cruzado.
+            </p>
+          </div>
+        ) : !hasToken ? (
+          <div className="flex flex-col items-center gap-3 rounded-xl border p-8 text-center"
+            style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
+            <Key size={20} className="text-amber-500" />
+            <div>
+              <p className="text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>Token não configurado</p>
+              <p className="mt-1 text-xs" style={{ color: "var(--dm-text-secondary)" }}>Configure em Importar dados → Meta Ads API</p>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center gap-3 rounded-xl border p-10 text-center"
+            style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
+            <RefreshCw size={20} style={{ color: "var(--dm-text-tertiary)" }} />
+            <p className="text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>Nenhuma campanha adicionada</p>
+          </div>
+        )
       )}
 
       {/* ── Perfil Ativo ── */}
