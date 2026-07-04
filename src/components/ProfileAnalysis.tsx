@@ -1595,10 +1595,8 @@ function ProfileOverviewPanel({
       const stored = JSON.parse(localStorage.getItem(KPI_CONFIG_KEY) ?? "{}") as Record<string, { order?: string[] }>;
       const saved = stored[profileId]?.order;
       if (!saved) return template.kpis.map(k => k.id);
-      // Permite qualquer KPI do catálogo. Adiciona novos KPIs do template que ainda não existem.
-      const valid = saved.filter(id => ALL_KPI_OPTIONS.some(k => k.id === id));
-      const newFromTemplate = template.kpis.map(k => k.id).filter(id => !valid.includes(id));
-      return [...valid, ...newFromTemplate];
+      // Usa exatamente o que o usuário salvou — não re-adiciona KPIs removidos
+      return saved.filter(id => ALL_KPI_OPTIONS.some(k => k.id === id));
     } catch { return template.kpis.map(k => k.id); }
   });
   const [showKpiPanel, setShowKpiPanel]   = useState(false);
@@ -1681,11 +1679,7 @@ function ProfileOverviewPanel({
   useEffect(() => {
     if (prevTemplateIdRef.current === template.id) return;
     prevTemplateIdRef.current = template.id;
-    setKpiOrder((prev) => {
-      const valid = prev.filter(id => ALL_KPI_OPTIONS.some(k => k.id === id));
-      const newFromTemplate = template.kpis.map(k => k.id).filter(id => !valid.includes(id));
-      return [...valid, ...newFromTemplate];
-    });
+    setKpiOrder((prev) => prev.filter(id => ALL_KPI_OPTIONS.some(k => k.id === id)));
   }, [template.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Fetch at campaign level (one row per campaign — fixes duplicate bug) ──

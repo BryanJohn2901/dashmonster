@@ -19,6 +19,8 @@ const BRAND_GRAD  = "linear-gradient(135deg,#16A34A 0%,#15803D 100%)";
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
+type BreakdownView = "campaign" | "adset" | "ad";
+
 export interface CampaignRow {
   id: string;
   name: string;
@@ -29,6 +31,7 @@ interface TableConfig {
   cols: string[];
   custom: CustomMetric[];
   sort: { col: string; dir: "asc" | "desc" } | null;
+  view?: BreakdownView;
 }
 
 interface ResolvedMetric {
@@ -54,8 +57,10 @@ const ALLOWED_FORMULA_IDS = new Set(ALL_KPI_OPTIONS.map((k) => k.id));
 
 // ─── Persistência ───────────────────────────────────────────────────────────
 
+const VALID_VIEWS = new Set<BreakdownView>(["campaign", "adset", "ad"]);
+
 function loadConfig(profileId: string): TableConfig {
-  const fallback: TableConfig = { cols: DEFAULT_COLS, custom: [], sort: null };
+  const fallback: TableConfig = { cols: DEFAULT_COLS, custom: [], sort: null, view: "campaign" };
   if (typeof window === "undefined") return fallback;
   try {
     const stored = JSON.parse(localStorage.getItem(TABLE_CONFIG_KEY) ?? "{}") as Record<string, Partial<TableConfig>>;
@@ -68,6 +73,7 @@ function loadConfig(profileId: string): TableConfig {
       cols: cols.length > 0 ? cols : DEFAULT_COLS,
       custom,
       sort: saved.sort ?? null,
+      view: saved.view && VALID_VIEWS.has(saved.view) ? saved.view : "campaign",
     };
   } catch {
     return fallback;
@@ -75,8 +81,6 @@ function loadConfig(profileId: string): TableConfig {
 }
 
 // ─── Componente ───────────────────────────────────────────────────────────────
-
-type BreakdownView = "campaign" | "adset" | "ad";
 
 const VIEW_OPTIONS: { value: BreakdownView; label: string; labelPlural: string }[] = [
   { value: "campaign", label: "Campanha",            labelPlural: "campanhas" },
@@ -102,17 +106,9 @@ export function CampaignMetricsTable({
   onCampaignDrillDown?: (id: string, name: string) => void;
   onAdsetDrillDown?: (id: string, name: string) => void;
 }) {
-  const [view, setView] = useState<BreakdownView>("campaign");
-  const [page, setPage] = useState(1);
-
-  const changeView = (v: BreakdownView) => {
-    setView(v);
-    onViewChange?.(v);
-  };
-
-  useEffect(() => setPage(1), [view]);
   const [config, setConfig] = useState<TableConfig>(() => loadConfig(profileId));
-  const { cols, custom, sort } = config;
+  const [view, setView] = useState<BreakdownView>(() => config.view ?? "campaign");
+  const [page, setPage] = useState(1);
 
   const persist = (next: TableConfig) => {
     setConfig(next);
@@ -121,6 +117,15 @@ export function CampaignMetricsTable({
       localStorage.setItem(TABLE_CONFIG_KEY, JSON.stringify({ ...stored, [profileId]: next }));
     } catch {}
   };
+
+  const changeView = (v: BreakdownView) => {
+    setView(v);
+    onViewChange?.(v);
+    persist({ ...config, view: v });
+  };
+
+  useEffect(() => setPage(1), [view]);
+  const { cols, custom, sort } = config;
 
   // ── Resolução de métricas (built-in + custom) ──────────────────────────────
   const metricById = useMemo(() => {
