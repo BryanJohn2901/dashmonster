@@ -542,6 +542,25 @@ export default function Home() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Retorno do OAuth de Ads (?meta_oauth=...): mostra o resultado e limpa a URL.
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const status = params.get("meta_oauth");
+      if (!status) return;
+      if (status === "connected") {
+        const count = params.get("count");
+        toast.success(`Facebook conectado! Token de anúncios atualizado em ${count ?? "todas as"} empresa(s).`);
+      } else {
+        toast.error(params.get("reason") ?? "Falha na conexão com o Facebook.");
+      }
+      params.delete("meta_oauth"); params.delete("count"); params.delete("reason");
+      const qs = params.toString();
+      window.history.replaceState({}, "", window.location.pathname + (qs ? `?${qs}` : ""));
+    } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Empresa ativa (multi-empresa / super admin) — usada para recarregar ao trocar.
   const { companyId: activeCompanyId, memberships, loading: companyLoading, switchCompany } = useCompany();
   const companyLoadedRef = useRef<string | null>(null);
