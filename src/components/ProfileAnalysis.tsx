@@ -1362,14 +1362,19 @@ function ProfileOverviewPanel({
           .or("sale_confirmed.is.null,sale_confirmed.eq.true");
         if (!alive || !data) return;
 
-        // Agrega por produto: vendas únicas (fingerprint distinct), receita, e por dia
+        // Agrega por produto: vendas únicas (fingerprint distinct), receita, e por dia.
+        // Dia calculado no fuso LOCAL — created_at é UTC; slice(0,10) usaria o dia UTC,
+        // que diverge do dia local perto da virada (evento às 22h em Brasília cairia
+        // no "dia seguinte" em UTC), desalinhando a sparkline do período exibido.
         const byProduct: Record<string, { fps: Set<string>; rev: number; byDay: Record<string, {fps: Set<string>; rev: number}> }> = {};
         for (const row of data) {
           const pid = (row.product_parent_id as string) || "";
           const fp  = (row.fingerprint_id as string) || "";
           const val = (row.value as number) ?? 0;
-          const day = (row.created_at as string || "").slice(0, 10); // "YYYY-MM-DD"
-          if (!pid) continue;
+          const createdAt = (row.created_at as string) || "";
+          if (!pid || !createdAt) continue;
+          const dt = new Date(createdAt);
+          const day = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
           if (!byProduct[pid]) byProduct[pid] = { fps: new Set(), rev: 0, byDay: {} };
           byProduct[pid].fps.add(fp);
           byProduct[pid].rev += val;
@@ -1378,11 +1383,16 @@ function ProfileOverviewPanel({
           byProduct[pid].byDay[day].rev += val;
         }
 
-        // Gera série diária alinhada ao período (gaps = 0)
+        // Gera série diária alinhada ao período (gaps = 0), também em horário local.
         const days: string[] = [];
-        const d = new Date(`${dateFrom}T12:00:00`);
-        const end = new Date(`${dateTo}T12:00:00`);
-        while (d <= end) { days.push(d.toISOString().slice(0, 10)); d.setDate(d.getDate() + 1); }
+        const [fy, fm, fd] = dateFrom.split("-").map(Number);
+        const [ty, tm, td] = dateTo.split("-").map(Number);
+        const d = new Date(fy!, fm! - 1, fd!);
+        const end = new Date(ty!, tm! - 1, td!);
+        while (d <= end) {
+          days.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
+          d.setDate(d.getDate() + 1);
+        }
 
         const stats: Record<string, EduzzKpiStats> = {};
         for (const [kpiId, parentId] of Object.entries(productLinks)) {
@@ -4133,7 +4143,8 @@ const ANALYTICS_EVENTS_SELECT =
   "payment_method, installments, installment_number, installment_value, recurrence_key, product_name, " +
   "product_parent_id, is_order_bump, main_sale_transaction_id, client_user_agent, via, pixel_id, capi_status, capi_error, created_at";
 
-const ANALYTICS_EVENTS_LIMIT = 1000;
+const ANALYTICS_EVENTS_PAGE_SIZE = 1000;
+const ANALYTICS_EVENTS_LIMIT = 10000; // teto de segurança (paginado)
 const ANALYTICS_METRICS_LS_KEY = "pta_analytics_metrics_v1";
 
 const ANALYTICS_METRIC_DEFS = [
@@ -4209,18 +4220,26 @@ function ProfileAnalyticsPanel({
     setTrkLoading(true);
     void (async () => {
       try {
-        const { data } = await supabaseClient
-          .from("events_log")
-          .select(ANALYTICS_EVENTS_SELECT)
-          .eq("company_id", companyId)
-          .or("sale_confirmed.is.null,sale_confirmed.eq.true")
-          .neq("event_name", "Renewal")
-          .gte("created_at", new Date(`${dateFrom}T00:00:00`).toISOString())
-          .lte("created_at", new Date(`${dateTo}T23:59:59.999`).toISOString())
-          .order("created_at", { ascending: false })
-          .limit(ANALYTICS_EVENTS_LIMIT);
+        // Pagina em ordem cronológica para cobrir o período inteiro (não só os eventos
+        // mais recentes) — evita que o gráfico "Linha do tempo" fique truncado em
+        // contas com muitos eventos brutos (pageview/scroll etc).
+        const rows: TrackingEvent[] = [];
+        for (let offset = 0; offset < ANALYTICS_EVENTS_LIMIT; offset += ANALYTICS_EVENTS_PAGE_SIZE) {
+          const { data } = await supabaseClient
+            .from("events_log")
+            .select(ANALYTICS_EVENTS_SELECT)
+            .eq("company_id", companyId)
+            .or("sale_confirmed.is.null,sale_confirmed.eq.true")
+            .neq("event_name", "Renewal")
+            .gte("created_at", new Date(`${dateFrom}T00:00:00`).toISOString())
+            .lte("created_at", new Date(`${dateTo}T23:59:59.999`).toISOString())
+            .order("created_at", { ascending: true })
+            .range(offset, offset + ANALYTICS_EVENTS_PAGE_SIZE - 1);
+          const page = (data ?? []) as unknown as TrackingEvent[];
+          rows.push(...page);
+          if (page.length < ANALYTICS_EVENTS_PAGE_SIZE) break;
+        }
         if (!alive) return;
-        const rows = (data ?? []) as unknown as TrackingEvent[];
         setAllEvents(rows);
         setEventsCapped(rows.length >= ANALYTICS_EVENTS_LIMIT);
       } catch {

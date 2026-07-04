@@ -47,11 +47,14 @@ export function useChartTheme() {
   };
 }
 
-// Short "DD/MM" date label — no rotation needed
+// Short "DD/MM" date label — no rotation needed.
+// Datas vêm como "YYYY-MM-DD" (calendário puro, sem hora). `new Date(...)` parseia
+// isso como UTC-midnight; ler com getDate()/getMonth() (locais) desloca o rótulo em
+// -1 dia para fusos atrás de UTC (ex: Brasil). Usa getters UTC para preservar o dia exato.
 export function shortDate(v: string): string {
   const d = new Date(String(v));
   if (isNaN(d.getTime())) return String(v);
-  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
+  return `${String(d.getUTCDate()).padStart(2, "0")}/${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
 // Smart interval: target ≤ 8 visible ticks

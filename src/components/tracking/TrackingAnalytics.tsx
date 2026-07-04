@@ -292,13 +292,22 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
   }, [visitors, events]);
 
   // ── Timeline ────────────────────────────────────────────────────────────────
+  // Agrupa por dia no fuso LOCAL do navegador — created_at é UTC; extrair a data
+  // via slice(0,10) usaria o dia UTC, que diverge do dia local perto da virada
+  // (ex: evento às 22h em Brasília vira "dia seguinte" em UTC). O filtro de
+  // período (dateFrom/dateTo) já opera em horário local, então o bucket precisa
+  // seguir a mesma convenção para os totais baterem com o período exibido.
+  const localDateKey = (iso: string) => {
+    const d = new Date(iso);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
   const timeline = useMemo(() => {
     const ev = new Map<string, number>();
     const us = new Map<string, Set<string>>();
     const ld = new Map<string, number>();
     const sl = new Map<string, number>();
     for (const e of events) {
-      const d = e.created_at.slice(0, 10);
+      const d = localDateKey(e.created_at);
       ev.set(d, (ev.get(d) ?? 0) + 1);
       if (!us.has(d)) us.set(d, new Set());
       us.get(d)!.add(e.fingerprint_id);
@@ -308,12 +317,14 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
     const days = [...ev.keys()].sort();
     if (days.length === 0) return [];
     const out: { date: string; events: number; users: number; leads: number; sales: number }[] = [];
-    const cur = new Date(`${days[0]}T00:00:00Z`);
-    const end = new Date(`${days[days.length - 1]}T00:00:00Z`);
+    const [y0, m0, d0] = days[0]!.split("-").map(Number);
+    const [y1, m1, d1] = days[days.length - 1]!.split("-").map(Number);
+    const cur = new Date(y0!, m0! - 1, d0!);
+    const end = new Date(y1!, m1! - 1, d1!);
     while (cur <= end) {
-      const d = cur.toISOString().slice(0, 10);
+      const d = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, "0")}-${String(cur.getDate()).padStart(2, "0")}`;
       out.push({ date: d, events: ev.get(d) ?? 0, users: us.get(d)?.size ?? 0, leads: ld.get(d) ?? 0, sales: sl.get(d) ?? 0 });
-      cur.setUTCDate(cur.getUTCDate() + 1);
+      cur.setDate(cur.getDate() + 1);
     }
     return out;
   }, [events]);
