@@ -15,6 +15,7 @@ import {
 import { PRODUCTS } from "@/config/products";
 import { useDevMode } from "@/hooks/useDevMode";
 import { toast } from "@/hooks/useToast";
+import { authedFetch } from "@/lib/authedFetch";
 import { readCustomHistoryTabs } from "@/types/historical";
 import {
   IdentidadeSection, ConexaoSection, ContasSection, HistoricoSection, TrackingSection, EquipeSection,
@@ -683,7 +684,7 @@ function EmpresaSections({ nav, categories, onCategoriesChange }: { nav: NavId; 
       case "conexao":
         return (
           <div className="space-y-3">
-            <FacebookConnectShell />
+            <FacebookConnectShell connected={Boolean(token.trim())} />
             <ConexaoSection company={company} canEdit={isOwner} token={token} onToken={setToken} open onToggle={noop} variant="panel" />
           </div>
         );
@@ -889,10 +890,26 @@ function FiltrosEditor({ categories, canEdit, onChange }: {
 }
 
 // ─── Conexão do app (Facebook) — GLOBAL, vale pra todas as empresas ─────────────
-// Shell de UI. O fluxo OAuth real (Facebook Login → token do app → puxar contas
-// de anúncio + Instagram via Graph API) liga no ambiente com o Meta app.
-function FacebookConnectShell() {
-  const soon = () => toast.success("Conexão real do Facebook liga no ambiente com o Meta app configurado.");
+// Fluxo OAuth real: POST /api/meta/oauth/start (autenticado) devolve a URL do
+// diálogo de login do Facebook; o callback grava o token longo nas empresas.
+function FacebookConnectShell({ connected }: { connected?: boolean }) {
+  const [busy, setBusy] = useState(false);
+  const connect = async () => {
+    setBusy(true);
+    try {
+      const res = await authedFetch("/api/meta/oauth/start", { method: "POST" });
+      const json = (await res.json()) as { url?: string; error?: string };
+      if (!res.ok || !json.url) {
+        toast.error(json.error ?? "Falha ao iniciar a conexão com o Facebook.");
+        setBusy(false);
+        return;
+      }
+      window.location.assign(json.url);
+    } catch {
+      toast.error("Falha de rede ao iniciar a conexão com o Facebook.");
+      setBusy(false);
+    }
+  };
   return (
     <div className="rounded-2xl border p-5" style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)" }}>
       <div className="mb-3 flex items-center gap-3">
@@ -906,14 +923,21 @@ function FacebookConnectShell() {
           </div>
           <p className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>Conecta 1x e o token vale pra todas as empresas.</p>
         </div>
-        <span className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold" style={{ background: "rgba(244,166,13,0.14)", color: "#F4A60D" }}>
-          Não conectado
-        </span>
+        {connected ? (
+          <span className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold" style={{ background: "rgba(34,197,94,0.14)", color: "#22C55E" }}>
+            Conectado
+          </span>
+        ) : (
+          <span className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold" style={{ background: "rgba(244,166,13,0.14)", color: "#F4A60D" }}>
+            Não conectado
+          </span>
+        )}
       </div>
-      <button type="button" onClick={soon}
-        className="flex h-10 w-full items-center justify-center gap-2 rounded-xl text-xs font-bold text-white transition hover:opacity-90"
+      <button type="button" onClick={() => void connect()} disabled={busy}
+        className="flex h-10 w-full items-center justify-center gap-2 rounded-xl text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-60"
         style={{ background: "#1877F2" }}>
-        <FacebookIcon light /> Conectar Facebook
+        {busy ? <Loader2 size={14} className="animate-spin" /> : <FacebookIcon light />}
+        {busy ? "Abrindo o Facebook…" : connected ? "Reconectar Facebook" : "Conectar Facebook"}
       </button>
       <p className="mt-3 rounded-lg border p-2.5 text-[11px] leading-relaxed" style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-tertiary)" }}>
         Um app conecta <strong style={{ color: "var(--dm-text-secondary)" }}>todas</strong> as contas de anúncio e Instagram. O token é o mesmo pra todo mundo —

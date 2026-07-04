@@ -14,6 +14,13 @@ export const IG_OAUTH_SCOPES = [
   "business_management",
 ] as const;
 
+// Escopos do OAuth de Ads (botão "Conectar Facebook" — token global do app).
+export const ADS_OAUTH_SCOPES = [
+  "ads_read",
+  "ads_management",
+  "business_management",
+] as const;
+
 /** Monta uma URL do Graph API com query string. */
 export function graphUrl(path: string, params: Record<string, string>): string {
   const clean = path.startsWith("/") ? path.slice(1) : path;
@@ -31,6 +38,14 @@ export function oauthRedirectUri(): string {
   return (
     process.env.META_OAUTH_REDIRECT_URI ??
     `${appBaseUrl()}/api/instagram/oauth/callback`
+  );
+}
+
+/** URI de callback do OAuth de Ads — env explícita ou deriva de NEXT_PUBLIC_APP_URL. */
+export function adsOauthRedirectUri(): string {
+  return (
+    process.env.META_ADS_OAUTH_REDIRECT_URI ??
+    `${appBaseUrl()}/api/meta/oauth/callback`
   );
 }
 
