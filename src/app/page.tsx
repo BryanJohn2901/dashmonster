@@ -15,6 +15,7 @@ import { CampaignData } from "@/types/campaign";
 import { getCompanyDataset, seedDemoData } from "@/utils/mockData";
 import { fetchCampaignSheetData, parseCampaignCsvFile } from "@/utils/googleSheets";
 import { isSupabaseConfigured, supabaseClient } from "@/lib/supabase";
+import { authedFetch } from "@/lib/authedFetch";
 import {
   fetchSharedDataSource,
   fetchSupabaseCampaigns,
@@ -519,6 +520,23 @@ export default function Home() {
   useEffect(() => {
     if (syncStatus.error) toast.error(syncStatus.error);
   }, [syncStatus.error]);
+
+  // Auditoria: grava 1 evento de login por sessão do browser (Painel Admin).
+  useEffect(() => {
+    if (!session) return;
+    try {
+      if (sessionStorage.getItem("dm_login_logged_v1") === "1") return;
+      sessionStorage.setItem("dm_login_logged_v1", "1");
+    } catch {}
+    void authedFetch("/api/auth/login-event", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: session.user?.email ?? "",
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      }),
+    }).catch(() => {});
+  }, [session]);
 
   // Modo dev sem Supabase — onboarding na primeira visita (o seed por empresa
   // é feito no effect dedicado abaixo, que reage à empresa ativa).
