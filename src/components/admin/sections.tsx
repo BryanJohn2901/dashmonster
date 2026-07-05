@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import {
   fetchCompanyMembers, updateMemberRole, removeMember, renameCompany, setCompanyProducts,
-  fetchCompanyToken, setCompanyToken, inviteMemberByEmail, fetchCompanyAdAccounts,
+  fetchCompanyToken, setCompanyToken, inviteMemberByEmail, sendInviteEmail, fetchCompanyAdAccounts,
   readAdAccountSuggestions, saveAdAccountSuggestions, updateCompanySettings,
   fetchCompanyInvites, revokeCompanyInvite, type PendingInvite,
   readMemberProducts, MEMBER_PRODUCTS_KEY,
@@ -836,16 +836,21 @@ export function ConvitesSection({ selected, reload }: ScopedProps) {
     const role = INVITE_ROLES.find((r) => r.id === roleId)!;
     setSending(true);
     try {
-      const result = await inviteMemberByEmail(selected.company.id, email.trim(), role.db);
+      await inviteMemberByEmail(selected.company.id, email.trim(), role.db);
       // Título "de RH" (Analista, Designer…) fica em settings.memberTitles.
       const titles = readMemberTitles(selected.company.settings);
       await updateCompanySettings(selected.company.id, {
         ...selected.company.settings,
         [MEMBER_TITLES_KEY]: { ...titles, [email.trim().toLowerCase()]: role.label },
       }).catch(() => {});
-      setSent((prev) => [{ email: email.trim(), label: role.label, result }, ...prev]);
+      // E-mail de verdade (magic link do Supabase) — a pessoa clica e cai
+      // autenticada em /aceitar-convite, vendo o convite pra aceitar/recusar.
+      await sendInviteEmail(email.trim()).catch((e) => {
+        toast.error(e instanceof Error ? `Convite criado, mas o e-mail falhou: ${e.message}` : "Convite criado, mas o e-mail falhou ao enviar.");
+      });
+      setSent((prev) => [{ email: email.trim(), label: role.label, result: "invited" }, ...prev]);
       setEmail("");
-      toast.success(result === "added" ? "Já tinha conta — virou membro na hora." : "Convite criado. Ativa quando a pessoa se cadastrar no hub.");
+      toast.success("Convite enviado por e-mail. A pessoa precisa aceitar em /aceitar-convite.");
       await Promise.all([reload(), loadPending(selected.company.id)]);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro ao convidar.");
@@ -857,8 +862,9 @@ export function ConvitesSection({ selected, reload }: ScopedProps) {
       <SectionHeader icon={Mail} title="Convites" desc={`Convidar pessoas para ${selected.company.name}`} />
       <Card>
         <p className="mb-3 text-[12px] leading-relaxed" style={{ color: "var(--dm-text-tertiary)" }}>
-          Já tem conta no Monster Hub → vira membro na hora. Ainda não tem → o convite fica pendente
-          e ativa sozinho quando a pessoa criar a conta com este e-mail.
+          Manda um e-mail de verdade (magic link) pra pessoa, com ou sem conta no Monster Hub.
+          Ela clica, entra logada e precisa <strong>aceitar</strong> o convite em /aceitar-convite —
+          nada acontece sozinho.
         </p>
         <div className="flex flex-col gap-2 sm:flex-row">
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}

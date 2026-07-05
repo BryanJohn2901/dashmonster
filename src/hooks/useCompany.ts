@@ -1084,6 +1084,53 @@ export async function revokeCompanyInvite(inviteId: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+/**
+ * Manda o e-mail de convite de verdade — sem depender de nenhum serviço de
+ * e-mail próprio: um magic link do Supabase Auth (template "Magic Link"),
+ * que funciona tanto pra quem já tem conta quanto pra quem ainda não tem
+ * (`shouldCreateUser: true`). Ao clicar, a pessoa cai autenticada direto em
+ * /aceitar-convite e vê o convite pendente (migration 077).
+ *
+ * ponytail: usa o e-mail padrão do Supabase (grátis, mas limitado a poucas
+ * dezenas por hora). Se o volume de convites crescer, configurar SMTP
+ * próprio em Supabase → Settings → Auth → SMTP Settings.
+ */
+export async function sendInviteEmail(email: string): Promise<void> {
+  if (!supabaseClient) throw new Error("Supabase não configurado.");
+  const redirectTo = typeof window !== "undefined" ? `${window.location.origin}/aceitar-convite` : undefined;
+  const { error } = await supabaseClient.auth.signInWithOtp({
+    email: email.trim().toLowerCase(),
+    options: { shouldCreateUser: true, emailRedirectTo: redirectTo },
+  });
+  if (error) throw new Error(error.message);
+}
+
+// ─── Aceitar/recusar convite (tela /aceitar-convite) ───────────────────────────
+
+export interface MyPendingInvite { id: string; companyId: string; companyName: string; role: CompanyRole; createdAt: string }
+
+/** Convites pendentes endereçados ao e-mail do usuário LOGADO (migration 077). */
+export async function fetchMyPendingInvites(): Promise<MyPendingInvite[]> {
+  if (!supabaseClient) return [];
+  const { data, error } = await supabaseClient.rpc("fetch_my_pending_invites");
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as Array<{ id: string; company_id: string; company_name: string; role: string; created_at: string }>)
+    .map((r) => ({ id: r.id, companyId: r.company_id, companyName: r.company_name, role: r.role as CompanyRole, createdAt: r.created_at }));
+}
+
+export async function acceptCompanyInvite(inviteId: string): Promise<void> {
+  if (!supabaseClient) throw new Error("Supabase não configurado.");
+  const { error } = await supabaseClient.rpc("accept_company_invite", { p_invite_id: inviteId });
+  if (error) throw new Error(error.message);
+  await refreshCompany();
+}
+
+export async function declineCompanyInvite(inviteId: string): Promise<void> {
+  if (!supabaseClient) throw new Error("Supabase não configurado.");
+  const { error } = await supabaseClient.rpc("decline_company_invite", { p_invite_id: inviteId });
+  if (error) throw new Error(error.message);
+}
+
 export type InviteResult = "added" | "invited";
 
 /**

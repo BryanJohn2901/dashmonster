@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "@/hooks/useToast";
-import { useCompany, memberAllowedProducts, readCompanyBranding } from "@/hooks/useCompany";
+import { useCompany, memberAllowedProducts, readCompanyBranding, fetchMyPendingInvites } from "@/hooks/useCompany";
+import { AcceptInviteScreen } from "@/components/AcceptInviteScreen";
 import { RealtimeChannel, Session } from "@supabase/supabase-js";
 import { Dashboard } from "@/components/Dashboard";
 import { ControlPanel, type CPTab } from "@/components/ControlPanel";
@@ -624,6 +625,15 @@ export default function Home() {
     try { return sessionStorage.getItem(PRODUCT_CHOSEN_KEY) === "1"; } catch { return false; }
   });
 
+  // Gate de convites pendentes (tela de aceitar), 1x por sessão — checa antes
+  // do seletor de empresa, já que aceitar um convite pode adicionar empresa nova.
+  const INVITE_GATE_KEY = "dm_invite_gate_v1";
+  const [inviteGateDone, setInviteGateDone] = useState<boolean>(() => {
+    try { return sessionStorage.getItem(INVITE_GATE_KEY) === "1"; } catch { return false; }
+  });
+  const [hasPendingInvites, setHasPendingInvites] = useState<boolean | null>(null);
+  const inviteCheckedRef = useRef(false);
+
   useEffect(() => {
     if (!session?.user.id || !isSupabaseConfigured) {
       closeRealtimeChannels();
@@ -763,6 +773,15 @@ export default function Home() {
 
   const devBypass = process.env.NODE_ENV === "development" && !isSupabaseConfigured;
 
+  // Checa convites pendentes 1x por sessão, assim que o login é confirmado.
+  useEffect(() => {
+    if (!session || devBypass || !isSupabaseConfigured || inviteGateDone || inviteCheckedRef.current) return;
+    inviteCheckedRef.current = true;
+    void fetchMyPendingInvites()
+      .then((list) => setHasPendingInvites(list.length > 0))
+      .catch(() => setHasPendingInvites(false));
+  }, [session, devBypass, inviteGateDone]);
+
   if (isSupabaseConfigured && !authReady) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-slate-50 dark:bg-[#0C0C0C] px-4">
@@ -789,6 +808,26 @@ export default function Home() {
     email: devBypass ? "dev@preview.local" : (session?.user.email ?? ""),
     name:  devBypass ? "Dev Preview" : String(session?.user.user_metadata?.full_name ?? "").trim(),
   };
+
+  // ── Convites pendentes: aceitar/recusar antes de escolher empresa ─────────────
+  if (session && isSupabaseConfigured && !devBypass && !inviteGateDone) {
+    if (hasPendingInvites === null) {
+      return (
+        <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-slate-50 dark:bg-[#0C0C0C] px-4">
+          <div className="h-9 w-9 animate-spin rounded-full border-2 border-[#16A34A] border-t-transparent" aria-hidden />
+          <p className="text-sm text-slate-600 dark:text-slate-400">Verificando convites…</p>
+        </div>
+      );
+    }
+    if (hasPendingInvites) {
+      return (
+        <AcceptInviteScreen onDone={() => {
+          try { sessionStorage.setItem(INVITE_GATE_KEY, "1"); } catch {}
+          setInviteGateDone(true);
+        }} />
+      );
+    }
+  }
 
   // ── Seletor de empresa pós-login (só com 2+ empresas, 1x por sessão) ──────────
   if (session && isSupabaseConfigured && !devBypass) {
