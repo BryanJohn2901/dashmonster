@@ -1,0 +1,279 @@
+/* ── PipeFlow (port fiel) — tokens e base escopados em .pf-app ────────────────
+   Copiado de pipeflow-crm/app/globals.css; triplets HSL viraram hsl() completos
+   porque as utilities TW4 recebem o var pronto (ver @theme inline no globals). */
+
+@import "tw-animate-css";
+
+.pf-app {
+  color-scheme: dark;
+
+  /* ── Design Tokens ── */
+  --color-bunker: #0B0D11;
+  --color-ebony: #222A31;
+  --color-slate: #7B8793;
+  --color-geyser: #D8DEE3;
+  --color-canary: #c6f432;
+  --color-tidal: #E8FEAE;
+
+  --color-background: #0B0D11;
+  --color-background-soft: #11151A;
+  --color-surface: #151A20;
+  --color-surface-elevated: #1B222A;
+  --color-surface-strong: #222A31;
+
+  --color-border-subtle: rgba(216, 222, 227, 0.06);
+  --color-border-default: rgba(216, 222, 227, 0.10);
+  --color-border-strong: rgba(216, 222, 227, 0.20);
+
+  --color-text-primary: #F7F9FA;
+  --color-text-secondary: #D8DEE3;
+  --color-text-muted: #7B8793;
+  --color-text-disabled: rgba(123, 135, 147, 0.55);
+  --color-text-inverse: #0B0D11;
+
+  --color-primary: #c6f432;
+  --color-primary-hover: #B6E02E;
+  --color-primary-active: #A8CF2A;
+  --color-primary-soft: rgba(198, 244, 50, 0.10);
+  --color-primary-border: rgba(198, 244, 50, 0.28);
+
+  --color-success: #80ED99;
+  --color-success-soft: rgba(128, 237, 153, 0.10);
+  --color-warning: #FFD166;
+  --color-warning-soft: rgba(255, 209, 102, 0.10);
+  --color-danger: #FF6B6B;
+  --color-danger-soft: rgba(255, 107, 107, 0.10);
+  --color-info: #7DD3FC;
+  --color-info-soft: rgba(125, 211, 252, 0.10);
+
+  /* ── shadcn tokens (consumidos pelo @theme inline do globals.css) ── */
+  --background: hsl(220 21% 4%);
+  --foreground: hsl(210 17% 95%);
+  --pf-card: hsl(214 17% 10%);
+  --pf-card-foreground: hsl(210 17% 95%);
+  --pf-popover: hsl(215 17% 11%);
+  --pf-popover-foreground: hsl(210 17% 95%);
+  --pf-primary: hsl(77 100% 71%);
+  --pf-primary-foreground: hsl(220 21% 5%);
+  --pf-secondary: hsl(214 17% 13%);
+  --pf-secondary-foreground: hsl(207 17% 87%);
+  --pf-muted: hsl(214 17% 13%);
+  --pf-muted-foreground: hsl(210 11% 58%);
+  --pf-accent: hsl(74 95% 84%);
+  --pf-accent-foreground: hsl(220 21% 5%);
+  --pf-destructive: hsl(0 86% 70%);
+  --pf-destructive-foreground: hsl(220 21% 5%);
+  --pf-border: hsl(215 14% 10%);
+  --pf-input: hsl(213 16% 15%);
+  --pf-ring: hsl(77 100% 71%);
+  --pf-sidebar: hsl(220 21% 4%);
+  --pf-sidebar-foreground: hsl(207 17% 87%);
+  --pf-sidebar-primary: hsl(77 100% 71%);
+  --pf-sidebar-primary-foreground: hsl(220 21% 5%);
+  --pf-sidebar-accent: hsl(214 17% 13%);
+  --pf-sidebar-accent-foreground: hsl(207 17% 87%);
+  --pf-sidebar-border: hsl(215 14% 10%);
+  --pf-sidebar-ring: hsl(77 100% 71%);
+  --pf-chart-1: hsl(77 100% 71%);
+  --pf-chart-2: hsl(74 95% 84%);
+  --pf-chart-3: hsl(142 54% 67%);
+  --pf-chart-4: hsl(38 92% 70%);
+  --pf-chart-5: hsl(0 86% 70%);
+
+  --radius: 0.75rem;
+
+  /* ── Escala tipográfica (14px base) ── */
+  --pf-fs-xs: 12px;  --pf-lh-xs: 16px;
+  --pf-fs-sm: 13px;  --pf-lh-sm: 18px;
+  --pf-fs-base: 14px; --pf-lh-base: 20px;
+  --pf-fs-lg: 16px;  --pf-lh-lg: 24px;
+  --pf-fs-xl: 20px;  --pf-lh-xl: 28px;
+  --pf-fs-2xl: 24px; --pf-lh-2xl: 32px;
+  --pf-fs-3xl: 28px; --pf-lh-3xl: 36px;
+  --pf-fs-4xl: 32px; --pf-lh-4xl: 40px;
+
+  /* ── Raio (12px base) ── */
+  --pf-r-xs: 6px;
+  --pf-r-sm: 8px;
+  --pf-r-md: 12px;
+  --pf-r-lg: 16px;
+  --pf-r-xl: 20px;
+  --pf-r-2xl: 24px;
+
+  /* ── Density scale (default) ── */
+  --nav-h: 48px;
+  --nav-gap: 4px;
+  --nav-icon: 20px;
+  --nav-font: 14px;
+  --sidebar-w: 284px;
+  --col-w: 310px;
+  --conv-w: 330px;
+  --card-py: 14px;
+  --card-px: 16px;
+  --card-name: 14.5px;
+  --card-sub: 12px;
+  --card-tag: 11px;
+
+  /* base do original (body) */
+  background-color: var(--color-background);
+  color: hsl(210 17% 95%);
+  font-feature-settings: "rlig" 1, "calt" 1;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* `border-border` do shadcn: o original aplicava `* { @apply border-border }` */
+.pf-app *,
+.pf-app *::before,
+.pf-app *::after {
+  border-color: var(--pf-border);
+}
+
+/* `rounded` sem sufixo = 12px no original */
+.pf-app :where(.rounded) { border-radius: 12px; }
+
+html[data-density="compact"] .pf-app {
+  zoom: 0.88;
+  --nav-h: 40px;
+  --nav-gap: 2px;
+  --nav-icon: 17px;
+  --nav-font: 12px;
+  --sidebar-w: 258px;
+  --col-w: 288px;
+  --conv-w: 292px;
+  --card-py: 10px;
+  --card-px: 12px;
+  --card-name: 13px;
+  --card-sub: 11px;
+  --card-tag: 10px;
+}
+
+html[data-density="spacious"] .pf-app {
+  zoom: 1.12;
+  --nav-h: 56px;
+  --nav-gap: 6px;
+  --nav-icon: 22px;
+  --nav-font: 15px;
+  --sidebar-w: 300px;
+  --col-w: 328px;
+  --conv-w: 360px;
+  --card-py: 18px;
+  --card-px: 18px;
+  --card-name: 15.5px;
+  --card-sub: 13px;
+  --card-tag: 12px;
+}
+
+/* ── Scrollbar fina + seleção canary (escopadas) ── */
+.pf-app ::-webkit-scrollbar { width: 4px; height: 4px; }
+.pf-app ::-webkit-scrollbar-track { background: transparent; }
+.pf-app ::-webkit-scrollbar-thumb { background: rgba(216, 222, 227, 0.10); border-radius: 999px; }
+.pf-app ::-webkit-scrollbar-thumb:hover { background: rgba(216, 222, 227, 0.18); }
+.pf-app ::selection { background: rgba(198, 244, 50, 0.22); color: #F7F9FA; }
+
+.pf-app select option,
+.pf-app select optgroup {
+  background-color: #151A20;
+  color: #F7F9FA;
+}
+.pf-app select option:checked,
+.pf-app select option:hover {
+  background-color: #222A31;
+  color: #F7F9FA;
+}
+
+/* ── Utilities do original ── */
+.pf-app .text-balance { text-wrap: balance; }
+.pf-app .scrollbar-none { scrollbar-width: none; }
+.pf-app .scrollbar-none::-webkit-scrollbar { display: none; }
+
+.pf-app .surface {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border-default);
+}
+.pf-app .surface-elevated {
+  background-color: var(--color-surface-elevated);
+  border: 1px solid var(--color-border-default);
+}
+
+.pf-app .text-display {
+  font-size: 28px; line-height: 36px; font-weight: 700;
+  letter-spacing: -0.03em; color: var(--color-text-primary);
+}
+.pf-app .text-section {
+  font-size: 20px; line-height: 28px; font-weight: 600;
+  letter-spacing: -0.02em; color: var(--color-text-primary);
+}
+.pf-app .text-metric {
+  font-size: 32px; line-height: 40px; font-weight: 700;
+  letter-spacing: -0.04em; color: var(--color-text-primary);
+}
+
+.pf-app .focus-ring {
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(198, 244, 50, 0.14);
+  border-color: rgba(198, 244, 50, 0.60) !important;
+}
+
+.pf-app .card-glow { position: relative; overflow: hidden; }
+.pf-app .card-glow::before {
+  content: '';
+  position: absolute; top: 0; right: 0;
+  width: 180px; height: 180px;
+  background: radial-gradient(circle at top right, rgba(198,244,50,0.08), transparent 65%);
+  pointer-events: none;
+}
+
+/* Guard-rails de contraste do original */
+.pf-app .bg-primary.text-white,
+.pf-app .bg-canary.text-white,
+.pf-app .bg-primary .text-white,
+.pf-app .bg-canary .text-white { color: var(--pf-primary-foreground); }
+.pf-app .bg-primary svg,
+.pf-app .bg-canary svg { color: var(--pf-primary-foreground); }
+.pf-app .ui-muted-readable { color: rgba(216, 222, 227, 0.72); }
+.pf-app .ui-muted-subtle { color: rgba(216, 222, 227, 0.58); }
+
+/* Sonner */
+.cn-toast {
+  border: 1px solid rgba(216, 222, 227, 0.16) !important;
+  background: #151A20 !important;
+  color: #F7F9FA !important;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.42) !important;
+}
+.cn-toast [data-title] { color: #F7F9FA !important; font-weight: 700 !important; }
+.cn-toast [data-description] { color: #D8DEE3 !important; }
+
+/* ── Skeleton shimmer ── */
+@keyframes skeleton-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── Kanban ── */
+@keyframes kanban-slide-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes deal-card-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.kanban-col-enter { animation: kanban-slide-in 0.32s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.deal-card-in { animation: deal-card-in 0.22s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+.kanban-board {
+  background-image: radial-gradient(circle, rgba(216, 222, 227, 0.07) 1px, transparent 1px);
+  background-size: 22px 22px;
+  border-radius: 1rem;
+  padding: 12px;
+  margin: -12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kanban-col-enter,
+  .deal-card-in {
+    animation: none;
+  }
+}

@@ -25,7 +25,7 @@ export const PRODUCTS: ProductDef[] = [
     name: "PipeFlow",
     tagline: "CRM · Social Selling",
     description: "Pipeline Kanban, gestão de leads e CRM para quem vende pelo Instagram.",
-    status: "soon",
+    status: "live",
   },
 ];
 

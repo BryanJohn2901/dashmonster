@@ -139,7 +139,7 @@ export function DevtoolsGuard() {
         <h1 className="dtg-title">{MESSAGE}</h1>
         <p className="dtg-sub">Sessão encerrada. Acesso bloqueado por segurança.</p>
         <div className="dtg-timer" aria-live="polite">{fmt(remaining)}</div>
-        <div className="dtg-bar" aria-hidden="true"><span style={{ width: `${pct}%` }} /></div>
+        <div className="dtg-bar" aria-hidden="true"><span style={{ transform: `scaleX(${pct / 100})` }} /></div>
         <p className="dtg-note">Aguarde o fim da contagem para voltar.</p>
       </div>
     </div>
