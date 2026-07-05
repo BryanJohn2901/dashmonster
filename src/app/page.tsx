@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "@/hooks/useToast";
 import { useCompany } from "@/hooks/useCompany";
 import { RealtimeChannel, Session } from "@supabase/supabase-js";
@@ -61,6 +62,7 @@ function readLookbackDays(): number {
 }
 
 export default function Home() {
+  const router = useRouter();
   const [campaigns, setCampaigns]       = useState<CampaignData[]>([]);
   const [authError, setAuthError]       = useState<string | null>(null);
   const [session, setSession]           = useState<Session | null>(null);
@@ -562,7 +564,7 @@ export default function Home() {
   }, []);
 
   // Empresa ativa (multi-empresa / super admin) — usada para recarregar ao trocar.
-  const { companyId: activeCompanyId, memberships, loading: companyLoading, switchCompany } = useCompany();
+  const { companyId: activeCompanyId, memberships, isSuperAdmin, loading: companyLoading, switchCompany } = useCompany();
   const companyLoadedRef = useRef<string | null>(null);
 
   // Dev mode (sem Supabase): cada empresa demo tem dataset próprio. Re-semeia o
@@ -785,17 +787,25 @@ export default function Home() {
   }
 
   // ── Seletor de produto pós-login (Monster Hub): Dash vs PipeFlow ──────────────
-  if ((session || devBypass) && !productChosen) {
+  // As cards refletem o que a EMPRESA ativa contratou (liberação via /admin) —
+  // inclusive pra super admin, senão a liberação não é demonstrável. Super admin
+  // sem empresa ativa (ex.: recém-provisionado) vê tudo. Empresa sem "dash" fica
+  // presa no hub mesmo com productChosen antigo no sessionStorage.
+  const activeProducts =
+    memberships.find((m) => m.company.id === activeCompanyId)?.company.products
+    ?? (isSuperAdmin ? ["dash", "pipe"] : ["dash"]);
+  if ((session || devBypass) && (!productChosen || !activeProducts.includes("dash"))) {
     return (
       <ProductSelectScreen
         userName={currentUser.name || currentUser.email.split("@")[0]}
         email={currentUser.email}
         companyName={memberships.find((m) => m.company.id === activeCompanyId)?.company.name}
-        products={memberships.find((m) => m.company.id === activeCompanyId)?.company.products}
+        products={activeProducts}
         onOpenDash={() => {
           try { sessionStorage.setItem(PRODUCT_CHOSEN_KEY, "1"); } catch {}
           setProductChosen(true);
         }}
+        onOpenPipe={() => router.push("/crm")}
         onSignOut={handleSignOut}
         onUpdateProfile={handleUpdateProfile}
         categories={userCategories}

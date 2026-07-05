@@ -89,7 +89,7 @@ const DEMO_COMPANIES: Company[] = [
       historyTabLabels: { lancamento: "Lançamentos", evento: "Eventos ao vivo" },
       customHistoryTabs: [{ id: "ct_demo", label: "Mentorias", emoji: "🎓" }],
     },
-    products: ["dash"],
+    products: ["dash", "pipe"],
   },
   {
     id: "demo-2", name: "Loja Fitness Online (Demo)", slug: "demo-loja", logoUrl: null,
@@ -102,12 +102,27 @@ const DEMO_COMPANIES: Company[] = [
     products: ["dash"],
   },
 ];
+// Overrides do modo demo (mutações feitas no painel admin) — persistem em
+// localStorage pra sobreviver à navegação entre /admin e o hub.
+const DEMO_OVERRIDES_KEY = "dm_demo_company_overrides_v1";
+type DemoOverride = Partial<Pick<Company, "name" | "products" | "settings">>;
+
+function readDemoOverrides(): Record<string, DemoOverride> {
+  try { return JSON.parse(localStorage.getItem(DEMO_OVERRIDES_KEY) ?? "{}"); } catch { return {}; }
+}
+
+function demoCompanies(): Company[] {
+  const overrides = readDemoOverrides();
+  return DEMO_COMPANIES.map((c) => ({ ...c, ...overrides[c.id] }));
+}
+
 function demoState(): CompanyState {
+  const companies = demoCompanies();
   const activeId = readActiveCompanyId();
-  const active = DEMO_COMPANIES.find((c) => c.id === activeId) ?? DEMO_COMPANIES[0];
+  const active = companies.find((c) => c.id === activeId) ?? companies[0];
   return {
     company: active, role: "owner",
-    memberships: DEMO_COMPANIES.map((c) => ({ role: "owner" as CompanyRole, company: c })),
+    memberships: companies.map((c) => ({ role: "owner" as CompanyRole, company: c })),
     isSuperAdmin: true, loading: false, migrationMissing: false,
   };
 }
@@ -234,11 +249,27 @@ export async function refreshCompany(): Promise<CompanyState> {
   return loadOnce();
 }
 
+// ponytail: no modo demo (sem Supabase) as mutações de empresa gravam um
+// override em localStorage — sobrevive à navegação e deixa a liberação de
+// produtos via /admin demonstrável de ponta a ponta.
+function demoMutate(companyId: string, patch: (c: Company) => void): boolean {
+  if (supabaseClient || !isDevModeActive()) return false;
+  const c = demoCompanies().find((x) => x.id === companyId);
+  if (c) {
+    patch(c);
+    const overrides = readDemoOverrides();
+    overrides[companyId] = { name: c.name, products: c.products, settings: c.settings };
+    try { localStorage.setItem(DEMO_OVERRIDES_KEY, JSON.stringify(overrides)); } catch {}
+  }
+  return true;
+}
+
 /** Atualiza settings da empresa (só owner passa na RLS). */
 export async function updateCompanySettings(
   companyId: string,
   settings: Record<string, unknown>,
 ): Promise<void> {
+  if (demoMutate(companyId, (c) => { c.settings = settings; })) { await refreshCompany(); return; }
   if (!supabaseClient) throw new Error("Supabase não configurado.");
   const { error } = await supabaseClient
     .from("companies")
@@ -257,6 +288,7 @@ export async function setCompanyProducts(
   companyId: string,
   products: string[],
 ): Promise<void> {
+  if (demoMutate(companyId, (c) => { c.products = products; })) { await refreshCompany(); return; }
   if (!supabaseClient) throw new Error("Supabase não configurado.");
   const { error } = await supabaseClient
     .from("companies")
@@ -320,6 +352,7 @@ export async function removeMember(memberId: string): Promise<void> {
 
 /** Renomeia a empresa (RLS: só owner). */
 export async function renameCompany(companyId: string, name: string): Promise<void> {
+  if (demoMutate(companyId, (c) => { c.name = name.trim() || c.name; })) { await refreshCompany(); return; }
   if (!supabaseClient) throw new Error("Supabase não configurado.");
   const { error } = await supabaseClient
     .from("companies")
@@ -356,9 +389,20 @@ export async function createCompany(name: string, ownerEmail?: string): Promise<
   return company;
 }
 
+// ponytail: token demo também vive no override de localStorage (chave à parte
+// do shape Company porque meta_access_token nunca entra no estado do cliente).
+const DEMO_TOKENS_KEY = "dm_demo_company_tokens_v1";
+
 /** Lê o token Meta salvo de uma empresa específica (para o painel DEV). */
 export async function fetchCompanyToken(companyId: string): Promise<string> {
-  if (!supabaseClient) return isDevModeActive() ? "EAADEMOdemoTOKENexample1234567890abcdef" : "";
+  if (!supabaseClient) {
+    if (!isDevModeActive()) return "";
+    try {
+      const saved = JSON.parse(localStorage.getItem(DEMO_TOKENS_KEY) ?? "{}")[companyId];
+      if (typeof saved === "string") return saved;
+    } catch {}
+    return "EAADEMOdemoTOKENexample1234567890abcdef";
+  }
   const { data, error } = await supabaseClient
     .from("companies")
     .select("meta_access_token")
@@ -374,6 +418,14 @@ export async function fetchCompanyToken(companyId: string): Promise<string> {
  * qualquer empresa sem trocar de contexto.
  */
 export async function setCompanyToken(companyId: string, token: string): Promise<void> {
+  if (!supabaseClient && isDevModeActive()) {
+    try {
+      const all = JSON.parse(localStorage.getItem(DEMO_TOKENS_KEY) ?? "{}");
+      all[companyId] = token.trim();
+      localStorage.setItem(DEMO_TOKENS_KEY, JSON.stringify(all));
+    } catch {}
+    return;
+  }
   if (!supabaseClient) throw new Error("Supabase não configurado.");
   const { error } = await supabaseClient
     .from("companies")
