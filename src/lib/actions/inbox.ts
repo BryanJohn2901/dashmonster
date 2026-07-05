@@ -9,17 +9,19 @@
 import { getCompanyContext } from '@/hooks/useCompany'
 import {
   fetchConversations, fetchMessages, sendMessage as crmSendMessage,
-  markConversationRead, type CrmConversation, type CrmMessage,
+  markConversationRead, linkConversationLead,
+  createDeal as crmCreateDeal, updateDeal as crmUpdateDeal,
+  type CrmConversation, type CrmMessage,
 } from '@/lib/crm'
 import { createLead } from './leads'
-import { createDealFromLead } from './deals'
 
 export interface Conversation {
   id: string
   provider: CrmConversation['provider']
   contact_name: string | null
   contact_avatar_url: string | null
-  provider_thread_id: string | null
+  contact_handle: string | null
+  provider_thread_id: string
   unread_count: number
   last_message_at: string
   last_message_preview: string | null
@@ -51,7 +53,8 @@ function toConversation(c: CrmConversation): Conversation {
     provider: c.provider,
     contact_name: c.contactName,
     contact_avatar_url: null,
-    provider_thread_id: c.contactHandle,
+    contact_handle: c.contactHandle,
+    provider_thread_id: c.contactHandle ?? '',
     unread_count: c.unreadCount,
     last_message_at: c.lastMessageAt,
     last_message_preview: c.lastMessagePreview,
@@ -149,13 +152,26 @@ export async function createInboxContact(params: {
   conversationId: string
   name: string
   phone: string
+  pipelineId?: string
+  stageId?: string
 }): Promise<{ leadId?: string; dealId?: string; error?: string }> {
   try {
+    const companyId = await activeCompanyId()
     const created = await createLead({ name: params.name, phone: params.phone, status: 'new' })
     if (created.error || !created.id) return { error: created.error ?? 'Erro ao criar lead' }
-    const dealResult = await createDealFromLead({ title: params.name, lead_id: created.id })
-    if (dealResult.error) return { leadId: created.id, error: dealResult.error }
-    return { leadId: created.id }
+
+    let dealId: string | undefined
+    if (params.pipelineId && params.stageId) {
+      const deal = await crmCreateDeal({
+        companyId, pipelineId: params.pipelineId, stageId: params.stageId,
+        title: params.name, value: null,
+      })
+      dealId = deal.id
+      await crmUpdateDeal(deal.id, companyId, { leadId: created.id })
+    }
+
+    await linkConversationLead(params.conversationId, companyId, created.id, dealId ?? null)
+    return { leadId: created.id, dealId }
   } catch (e) {
     return { error: e instanceof Error ? e.message : 'Erro ao criar contato' }
   }

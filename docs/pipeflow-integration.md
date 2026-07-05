@@ -256,13 +256,14 @@ Progresso (tasks da sessão 2026-07-03):
       MessageBubble/ResizableDivider copiados verbatim (novo lib/actions/inbox.ts
       mapeando CrmConversation/CrmMessage → shape snake_case original).
       MessagesPanel (aba do DealDetailSheet/lead) agora real (não é mais stub).
-      Deliberadamente fora: SmartChatTimeline (mistura mensagens+notas+tarefas),
-      LeadLinker (painel de vincular lead à conversa) e TemplatePicker (modelos
-      WhatsApp Cloud aprovados — exige credenciais reais da Meta). Motivo: o
-      envio real de mensagem (Z-API/WhatsApp Cloud/Instagram) no original é
-      100% integração externa; sendMessage aqui já era simplificado (só grava
-      linha) — SmartChatTimeline/LeadLinker são portáveis mas grandes, spun off
-      como task separada (spawn_task task_d05a2d80).
+      SmartChatTimeline e LeadLinker AGORA PORTADOS (fiel): timeline unificada
+      (mensagens+notas+tarefas, useChatTimeline sem realtime — reload após
+      ações) no InboxView e no MessagesPanel; LeadLinker cria lead+negócio no
+      funil/etapa escolhidos (createInboxContact ganhou pipelineId/stageId e a
+      fachada ganhou linkConversationLead real+demo), mostra o negócio
+      (getDealForPanel no adapter deals) e troca status Ganho/Perdido/Aberto.
+      Segue fora: TemplatePicker (modelos WhatsApp Cloud — credenciais Meta) e
+      upload de anexo (rota externa; botão avisa).
 - [x] 8. Painel Admin full-screen (/admin) + Configurações do hub enxuto.
       Novo src/app/admin/page.tsx (guard: isSuperAdmin OU senha DEV via
       useDevMode.enable) + src/components/admin/{AdminPanel,sections,

@@ -263,6 +263,30 @@ export async function getOtherDealsOfContact(contactId: string, currentDealId: s
     .map((d) => toRow(d, companyId))
 }
 
+/** Painel lateral do Inbox (LeadLinker): resumo do negócio vinculado. */
+export interface DealPanelData {
+  title: string
+  value: number | null
+  status: string
+  stage_name: string | null
+  pipeline_name: string | null
+}
+
+export async function getDealForPanel(dealId: string): Promise<DealPanelData | null> {
+  const companyId = await activeCompanyId()
+  const [deals, pipelines] = await Promise.all([fetchDeals(companyId), fetchPipelines(companyId)])
+  const deal = deals.find((d) => d.id === dealId)
+  if (!deal) return null
+  const pipeline = pipelines.find((p) => p.id === deal.pipelineId)
+  return {
+    title: deal.title,
+    value: deal.value,
+    status: deal.status,
+    stage_name: pipeline?.stages.find((s) => s.id === deal.stageId)?.name ?? null,
+    pipeline_name: pipeline?.name ?? null,
+  }
+}
+
 export async function moveDeal(id: string, newStageId: string): Promise<{ error?: string }> {
   try {
     const companyId = await activeCompanyId()

@@ -1,14 +1,15 @@
 'use client'
 
-// Port fiel (parcial) de components/inbox/MessagesPanel.tsx do original —
-// usa o ChatWindow simples no lugar do SmartChatTimeline (nota/tarefa/anexo
-// ficam de fora, ver InboxView.tsx). Embutido na aba Mensagens do
-// DealDetailSheet e do LeadContentTabs.
+// Port fiel de components/inbox/MessagesPanel.tsx do original — agora com o
+// SmartChatTimeline (mensagens + notas internas + tarefas na mesma linha do
+// tempo). Embutido na aba Mensagens do DealDetailSheet e do LeadContentTabs.
 
 import { useCallback, useEffect, useState } from 'react'
-import { ChatWindow } from './ChatWindow'
-import type { Conversation, Message } from '@/lib/actions/inbox'
-import { getConversationsByLead, getMessages, sendMessage, startLeadConversation } from '@/lib/actions/inbox'
+import { SmartChatTimeline } from './SmartChatTimeline'
+import type { Conversation } from '@/lib/actions/inbox'
+import { getConversationsByLead, sendMessage, startLeadConversation } from '@/lib/actions/inbox'
+import { addHistoryNote } from '@/lib/actions/history'
+import { createDealActivity } from '@/lib/actions/playbook'
 import { Button } from '@/components/ui/button'
 import { MessageSquare, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
@@ -20,10 +21,9 @@ interface MessagesPanelProps {
   compact?: boolean
 }
 
-export function MessagesPanel({ leadId, dealId }: MessagesPanelProps) {
+export function MessagesPanel({ leadId, workspaceId, dealId }: MessagesPanelProps) {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
-  const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(true)
   const [starting, setStarting] = useState(false)
 
@@ -39,11 +39,6 @@ export function MessagesPanel({ leadId, dealId }: MessagesPanelProps) {
   }, [leadId])
 
   useEffect(() => { void loadConversations() }, [loadConversations])
-
-  useEffect(() => {
-    if (!activeId) { setMessages([]); return }
-    getMessages(activeId).then(({ data }) => setMessages(data))
-  }, [activeId])
 
   async function handleStartConversation() {
     if (!leadId) return
@@ -67,8 +62,24 @@ export function MessagesPanel({ leadId, dealId }: MessagesPanelProps) {
       toast.error('Erro ao enviar mensagem')
       throw new Error(error)
     }
-    const { data } = await getMessages(activeId)
-    setMessages(data)
+  }
+
+  async function handleCreateNote(content: string) {
+    if (!dealId) { toast.error('Nenhum negócio associado'); return }
+    const res = await addHistoryNote(dealId, content)
+    if (res.error) { toast.error(res.error); throw new Error(res.error) }
+    toast.success('Nota interna adicionada')
+  }
+
+  async function handleCreateTask(title: string) {
+    if (!dealId) { toast.error('Nenhum negócio associado'); return }
+    const execIso = new Date(new Date().toISOString().slice(0, 10) + 'T09:00:00').toISOString()
+    const res = await createDealActivity({
+      deal_id: dealId, title, activity_type: 'task', day_offset: 1,
+      due_date: execIso, scheduled_start_at: execIso, priority: 'normal',
+    })
+    if (res.error) { toast.error(res.error); throw new Error(res.error) }
+    toast.success('Tarefa criada')
   }
 
   if (loading) {
@@ -122,7 +133,15 @@ export function MessagesPanel({ leadId, dealId }: MessagesPanelProps) {
       )}
 
       {activeConversation ? (
-        <ChatWindow conversation={activeConversation} messages={messages} onSendMessage={handleSendMessage} />
+        <SmartChatTimeline
+          workspaceId={workspaceId ?? ''}
+          conversation={activeConversation}
+          leadId={leadId}
+          dealId={dealId ?? activeConversation.deal_id}
+          onSendMessage={handleSendMessage}
+          onCreateNote={handleCreateNote}
+          onCreateTask={handleCreateTask}
+        />
       ) : (
         <div className="flex-1 flex items-center justify-center text-muted-foreground font-medium text-sm">
           Selecione uma conversa acima

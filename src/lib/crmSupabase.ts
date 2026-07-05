@@ -1955,6 +1955,22 @@ export async function markConversationRead(conversationId: string, companyId: st
   if (error) throw new Error(error.message);
 }
 
+/** Vincula lead (e opcionalmente negócio) à conversa — LeadLinker do Inbox. */
+export async function linkConversationLead(
+  conversationId: string,
+  companyId: string,
+  leadId: string,
+  dealId?: string | null,
+): Promise<void> {
+  const sb = requireClient();
+  const { error } = await sb
+    .from("conversations")
+    .update({ lead_id: leadId, deal_id: dealId ?? null })
+    .eq("id", conversationId)
+    .eq("company_id", companyId);
+  if (error) throw new Error(error.message);
+}
+
 export async function setConversationStatus(
   conversationId: string,
   companyId: string,

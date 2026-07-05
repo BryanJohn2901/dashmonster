@@ -43,7 +43,7 @@ export const {
   fetchCrmCompany, searchCrmCompanies, createCrmCompany, updateCrmCompany, linkDealCrmCompany,
   addDealNote, fetchStageTemplates, saveStageTemplates, instantiateStagePlaybook, fetchCalendar,
   // inbox e notificações
-  fetchChannels, fetchConversations, fetchMessages, sendMessage, markConversationRead, setConversationStatus,
+  fetchChannels, fetchConversations, fetchMessages, sendMessage, markConversationRead, setConversationStatus, linkConversationLead,
   fetchNotifications, markNotificationRead, markAllNotificationsRead,
   // campos personalizados, gestão de tags e metas
   fetchFieldDefs, saveFieldDef, deleteFieldDef, fetchFieldValues, setFieldValue,

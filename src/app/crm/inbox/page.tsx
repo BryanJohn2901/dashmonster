@@ -12,12 +12,12 @@ import { getConversations, type Conversation } from '@/lib/actions/inbox'
 export default function CrmInboxPage() {
   return (
     <CrmShell active="inbox">
-      {() => <InboxPageContent />}
+      {({ companyId }) => <InboxPageContent companyId={companyId} />}
     </CrmShell>
   )
 }
 
-function InboxPageContent() {
+function InboxPageContent({ companyId }: { companyId: string }) {
   const searchParams = useSearchParams()
   const initialLeadId = searchParams.get('leadId') ?? undefined
   const [conversations, setConversations] = useState<Conversation[] | null>(null)
@@ -33,7 +33,7 @@ function InboxPageContent() {
 
   return (
     <div className="flex-1 flex flex-col h-[calc(100vh-64px)] overflow-hidden">
-      <InboxView initialConversations={conversations} initialLeadId={initialLeadId} />
+      <InboxView workspaceId={companyId} initialConversations={conversations} initialLeadId={initialLeadId} />
     </div>
   )
 }

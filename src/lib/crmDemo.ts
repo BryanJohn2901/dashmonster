@@ -827,6 +827,16 @@ export async function markConversationRead(conversationId: string, companyId: st
   if (conv) conv.unreadCount = 0;
 }
 
+export async function linkConversationLead(
+  conversationId: string,
+  companyId: string,
+  leadId: string,
+  dealId?: string | null,
+): Promise<void> {
+  const conv = db(companyId).conversations.find((c) => c.id === conversationId);
+  if (conv) { conv.leadId = leadId; conv.dealId = dealId ?? null; }
+}
+
 export async function setConversationStatus(
   conversationId: string,
   companyId: string,
