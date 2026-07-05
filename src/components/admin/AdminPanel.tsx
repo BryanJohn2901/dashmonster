@@ -9,20 +9,20 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Building2, Home, KeyRound, LayoutGrid, Megaphone, Package, Plus,
+  Activity, Building2, Home, KeyRound, LayoutGrid, Megaphone, Package, Plus,
   Search, Settings, ShieldCheck, SlidersHorizontal, Users, Mail, Camera, ChevronDown, Check,
 } from "lucide-react";
 import { useCompany, fetchAdminCompanies, type AdminCompany } from "@/hooks/useCompany";
 import { useDevMode } from "@/hooks/useDevMode";
 import {
-  EmpresasSection, ProdutosSection, UsuariosSection, ConvitesSection,
+  EmpresasSection, ProdutosSection, UsuariosSection, ConvitesSection, AtividadeSection,
   MetaSection, ContasSection, InstagramSection, FiltrosSection,
 } from "./sections";
 import { CreateCompanyWizard } from "./CreateCompanyWizard";
 
 export type AdminNavId =
   | "overview" | "empresas" | "produtos" | "criar"
-  | "usuarios" | "convites"
+  | "usuarios" | "convites" | "atividade"
   | "meta" | "contas" | "instagram"
   | "filtros";
 
@@ -40,8 +40,9 @@ const NAV_GROUPS: { group: string; desc: string; items: NavItem[] }[] = [
   {
     group: "Pessoas", desc: "Quem acessa o hub e com qual papel",
     items: [
-      { id: "usuarios", label: "Usuários & papéis", icon: Users, desc: "Membros por empresa, papéis e remoção" },
-      { id: "convites", label: "Convites",          icon: Mail,  desc: "Convide por e-mail pra entrar numa empresa" },
+      { id: "usuarios",  label: "Usuários & papéis", icon: Users,   desc: "Status, último acesso, dispositivo e localização" },
+      { id: "convites",  label: "Convites",          icon: Mail,    desc: "Convide por e-mail pra entrar numa empresa" },
+      { id: "atividade", label: "Atividade",         icon: Activity, desc: "Todos os logins: quando, de onde, por qual device" },
     ],
   },
   {
@@ -187,11 +188,12 @@ export function AdminPanel() {
       <main className="min-w-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-[980px] px-8 py-10">
           {nav === "overview" && <Overview onGo={setNav} companies={companies} />}
-          {nav === "empresas" && <EmpresasSection {...scoped} onCreate={() => setNav("criar")} />}
+          {nav === "empresas" && <EmpresasSection {...scoped} onCreate={() => setNav("criar")} onGo={(s) => setNav(s as AdminNavId)} />}
           {nav === "produtos" && <ProdutosSection {...scoped} />}
           {nav === "criar" && <CreateCompanyWizard onDone={() => { void reload(); setNav("empresas"); }} />}
           {nav === "usuarios" && <UsuariosSection {...scoped} />}
           {nav === "convites" && <ConvitesSection {...scoped} />}
+          {nav === "atividade" && <AtividadeSection {...scoped} />}
           {nav === "meta" && <MetaSection {...scoped} />}
           {nav === "contas" && <ContasSection {...scoped} />}
           {nav === "instagram" && <InstagramSection {...scoped} />}

@@ -18,6 +18,11 @@ import {
 } from "@/hooks/useCompany";
 import { PRODUCTS } from "@/config/products";
 import { readCustomHistoryTabs, CUSTOM_HISTORY_TABS_KEY, HISTORICAL_KIND_LABELS, BUILTIN_HISTORY_KINDS, type CustomHistoryTab } from "@/types/historical";
+import {
+  fetchGlobalMembers, fetchLoginEvents, isActiveMember, parseUserAgent, formatLocation,
+  type GlobalMember, type LoginEvent,
+} from "@/lib/adminAudit";
+import { FacebookConnectShell, InstagramConnectShell } from "@/components/hub/ConnectShells";
 import { toast } from "@/hooks/useToast";
 
 export interface ScopedProps {
@@ -102,11 +107,12 @@ const inputStyle: React.CSSProperties = {
 
 // ─── Empresas ───────────────────────────────────────────────────────────────────
 
-export function EmpresasSection({ companies, onSelect, reload, onCreate }: ScopedProps & { onCreate: () => void }) {
+export function EmpresasSection({ companies, onSelect, reload, onCreate, onGo }: ScopedProps & { onCreate: () => void; onGo?: (section: string) => void }) {
   const [query, setQuery] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
 
   const q = query.trim().toLowerCase();
   const filtered = companies.filter((c) => !q || c.company.name.toLowerCase().includes(q) || c.company.slug.toLowerCase().includes(q));
@@ -144,9 +150,11 @@ export function EmpresasSection({ companies, onSelect, reload, onCreate }: Scope
         )}
         {filtered.map((c) => {
           const editing = editingId === c.company.id;
+          const open = openId === c.company.id;
           return (
-            <div key={c.company.id} className="flex items-center gap-3 rounded-2xl border px-4 py-3"
+            <div key={c.company.id} className="rounded-2xl border"
               style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)" }}>
+            <div className="flex items-center gap-3 px-4 py-3">
               <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl"
                 style={{ background: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-default)" }}>
                 <Building2 size={16} style={{ color: "var(--dm-text-secondary)" }} />
@@ -198,6 +206,38 @@ export function EmpresasSection({ companies, onSelect, reload, onCreate }: Scope
                 style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>
                 <Check size={12} /> Usar
               </button>
+              <button type="button" title="Detalhes" onClick={() => setOpenId(open ? null : c.company.id)}
+                className="flex h-8 items-center rounded-lg border px-2.5 text-[11px] font-bold transition hover:opacity-80"
+                style={{ borderColor: "var(--dm-border-default)", color: open ? "var(--dm-primary)" : "var(--dm-text-secondary)" }}>
+                {open ? "Fechar" : "Detalhes"}
+              </button>
+            </div>
+
+            {/* Drill-down: visão completa da conta + atalhos pras seções já no escopo dela */}
+            {open && (
+              <div className="border-t px-4 py-3" style={{ borderColor: "var(--dm-border-default)" }}>
+                <div className="grid gap-x-6 gap-y-1.5 text-[12px] sm:grid-cols-2" style={{ color: "var(--dm-text-secondary)" }}>
+                  <span><b style={{ color: "var(--dm-text-tertiary)" }}>Produtos:</b> {(c.company.products ?? []).map((p) => PRODUCTS.find((x) => x.id === p)?.name ?? p).join(", ") || "nenhum"}</span>
+                  <span><b style={{ color: "var(--dm-text-tertiary)" }}>Token Meta:</b> {c.hasToken ? "configurado" : "pendente"}</span>
+                  <span><b style={{ color: "var(--dm-text-tertiary)" }}>Instagram:</b> {String(c.company.settings?.[INSTAGRAM_HANDLE_KEY] ?? "") ? `@${String(c.company.settings?.[INSTAGRAM_HANDLE_KEY])}` : "não vinculado"}</span>
+                  <span><b style={{ color: "var(--dm-text-tertiary)" }}>Filtros:</b> {readCompanyFilters(c.company.settings).map((f) => f.name).join(", ") || "nenhum"}</span>
+                  <span><b style={{ color: "var(--dm-text-tertiary)" }}>Abas custom:</b> {readCustomHistoryTabs(c.company.settings).map((t) => t.label).join(", ") || "nenhuma"}</span>
+                  <span><b style={{ color: "var(--dm-text-tertiary)" }}>Contas de anúncio:</b> {readAdAccountSuggestions(c.company.settings).length} registrada(s)</span>
+                </div>
+                {onGo && (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {([["meta", "Token Meta"], ["usuarios", "Usuários"], ["convites", "Convites"], ["contas", "Contas de anúncio"], ["instagram", "Instagram"], ["filtros", "Filtros & histórico"]] as const).map(([sec, label]) => (
+                      <button key={sec} type="button"
+                        onClick={() => { onSelect(c.company.id); onGo(sec); }}
+                        className="rounded-full border px-3 py-1.5 text-[11px] font-bold transition hover:opacity-80"
+                        style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-primary)" }}>
+                        {label} →
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             </div>
           );
         })}
@@ -258,7 +298,127 @@ export function ProdutosSection({ companies, reload }: ScopedProps) {
 
 const DB_ROLE_LABEL: Record<CompanyRole, string> = { owner: "Dono", manager: "Gestor", viewer: "Visualizador" };
 
-export function UsuariosSection({ selected, reload }: ScopedProps) {
+function timeAgo(iso: string | null | undefined): string {
+  if (!iso) return "nunca";
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return "agora";
+  if (mins < 60) return `${mins} min atrás`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} h atrás`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days} d atrás`;
+  return new Date(iso).toLocaleDateString("pt-BR");
+}
+
+export function UsuariosSection(props: ScopedProps) {
+  const [tab, setTab] = useState<"todos" | "empresa">("todos");
+  return (
+    <div>
+      <SectionHeader icon={Users} title="Usuários & papéis" desc="Quem acessa a plataforma: status, último acesso, dispositivo e localização"
+        right={
+          <div className="flex rounded-xl border p-1" style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)" }}>
+            {([["todos", "Todos os usuários"], ["empresa", "Por empresa"]] as const).map(([id, label]) => (
+              <button key={id} type="button" onClick={() => setTab(id)}
+                className="rounded-lg px-3 py-1.5 text-[12px] font-bold transition"
+                style={tab === id
+                  ? { background: "var(--dm-primary-soft, rgba(22,163,74,0.12))", color: "var(--dm-primary)" }
+                  : { color: "var(--dm-text-tertiary)" }}>
+                {label}
+              </button>
+            ))}
+          </div>
+        } />
+      {tab === "todos" ? <GlobalUsersView /> : <CompanyMembersView {...props} />}
+    </div>
+  );
+}
+
+// Visão global de auditoria: todos os usuários da plataforma.
+function GlobalUsersView() {
+  const [members, setMembers] = useState<GlobalMember[] | null>(null);
+  const [query, setQuery] = useState("");
+  const [onlyInactive, setOnlyInactive] = useState(false);
+
+  useEffect(() => {
+    void fetchGlobalMembers().then(setMembers).catch((e) => {
+      toast.error(e instanceof Error ? e.message : "Erro ao listar usuários.");
+      setMembers([]);
+    });
+  }, []);
+
+  if (!members) return <Card><Loader2 size={16} className="animate-spin" style={{ color: "var(--dm-text-tertiary)" }} /></Card>;
+
+  const q = query.trim().toLowerCase();
+  const filtered = members
+    .filter((m) => !q || m.email.toLowerCase().includes(q) || m.companies.some((c) => c.companyName.toLowerCase().includes(q)))
+    .filter((m) => !onlyInactive || !isActiveMember(m));
+  const activeCount = members.filter(isActiveMember).length;
+
+  return (
+    <div>
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <div className="relative min-w-[220px] flex-1">
+          <Search size={14} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: "var(--dm-text-tertiary)" }} />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar por e-mail ou empresa…"
+            className="h-10 w-full rounded-xl border pl-10 pr-3 text-[13px] outline-none" style={inputStyle} />
+        </div>
+        <button type="button" onClick={() => setOnlyInactive((v) => !v)}
+          className="flex h-10 items-center gap-2 rounded-xl border px-3.5 text-[12px] font-bold transition"
+          style={onlyInactive
+            ? { borderColor: "#F4A60D", color: "#F4A60D", background: "rgba(244,166,13,0.08)" }
+            : { borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>
+          Só inativos
+        </button>
+        <span className="text-[12px]" style={{ color: "var(--dm-text-tertiary)" }}>
+          {members.length} usuário{members.length === 1 ? "" : "s"} · {activeCount} ativo{activeCount === 1 ? "" : "s"} (30d)
+        </span>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        {filtered.length === 0 && <Card><p className="text-[13px]" style={{ color: "var(--dm-text-tertiary)" }}>Nenhum usuário encontrado.</p></Card>}
+        {filtered.map((m) => {
+          const active = isActiveMember(m);
+          return (
+            <div key={m.userId} className="rounded-2xl border px-4 py-3"
+              style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)" }}>
+              <div className="flex items-center gap-3">
+                <span className="relative flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white"
+                  style={{ background: "var(--dm-primary)" }}>
+                  {m.email.slice(0, 2).toUpperCase()}
+                  <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2"
+                    style={{ background: active ? "#22C55E" : "#94A3B8", borderColor: "var(--dm-bg-surface)" }} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13.5px] font-bold" style={{ color: "var(--dm-text-primary)" }}>{m.email}</p>
+                  <p className="flex flex-wrap items-center gap-x-2 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                    {m.companies.map((c) => (
+                      <span key={c.companyId}>{c.companyName} · {DB_ROLE_LABEL[c.role as CompanyRole] ?? c.role}</span>
+                    ))}
+                  </p>
+                </div>
+                <span className="rounded-full px-2.5 py-0.5 text-[10px] font-bold"
+                  style={active
+                    ? { background: "rgba(34,197,94,0.14)", color: "#22C55E" }
+                    : { background: "rgba(148,163,184,0.14)", color: "#94A3B8" }}>
+                  {active ? "Ativo" : "Inativo"}
+                </span>
+              </div>
+              <div className="mt-2.5 grid gap-x-6 gap-y-1 border-t pt-2.5 text-[11.5px] sm:grid-cols-2 lg:grid-cols-4"
+                style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>
+                <span title={m.lastLogin?.createdAt ?? ""}><b style={{ color: "var(--dm-text-tertiary)" }}>Último acesso:</b> {timeAgo(m.lastLogin?.createdAt)}</span>
+                <span><b style={{ color: "var(--dm-text-tertiary)" }}>Dispositivo:</b> {parseUserAgent(m.lastLogin?.userAgent ?? null)}</span>
+                <span><b style={{ color: "var(--dm-text-tertiary)" }}>Local:</b> {formatLocation(m.lastLogin)}</span>
+                <span><b style={{ color: "var(--dm-text-tertiary)" }}>IP:</b> {m.lastLogin?.ip ?? "—"}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function CompanyMembersView({ selected, reload }: ScopedProps) {
   const [members, setMembers] = useState<CompanyMember[] | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -272,7 +432,7 @@ export function UsuariosSection({ selected, reload }: ScopedProps) {
     return () => { active = false; };
   }, [selected]);
 
-  if (!selected) return <><SectionHeader icon={Users} title="Usuários & papéis" desc="Membros da empresa selecionada" /><ScopeHint selected={selected} /></>;
+  if (!selected) return <ScopeHint selected={selected} />;
 
   const titles = readMemberTitles(selected.company.settings);
 
@@ -293,7 +453,7 @@ export function UsuariosSection({ selected, reload }: ScopedProps) {
 
   return (
     <div>
-      <SectionHeader icon={Users} title="Usuários & papéis" desc={`Membros de ${selected.company.name}`} />
+      <p className="mb-3 text-[12px] font-bold" style={{ color: "var(--dm-text-secondary)" }}>Membros de {selected.company.name}</p>
       {members === null ? (
         <Card><Loader2 size={16} className="animate-spin" style={{ color: "var(--dm-text-tertiary)" }} /></Card>
       ) : members.length === 0 ? (
@@ -325,6 +485,60 @@ export function UsuariosSection({ selected, reload }: ScopedProps) {
                 style={{ color: "#EE5D50" }}>
                 <Trash2 size={14} />
               </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Atividade (login events) ───────────────────────────────────────────────────
+
+export function AtividadeSection(_props: ScopedProps) {
+  const [events, setEvents] = useState<LoginEvent[] | null>(null);
+  const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    void fetchLoginEvents(200).then(setEvents).catch((e) => {
+      toast.error(e instanceof Error ? e.message : "Erro ao carregar atividade.");
+      setEvents([]);
+    });
+  }, []);
+
+  const q = query.trim().toLowerCase();
+  const filtered = (events ?? []).filter((e) => !q || e.email.toLowerCase().includes(q) || (e.ip ?? "").includes(q));
+
+  return (
+    <div>
+      <SectionHeader icon={History} title="Atividade" desc="Todos os logins na plataforma: quando, de onde e por qual dispositivo" />
+      <div className="relative mb-4">
+        <Search size={14} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: "var(--dm-text-tertiary)" }} />
+        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filtrar por e-mail ou IP…"
+          className="h-10 w-full rounded-xl border pl-10 pr-3 text-[13px] outline-none" style={inputStyle} />
+      </div>
+
+      {events === null ? (
+        <Card><Loader2 size={16} className="animate-spin" style={{ color: "var(--dm-text-tertiary)" }} /></Card>
+      ) : filtered.length === 0 ? (
+        <Card>
+          <p className="text-[13px]" style={{ color: "var(--dm-text-tertiary)" }}>
+            Nenhum login registrado ainda. Os eventos começam a aparecer assim que alguém entrar
+            (rota /api/auth/login-event — exige a migration 074 aplicada).
+          </p>
+        </Card>
+      ) : (
+        <div className="overflow-hidden rounded-2xl border" style={{ borderColor: "var(--dm-border-default)" }}>
+          {filtered.map((e, i) => (
+            <div key={e.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 text-[12px]"
+              style={{ background: "var(--dm-bg-surface)", borderTop: i > 0 ? "1px solid var(--dm-border-default)" : undefined }}>
+              <span className="w-[150px] font-semibold tabular-nums" style={{ color: "var(--dm-text-tertiary)" }}>
+                {new Date(e.createdAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+              </span>
+              <span className="min-w-[180px] flex-1 truncate font-bold" style={{ color: "var(--dm-text-primary)" }}>{e.email}</span>
+              <span style={{ color: "var(--dm-text-secondary)" }}>{parseUserAgent(e.userAgent)}</span>
+              <span style={{ color: "var(--dm-text-secondary)" }}>{formatLocation(e)}</span>
+              <span className="tabular-nums" style={{ color: "var(--dm-text-tertiary)" }}>{e.ip ?? "—"}</span>
             </div>
           ))}
         </div>
@@ -439,7 +653,11 @@ export function MetaSection({ companies, selected, reload }: ScopedProps) {
 
   return (
     <div>
-      <SectionHeader icon={KeyRound} title="Conexão Meta" desc="Token de acesso da API do Meta, por empresa" />
+      <SectionHeader icon={KeyRound} title="Conexão Meta" desc="OAuth do Facebook (BM) + token de acesso da API, por empresa" />
+
+      <div className="mb-4">
+        <FacebookConnectShell connected={Boolean(token.trim()) || (selected?.hasToken ?? false)} />
+      </div>
 
       {selected ? (
         <Card>
@@ -594,49 +812,11 @@ export function ContasSection({ selected, reload }: ScopedProps) {
 // ─── Instagram ──────────────────────────────────────────────────────────────────
 
 export function InstagramSection({ selected, reload }: ScopedProps) {
-  const [handle, setHandle] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    setHandle(selected ? String(selected.company.settings?.[INSTAGRAM_HANDLE_KEY] ?? "") : "");
-  }, [selected]);
-
   if (!selected) return <><SectionHeader icon={Camera} title="Instagram" desc="Perfil IG de cada empresa" /><ScopeHint selected={selected} /></>;
-
-  const save = async () => {
-    setSaving(true);
-    try {
-      await updateCompanySettings(selected.company.id, {
-        ...selected.company.settings,
-        [INSTAGRAM_HANDLE_KEY]: handle.trim().replace(/^@/, ""),
-      });
-      await reload();
-      toast.success("Conta do Instagram salva.");
-    } catch (e) { toast.error(e instanceof Error ? e.message : "Erro ao salvar."); }
-    finally { setSaving(false); }
-  };
-
   return (
     <div>
       <SectionHeader icon={Camera} title="Instagram" desc={`Perfil vinculado a ${selected.company.name}`} />
-      <Card>
-        <p className="mb-3 text-[11px] leading-relaxed" style={{ color: "var(--dm-text-tertiary)" }}>
-          Handle do perfil desta empresa. A lista real de contas IG disponíveis vem da conexão do app (Facebook) quando conectada.
-        </p>
-        <div className="flex gap-2">
-          <div className="relative min-w-0 flex-1">
-            <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[13px] font-bold" style={{ color: "var(--dm-text-tertiary)" }}>@</span>
-            <input value={handle} onChange={(e) => setHandle(e.target.value)} placeholder="perfil.da.empresa"
-              onKeyDown={(e) => { if (e.key === "Enter") void save(); }}
-              className="h-11 w-full rounded-xl border pl-8 pr-3 text-[13px] outline-none" style={inputStyle} />
-          </div>
-          <button type="button" onClick={() => void save()} disabled={saving}
-            className="flex h-11 items-center gap-1.5 rounded-xl px-4 text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-40"
-            style={{ background: "var(--dm-btn-primary-bg)" }}>
-            {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} Salvar
-          </button>
-        </div>
-      </Card>
+      <InstagramConnectShell company={selected.company} onSaved={() => void reload()} />
     </div>
   );
 }
@@ -762,13 +942,44 @@ export function FiltrosSection({ selected, reload }: ScopedProps) {
           <p className="mb-3 text-[11px] leading-relaxed" style={{ color: "var(--dm-text-tertiary)" }}>
             As 4 padrão vêm de fábrica; abas custom são desta empresa.
           </p>
+          {/* Abas padrão: liga/desliga (enabledHistoryKinds) e renomeia (historyTabLabels) */}
+          <div className="mb-3 flex flex-col gap-1.5">
+            {BUILTIN_HISTORY_KINDS.map((k) => {
+              const enabledList = Array.isArray(selected.company.settings?.enabledHistoryKinds)
+                ? (selected.company.settings.enabledHistoryKinds as string[])
+                : [...BUILTIN_HISTORY_KINDS];
+              const on = enabledList.includes(k);
+              const labels = (selected.company.settings?.historyTabLabels ?? {}) as Record<string, string>;
+              return (
+                <div key={k} className="flex items-center gap-2 rounded-xl border px-3 py-2"
+                  style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-elevated)", opacity: on ? 1 : 0.55 }}>
+                  <input
+                    defaultValue={labels[k] ?? HISTORICAL_KIND_LABELS[k]}
+                    onBlur={(e) => {
+                      const v = e.target.value.trim();
+                      if (v === (labels[k] ?? HISTORICAL_KIND_LABELS[k])) return;
+                      void saveSettings({ historyTabLabels: { ...labels, [k]: v || HISTORICAL_KIND_LABELS[k] } });
+                    }}
+                    onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                    className="h-7 min-w-0 flex-1 rounded-lg border-none bg-transparent px-1 text-[12.5px] font-semibold outline-none"
+                    style={{ color: "var(--dm-text-primary)" }}
+                    title="Clique pra renomear a aba"
+                  />
+                  <span className="rounded-full px-2 py-0.5 text-[9px] font-bold" style={{ background: "rgba(100,116,139,0.14)", color: "var(--dm-text-tertiary)" }}>padrão</span>
+                  <button type="button" disabled={busy} aria-pressed={on}
+                    onClick={() => void saveSettings({
+                      enabledHistoryKinds: on ? enabledList.filter((x) => x !== k) : [...enabledList, k],
+                    })}
+                    className="relative h-5 w-9 flex-shrink-0 rounded-full transition disabled:opacity-60"
+                    style={{ background: on ? "var(--dm-primary)" : "var(--dm-border-default)" }}
+                    title={on ? "Aba visível" : "Aba oculta"}>
+                    <span className="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all" style={{ left: on ? "18px" : "2px" }} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
           <div className="mb-3 flex flex-wrap gap-1.5">
-            {BUILTIN_HISTORY_KINDS.map((k) => (
-              <span key={k} className="rounded-full border px-2.5 py-1 text-[11px] font-semibold"
-                style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-tertiary)", background: "var(--dm-bg-elevated)" }}>
-                {HISTORICAL_KIND_LABELS[k]} · padrão
-              </span>
-            ))}
             {customTabs.map((t) => (
               <span key={t.id} className="flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-bold"
                 style={{ borderColor: "var(--dm-primary)", color: "var(--dm-primary)", background: "var(--dm-primary-soft, rgba(22,163,74,0.10))" }}>
