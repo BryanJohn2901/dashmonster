@@ -4,22 +4,25 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   X, UserRound, Building2, History, Radar, Users, LogOut, Loader2, Save,
   ShieldCheck, Lock, Unlock, CheckCircle2, Camera, ChevronDown, Check, Trash2,
+  KeyRound, Megaphone,
 } from "lucide-react";
 import { useAvatarUrl, resolveAvatarSrc, AVATAR_ICON_COUNT } from "@/hooks/useAvatarUrl";
 import { useTheme } from "next-themes";
 import {
-  useCompany, fetchCompanyMembers,
+  useCompany, fetchCompanyMembers, fetchCompanyToken, readAdAccountSuggestions,
   type CompanyMember, type Company, type CompanyRole,
 } from "@/hooks/useCompany";
+import { FacebookConnectShell, InstagramConnectShell } from "@/components/hub/ConnectShells";
+import { CampaignCenter } from "@/components/CampaignCenter";
 import { useDevMode } from "@/hooks/useDevMode";
 import { toast } from "@/hooks/useToast";
 import { readCustomHistoryTabs } from "@/types/historical";
 import {
-  IdentidadeSection, HistoricoSection, TrackingSection, EquipeSection,
+  IdentidadeSection, HistoricoSection, TrackingSection, EquipeSection, ConexaoSection, ContasSection,
 } from "@/components/CompanyStudio";
 import type { UserCategory } from "@/types/userConfig";
 
-type NavId = "perfil" | "identidade" | "historico" | "tracking" | "colaboradores" | "devacesso";
+type NavId = "perfil" | "identidade" | "conexao" | "contas" | "instagram" | "historico" | "tracking" | "colaboradores" | "devacesso";
 
 interface HubSettingsProps {
   open: boolean;
@@ -33,11 +36,17 @@ interface HubSettingsProps {
   onCategoriesChange?: (next: UserCategory[]) => void;
 }
 
-// Só o essencial do usuário fica aqui. Gestão de plataforma (produtos, criar
-// empresa, token Meta, contas de anúncio, Instagram, filtros) mora no /admin.
+// Essencial do usuário + Conexões (pré-configuração fácil: BM, contas de
+// anúncio, Instagram). Gestão de plataforma (produtos, criar empresa,
+// auditoria, filtros de todas as empresas) mora no /admin.
 const NAV: { group: string; items: { id: NavId; label: string; icon: typeof UserRound; sub: string }[] }[] = [
   { group: "Conta", items: [
     { id: "perfil", label: "Perfil", icon: UserRound, sub: "Seu nome e dados de acesso" },
+  ]},
+  { group: "Conexões", items: [
+    { id: "conexao",   label: "Conexão Meta (BM)", icon: KeyRound,  sub: "Conectar Facebook / token da API" },
+    { id: "contas",    label: "Contas de anúncio", icon: Megaphone, sub: "ACTs desta empresa + acoplar a filtros" },
+    { id: "instagram", label: "Instagram",         icon: Camera,    sub: "Perfil IG monitorado desta empresa" },
   ]},
   { group: "Empresa", items: [
     { id: "identidade", label: "Geral",     icon: Building2,        sub: "Nome e identidade da empresa" },
@@ -414,14 +423,19 @@ function DevAccessSection() {
 function EmpresaSections({ nav }: { nav: NavId }) {
   const { company, role, isOwner, canWrite, loading, memberships, switchCompany } = useCompany();
   const [members, setMembers] = useState<CompanyMember[] | null>(null);
+  const [token, setToken] = useState("");
+  // Conectar conta abre o wizard ocupando a janela — esconde sugestões/cabeçalho.
+  const [connecting, setConnecting] = useState(false);
 
   useEffect(() => {
     if (!company) return;
     let active = true;
+    void fetchCompanyToken(company.id).then((t) => { if (active) setToken(t); }).catch(() => {});
     void fetchCompanyMembers(company.id).then((m) => { if (active) setMembers(m); }).catch(() => { if (active) setMembers([]); });
     return () => { active = false; };
   }, [company]);
 
+  const suggestions = useMemo(() => readAdAccountSuggestions(company?.settings), [company?.settings]);
   const customTabs = useMemo(() => readCustomHistoryTabs(company?.settings), [company?.settings]);
   const totalTabs = 4 + customTabs.length; // 4 tipos padrão + customizadas
 
@@ -443,6 +457,24 @@ function EmpresaSections({ nav }: { nav: NavId }) {
     switch (nav) {
       case "identidade":
         return <IdentidadeSection company={company} canEdit={isOwner} open onToggle={noop} variant="panel" />;
+      case "conexao":
+        return (
+          <div className="space-y-3">
+            <FacebookConnectShell connected={Boolean(token.trim())} />
+            <ConexaoSection company={company} canEdit={isOwner} token={token} onToken={setToken} open onToggle={noop} variant="panel" />
+          </div>
+        );
+      case "contas":
+        return (
+          <div className="space-y-4">
+            {!connecting && (
+              <ContasSection company={company} canEdit={isOwner} suggestions={suggestions} open onToggle={noop} variant="panel" />
+            )}
+            <CampaignCenter key="campaign-center" onConnectingChange={setConnecting} />
+          </div>
+        );
+      case "instagram":
+        return <InstagramConnectShell company={company} />;
       case "historico":
         return <HistoricoSection company={company} canEdit={isOwner} customTabs={customTabs} totalTabs={totalTabs} open onToggle={noop} variant="panel" />;
       case "tracking":
