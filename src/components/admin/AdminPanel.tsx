@@ -9,14 +9,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Activity, Building2, Home, KeyRound, LayoutGrid, Megaphone, Package, Plus,
+  Activity, Building2, Home, KanbanSquare, KeyRound, LayoutGrid, Megaphone, Package, Plus,
   Search, Settings, ShieldCheck, SlidersHorizontal, Users, Mail, Camera, ChevronDown, Check,
 } from "lucide-react";
 import { useCompany, fetchAdminCompanies, type AdminCompany } from "@/hooks/useCompany";
 import { useDevMode } from "@/hooks/useDevMode";
 import {
   EmpresasSection, ProdutosSection, UsuariosSection, ConvitesSection, AtividadeSection,
-  MetaSection, ContasSection, InstagramSection, FiltrosSection,
+  MetaSection, ContasSection, InstagramSection, FiltrosSection, PipeFlowSection,
 } from "./sections";
 import { CreateCompanyWizard } from "./CreateCompanyWizard";
 
@@ -24,7 +24,7 @@ export type AdminNavId =
   | "overview" | "empresas" | "produtos" | "criar"
   | "usuarios" | "convites" | "atividade"
   | "meta" | "contas" | "instagram"
-  | "filtros";
+  | "filtros" | "pipeflow";
 
 interface NavItem { id: AdminNavId; label: string; icon: typeof Users; desc: string }
 
@@ -57,6 +57,12 @@ const NAV_GROUPS: { group: string; desc: string; items: NavItem[] }[] = [
     group: "Dados", desc: "Taxonomia dos dashboards",
     items: [
       { id: "filtros", label: "Filtros & histórico", icon: SlidersHorizontal, desc: "Filtros, subfiltros e abas do histórico" },
+    ],
+  },
+  {
+    group: "PipeFlow", desc: "CRM por empresa (funis, leads e negócios)",
+    items: [
+      { id: "pipeflow", label: "Funis do CRM", icon: KanbanSquare, desc: "Funis, etapas e volume de negócios por empresa" },
     ],
   },
 ];
@@ -198,6 +204,7 @@ export function AdminPanel() {
           {nav === "contas" && <ContasSection {...scoped} />}
           {nav === "instagram" && <InstagramSection {...scoped} />}
           {nav === "filtros" && <FiltrosSection {...scoped} />}
+          {nav === "pipeflow" && <PipeFlowSection {...scoped} />}
         </div>
       </main>
     </div>

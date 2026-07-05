@@ -6,6 +6,7 @@
 
 import { supabaseClient } from "@/lib/supabase";
 import { isDevModeActive } from "@/hooks/useDevMode";
+import { authedFetch } from "@/lib/authedFetch";
 
 export interface LoginEvent {
   id: string;
@@ -87,6 +88,44 @@ function demoMembers(): GlobalMember[] {
     { userId: "u3", email: "social@ptacademy.com", companies: [{ companyId: "demo-1", companyName: "Personal Trainer Academy (Demo)", role: "viewer" }],  lastLogin: ev[3], memberSince: d(90) },
     { userId: "u4", email: "novo@loja.com",        companies: [{ companyId: "demo-2", companyName: "Loja Fitness Online (Demo)", role: "viewer" }],       lastLogin: null,  memberSince: d(3) },
   ];
+}
+
+// ─── Gestão de usuários (rota /api/admin/users, service role) ────────────────
+
+export interface AdminUserDetail {
+  id: string;
+  email: string;
+  name: string;
+  avatarUrl: string | null;
+  bannedUntil: string | null;
+}
+
+export type BanDuration = "24h" | "168h" | "876000h" | "none";
+
+export async function fetchAdminUser(userId: string): Promise<AdminUserDetail> {
+  const res = await authedFetch(`/api/admin/users?userId=${encodeURIComponent(userId)}`);
+  const body = (await res.json()) as AdminUserDetail & { error?: string };
+  if (!res.ok) throw new Error(body.error ?? `Erro ${res.status}`);
+  return body;
+}
+
+export async function updateAdminUser(input: {
+  userId: string; name?: string; email?: string; avatarUrl?: string; ban?: BanDuration;
+}): Promise<void> {
+  const res = await authedFetch("/api/admin/users", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? `Erro ${res.status}`);
+  }
+}
+
+/** Banido = banned_until no futuro. */
+export function isBanned(bannedUntil: string | null): boolean {
+  return !!bannedUntil && new Date(bannedUntil).getTime() > Date.now();
 }
 
 // ─── Real ───────────────────────────────────────────────────────────────────

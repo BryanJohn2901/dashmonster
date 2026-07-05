@@ -14,15 +14,21 @@ import {
   fetchCompanyMembers, updateMemberRole, removeMember, renameCompany, setCompanyProducts,
   fetchCompanyToken, setCompanyToken, inviteMemberByEmail, fetchCompanyAdAccounts,
   readAdAccountSuggestions, saveAdAccountSuggestions, updateCompanySettings,
+  fetchCompanyInvites, revokeCompanyInvite, type PendingInvite,
+  readMemberProducts, MEMBER_PRODUCTS_KEY,
+  readCompanyBranding, updateCompanyLogo, COMPANY_BRANDING_KEY, type CompanyBranding,
   type AdminCompany, type CompanyRole, type CompanyMember, type AdAccountEntry,
 } from "@/hooks/useCompany";
 import { PRODUCTS } from "@/config/products";
 import { readCustomHistoryTabs, CUSTOM_HISTORY_TABS_KEY, HISTORICAL_KIND_LABELS, BUILTIN_HISTORY_KINDS, type CustomHistoryTab } from "@/types/historical";
 import {
   fetchGlobalMembers, fetchLoginEvents, isActiveMember, parseUserAgent, formatLocation,
-  type GlobalMember, type LoginEvent,
+  fetchAdminUser, updateAdminUser, isBanned,
+  type GlobalMember, type LoginEvent, type AdminUserDetail, type BanDuration,
 } from "@/lib/adminAudit";
 import { FacebookConnectShell, InstagramConnectShell } from "@/components/hub/ConnectShells";
+import { fetchMetaAdAccounts, type MetaAdAccount } from "@/utils/metaApi";
+import { fetchPipelines, fetchCrmStats, ensureDefaultPipeline, deletePipeline, type CrmPipeline, type CrmStats } from "@/lib/crm";
 import { toast } from "@/hooks/useToast";
 
 export interface ScopedProps {
@@ -236,11 +242,82 @@ export function EmpresasSection({ companies, onSelect, reload, onCreate, onGo }:
                     ))}
                   </div>
                 )}
+
+                <CompanyBrandingEditor company={c} reload={reload} />
               </div>
             )}
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Personalização (banner + logo + descrição, estilo WhatsApp Business) ──────
+
+function CompanyBrandingEditor({ company: c, reload }: { company: AdminCompany; reload: () => void | Promise<void> }) {
+  const branding = readCompanyBranding(c.company.settings);
+  const [logoUrl, setLogoUrl] = useState(c.company.logoUrl ?? "");
+  const [bannerUrl, setBannerUrl] = useState(branding.bannerUrl ?? "");
+  const [description, setDescription] = useState(branding.description ?? "");
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const next: CompanyBranding = {};
+      if (bannerUrl.trim()) next.bannerUrl = bannerUrl.trim();
+      if (description.trim()) next.description = description.trim().slice(0, 300);
+      await updateCompanySettings(c.company.id, { ...c.company.settings, [COMPANY_BRANDING_KEY]: next });
+      if ((c.company.logoUrl ?? "") !== logoUrl.trim()) {
+        await updateCompanyLogo(c.company.id, logoUrl.trim() || null);
+      }
+      await reload();
+      toast.success("Personalização salva.");
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Erro ao salvar personalização."); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="mt-4 border-t pt-3" style={{ borderColor: "var(--dm-border-default)" }}>
+      <p className="mb-2 text-[12px] font-bold" style={{ color: "var(--dm-text-primary)" }}>Personalização</p>
+
+      {/* Prévia do perfil (banner + logo + descrição) */}
+      {(bannerUrl.trim() || logoUrl.trim() || description.trim()) && (
+        <div className="mb-3 overflow-hidden rounded-xl border" style={{ borderColor: "var(--dm-border-default)" }}>
+          {bannerUrl.trim() && (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img src={bannerUrl.trim()} alt="Banner da empresa" className="h-24 w-full object-cover" />
+          )}
+          <div className="flex items-center gap-2.5 px-3 py-2.5" style={{ background: "var(--dm-bg-elevated)" }}>
+            {logoUrl.trim() && (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img src={logoUrl.trim()} alt="Logo" className="h-9 w-9 rounded-full border object-cover" style={{ borderColor: "var(--dm-border-default)" }} />
+            )}
+            <div className="min-w-0">
+              <p className="truncate text-[12.5px] font-bold" style={{ color: "var(--dm-text-primary)" }}>{c.company.name}</p>
+              {description.trim() && <p className="line-clamp-2 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>{description.trim()}</p>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="grid gap-2 sm:grid-cols-2">
+        <input value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} placeholder="URL do logo (quadrado)"
+          className="h-10 rounded-xl border px-3 text-[12.5px] outline-none" style={inputStyle} />
+        <input value={bannerUrl} onChange={(e) => setBannerUrl(e.target.value)} placeholder="URL do banner (paisagem)"
+          className="h-10 rounded-xl border px-3 text-[12.5px] outline-none" style={inputStyle} />
+      </div>
+      <textarea value={description} onChange={(e) => setDescription(e.target.value)} maxLength={300} rows={2}
+        placeholder="Descrição da empresa (aparece no hub, máx. 300 caracteres)"
+        className="mt-2 w-full resize-none rounded-xl border px-3 py-2 text-[12.5px] outline-none" style={inputStyle} />
+      <div className="mt-2 flex justify-end">
+        <button type="button" onClick={() => void save()} disabled={saving}
+          className="flex h-9 items-center gap-1.5 rounded-xl px-4 text-[11.5px] font-bold text-white transition hover:opacity-90 disabled:opacity-40"
+          style={{ background: "var(--dm-btn-primary-bg)" }}>
+          {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} Salvar personalização
+        </button>
       </div>
     </div>
   );
@@ -338,6 +415,7 @@ function GlobalUsersView() {
   const [members, setMembers] = useState<GlobalMember[] | null>(null);
   const [query, setQuery] = useState("");
   const [onlyInactive, setOnlyInactive] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   useEffect(() => {
     void fetchGlobalMembers().then(setMembers).catch((e) => {
@@ -402,6 +480,12 @@ function GlobalUsersView() {
                     : { background: "rgba(148,163,184,0.14)", color: "#94A3B8" }}>
                   {active ? "Ativo" : "Inativo"}
                 </span>
+                <button type="button" onClick={() => setEditingId((v) => (v === m.userId ? null : m.userId))}
+                  title="Editar usuário"
+                  className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition hover:opacity-70"
+                  style={{ color: editingId === m.userId ? "var(--dm-primary)" : "var(--dm-text-tertiary)" }}>
+                  <Pencil size={13} />
+                </button>
               </div>
               <div className="mt-2.5 grid gap-x-6 gap-y-1 border-t pt-2.5 text-[11.5px] sm:grid-cols-2 lg:grid-cols-4"
                 style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>
@@ -410,9 +494,102 @@ function GlobalUsersView() {
                 <span><b style={{ color: "var(--dm-text-tertiary)" }}>Local:</b> {formatLocation(m.lastLogin)}</span>
                 <span><b style={{ color: "var(--dm-text-tertiary)" }}>IP:</b> {m.lastLogin?.ip ?? "—"}</span>
               </div>
+              {editingId === m.userId && <UserEditor userId={m.userId} onClose={() => setEditingId(null)} />}
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+// Editor inline de usuário (rota /api/admin/users, service role — só super admin).
+function UserEditor({ userId, onClose }: { userId: string; onClose: () => void }) {
+  const [detail, setDetail] = useState<AdminUserDetail | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState("");
+  const [banFor, setBanFor] = useState<BanDuration>("24h");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    fetchAdminUser(userId)
+      .then((d) => { if (!active) return; setDetail(d); setName(d.name); setEmail(d.email); setAvatarUrl(d.avatarUrl ?? ""); })
+      .catch((e) => { if (active) setError(e instanceof Error ? e.message : "Erro ao carregar usuário."); });
+    return () => { active = false; };
+  }, [userId]);
+
+  if (error) return <p className="mt-3 border-t pt-3 text-[12px]" style={{ borderColor: "var(--dm-border-default)", color: "#EE5D50" }}>{error}</p>;
+  if (!detail) return <div className="mt-3 border-t pt-3" style={{ borderColor: "var(--dm-border-default)" }}><Loader2 size={14} className="animate-spin" style={{ color: "var(--dm-text-tertiary)" }} /></div>;
+
+  const banned = isBanned(detail.bannedUntil);
+
+  const apply = async (input: Parameters<typeof updateAdminUser>[0]) => {
+    setSaving(true);
+    try {
+      await updateAdminUser(input);
+      const d = await fetchAdminUser(userId);
+      setDetail(d); setName(d.name); setEmail(d.email); setAvatarUrl(d.avatarUrl ?? "");
+      toast.success("Usuário atualizado.");
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Erro ao atualizar."); }
+    finally { setSaving(false); }
+  };
+
+  const save = () => {
+    const input: Parameters<typeof updateAdminUser>[0] = { userId };
+    if (name.trim() && name.trim() !== detail.name) input.name = name.trim();
+    if (email.trim() && email.trim().toLowerCase() !== detail.email) input.email = email.trim();
+    if (avatarUrl.trim() !== (detail.avatarUrl ?? "")) input.avatarUrl = avatarUrl.trim();
+    if (!input.name && !input.email && input.avatarUrl === undefined) { onClose(); return; }
+    void apply(input);
+  };
+
+  return (
+    <div className="mt-3 flex flex-col gap-2 border-t pt-3" style={{ borderColor: "var(--dm-border-default)" }}>
+      {banned && (
+        <p className="rounded-lg px-3 py-2 text-[12px] font-bold" style={{ background: "rgba(238,93,80,0.1)", color: "#EE5D50" }}>
+          Banido até {new Date(detail.bannedUntil!).toLocaleString("pt-BR")}
+        </p>
+      )}
+      <div className="grid gap-2 sm:grid-cols-3">
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome"
+          className="h-10 rounded-xl border px-3 text-[12.5px] outline-none" style={inputStyle} />
+        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-mail"
+          className="h-10 rounded-xl border px-3 text-[12.5px] outline-none" style={inputStyle} />
+        <input value={avatarUrl} onChange={(e) => setAvatarUrl(e.target.value)} placeholder="URL da foto (vazio remove)"
+          className="h-10 rounded-xl border px-3 text-[12.5px] outline-none" style={inputStyle} />
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" onClick={save} disabled={saving}
+          className="flex h-9 items-center gap-1.5 rounded-xl px-4 text-[11.5px] font-bold text-white transition hover:opacity-90 disabled:opacity-40"
+          style={{ background: "var(--dm-btn-primary-bg)" }}>
+          {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} Salvar
+        </button>
+        <div className="flex-1" />
+        {banned ? (
+          <button type="button" onClick={() => void apply({ userId, ban: "none" })} disabled={saving}
+            className="flex h-9 items-center gap-1.5 rounded-xl border px-3.5 text-[11.5px] font-bold transition hover:opacity-80 disabled:opacity-40"
+            style={{ borderColor: "rgba(34,197,94,0.4)", color: "#22C55E" }}>
+            Desbanir
+          </button>
+        ) : (
+          <>
+            <select value={banFor} onChange={(e) => setBanFor(e.target.value as BanDuration)}
+              className="h-9 rounded-xl border px-2.5 text-[11.5px] font-semibold outline-none" style={inputStyle}>
+              <option value="24h">24 horas</option>
+              <option value="168h">7 dias</option>
+              <option value="876000h">Permanente</option>
+            </select>
+            <button type="button" disabled={saving}
+              onClick={() => { if (confirm(`Banir ${detail.email}? A pessoa perde o acesso na hora.`)) void apply({ userId, ban: banFor }); }}
+              className="flex h-9 items-center gap-1.5 rounded-xl border px-3.5 text-[11.5px] font-bold transition hover:opacity-80 disabled:opacity-40"
+              style={{ borderColor: "rgba(238,93,80,0.45)", color: "#EE5D50" }}>
+              Banir
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
@@ -435,6 +612,24 @@ function CompanyMembersView({ selected, reload }: ScopedProps) {
   if (!selected) return <ScopeHint selected={selected} />;
 
   const titles = readMemberTitles(selected.company.settings);
+  const memberProducts = readMemberProducts(selected.company.settings);
+  const ownedProducts = selected.company.products ?? ["dash"];
+
+  // Liga/desliga um produto pra UM membro (allowlist em settings.memberProducts).
+  const toggleMemberProduct = async (m: CompanyMember, productId: string) => {
+    const email = m.email.toLowerCase();
+    const current = memberProducts[email] ?? ownedProducts;
+    const next = current.includes(productId) ? current.filter((p) => p !== productId) : [...current, productId];
+    const map = { ...memberProducts };
+    if (ownedProducts.every((p) => next.includes(p))) delete map[email]; // tudo liberado → sem entrada
+    else map[email] = next;
+    setBusyId(m.id);
+    try {
+      await updateCompanySettings(selected.company.id, { ...selected.company.settings, [MEMBER_PRODUCTS_KEY]: map });
+      await reload();
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Erro ao salvar acesso."); }
+    finally { setBusyId(null); }
+  };
 
   const changeRole = async (m: CompanyMember, role: CompanyRole) => {
     setBusyId(m.id);
@@ -474,6 +669,23 @@ function CompanyMembersView({ selected, reload }: ScopedProps) {
                 </p>
               </div>
               {busyId === m.id && <Loader2 size={14} className="animate-spin" style={{ color: "var(--dm-text-tertiary)" }} />}
+              {/* Acesso por produto deste membro (interseção com os da empresa) */}
+              <div className="flex flex-shrink-0 gap-1">
+                {PRODUCTS.filter((p) => ownedProducts.includes(p.id)).map((p) => {
+                  const allowed = (memberProducts[m.email.toLowerCase()] ?? ownedProducts).includes(p.id);
+                  return (
+                    <button key={p.id} type="button" disabled={busyId === m.id}
+                      onClick={() => void toggleMemberProduct(m, p.id)}
+                      title={`${p.name}: ${allowed ? "liberado" : "bloqueado"} pra este membro`}
+                      className="rounded-lg border px-2 py-1 text-[10.5px] font-bold transition disabled:opacity-50"
+                      style={allowed
+                        ? { borderColor: "rgba(34,197,94,0.4)", background: "rgba(34,197,94,0.1)", color: "#22C55E" }
+                        : { borderColor: "var(--dm-border-default)", color: "var(--dm-text-tertiary)", textDecoration: "line-through" }}>
+                      {p.name}
+                    </button>
+                  );
+                })}
+              </div>
               <select value={m.role} onChange={(e) => void changeRole(m, e.target.value as CompanyRole)}
                 className="h-9 rounded-lg border px-2 text-[12px] font-semibold outline-none" style={inputStyle}>
                 <option value="owner">Dono</option>
@@ -554,6 +766,15 @@ export function ConvitesSection({ selected, reload }: ScopedProps) {
   const [roleId, setRoleId] = useState("analista");
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState<{ email: string; label: string; result: string }[]>([]);
+  const [pending, setPending] = useState<PendingInvite[] | null>(null);
+
+  const loadPending = (companyId: string) =>
+    fetchCompanyInvites(companyId).then(setPending).catch(() => setPending([]));
+
+  useEffect(() => {
+    setPending(null);
+    if (selected) void loadPending(selected.company.id);
+  }, [selected]);
 
   if (!selected) return <><SectionHeader icon={Mail} title="Convites" desc="Convide alguém pra entrar numa empresa" /><ScopeHint selected={selected} /></>;
 
@@ -573,7 +794,7 @@ export function ConvitesSection({ selected, reload }: ScopedProps) {
       setSent((prev) => [{ email: email.trim(), label: role.label, result }, ...prev]);
       setEmail("");
       toast.success(result === "added" ? "Já tinha conta — virou membro na hora." : "Convite criado. Ativa quando a pessoa se cadastrar no hub.");
-      await reload();
+      await Promise.all([reload(), loadPending(selected.company.id)]);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro ao convidar.");
     } finally { setSending(false); }
@@ -616,6 +837,36 @@ export function ConvitesSection({ selected, reload }: ScopedProps) {
               <span className="text-[11px] font-bold" style={{ color: "#22C55E" }}>
                 {s.result === "added" ? "Adicionado" : "Convite pendente"}
               </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <h2 className="mb-2 mt-8 text-[13px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
+        Convites pendentes
+      </h2>
+      {pending === null ? (
+        <Card><Loader2 size={16} className="animate-spin" style={{ color: "var(--dm-text-tertiary)" }} /></Card>
+      ) : pending.length === 0 ? (
+        <Card><p className="text-[13px]" style={{ color: "var(--dm-text-tertiary)" }}>Nenhum convite aguardando cadastro.</p></Card>
+      ) : (
+        <div className="flex flex-col gap-1.5">
+          {pending.map((p) => (
+            <div key={p.id} className="flex items-center gap-3 rounded-xl border px-4 py-2.5"
+              style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)" }}>
+              <Mail size={14} style={{ color: "var(--dm-text-tertiary)" }} />
+              <p className="min-w-0 flex-1 truncate text-[12.5px] font-semibold" style={{ color: "var(--dm-text-primary)" }}>
+                {p.email} <span className="font-normal" style={{ color: "var(--dm-text-tertiary)" }}>· {DB_ROLE_LABEL[p.role] ?? p.role} · {new Date(p.createdAt).toLocaleDateString("pt-BR")}</span>
+              </p>
+              <button type="button" title="Revogar convite"
+                onClick={() => {
+                  void revokeCompanyInvite(p.id)
+                    .then(() => { setPending((prev) => prev?.filter((x) => x.id !== p.id) ?? null); toast.success("Convite revogado."); })
+                    .catch((e) => toast.error(e instanceof Error ? e.message : "Erro ao revogar."));
+                }}
+                className="flex h-7 w-7 items-center justify-center rounded-md transition hover:opacity-70" style={{ color: "#EE5D50" }}>
+                <Trash2 size={13} />
+              </button>
             </div>
           ))}
         </div>
@@ -708,9 +959,12 @@ export function ContasSection({ selected, reload }: ScopedProps) {
   const [newId, setNewId] = useState("");
   const [newLabel, setNewLabel] = useState("");
   const [busy, setBusy] = useState(false);
+  const [discovered, setDiscovered] = useState<MetaAdAccount[] | null>(null);
+  const [discovering, setDiscovering] = useState(false);
 
   useEffect(() => {
     setEntries(null);
+    setDiscovered(null);
     if (!selected) return;
     let active = true;
     void fetchCompanyAdAccounts(selected.company.id)
@@ -723,18 +977,33 @@ export function ContasSection({ selected, reload }: ScopedProps) {
 
   const suggestions = readAdAccountSuggestions(selected.company.settings);
 
-  const addSuggestion = async () => {
-    const id = newId.trim().replace(/^act_/, "");
-    if (!id) return;
+  // Descobre TODAS as contas que o token da empresa enxerga (app + BM vinculada).
+  const discover = async () => {
+    setDiscovering(true);
+    try {
+      const token = await fetchCompanyToken(selected.company.id);
+      if (!token) { toast.error("Empresa sem token Meta. Configure em Conexão Meta primeiro."); return; }
+      setDiscovered(await fetchMetaAdAccounts(token));
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Erro ao buscar contas no Meta."); }
+    finally { setDiscovering(false); }
+  };
+
+  const saveSuggestion = async (id: string, label: string) => {
     setBusy(true);
     try {
       await saveAdAccountSuggestions(selected.company.id, selected.company.settings,
-        [...suggestions.filter((s) => s.id !== id), { id, label: newLabel.trim() || id }]);
-      setNewId(""); setNewLabel("");
+        [...suggestions.filter((s) => s.id !== id), { id, label: label || id }]);
       await reload();
       toast.success("Conta registrada nas sugestões da empresa.");
     } catch (e) { toast.error(e instanceof Error ? e.message : "Erro ao registrar conta."); }
     finally { setBusy(false); }
+  };
+
+  const addSuggestion = async () => {
+    const id = newId.trim().replace(/^act_/, "");
+    if (!id) return;
+    await saveSuggestion(id, newLabel.trim());
+    setNewId(""); setNewLabel("");
   };
 
   const removeSuggestion = async (id: string) => {
@@ -781,6 +1050,53 @@ export function ContasSection({ selected, reload }: ScopedProps) {
                 </button>
               </div>
             ))}
+          </div>
+        )}
+      </Card>
+
+      <Card className="mt-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="mb-1 text-[13px] font-bold" style={{ color: "var(--dm-text-primary)" }}>Descobrir contas do Meta</p>
+            <p className="text-[11px] leading-relaxed" style={{ color: "var(--dm-text-tertiary)" }}>
+              Lista todas as contas de anúncio que o token da empresa enxerga (app + Business Manager vinculada).
+            </p>
+          </div>
+          <button type="button" onClick={() => void discover()} disabled={discovering}
+            className="flex h-10 flex-shrink-0 items-center gap-1.5 rounded-xl px-4 text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-40"
+            style={{ background: "var(--dm-btn-primary-bg)" }}>
+            {discovering ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />} Carregar contas
+          </button>
+        </div>
+
+        {discovered !== null && (
+          <div className="mt-3 flex flex-col gap-1.5">
+            {discovered.length === 0 && (
+              <p className="text-[12px]" style={{ color: "var(--dm-text-tertiary)" }}>O token não enxerga nenhuma conta de anúncio.</p>
+            )}
+            {discovered.map((a) => {
+              const id = a.id.replace(/^act_/, "");
+              const already = suggestions.some((s) => s.id === id);
+              return (
+                <div key={a.id} className="flex items-center gap-2.5 rounded-xl border px-3 py-2"
+                  style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-elevated)" }}>
+                  <span className="h-2 w-2 flex-shrink-0 rounded-full" style={{ background: a.account_status === 1 ? "#22C55E" : "#94A3B8" }}
+                    title={a.account_status === 1 ? "Ativa" : "Inativa"} />
+                  <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold" style={{ color: "var(--dm-text-primary)" }}>
+                    {a.name} <span className="font-normal" style={{ color: "var(--dm-text-tertiary)" }}>· act_{id} · {a.currency}</span>
+                  </span>
+                  {already ? (
+                    <span className="flex items-center gap-1 text-[11px] font-bold" style={{ color: "#22C55E" }}><Check size={12} /> Registrada</span>
+                  ) : (
+                    <button type="button" onClick={() => void saveSuggestion(id, a.name)} disabled={busy}
+                      className="flex h-7 items-center gap-1 rounded-lg px-2.5 text-[11px] font-bold transition hover:opacity-80 disabled:opacity-40"
+                      style={{ background: "var(--dm-primary-soft, rgba(22,163,74,0.12))", color: "var(--dm-primary)" }}>
+                      <Plus size={12} /> Adicionar
+                    </button>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </Card>
@@ -1003,6 +1319,143 @@ export function FiltrosSection({ selected, reload }: ScopedProps) {
           </div>
         </Card>
       </div>
+    </div>
+  );
+}
+
+// ─── PipeFlow (funis do CRM da empresa selecionada) ─────────────────────────────
+// Unificação do painel: o super admin enxerga e gerencia o básico do CRM de
+// qualquer empresa daqui (RLS: migration 075). Gestão fina continua no /crm.
+
+const STAGE_DOT: Record<string, string> = {
+  emerald: "#10B981", rose: "#F43F5E", slate: "#94A3B8", sky: "#0EA5E9",
+  amber: "#F59E0B", violet: "#8B5CF6", lime: "#84CC16", blue: "#3B82F6",
+};
+
+export function PipeFlowSection({ selected }: ScopedProps) {
+  const [pipelines, setPipelines] = useState<CrmPipeline[] | null>(null);
+  const [stats, setStats] = useState<CrmStats | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = async (companyId: string) => {
+    const [p, s] = await Promise.all([
+      fetchPipelines(companyId),
+      fetchCrmStats(companyId).catch(() => null),
+    ]);
+    setPipelines(p);
+    setStats(s);
+  };
+
+  useEffect(() => {
+    setPipelines(null); setStats(null);
+    if (!selected) return;
+    let active = true;
+    void load(selected.company.id).catch((e) => {
+      if (!active) return;
+      setPipelines([]);
+      toast.error(e instanceof Error ? e.message : "Erro ao carregar o CRM (rodou a migration 075?).");
+    });
+    return () => { active = false; };
+  }, [selected]);
+
+  if (!selected) return <><SectionHeader icon={Users} title="PipeFlow · Funis" desc="CRM da empresa selecionada" /><ScopeHint selected={selected} /></>;
+
+  const hasPipe = (selected.company.products ?? []).includes("pipe");
+
+  const createDefault = async () => {
+    setBusy(true);
+    try { await ensureDefaultPipeline(selected.company.id); await load(selected.company.id); toast.success("Funil Principal criado."); }
+    catch (e) { toast.error(e instanceof Error ? e.message : "Erro ao criar funil."); }
+    finally { setBusy(false); }
+  };
+
+  const removePipeline = async (p: CrmPipeline) => {
+    if (!confirm(`Excluir o funil "${p.name}" de ${selected.company.name}? Os negócios dele somem do Kanban.`)) return;
+    setBusy(true);
+    try { await deletePipeline(p.id, selected.company.id); await load(selected.company.id); toast.success("Funil excluído."); }
+    catch (e) { toast.error(e instanceof Error ? e.message : "Erro ao excluir funil."); }
+    finally { setBusy(false); }
+  };
+
+  const dealsByPipeline = new Map<string, number>();
+  for (const d of stats?.deals ?? []) dealsByPipeline.set(d.pipelineId, (dealsByPipeline.get(d.pipelineId) ?? 0) + 1);
+
+  return (
+    <div>
+      <SectionHeader icon={Users} title="PipeFlow · Funis" desc={`CRM de ${selected.company.name}`}
+        right={
+          <a href="/crm" className="flex h-10 items-center gap-1.5 rounded-xl border px-4 text-xs font-bold transition hover:opacity-80"
+            style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-primary)" }}>
+            Abrir PipeFlow →
+          </a>
+        } />
+
+      {!hasPipe && (
+        <Card className="mb-4">
+          <p className="text-[13px]" style={{ color: "#F4A60D" }}>
+            Esta empresa ainda não tem o PipeFlow liberado. Ative em <b>Produtos &amp; acessos</b> — os dados abaixo só aparecem pro time depois disso.
+          </p>
+        </Card>
+      )}
+
+      {stats && (
+        <div className="mb-4 grid gap-2 sm:grid-cols-3">
+          {[
+            ["Leads", stats.leadsCount],
+            ["Leads no mês", stats.leadsThisMonth],
+            ["Negócios", stats.deals.length],
+          ].map(([label, n]) => (
+            <Card key={String(label)}>
+              <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>{label}</p>
+              <p className="mt-1 text-[22px] font-bold tabular-nums" style={{ color: "var(--dm-text-primary)" }}>{n}</p>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {pipelines === null ? (
+        <Card><Loader2 size={16} className="animate-spin" style={{ color: "var(--dm-text-tertiary)" }} /></Card>
+      ) : pipelines.length === 0 ? (
+        <Card>
+          <p className="mb-3 text-[13px]" style={{ color: "var(--dm-text-tertiary)" }}>
+            Nenhum funil ainda. Crie o padrão (Funil Principal com 6 etapas) pra empresa começar.
+          </p>
+          <button type="button" onClick={() => void createDefault()} disabled={busy}
+            className="flex h-10 items-center gap-1.5 rounded-xl px-4 text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-40"
+            style={{ background: "var(--dm-btn-primary-bg)" }}>
+            {busy ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Criar funil padrão
+          </button>
+        </Card>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {pipelines.map((p) => (
+            <Card key={p.id}>
+              <div className="flex items-center gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[14px] font-bold" style={{ color: "var(--dm-text-primary)" }}>{p.name}</p>
+                  <p className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                    {p.stages.length} etapa{p.stages.length === 1 ? "" : "s"} · {dealsByPipeline.get(p.id) ?? 0} negócio{(dealsByPipeline.get(p.id) ?? 0) === 1 ? "" : "s"}
+                  </p>
+                </div>
+                <button type="button" title="Excluir funil" onClick={() => void removePipeline(p)} disabled={busy}
+                  className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg transition hover:bg-red-500/10 disabled:opacity-40"
+                  style={{ color: "#EE5D50" }}>
+                  <Trash2 size={14} />
+                </button>
+              </div>
+              <div className="mt-2.5 flex flex-wrap gap-1.5">
+                {p.stages.map((s) => (
+                  <span key={s.id} className="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold"
+                    style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ background: STAGE_DOT[s.color] ?? "#94A3B8" }} />
+                    {s.name}
+                  </span>
+                ))}
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

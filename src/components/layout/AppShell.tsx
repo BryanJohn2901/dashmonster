@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useCompany } from '@/hooks/useCompany'
+import { useCompany, memberAllowedProducts } from '@/hooks/useCompany'
 import { supabaseClient } from '@/lib/supabase'
 import { fetchPipelines, fetchConversations } from '@/lib/crm'
 import { PipelineSettingsModal } from '@/components/pipeline/PipelineSettingsModal'
@@ -52,7 +52,7 @@ export function AppShell({ children }: AppShellProps) {
   // Pipelines da sidebar + não-lidas do inbox.
   useEffect(() => {
     if (!companyId || !company) return
-    const hasPipe = (company.products ?? []).includes('pipe') || isSuperAdmin
+    const hasPipe = memberAllowedProducts(company, user?.email).includes('pipe') || isSuperAdmin
     if (!hasPipe) return
     fetchPipelines(companyId)
       .then((list) => setPipelines(list.map((p) => ({ id: p.id, name: p.name }))))
@@ -60,7 +60,7 @@ export function AppShell({ children }: AppShellProps) {
     fetchConversations(companyId)
       .then((convs) => setInboxUnreadCount(convs.reduce((sum, c) => sum + c.unreadCount, 0)))
       .catch(() => {})
-  }, [companyId, company, isSuperAdmin, pipelinesVersion])
+  }, [companyId, company, isSuperAdmin, pipelinesVersion, user])
 
   const handleSwitchCompany = useCallback((id: string) => {
     switchCompany(id)
@@ -81,7 +81,8 @@ export function AppShell({ children }: AppShellProps) {
     )
   }
 
-  const hasPipe = (company.products ?? []).includes('pipe') || isSuperAdmin
+  // Entitlement da empresa ∩ restrição por membro (settings.memberProducts).
+  const hasPipe = memberAllowedProducts(company, user?.email).includes('pipe') || isSuperAdmin
   if (!hasPipe) {
     return (
       <Centered>
@@ -99,7 +100,7 @@ export function AppShell({ children }: AppShellProps) {
     id: m.company.id,
     name: m.company.name,
     initials: '',
-    hasPipe: (m.company.products ?? []).includes('pipe') || isSuperAdmin,
+    hasPipe: memberAllowedProducts(m.company, user?.email).includes('pipe') || isSuperAdmin,
   }))
 
   return (

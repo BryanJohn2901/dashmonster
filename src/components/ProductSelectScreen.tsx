@@ -12,6 +12,10 @@ interface ProductSelectScreenProps {
   userName: string;
   email?: string;
   companyName?: string;
+  /** Personalização da empresa (admin → Empresas → Personalização). */
+  companyLogoUrl?: string | null;
+  companyBannerUrl?: string;
+  companyDescription?: string;
   onOpenDash: () => void;
   onOpenPipe: () => void;
   onSignOut?: () => void;
@@ -53,7 +57,7 @@ function useHoverProgress(active: boolean, duration = 850): number {
   return p;
 }
 
-export function ProductSelectScreen({ userName, email, companyName, onOpenDash, onOpenPipe, onSignOut, onUpdateProfile, categories, products = ["dash"] }: ProductSelectScreenProps) {
+export function ProductSelectScreen({ userName, email, companyName, companyLogoUrl, companyBannerUrl, companyDescription, onOpenDash, onOpenPipe, onSignOut, onUpdateProfile, categories, products = ["dash"] }: ProductSelectScreenProps) {
   const hasDash = products.includes("dash");
   const pipeDef = PRODUCTS.find((p) => p.id === "pipe");
   const pipeOpenable = pipeDef ? canOpenProduct(pipeDef, products) : false;
@@ -105,8 +109,14 @@ export function ProductSelectScreen({ userName, email, companyName, onOpenDash, 
           {menuOpen && (
             <>
               <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
-              <div className="absolute right-0 top-full z-50 mt-2 w-72 rounded-2xl p-2"
+              <div className="absolute right-0 top-full z-50 mt-2 w-72 overflow-hidden rounded-2xl p-2"
                 style={{ background: C.surface, border: `1px solid ${C.border}`, boxShadow: "0 12px 32px rgba(16,24,40,.16)" }}>
+                {/* Banner da empresa (personalização via admin) */}
+                {companyBannerUrl && (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img src={companyBannerUrl} alt="" aria-hidden="true"
+                    className="-m-2 mb-2 h-20 w-[calc(100%+16px)] max-w-none object-cover" />
+                )}
                 {/* Conta */}
                 <div className="flex items-center gap-3 px-2.5 py-2">
                   <span className="flex h-9 w-9 items-center justify-center rounded-full text-[13px] font-semibold text-white" style={{ background: C.violet }}>{initials}</span>
@@ -120,10 +130,19 @@ export function ProductSelectScreen({ userName, email, companyName, onOpenDash, 
 
                 {companyName && (
                   <div className="flex items-center gap-2.5 px-2.5 py-2">
-                    <Building2 size={15} style={{ color: C.tm }} />
+                    {companyLogoUrl ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img src={companyLogoUrl} alt="" aria-hidden="true"
+                        className="h-8 w-8 flex-shrink-0 rounded-full object-cover" style={{ border: `1px solid ${C.border}` }} />
+                    ) : (
+                      <Building2 size={15} style={{ color: C.tm }} />
+                    )}
                     <div className="min-w-0">
                       <p className="text-[11px]" style={{ color: C.tm }}>Empresa</p>
                       <p className="truncate text-sm font-medium" style={{ color: C.tp }}>{companyName}</p>
+                      {companyDescription && (
+                        <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug" style={{ color: C.ts }}>{companyDescription}</p>
+                      )}
                     </div>
                   </div>
                 )}

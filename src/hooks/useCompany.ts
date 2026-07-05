@@ -105,7 +105,7 @@ const DEMO_COMPANIES: Company[] = [
 // Overrides do modo demo (mutações feitas no painel admin) — persistem em
 // localStorage pra sobreviver à navegação entre /admin e o hub.
 const DEMO_OVERRIDES_KEY = "dm_demo_company_overrides_v1";
-type DemoOverride = Partial<Pick<Company, "name" | "products" | "settings">>;
+type DemoOverride = Partial<Pick<Company, "name" | "products" | "settings" | "logoUrl">>;
 
 function readDemoOverrides(): Record<string, DemoOverride> {
   try { return JSON.parse(localStorage.getItem(DEMO_OVERRIDES_KEY) ?? "{}"); } catch { return {}; }
@@ -258,10 +258,60 @@ function demoMutate(companyId: string, patch: (c: Company) => void): boolean {
   if (c) {
     patch(c);
     const overrides = readDemoOverrides();
-    overrides[companyId] = { name: c.name, products: c.products, settings: c.settings };
+    overrides[companyId] = { name: c.name, products: c.products, settings: c.settings, logoUrl: c.logoUrl };
     try { localStorage.setItem(DEMO_OVERRIDES_KEY, JSON.stringify(overrides)); } catch {}
   }
   return true;
+}
+
+// ─── Personalização da empresa (banner + descrição, estilo WhatsApp Business) ──
+export const COMPANY_BRANDING_KEY = "branding";
+export interface CompanyBranding { bannerUrl?: string; description?: string }
+
+export function readCompanyBranding(settings?: Record<string, unknown>): CompanyBranding {
+  const raw = settings?.[COMPANY_BRANDING_KEY];
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const b = raw as Record<string, unknown>;
+  return {
+    bannerUrl: typeof b.bannerUrl === "string" ? b.bannerUrl : undefined,
+    description: typeof b.description === "string" ? b.description : undefined,
+  };
+}
+
+/** Logo da empresa (coluna logo_url; RLS: owner ou super admin). */
+export async function updateCompanyLogo(companyId: string, logoUrl: string | null): Promise<void> {
+  if (demoMutate(companyId, (c) => { c.logoUrl = logoUrl; })) { await refreshCompany(); return; }
+  if (!supabaseClient) throw new Error("Supabase não configurado.");
+  const { error } = await supabaseClient
+    .from("companies")
+    .update({ logo_url: logoUrl })
+    .eq("id", companyId);
+  if (error) throw new Error(error.message);
+  await refreshCompany();
+}
+
+// ─── Restrição de produtos por membro ──────────────────────────────────────────
+// companies.settings.memberProducts = { "email": ["dash"] } — allowlist por
+// membro; sem entrada = todos os produtos da empresa. Sempre interseção com
+// companies.products (o entitlement da empresa é o teto).
+export const MEMBER_PRODUCTS_KEY = "memberProducts";
+
+export function readMemberProducts(settings?: Record<string, unknown>): Record<string, string[]> {
+  const raw = settings?.[MEMBER_PRODUCTS_KEY];
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: Record<string, string[]> = {};
+  for (const [email, list] of Object.entries(raw as Record<string, unknown>)) {
+    if (Array.isArray(list)) out[email.toLowerCase()] = list.map(String);
+  }
+  return out;
+}
+
+/** Produtos que ESTE membro pode abrir (empresa ∩ allowlist do membro). */
+export function memberAllowedProducts(company: Company | null | undefined, email: string | null | undefined): string[] {
+  const base = company?.products ?? ["dash"];
+  if (!company || !email) return base;
+  const allow = readMemberProducts(company.settings)[email.toLowerCase()];
+  return allow ? base.filter((p) => allow.includes(p)) : base;
 }
 
 /** Atualiza settings da empresa (só owner passa na RLS). */
@@ -989,6 +1039,29 @@ export async function saveAdAccountSuggestions(
   suggestions: AdAccountSuggestion[],
 ): Promise<void> {
   await updateCompanySettings(companyId, { ...(settings ?? {}), [AD_ACCOUNT_SUGGESTIONS_KEY]: suggestions });
+}
+
+export interface PendingInvite { id: string; email: string; role: CompanyRole; createdAt: string }
+
+/** Convites ainda não materializados de uma empresa (owner ou super admin). */
+export async function fetchCompanyInvites(companyId: string): Promise<PendingInvite[]> {
+  if (!supabaseClient) return [];
+  const { data, error } = await supabaseClient
+    .from("company_invites")
+    .select("id, email, role, created_at")
+    .eq("company_id", companyId)
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((r) => ({
+    id: r.id as string, email: r.email as string,
+    role: r.role as CompanyRole, createdAt: r.created_at as string,
+  }));
+}
+
+export async function revokeCompanyInvite(inviteId: string): Promise<void> {
+  if (!supabaseClient) throw new Error("Supabase não configurado.");
+  const { error } = await supabaseClient.from("company_invites").delete().eq("id", inviteId);
+  if (error) throw new Error(error.message);
 }
 
 export type InviteResult = "added" | "invited";

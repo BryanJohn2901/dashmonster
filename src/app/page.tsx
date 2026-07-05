@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "@/hooks/useToast";
-import { useCompany } from "@/hooks/useCompany";
+import { useCompany, memberAllowedProducts, readCompanyBranding } from "@/hooks/useCompany";
 import { RealtimeChannel, Session } from "@supabase/supabase-js";
 import { Dashboard } from "@/components/Dashboard";
 import { ControlPanel, type CPTab } from "@/components/ControlPanel";
@@ -809,15 +809,20 @@ export default function Home() {
   // inclusive pra super admin, senão a liberação não é demonstrável. Super admin
   // sem empresa ativa (ex.: recém-provisionado) vê tudo. Empresa sem "dash" fica
   // presa no hub mesmo com productChosen antigo no sessionStorage.
-  const activeProducts =
-    memberships.find((m) => m.company.id === activeCompanyId)?.company.products
-    ?? (isSuperAdmin ? ["dash", "pipe"] : ["dash"]);
+  // memberAllowedProducts aplica também a restrição POR MEMBRO (settings.memberProducts).
+  const activeMembership = memberships.find((m) => m.company.id === activeCompanyId);
+  const activeProducts = activeMembership
+    ? memberAllowedProducts(activeMembership.company, currentUser.email)
+    : (isSuperAdmin ? ["dash", "pipe"] : ["dash"]);
   if ((session || devBypass) && (!productChosen || !activeProducts.includes("dash"))) {
     return (
       <ProductSelectScreen
         userName={currentUser.name || currentUser.email.split("@")[0]}
         email={currentUser.email}
-        companyName={memberships.find((m) => m.company.id === activeCompanyId)?.company.name}
+        companyName={activeMembership?.company.name}
+        companyLogoUrl={activeMembership?.company.logoUrl}
+        companyBannerUrl={readCompanyBranding(activeMembership?.company.settings).bannerUrl}
+        companyDescription={readCompanyBranding(activeMembership?.company.settings).description}
         products={activeProducts}
         onOpenDash={() => {
           try { sessionStorage.setItem(PRODUCT_CHOSEN_KEY, "1"); } catch {}
