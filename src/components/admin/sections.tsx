@@ -325,21 +325,41 @@ function CompanyBrandingEditor({ company: c, reload }: { company: AdminCompany; 
 
 // ─── Produtos & acessos ─────────────────────────────────────────────────────────
 
+// Presets de duração do acesso (076). null = ilimitado.
+const ACCESS_DURATIONS: { id: string; label: string; days: number | null }[] = [
+  { id: "unlimited", label: "Ilimitado",       days: null },
+  { id: "7d",        label: "Teste · 7 dias",  days: 7 },
+  { id: "15d",       label: "Teste · 15 dias", days: 15 },
+  { id: "30d",       label: "30 dias",         days: 30 },
+  { id: "90d",       label: "90 dias",         days: 90 },
+  { id: "365d",      label: "1 ano",           days: 365 },
+];
+
 export function ProdutosSection({ companies, reload }: ScopedProps) {
   const [busy, setBusy] = useState<string | null>(null);
 
-  const toggle = async (c: AdminCompany, productId: string) => {
+  // Liga/desliga e/ou define a validade de um produto (trigger 071/076 no banco).
+  const setAccess = async (c: AdminCompany, productId: string, on: boolean, days?: number | null) => {
     const owned = c.company.products ?? ["dash"];
-    const next = owned.includes(productId) ? owned.filter((p) => p !== productId) : [...owned, productId];
+    const expiry = { ...(c.company.productExpiry ?? {}) };
+    let next = owned;
+    if (on) {
+      if (!owned.includes(productId)) next = [...owned, productId];
+      if (days) expiry[productId] = new Date(Date.now() + days * 86_400_000).toISOString();
+      else delete expiry[productId];
+    } else {
+      next = owned.filter((p) => p !== productId);
+      delete expiry[productId];
+    }
     setBusy(`${c.company.id}:${productId}`);
-    try { await setCompanyProducts(c.company.id, next); await reload(); }
+    try { await setCompanyProducts(c.company.id, next, expiry); await reload(); }
     catch (e) { toast.error(e instanceof Error ? e.message : "Erro ao salvar produtos."); }
     finally { setBusy(null); }
   };
 
   return (
     <div>
-      <SectionHeader icon={Building2} title="Produtos & acessos" desc="O que cada empresa contratou — trava real é o trigger 071 no banco" />
+      <SectionHeader icon={Building2} title="Produtos & acessos" desc="O que cada empresa contratou e até quando — trava real é o trigger 071/076 no banco" />
       <div className="flex flex-col gap-2">
         {companies.map((c) => (
           <Card key={c.company.id}>
@@ -347,17 +367,49 @@ export function ProdutosSection({ companies, reload }: ScopedProps) {
             <div className="flex flex-col gap-2">
               {PRODUCTS.map((p) => {
                 const on = (c.company.products ?? []).includes(p.id);
+                const until = c.company.productExpiry?.[p.id];
+                const expired = !!until && new Date(until).getTime() <= Date.now();
                 const k = `${c.company.id}:${p.id}`;
                 return (
-                  <div key={p.id} className="flex items-center justify-between rounded-xl border px-3.5 py-2.5"
+                  <div key={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border px-3.5 py-2.5"
                     style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-elevated)" }}>
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <span className="text-[13px] font-semibold" style={{ color: "var(--dm-text-primary)" }}>{p.name}</span>
                       <span className="ml-2 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>{p.tagline}</span>
                     </div>
-                    <button type="button" onClick={() => void toggle(c, p.id)} disabled={busy === k} aria-pressed={on}
+
+                    {on && (
+                      <>
+                        {/* Situação do acesso */}
+                        <span className="rounded-full px-2.5 py-0.5 text-[10.5px] font-bold"
+                          style={expired
+                            ? { background: "rgba(238,93,80,0.12)", color: "#EE5D50" }
+                            : until
+                              ? { background: "rgba(244,166,13,0.14)", color: "#F4A60D" }
+                              : { background: "rgba(34,197,94,0.14)", color: "#22C55E" }}>
+                          {expired
+                            ? `Expirado em ${new Date(until!).toLocaleDateString("pt-BR")}`
+                            : until
+                              ? `Expira ${new Date(until).toLocaleDateString("pt-BR")}`
+                              : "Ilimitado"}
+                        </span>
+
+                        {/* Duração: aplicar direto (a partir de agora) */}
+                        <select value="" disabled={busy === k}
+                          onChange={(e) => {
+                            const d = ACCESS_DURATIONS.find((x) => x.id === e.target.value);
+                            if (d) void setAccess(c, p.id, true, d.days);
+                          }}
+                          className="h-8 rounded-lg border px-2 text-[11.5px] font-semibold outline-none disabled:opacity-50" style={inputStyle}>
+                          <option value="" disabled>Definir duração…</option>
+                          {ACCESS_DURATIONS.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
+                        </select>
+                      </>
+                    )}
+
+                    <button type="button" onClick={() => void setAccess(c, p.id, !on)} disabled={busy === k} aria-pressed={on}
                       className="relative h-6 w-11 flex-shrink-0 rounded-full transition disabled:opacity-60"
-                      style={{ background: on ? "var(--dm-primary)" : "var(--dm-border-default)" }}>
+                      style={{ background: on && !expired ? "var(--dm-primary)" : on ? "#F4A60D" : "var(--dm-border-default)" }}>
                       <span className="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all" style={{ left: on ? "22px" : "2px" }} />
                     </button>
                   </div>

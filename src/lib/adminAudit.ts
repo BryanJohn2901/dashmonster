@@ -128,6 +128,19 @@ export function isBanned(bannedUntil: string | null): boolean {
   return !!bannedUntil && new Date(bannedUntil).getTime() > Date.now();
 }
 
+/** Vira super admin com a senha mestra (env SUPER_ADMIN_ACTIVATION_PASSWORD). */
+export async function activateSuperAdmin(password: string): Promise<void> {
+  const res = await authedFetch("/api/admin/activate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password }),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? `Erro ${res.status}`);
+  }
+}
+
 // ─── Real ───────────────────────────────────────────────────────────────────
 
 export async function fetchLoginEvents(limit = 100): Promise<LoginEvent[]> {

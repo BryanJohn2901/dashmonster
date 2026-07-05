@@ -8,9 +8,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Lock, ShieldCheck, Unlock, ArrowLeft } from "lucide-react";
-import { useCompany } from "@/hooks/useCompany";
+import { Loader2, Lock, ShieldCheck, Unlock, ArrowLeft, KeyRound } from "lucide-react";
+import { useCompany, refreshCompany } from "@/hooks/useCompany";
 import { useDevMode } from "@/hooks/useDevMode";
+import { activateSuperAdmin } from "@/lib/adminAudit";
+import { toast } from "@/hooks/useToast";
 import { AdminPanel } from "@/components/admin/AdminPanel";
 
 export default function AdminPage() {
@@ -77,6 +79,8 @@ function AdminGate({ onUnlock }: { onUnlock: (pw: string) => boolean }) {
         <p className="mt-4 flex items-center justify-center gap-1.5 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
           <Lock size={11} /> Super admins entram direto, sem senha.
         </p>
+
+        <SuperAdminActivation />
       </div>
 
       <button type="button" onClick={() => router.push("/")}
@@ -84,6 +88,63 @@ function AdminGate({ onUnlock }: { onUnlock: (pw: string) => boolean }) {
         style={{ color: "var(--dm-text-secondary)" }}>
         <ArrowLeft size={13} /> Voltar pro hub
       </button>
+    </div>
+  );
+}
+
+// ─── Ativação de super admin (senha mestra do servidor) ────────────────────────
+// A senha vive na env SUPER_ADMIN_ACTIVATION_PASSWORD (nunca no client). Quem
+// acerta entra em app_admins — vira super admin de verdade, permanente, com as
+// RLS do banco valendo. Precisa estar logado no hub.
+function SuperAdminActivation() {
+  const [open, setOpen] = useState(false);
+  const [pw, setPw] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const activate = async () => {
+    setBusy(true);
+    try {
+      await activateSuperAdmin(pw);
+      toast.success("Super admin ativado. Bem-vindo ao painel.");
+      await refreshCompany(); // isSuperAdmin vira true → AdminPage renderiza o painel
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao ativar.");
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="mt-5 border-t pt-4" style={{ borderColor: "var(--dm-border-default)" }}>
+      {!open ? (
+        <button type="button" onClick={() => setOpen(true)}
+          className="mx-auto flex items-center gap-1.5 text-[11.5px] font-semibold transition hover:opacity-75"
+          style={{ color: "var(--dm-text-tertiary)" }}>
+          <KeyRound size={12} /> Tenho a senha mestra — ativar super admin
+        </button>
+      ) : (
+        <div>
+          <p className="mb-2 text-left text-[11.5px] leading-relaxed" style={{ color: "var(--dm-text-tertiary)" }}>
+            Senha mestra do servidor (<code>SUPER_ADMIN_ACTIVATION_PASSWORD</code>). Acertou → sua conta
+            vira <b>super admin permanente</b>.
+          </p>
+          <div className="flex gap-2">
+            <input
+              type="password"
+              value={pw}
+              onChange={(e) => setPw(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && pw.trim()) void activate(); }}
+              placeholder="Senha mestra"
+              autoFocus
+              className="h-11 min-w-0 flex-1 rounded-xl border px-3.5 text-[13px] outline-none"
+              style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
+            />
+            <button type="button" onClick={() => void activate()} disabled={!pw.trim() || busy}
+              className="flex h-11 flex-shrink-0 items-center gap-1.5 rounded-xl px-4 text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-40"
+              style={{ background: "#16A34A" }}>
+              {busy ? <Loader2 size={13} className="animate-spin" /> : <ShieldCheck size={13} />} Ativar
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

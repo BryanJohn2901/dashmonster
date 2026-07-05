@@ -17,6 +17,8 @@ export interface Company {
   settings: Record<string, unknown>;
   /** Produtos contratados (ex.: ["dash","pipe"]). Só super admin altera (trigger 071). */
   products: string[];
+  /** Validade por produto (ISO). Sem chave = ilimitado. Vencido = não contratado (076). */
+  productExpiry?: Record<string, string>;
 }
 
 /** Uma empresa da qual o usuário é membro, com o papel dele nela. */
@@ -62,8 +64,11 @@ function writeActiveCompanyId(id: string | null): void {
 }
 
 function rowToCompany(raw: {
-  id: string; name: string; slug: string; logo_url?: string | null; settings?: unknown; products?: unknown;
+  id: string; name: string; slug: string; logo_url?: string | null; settings?: unknown; products?: unknown; product_expiry?: unknown;
 }): Company {
+  const expiry = raw.product_expiry && typeof raw.product_expiry === "object" && !Array.isArray(raw.product_expiry)
+    ? (raw.product_expiry as Record<string, string>)
+    : undefined;
   return {
     id: raw.id,
     name: raw.name,
@@ -72,7 +77,18 @@ function rowToCompany(raw: {
     settings: (raw.settings as Record<string, unknown>) ?? {},
     // default ["dash"]: empresas antes da migration 071 (ou preview) mantêm o Dash.
     products: Array.isArray(raw.products) ? (raw.products as string[]) : ["dash"],
+    productExpiry: expiry,
   };
+}
+
+/** Produtos VIGENTES da empresa: contratados menos os com validade vencida (076). */
+export function activeCompanyProducts(company: Company | null | undefined): string[] {
+  if (!company) return ["dash"];
+  const expiry = company.productExpiry ?? {};
+  return (company.products ?? ["dash"]).filter((p) => {
+    const until = expiry[p];
+    return !until || new Date(until).getTime() > Date.now();
+  });
 }
 
 // ─── Empresa DEMO ───────────────────────────────────────────────────────────────
@@ -105,7 +121,7 @@ const DEMO_COMPANIES: Company[] = [
 // Overrides do modo demo (mutações feitas no painel admin) — persistem em
 // localStorage pra sobreviver à navegação entre /admin e o hub.
 const DEMO_OVERRIDES_KEY = "dm_demo_company_overrides_v1";
-type DemoOverride = Partial<Pick<Company, "name" | "products" | "settings" | "logoUrl">>;
+type DemoOverride = Partial<Pick<Company, "name" | "products" | "settings" | "logoUrl" | "productExpiry">>;
 
 function readDemoOverrides(): Record<string, DemoOverride> {
   try { return JSON.parse(localStorage.getItem(DEMO_OVERRIDES_KEY) ?? "{}"); } catch { return {}; }
@@ -138,7 +154,7 @@ async function fetchCompanyState(): Promise<CompanyState> {
 
   const { data, error } = await supabaseClient
     .from("company_members")
-    .select("role, companies ( id, name, slug, logo_url, settings, products )")
+    .select("role, companies ( id, name, slug, logo_url, settings, products, product_expiry )")
     .eq("user_id", auth.user.id)
     .order("created_at");
 
@@ -167,7 +183,7 @@ async function fetchCompanyState(): Promise<CompanyState> {
     if (isSuperAdmin) {
       const { data: allCompanies, error: allErr } = await supabaseClient
         .from("companies")
-        .select("id, name, slug, logo_url, settings, products")
+        .select("id, name, slug, logo_url, settings, products, product_expiry")
         .order("name");
       if (!allErr && allCompanies) {
         const ownIds = new Set(memberships.map((m) => m.company.id));
@@ -258,7 +274,7 @@ function demoMutate(companyId: string, patch: (c: Company) => void): boolean {
   if (c) {
     patch(c);
     const overrides = readDemoOverrides();
-    overrides[companyId] = { name: c.name, products: c.products, settings: c.settings, logoUrl: c.logoUrl };
+    overrides[companyId] = { name: c.name, products: c.products, settings: c.settings, logoUrl: c.logoUrl, productExpiry: c.productExpiry };
     try { localStorage.setItem(DEMO_OVERRIDES_KEY, JSON.stringify(overrides)); } catch {}
   }
   return true;
@@ -306,9 +322,9 @@ export function readMemberProducts(settings?: Record<string, unknown>): Record<s
   return out;
 }
 
-/** Produtos que ESTE membro pode abrir (empresa ∩ allowlist do membro). */
+/** Produtos que ESTE membro pode abrir (vigentes da empresa ∩ allowlist do membro). */
 export function memberAllowedProducts(company: Company | null | undefined, email: string | null | undefined): string[] {
-  const base = company?.products ?? ["dash"];
+  const base = activeCompanyProducts(company);
   if (!company || !email) return base;
   const allow = readMemberProducts(company.settings)[email.toLowerCase()];
   return allow ? base.filter((p) => allow.includes(p)) : base;
@@ -337,12 +353,16 @@ export async function updateCompanySettings(
 export async function setCompanyProducts(
   companyId: string,
   products: string[],
+  /** Validade por produto (076). Chave ausente/undefined = ilimitado. */
+  productExpiry?: Record<string, string>,
 ): Promise<void> {
-  if (demoMutate(companyId, (c) => { c.products = products; })) { await refreshCompany(); return; }
+  if (demoMutate(companyId, (c) => { c.products = products; if (productExpiry !== undefined) c.productExpiry = productExpiry; })) { await refreshCompany(); return; }
   if (!supabaseClient) throw new Error("Supabase não configurado.");
+  const patch: Record<string, unknown> = { products };
+  if (productExpiry !== undefined) patch.product_expiry = productExpiry;
   const { error } = await supabaseClient
     .from("companies")
-    .update({ products })
+    .update(patch)
     .eq("id", companyId);
   if (error) throw new Error(error.message);
   await refreshCompany();
@@ -427,7 +447,7 @@ export async function createCompany(name: string, ownerEmail?: string): Promise<
   const { data, error } = await supabaseClient
     .from("companies")
     .insert({ name: clean, slug, settings: { blankTaxonomy: true } })
-    .select("id, name, slug, logo_url, settings, products")
+    .select("id, name, slug, logo_url, settings, products, product_expiry")
     .single();
   if (error) throw new Error(error.message);
   const company = rowToCompany(data);
@@ -968,7 +988,7 @@ export async function fetchAdminCompanies(): Promise<AdminCompany[]> {
   if (!supabaseClient) return [];
   const { data: comps, error } = await supabaseClient
     .from("companies")
-    .select("id, name, slug, logo_url, settings, products, meta_access_token")
+    .select("id, name, slug, logo_url, settings, products, product_expiry, meta_access_token")
     .order("name");
   if (error) throw new Error(error.message);
 
