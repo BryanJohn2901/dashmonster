@@ -441,6 +441,18 @@ export default function Home() {
     }
   };
 
+  const handleForgotPassword = async (email: string): Promise<void> => {
+    setAuthError(null);
+    if (!supabaseClient) return;
+    const { error: resetError } = await supabaseClient.auth.resetPasswordForEmail(email, {
+      redirectTo: typeof window !== "undefined" ? `${window.location.origin}/reset-password` : undefined,
+    });
+    // Não vaza se o e-mail existe ou não — mensagem genérica mesmo em erro de "usuário não encontrado".
+    if (resetError && !/user not found/i.test(resetError.message)) {
+      setAuthError(`Falha ao enviar e-mail: ${resetError.message}`);
+    }
+  };
+
   const handleOAuth = async (provider: "google" | "github" | "discord"): Promise<void> => {
     setAuthError(null);
     if (!supabaseClient) return;
@@ -766,6 +778,7 @@ export default function Home() {
         onSignIn={handleSignIn}
         onSignUp={handleSignUp}
         onOAuth={handleOAuth}
+        onForgotPassword={handleForgotPassword}
         authError={authError}
         supabaseReady={isSupabaseConfigured}
       />
