@@ -2,33 +2,27 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  X, UserRound, Building2, KeyRound, Megaphone, SlidersHorizontal, History, Radar, Users,
-  LogOut, Loader2, Save, ShieldCheck, Lock, Unlock, CheckCircle2, Plus, Sparkles,
-  ArrowLeft, ArrowRight, Mail, PartyPopper, Camera, Link2, ChevronDown, Check, Trash2, Package,
+  X, UserRound, Building2, History, Radar, Users, LogOut, Loader2, Save,
+  ShieldCheck, Lock, Unlock, CheckCircle2, Camera, ChevronDown, Check, Trash2,
+  KeyRound, Megaphone,
 } from "lucide-react";
 import { useAvatarUrl, resolveAvatarSrc, AVATAR_ICON_COUNT } from "@/hooks/useAvatarUrl";
 import { useTheme } from "next-themes";
 import {
-  useCompany, readAdAccountSuggestions, fetchCompanyToken, fetchCompanyMembers, createCompany, setCompanyProducts,
+  useCompany, fetchCompanyMembers, fetchCompanyToken, readAdAccountSuggestions,
   type CompanyMember, type Company, type CompanyRole,
 } from "@/hooks/useCompany";
-import { PRODUCTS } from "@/config/products";
+import { FacebookConnectShell, InstagramConnectShell } from "@/components/hub/ConnectShells";
+import { CampaignCenter } from "@/components/CampaignCenter";
 import { useDevMode } from "@/hooks/useDevMode";
 import { toast } from "@/hooks/useToast";
-import { authedFetch } from "@/lib/authedFetch";
 import { readCustomHistoryTabs } from "@/types/historical";
 import {
-  IdentidadeSection, ConexaoSection, ContasSection, HistoricoSection, TrackingSection, EquipeSection,
+  IdentidadeSection, HistoricoSection, TrackingSection, EquipeSection, ConexaoSection, ContasSection,
 } from "@/components/CompanyStudio";
-import { CampaignCenter } from "@/components/CampaignCenter";
-import { upsertUserCategory, deleteUserCategory } from "@/utils/supabaseCategories";
 import type { UserCategory } from "@/types/userConfig";
 
-const slugifyFilter = (s: string) =>
-  s.normalize("NFD").replace(/[̀-ͯ]/g, "")
-    .toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-
-type NavId = "perfil" | "identidade" | "conexao" | "contas" | "instagram" | "filtros" | "historico" | "tracking" | "colaboradores" | "devacesso" | "criarempresa" | "produtos";
+type NavId = "perfil" | "identidade" | "conexao" | "contas" | "instagram" | "historico" | "tracking" | "colaboradores" | "devacesso";
 
 interface HubSettingsProps {
   open: boolean;
@@ -37,20 +31,25 @@ interface HubSettingsProps {
   email: string;
   onUpdateProfile?: (name: string) => Promise<void>;
   onSignOut?: () => void;
+  /** Mantidas por compatibilidade com os callers; edição de filtros mora no /admin. */
   categories?: UserCategory[];
   onCategoriesChange?: (next: UserCategory[]) => void;
 }
 
+// Essencial do usuário + Conexões (pré-configuração fácil: BM, contas de
+// anúncio, Instagram). Gestão de plataforma (produtos, criar empresa,
+// auditoria, filtros de todas as empresas) mora no /admin.
 const NAV: { group: string; items: { id: NavId; label: string; icon: typeof UserRound; sub: string }[] }[] = [
   { group: "Conta", items: [
     { id: "perfil", label: "Perfil", icon: UserRound, sub: "Seu nome e dados de acesso" },
   ]},
+  { group: "Conexões", items: [
+    { id: "conexao",   label: "Conexão Meta (BM)", icon: KeyRound,  sub: "Conectar Facebook / token da API" },
+    { id: "contas",    label: "Contas de anúncio", icon: Megaphone, sub: "ACTs desta empresa + acoplar a filtros" },
+    { id: "instagram", label: "Instagram",         icon: Camera,    sub: "Perfil IG monitorado desta empresa" },
+  ]},
   { group: "Empresa", items: [
     { id: "identidade", label: "Geral",     icon: Building2,        sub: "Nome e identidade da empresa" },
-    { id: "conexao",    label: "Conexão Meta", icon: KeyRound,      sub: "Token de acesso da API" },
-    { id: "contas",     label: "Contas de anúncio", icon: Megaphone, sub: "ID da conta (ACT) desta empresa" },
-    { id: "instagram",  label: "Instagram", icon: Camera, sub: "Conta IG desta empresa" },
-    { id: "filtros",    label: "Filtros",   icon: SlidersHorizontal, sub: "Filtros ativos do dashboard" },
     { id: "historico",  label: "Histórico", icon: History,          sub: "Sub-abas e layout de dados" },
     { id: "tracking",      label: "Tracking",      icon: Radar,  sub: "Pixel server-side e Eduzz" },
     { id: "colaboradores", label: "Colaboradores", icon: Users,  sub: "Membros e papéis da empresa" },
@@ -60,16 +59,11 @@ const NAV: { group: string; items: { id: NavId; label: string; icon: typeof User
   ]},
 ];
 
-const ADMIN_GROUP = { group: "Admin", items: [
-  { id: "produtos" as NavId,     label: "Produtos",      icon: Package, sub: "Produtos contratados desta empresa" },
-  { id: "criarempresa" as NavId, label: "Criar empresa", icon: Plus, sub: "Provisionar acesso p/ novo cliente" },
-]};
-
-export function HubSettings({ open, onClose, userName, email, onUpdateProfile, onSignOut, categories = [], onCategoriesChange }: HubSettingsProps) {
+export function HubSettings({ open, onClose, userName, email, onUpdateProfile, onSignOut }: HubSettingsProps) {
   const [nav, setNav] = useState<NavId>("perfil");
   const { isSuperAdmin } = useCompany();
   const { active: devActive } = useDevMode();
-  const groups = (isSuperAdmin || devActive) ? [...NAV, ADMIN_GROUP] : NAV;
+  const showAdminLink = isSuperAdmin || devActive;
 
   // Esc fecha + trava scroll do body
   useEffect(() => {
@@ -105,7 +99,7 @@ export function HubSettings({ open, onClose, userName, email, onUpdateProfile, o
           </div>
 
           <nav className="flex-1 overflow-y-auto px-3 pb-3">
-            {groups.map((g) => (
+            {NAV.map((g) => (
               <div key={g.group} className="mb-4">
                 <p className="px-2 pb-1.5 text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>{g.group}</p>
                 {g.items.map((it) => {
@@ -130,16 +124,27 @@ export function HubSettings({ open, onClose, userName, email, onUpdateProfile, o
             ))}
           </nav>
 
-          {onSignOut && (
-            <button
-              type="button"
-              onClick={onSignOut}
-              className="m-3 flex items-center gap-2 rounded-xl px-3 py-2.5 text-[13px] font-semibold transition-colors hover:bg-red-500/10"
-              style={{ color: "#ef4444" }}
-            >
-              <LogOut size={15} /> Sair da conta
-            </button>
-          )}
+          <div className="m-3 mt-0 flex flex-col">
+            {showAdminLink && (
+              <a
+                href="/admin"
+                className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-[13px] font-semibold transition-colors hover:bg-black/5 dark:hover:bg-white/5"
+                style={{ color: "var(--dm-primary)" }}
+              >
+                <ShieldCheck size={15} /> Painel Admin
+              </a>
+            )}
+            {onSignOut && (
+              <button
+                type="button"
+                onClick={onSignOut}
+                className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-[13px] font-semibold transition-colors hover:bg-red-500/10"
+                style={{ color: "#ef4444" }}
+              >
+                <LogOut size={15} /> Sair da conta
+              </button>
+            )}
+          </div>
         </aside>
 
         {/* ── Conteúdo ─────────────────────────────────────────────── */}
@@ -150,11 +155,7 @@ export function HubSettings({ open, onClose, userName, email, onUpdateProfile, o
               ? <PerfilSection userName={userName} email={email} onUpdateProfile={onUpdateProfile} />
               : nav === "devacesso"
               ? <DevAccessSection />
-              : nav === "criarempresa"
-              ? <CriarEmpresaSection />
-              : nav === "produtos"
-              ? <ProdutosAdminSection />
-              : <EmpresaSections nav={nav} categories={categories} onCategoriesChange={onCategoriesChange} />}
+              : <EmpresaSections nav={nav} />}
           </div>
         </div>
       </div>
@@ -417,237 +418,12 @@ function DevAccessSection() {
   );
 }
 
-// ─── Criar empresa (super admin → provisiona cliente novo) ──────────────────────
-
-const WIZARD_STEPS = [
-  { icon: Building2, label: "Identidade" },
-  { icon: Mail,      label: "Acesso" },
-  { icon: CheckCircle2, label: "Revisar" },
-];
-
-// ─── Produtos contratados (só super admin; a segurança real é o trigger 071) ────
-function ProdutosAdminSection() {
-  const { company, isSuperAdmin } = useCompany();
-  const [busy, setBusy] = useState<string | null>(null);
-
-  if (!company) return null;
-  const owned = company.products ?? ["dash"];
-
-  const toggle = async (productId: string) => {
-    if (!isSuperAdmin) return;
-    const next = owned.includes(productId)
-      ? owned.filter((p) => p !== productId)
-      : [...owned, productId];
-    setBusy(productId);
-    try {
-      await setCompanyProducts(company.id, next);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erro ao salvar produtos.");
-    } finally { setBusy(null); }
-  };
-
-  return (
-    <div className="rounded-2xl border p-5" style={{ background: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
-      <p className="mb-1 text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>Produtos de {company.name}</p>
-      <p className="mb-4 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
-        Ligue/desligue o que esta empresa contratou. Só super admin altera (trava no banco).
-      </p>
-      <div className="flex flex-col gap-2">
-        {PRODUCTS.map((p) => {
-          const on = owned.includes(p.id);
-          return (
-            <div key={p.id} className="flex items-center justify-between rounded-xl border px-3.5 py-3"
-              style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-elevated)" }}>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>{p.name}</span>
-                  {p.status === "soon" && (
-                    <span className="rounded-full px-2 py-0.5 text-[9px] font-bold" style={{ background: "rgba(100,116,139,0.14)", color: "var(--dm-text-tertiary)" }}>em breve</span>
-                  )}
-                </div>
-                <p className="truncate text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>{p.tagline}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => void toggle(p.id)}
-                disabled={busy === p.id || !isSuperAdmin}
-                aria-pressed={on}
-                className="relative h-6 w-11 flex-shrink-0 rounded-full transition disabled:opacity-60"
-                style={{ background: on ? "var(--dm-primary)" : "var(--dm-border-default)" }}
-                title={on ? "Contratado" : "Não contratado"}
-              >
-                <span className="absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all shadow"
-                  style={{ left: on ? "22px" : "2px" }} />
-              </button>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function CriarEmpresaSection() {
-  const { switchCompany } = useCompany();
-  const [step, setStep] = useState(0);
-  const [name, setName] = useState("");
-  const [ownerEmail, setOwnerEmail] = useState("");
-  const [creating, setCreating] = useState(false);
-  const [created, setCreated] = useState<{ name: string; email: string } | null>(null);
-
-  const emailValid = !ownerEmail.trim() || /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(ownerEmail.trim());
-  const canNext = step === 0 ? name.trim().length > 0 : step === 1 ? emailValid : true;
-
-  const submit = async () => {
-    if (!name.trim()) return;
-    setCreating(true);
-    try {
-      const company = await createCompany(name.trim(), ownerEmail.trim() || undefined);
-      switchCompany(company.id);
-      setCreated({ name: company.name, email: ownerEmail.trim() });
-      toast.success(`Empresa "${company.name}" criada.`);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erro ao criar empresa.");
-    } finally { setCreating(false); }
-  };
-
-  const reset = () => { setCreated(null); setStep(0); setName(""); setOwnerEmail(""); };
-
-  // ── Sucesso ──
-  if (created) {
-    return (
-      <div className="max-w-[520px]">
-        <div className="rounded-2xl border p-6 text-center" style={{ borderColor: "rgba(5,205,153,0.4)", background: "rgba(5,205,153,0.06)" }}>
-          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full" style={{ background: "rgba(5,205,153,0.14)" }}>
-            <PartyPopper size={22} style={{ color: "#05CD99" }} />
-          </div>
-          <p className="text-[16px] font-bold" style={{ color: "var(--dm-text-primary)" }}>Empresa criada!</p>
-          <p className="mt-1 text-[12px]" style={{ color: "var(--dm-text-secondary)" }}>
-            <strong>{created.name}</strong> já está ativa no seletor.{created.email ? ` Acesso de dono liberado para ${created.email}.` : ""}
-          </p>
-          <p className="mt-3 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
-            Agora configure Conexão Meta, Filtros e Tracking nas abas de Empresa.
-          </p>
-          <button type="button" onClick={reset}
-            className="mt-5 flex h-10 items-center gap-1.5 rounded-xl border px-4 text-xs font-bold transition hover:bg-black/5 dark:hover:bg-white/5 mx-auto"
-            style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>
-            <Plus size={13} /> Criar outra empresa
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="max-w-[520px]">
-      <div className="mb-5 flex items-center gap-3">
-        <div className="flex h-11 w-11 items-center justify-center rounded-xl" style={{ background: "rgba(22,163,74,0.12)" }}>
-          <Sparkles size={19} style={{ color: "#16A34A" }} />
-        </div>
-        <div>
-          <p className="text-[16px] font-bold" style={{ color: "var(--dm-text-primary)" }}>Criar empresa</p>
-          <p className="text-[12px]" style={{ color: "var(--dm-text-tertiary)" }}>Provisiona uma empresa nova e libera o acesso pro cliente.</p>
-        </div>
-      </div>
-
-      {/* Stepper */}
-      <div className="mb-6 flex items-center">
-        {WIZARD_STEPS.map((s, i) => {
-          const done = i < step, active = i === step;
-          return (
-            <div key={s.label} className="flex flex-1 items-center last:flex-none">
-              <div className="flex flex-col items-center gap-1">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full text-white transition-colors"
-                  style={{ background: done || active ? "#16A34A" : "var(--dm-bg-elevated)", color: done || active ? "#fff" : "var(--dm-text-tertiary)", border: done || active ? "none" : "1px solid var(--dm-border-default)" }}>
-                  {done ? <CheckCircle2 size={15} /> : <s.icon size={15} />}
-                </div>
-                <span className="text-[10px] font-semibold" style={{ color: active ? "var(--dm-text-primary)" : "var(--dm-text-tertiary)" }}>{s.label}</span>
-              </div>
-              {i < WIZARD_STEPS.length - 1 && <div className="mx-2 h-px flex-1" style={{ background: done ? "#16A34A" : "var(--dm-border-default)" }} />}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Conteúdo do passo */}
-      {step === 0 && (
-        <div>
-          <label className="mb-1.5 block text-[12px] font-semibold" style={{ color: "var(--dm-text-secondary)" }}>Nome da empresa</label>
-          <input
-            autoFocus value={name} onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && canNext) setStep(1); }}
-            placeholder="Ex: Loja do Cliente"
-            className="h-11 w-full rounded-xl border px-3.5 text-[13px] outline-none"
-            style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
-          />
-          <p className="mt-2 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>Como o cliente vai aparecer no seletor de empresas.</p>
-        </div>
-      )}
-
-      {step === 1 && (
-        <div>
-          <label className="mb-1.5 block text-[12px] font-semibold" style={{ color: "var(--dm-text-secondary)" }}>
-            Email do dono <span className="font-normal" style={{ color: "var(--dm-text-tertiary)" }}>(opcional)</span>
-          </label>
-          <input
-            autoFocus type="email" value={ownerEmail} onChange={(e) => setOwnerEmail(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && canNext) setStep(2); }}
-            placeholder="cliente@email.com"
-            className="h-11 w-full rounded-xl border px-3.5 text-[13px] outline-none"
-            style={{ borderColor: emailValid ? "var(--dm-border-default)" : "#ef4444", background: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
-          />
-          {!emailValid && <p className="mt-1.5 text-[11px] font-medium" style={{ color: "#ef4444" }}>Email inválido.</p>}
-          <p className="mt-2 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
-            Já tem conta → vira dono na hora. Senão → fica convite que ativa quando ele se cadastrar. Pode deixar em branco e convidar depois.
-          </p>
-        </div>
-      )}
-
-      {step === 2 && (
-        <div className="rounded-2xl border p-4" style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)" }}>
-          <p className="mb-3 text-[12px] font-bold" style={{ color: "var(--dm-text-primary)" }}>Revisar</p>
-          <div className="flex items-center justify-between border-b py-2" style={{ borderColor: "var(--dm-border-default)" }}>
-            <span className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>Empresa</span>
-            <span className="text-[12px] font-semibold" style={{ color: "var(--dm-text-primary)" }}>{name.trim() || "—"}</span>
-          </div>
-          <div className="flex items-center justify-between py-2">
-            <span className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>Dono</span>
-            <span className="text-[12px] font-semibold" style={{ color: "var(--dm-text-primary)" }}>{ownerEmail.trim() || "Sem convite (você como super admin)"}</span>
-          </div>
-        </div>
-      )}
-
-      {/* Navegação */}
-      <div className="mt-6 flex items-center justify-between">
-        <button type="button" onClick={() => setStep((s) => Math.max(0, s - 1))} disabled={step === 0}
-          className="flex h-10 items-center gap-1.5 rounded-xl px-3 text-xs font-bold transition disabled:opacity-30"
-          style={{ color: "var(--dm-text-secondary)" }}>
-          <ArrowLeft size={14} /> Voltar
-        </button>
-        {step < 2 ? (
-          <button type="button" onClick={() => setStep((s) => s + 1)} disabled={!canNext}
-            className="flex h-10 items-center gap-1.5 rounded-xl px-5 text-xs font-bold text-white transition-all hover:opacity-90 disabled:opacity-40"
-            style={{ background: "var(--dm-btn-primary-bg)" }}>
-            Continuar <ArrowRight size={14} />
-          </button>
-        ) : (
-          <button type="button" onClick={() => void submit()} disabled={creating || !name.trim()}
-            className="flex h-10 items-center gap-1.5 rounded-xl px-5 text-xs font-bold text-white transition-all hover:opacity-90 disabled:opacity-40"
-            style={{ background: "var(--dm-btn-primary-bg)" }}>
-            {creating ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Criar empresa
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ─── Seções de empresa (reuso da lógica do CompanyStudio) ───────────────────────
 
-function EmpresaSections({ nav, categories, onCategoriesChange }: { nav: NavId; categories: UserCategory[]; onCategoriesChange?: (next: UserCategory[]) => void }) {
+function EmpresaSections({ nav }: { nav: NavId }) {
   const { company, role, isOwner, canWrite, loading, memberships, switchCompany } = useCompany();
-  const [token, setToken] = useState("");
   const [members, setMembers] = useState<CompanyMember[] | null>(null);
+  const [token, setToken] = useState("");
   // Conectar conta abre o wizard ocupando a janela — esconde sugestões/cabeçalho.
   const [connecting, setConnecting] = useState(false);
 
@@ -692,29 +468,19 @@ function EmpresaSections({ nav, categories, onCategoriesChange }: { nav: NavId; 
         return (
           <div className="space-y-4">
             {!connecting && (
-              <>
-                <ContasSection company={company} canEdit={isOwner} suggestions={suggestions} open onToggle={noop} variant="panel" />
-                <div className="px-1">
-                  <p className="text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>Acoplar conta a um filtro</p>
-                  <p className="mt-0.5 text-[11px] leading-relaxed" style={{ color: "var(--dm-text-tertiary)" }}>
-                    Em <strong style={{ color: "var(--dm-text-secondary)" }}>Conectar conta</strong> você liga o ACT a um filtro (existente ou novo) com nome, objetivo e metas — tudo de uma vez.
-                  </p>
-                </div>
-              </>
+              <ContasSection company={company} canEdit={isOwner} suggestions={suggestions} open onToggle={noop} variant="panel" />
             )}
             <CampaignCenter key="campaign-center" onConnectingChange={setConnecting} />
           </div>
         );
       case "instagram":
-        return <InstagramShell />;
+        return <InstagramConnectShell company={company} />;
       case "historico":
         return <HistoricoSection company={company} canEdit={isOwner} customTabs={customTabs} totalTabs={totalTabs} open onToggle={noop} variant="panel" />;
       case "tracking":
         return <TrackingSection company={company} canEdit={canWrite} open onToggle={noop} variant="panel" />;
       case "colaboradores":
         return <EquipeSection company={company} canEdit={isOwner} members={members} setMembers={setMembers} open onToggle={noop} variant="panel" />;
-      case "filtros":
-        return <FiltrosEditor categories={categories} canEdit={canWrite} onChange={onCategoriesChange} />;
       default:
         return null;
     }
@@ -725,272 +491,6 @@ function EmpresaSections({ nav, categories, onCategoriesChange }: { nav: NavId; 
       <CompanyContextBar company={company} role={role} memberships={memberships} switchCompany={switchCompany} />
       {section}
     </div>
-  );
-}
-
-// ─── Editor de filtros (categorias) por empresa ─────────────────────────────────
-// Antes era só leitura. Agora cria/renomeia/ativa/exclui filtros e propaga via
-// onCategoriesChange → o dashboard da empresa selecionada reflete na hora.
-// Categorias fixas (Pós, Eventos…) não podem ser excluídas, só renomeadas/desativadas.
-function FiltrosEditor({ categories, canEdit, onChange }: {
-  categories: UserCategory[];
-  canEdit: boolean;
-  onChange?: (next: UserCategory[]) => void;
-}) {
-  const [cats, setCats] = useState<UserCategory[]>(categories);
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setCats(categories);
-  }, [categories]);
-
-  const [newName, setNewName] = useState("");
-  const [adding, setAdding] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editName, setEditName] = useState("");
-  const [busyId, setBusyId] = useState<string | null>(null);
-
-  const commit = (next: UserCategory[]) => { setCats(next); onChange?.(next); };
-
-  const persist = (cat: UserCategory) => upsertUserCategory({
-    id: cat.id, slug: cat.slug, name: cat.name, type: cat.type,
-    emoji: cat.emoji, position: cat.position, isEnabled: cat.isEnabled,
-  });
-
-  const handleAdd = async () => {
-    const nm = newName.trim();
-    if (!nm) return;
-    setBusyId("__new__");
-    try {
-      const created = await upsertUserCategory({
-        slug: slugifyFilter(nm) || `filtro-${Date.now()}`,
-        name: nm, type: "custom", position: cats.length, isEnabled: true,
-      });
-      commit([...cats.filter((c) => c.id !== created.id), created]);
-      setNewName(""); setAdding(false);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erro ao criar filtro.");
-    } finally { setBusyId(null); }
-  };
-
-  const handleToggle = async (cat: UserCategory) => {
-    const updated = { ...cat, isEnabled: !cat.isEnabled };
-    const next = cats.map((c) => (c.id === cat.id ? updated : c));
-    commit(next);
-    setBusyId(cat.id);
-    try { await persist(updated); }
-    catch (e) { commit(cats); toast.error(e instanceof Error ? e.message : "Erro ao salvar."); }
-    finally { setBusyId(null); }
-  };
-
-  const handleRename = async (cat: UserCategory) => {
-    const nm = editName.trim();
-    setEditingId(null);
-    if (!nm || nm === cat.name) return;
-    const updated = { ...cat, name: nm };
-    const next = cats.map((c) => (c.id === cat.id ? updated : c));
-    commit(next);
-    setBusyId(cat.id);
-    try { await persist(updated); }
-    catch (e) { commit(cats); toast.error(e instanceof Error ? e.message : "Erro ao renomear."); }
-    finally { setBusyId(null); }
-  };
-
-  const handleDelete = async (cat: UserCategory) => {
-    const next = cats.filter((c) => c.id !== cat.id);
-    commit(next);
-    setBusyId(cat.id);
-    try { await deleteUserCategory(cat.id); }
-    catch (e) { commit(cats); toast.error(e instanceof Error ? e.message : "Erro ao excluir."); }
-    finally { setBusyId(null); }
-  };
-
-  return (
-    <div className="rounded-2xl border p-5" style={{ background: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
-      <div className="mb-1 flex items-center justify-between gap-2">
-        <p className="text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>Filtros do dashboard</p>
-        {canEdit && !adding && (
-          <button type="button" onClick={() => setAdding(true)}
-            className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-bold transition hover:opacity-80"
-            style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-primary)" }}>
-            <Plus size={13} /> Novo filtro
-          </button>
-        )}
-      </div>
-      <p className="mb-4 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
-        Ativos aparecem no dashboard desta empresa. {canEdit ? "Crie, renomeie, ative/desative ou exclua." : "Somente o dono/gestor pode editar."}
-      </p>
-
-      {adding && (
-        <div className="mb-3 flex gap-2">
-          <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void handleAdd(); } if (e.key === "Escape") { setAdding(false); setNewName(""); } }}
-            placeholder="ex: Pós, Eventos, Mentoria…" autoFocus
-            className="h-10 flex-1 rounded-[10px] border px-3 text-sm outline-none transition focus:ring-1"
-            style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }} />
-          <button type="button" onClick={() => void handleAdd()} disabled={!newName.trim() || busyId === "__new__"}
-            className="flex items-center gap-1.5 rounded-[10px] px-3 text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-40"
-            style={{ background: "var(--dm-btn-primary-bg)" }}>
-            {busyId === "__new__" ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />} Criar
-          </button>
-          <button type="button" onClick={() => { setAdding(false); setNewName(""); }}
-            className="rounded-[10px] border px-3 text-xs font-semibold transition hover:opacity-80"
-            style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>Cancelar</button>
-        </div>
-      )}
-
-      <div className="flex flex-col gap-1.5">
-        {cats.length === 0 && (
-          <span className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>Nenhum filtro ainda. Crie o primeiro.</span>
-        )}
-        {cats.map((f) => {
-          const editing = editingId === f.id;
-          const busy = busyId === f.id;
-          return (
-            <div key={f.id} className="flex items-center gap-2 rounded-xl border px-3 py-2"
-              style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-elevated)", opacity: f.isEnabled ? 1 : 0.55 }}>
-              <span className="text-base">{f.emoji ?? "🏷️"}</span>
-              {editing ? (
-                <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void handleRename(f); } if (e.key === "Escape") setEditingId(null); }}
-                  onBlur={() => void handleRename(f)} autoFocus
-                  className="h-8 flex-1 rounded-lg border px-2 text-sm outline-none"
-                  style={{ borderColor: "var(--dm-primary)", background: "var(--dm-bg-surface)", color: "var(--dm-text-primary)" }} />
-              ) : (
-                <span className="flex-1 truncate text-sm font-semibold" style={{ color: "var(--dm-text-primary)" }}>{f.name}</span>
-              )}
-              {f.type === "fixed" && (
-                <span className="rounded-full px-2 py-0.5 text-[9px] font-bold" style={{ background: "rgba(100,116,139,0.14)", color: "var(--dm-text-tertiary)" }}>padrão</span>
-              )}
-              {busy && <Loader2 size={13} className="animate-spin" style={{ color: "var(--dm-text-tertiary)" }} />}
-              {canEdit && !editing && (
-                <>
-                  <button type="button" onClick={() => void handleToggle(f)} title={f.isEnabled ? "Desativar" : "Ativar"}
-                    className="rounded-md px-2 py-1 text-[10px] font-bold transition hover:opacity-80"
-                    style={{ color: f.isEnabled ? "var(--dm-primary)" : "var(--dm-text-tertiary)" }}>
-                    {f.isEnabled ? "Ativo" : "Inativo"}
-                  </button>
-                  <button type="button" onClick={() => { setEditingId(f.id); setEditName(f.name); }} title="Renomear"
-                    className="flex h-7 w-7 items-center justify-center rounded-md transition hover:opacity-70" style={{ color: "var(--dm-text-tertiary)" }}>
-                    <SlidersHorizontal size={13} />
-                  </button>
-                  {f.type === "custom" && (
-                    <button type="button" onClick={() => void handleDelete(f)} title="Excluir"
-                      className="flex h-7 w-7 items-center justify-center rounded-md transition hover:opacity-70" style={{ color: "#EE5D50" }}>
-                      <Trash2 size={13} />
-                    </button>
-                  )}
-                </>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ─── Conexão do app (Facebook) — GLOBAL, vale pra todas as empresas ─────────────
-// Fluxo OAuth real: POST /api/meta/oauth/start (autenticado) devolve a URL do
-// diálogo de login do Facebook; o callback grava o token longo nas empresas.
-function FacebookConnectShell({ connected }: { connected?: boolean }) {
-  const [busy, setBusy] = useState(false);
-  const connect = async () => {
-    setBusy(true);
-    try {
-      const res = await authedFetch("/api/meta/oauth/start", { method: "POST" });
-      const json = (await res.json()) as { url?: string; error?: string };
-      if (!res.ok || !json.url) {
-        toast.error(json.error ?? "Falha ao iniciar a conexão com o Facebook.");
-        setBusy(false);
-        return;
-      }
-      window.location.assign(json.url);
-    } catch {
-      toast.error("Falha de rede ao iniciar a conexão com o Facebook.");
-      setBusy(false);
-    }
-  };
-  return (
-    <div className="rounded-2xl border p-5" style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)" }}>
-      <div className="mb-3 flex items-center gap-3">
-        <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl" style={{ background: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-default)" }}>
-          <FacebookIcon />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <p className="text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>Conexão do app (Meta)</p>
-            <span className="rounded-full px-2 py-0.5 text-[9px] font-bold" style={{ background: "rgba(100,116,139,0.14)", color: "var(--dm-text-tertiary)" }}>global</span>
-          </div>
-          <p className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>Conecta 1x e o token vale pra todas as empresas.</p>
-        </div>
-        {connected ? (
-          <span className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold" style={{ background: "rgba(34,197,94,0.14)", color: "#22C55E" }}>
-            Conectado
-          </span>
-        ) : (
-          <span className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold" style={{ background: "rgba(244,166,13,0.14)", color: "#F4A60D" }}>
-            Não conectado
-          </span>
-        )}
-      </div>
-      <button type="button" onClick={() => void connect()} disabled={busy}
-        className="flex h-10 w-full items-center justify-center gap-2 rounded-xl text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-60"
-        style={{ background: "#1877F2" }}>
-        {busy ? <Loader2 size={14} className="animate-spin" /> : <FacebookIcon light />}
-        {busy ? "Abrindo o Facebook…" : connected ? "Reconectar Facebook" : "Conectar Facebook"}
-      </button>
-      <p className="mt-3 rounded-lg border p-2.5 text-[11px] leading-relaxed" style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-tertiary)" }}>
-        Um app conecta <strong style={{ color: "var(--dm-text-secondary)" }}>todas</strong> as contas de anúncio e Instagram. O token é o mesmo pra todo mundo —
-        o que muda por empresa é só o <strong style={{ color: "var(--dm-text-secondary)" }}>ID da conta de anúncio (ACT)</strong>, na aba <em>Contas de anúncio</em>.
-      </p>
-    </div>
-  );
-}
-
-// ─── Instagram (por empresa: escolhe qual conta IG é desta empresa) ─────────────
-function InstagramShell() {
-  const soon = () => toast.success("Lista de contas IG vem da conexão do app (Facebook), no ambiente real.");
-  return (
-    <div className="rounded-2xl border p-5" style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)" }}>
-      <div className="mb-3 flex items-center gap-3">
-        <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl" style={{ background: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-default)" }}>
-          <InstagramIcon size={18} />
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>Conta do Instagram</p>
-          <p className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>Qual perfil IG pertence a esta empresa.</p>
-        </div>
-      </div>
-      <div className="mb-3 flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed py-8 text-center" style={{ borderColor: "var(--dm-border-default)" }}>
-        <InstagramIcon size={26} muted />
-        <p className="text-[12px] font-semibold" style={{ color: "var(--dm-text-secondary)" }}>Nenhuma conta conectada</p>
-        <p className="max-w-[300px] text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>Conecte o app primeiro — as contas IG disponíveis aparecem aqui pra escolher.</p>
-      </div>
-      <button type="button" onClick={soon}
-        className="flex h-10 w-full items-center justify-center gap-2 rounded-xl text-xs font-bold text-white transition hover:opacity-90"
-        style={{ background: "var(--dm-btn-primary-bg)" }}>
-        <Link2 size={14} /> Conectar conta do Instagram
-      </button>
-    </div>
-  );
-}
-
-function InstagramIcon({ size = 18, muted }: { size?: number; muted?: boolean }) {
-  const c = muted ? "var(--dm-text-tertiary)" : "var(--dm-text-secondary)";
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <rect x="2" y="2" width="20" height="20" rx="5" />
-      <circle cx="12" cy="12" r="4" />
-      <circle cx="17.5" cy="6.5" r="1" fill={c} stroke="none" />
-    </svg>
-  );
-}
-
-function FacebookIcon({ light }: { light?: boolean }) {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill={light ? "#fff" : "#1877F2"} aria-hidden>
-      <path d="M24 12c0-6.627-5.373-12-12-12S0 5.373 0 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874V12h3.328l-.532 3.469h-2.796v8.385C19.612 22.954 24 17.99 24 12z"/>
-    </svg>
   );
 }
 

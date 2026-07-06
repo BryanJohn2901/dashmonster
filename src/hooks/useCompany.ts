@@ -17,6 +17,8 @@ export interface Company {
   settings: Record<string, unknown>;
   /** Produtos contratados (ex.: ["dash","pipe"]). Só super admin altera (trigger 071). */
   products: string[];
+  /** Validade por produto (ISO). Sem chave = ilimitado. Vencido = não contratado (076). */
+  productExpiry?: Record<string, string>;
 }
 
 /** Uma empresa da qual o usuário é membro, com o papel dele nela. */
@@ -62,8 +64,11 @@ function writeActiveCompanyId(id: string | null): void {
 }
 
 function rowToCompany(raw: {
-  id: string; name: string; slug: string; logo_url?: string | null; settings?: unknown; products?: unknown;
+  id: string; name: string; slug: string; logo_url?: string | null; settings?: unknown; products?: unknown; product_expiry?: unknown;
 }): Company {
+  const expiry = raw.product_expiry && typeof raw.product_expiry === "object" && !Array.isArray(raw.product_expiry)
+    ? (raw.product_expiry as Record<string, string>)
+    : undefined;
   return {
     id: raw.id,
     name: raw.name,
@@ -72,7 +77,18 @@ function rowToCompany(raw: {
     settings: (raw.settings as Record<string, unknown>) ?? {},
     // default ["dash"]: empresas antes da migration 071 (ou preview) mantêm o Dash.
     products: Array.isArray(raw.products) ? (raw.products as string[]) : ["dash"],
+    productExpiry: expiry,
   };
+}
+
+/** Produtos VIGENTES da empresa: contratados menos os com validade vencida (076). */
+export function activeCompanyProducts(company: Company | null | undefined): string[] {
+  if (!company) return ["dash"];
+  const expiry = company.productExpiry ?? {};
+  return (company.products ?? ["dash"]).filter((p) => {
+    const until = expiry[p];
+    return !until || new Date(until).getTime() > Date.now();
+  });
 }
 
 // ─── Empresa DEMO ───────────────────────────────────────────────────────────────
@@ -89,7 +105,7 @@ const DEMO_COMPANIES: Company[] = [
       historyTabLabels: { lancamento: "Lançamentos", evento: "Eventos ao vivo" },
       customHistoryTabs: [{ id: "ct_demo", label: "Mentorias", emoji: "🎓" }],
     },
-    products: ["dash"],
+    products: ["dash", "pipe"],
   },
   {
     id: "demo-2", name: "Loja Fitness Online (Demo)", slug: "demo-loja", logoUrl: null,
@@ -102,12 +118,27 @@ const DEMO_COMPANIES: Company[] = [
     products: ["dash"],
   },
 ];
+// Overrides do modo demo (mutações feitas no painel admin) — persistem em
+// localStorage pra sobreviver à navegação entre /admin e o hub.
+const DEMO_OVERRIDES_KEY = "dm_demo_company_overrides_v1";
+type DemoOverride = Partial<Pick<Company, "name" | "products" | "settings" | "logoUrl" | "productExpiry">>;
+
+function readDemoOverrides(): Record<string, DemoOverride> {
+  try { return JSON.parse(localStorage.getItem(DEMO_OVERRIDES_KEY) ?? "{}"); } catch { return {}; }
+}
+
+function demoCompanies(): Company[] {
+  const overrides = readDemoOverrides();
+  return DEMO_COMPANIES.map((c) => ({ ...c, ...overrides[c.id] }));
+}
+
 function demoState(): CompanyState {
+  const companies = demoCompanies();
   const activeId = readActiveCompanyId();
-  const active = DEMO_COMPANIES.find((c) => c.id === activeId) ?? DEMO_COMPANIES[0];
+  const active = companies.find((c) => c.id === activeId) ?? companies[0];
   return {
     company: active, role: "owner",
-    memberships: DEMO_COMPANIES.map((c) => ({ role: "owner" as CompanyRole, company: c })),
+    memberships: companies.map((c) => ({ role: "owner" as CompanyRole, company: c })),
     isSuperAdmin: true, loading: false, migrationMissing: false,
   };
 }
@@ -123,7 +154,7 @@ async function fetchCompanyState(): Promise<CompanyState> {
 
   const { data, error } = await supabaseClient
     .from("company_members")
-    .select("role, companies ( id, name, slug, logo_url, settings, products )")
+    .select("role, companies ( id, name, slug, logo_url, settings, products, product_expiry )")
     .eq("user_id", auth.user.id)
     .order("created_at");
 
@@ -152,7 +183,7 @@ async function fetchCompanyState(): Promise<CompanyState> {
     if (isSuperAdmin) {
       const { data: allCompanies, error: allErr } = await supabaseClient
         .from("companies")
-        .select("id, name, slug, logo_url, settings, products")
+        .select("id, name, slug, logo_url, settings, products, product_expiry")
         .order("name");
       if (!allErr && allCompanies) {
         const ownIds = new Set(memberships.map((m) => m.company.id));
@@ -234,11 +265,77 @@ export async function refreshCompany(): Promise<CompanyState> {
   return loadOnce();
 }
 
+// ponytail: no modo demo (sem Supabase) as mutações de empresa gravam um
+// override em localStorage — sobrevive à navegação e deixa a liberação de
+// produtos via /admin demonstrável de ponta a ponta.
+function demoMutate(companyId: string, patch: (c: Company) => void): boolean {
+  if (supabaseClient || !isDevModeActive()) return false;
+  const c = demoCompanies().find((x) => x.id === companyId);
+  if (c) {
+    patch(c);
+    const overrides = readDemoOverrides();
+    overrides[companyId] = { name: c.name, products: c.products, settings: c.settings, logoUrl: c.logoUrl, productExpiry: c.productExpiry };
+    try { localStorage.setItem(DEMO_OVERRIDES_KEY, JSON.stringify(overrides)); } catch {}
+  }
+  return true;
+}
+
+// ─── Personalização da empresa (banner + descrição, estilo WhatsApp Business) ──
+export const COMPANY_BRANDING_KEY = "branding";
+export interface CompanyBranding { bannerUrl?: string; description?: string }
+
+export function readCompanyBranding(settings?: Record<string, unknown>): CompanyBranding {
+  const raw = settings?.[COMPANY_BRANDING_KEY];
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const b = raw as Record<string, unknown>;
+  return {
+    bannerUrl: typeof b.bannerUrl === "string" ? b.bannerUrl : undefined,
+    description: typeof b.description === "string" ? b.description : undefined,
+  };
+}
+
+/** Logo da empresa (coluna logo_url; RLS: owner ou super admin). */
+export async function updateCompanyLogo(companyId: string, logoUrl: string | null): Promise<void> {
+  if (demoMutate(companyId, (c) => { c.logoUrl = logoUrl; })) { await refreshCompany(); return; }
+  if (!supabaseClient) throw new Error("Supabase não configurado.");
+  const { error } = await supabaseClient
+    .from("companies")
+    .update({ logo_url: logoUrl })
+    .eq("id", companyId);
+  if (error) throw new Error(error.message);
+  await refreshCompany();
+}
+
+// ─── Restrição de produtos por membro ──────────────────────────────────────────
+// companies.settings.memberProducts = { "email": ["dash"] } — allowlist por
+// membro; sem entrada = todos os produtos da empresa. Sempre interseção com
+// companies.products (o entitlement da empresa é o teto).
+export const MEMBER_PRODUCTS_KEY = "memberProducts";
+
+export function readMemberProducts(settings?: Record<string, unknown>): Record<string, string[]> {
+  const raw = settings?.[MEMBER_PRODUCTS_KEY];
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: Record<string, string[]> = {};
+  for (const [email, list] of Object.entries(raw as Record<string, unknown>)) {
+    if (Array.isArray(list)) out[email.toLowerCase()] = list.map(String);
+  }
+  return out;
+}
+
+/** Produtos que ESTE membro pode abrir (vigentes da empresa ∩ allowlist do membro). */
+export function memberAllowedProducts(company: Company | null | undefined, email: string | null | undefined): string[] {
+  const base = activeCompanyProducts(company);
+  if (!company || !email) return base;
+  const allow = readMemberProducts(company.settings)[email.toLowerCase()];
+  return allow ? base.filter((p) => allow.includes(p)) : base;
+}
+
 /** Atualiza settings da empresa (só owner passa na RLS). */
 export async function updateCompanySettings(
   companyId: string,
   settings: Record<string, unknown>,
 ): Promise<void> {
+  if (demoMutate(companyId, (c) => { c.settings = settings; })) { await refreshCompany(); return; }
   if (!supabaseClient) throw new Error("Supabase não configurado.");
   const { error } = await supabaseClient
     .from("companies")
@@ -256,11 +353,16 @@ export async function updateCompanySettings(
 export async function setCompanyProducts(
   companyId: string,
   products: string[],
+  /** Validade por produto (076). Chave ausente/undefined = ilimitado. */
+  productExpiry?: Record<string, string>,
 ): Promise<void> {
+  if (demoMutate(companyId, (c) => { c.products = products; if (productExpiry !== undefined) c.productExpiry = productExpiry; })) { await refreshCompany(); return; }
   if (!supabaseClient) throw new Error("Supabase não configurado.");
+  const patch: Record<string, unknown> = { products };
+  if (productExpiry !== undefined) patch.product_expiry = productExpiry;
   const { error } = await supabaseClient
     .from("companies")
-    .update({ products })
+    .update(patch)
     .eq("id", companyId);
   if (error) throw new Error(error.message);
   await refreshCompany();
@@ -320,6 +422,7 @@ export async function removeMember(memberId: string): Promise<void> {
 
 /** Renomeia a empresa (RLS: só owner). */
 export async function renameCompany(companyId: string, name: string): Promise<void> {
+  if (demoMutate(companyId, (c) => { c.name = name.trim() || c.name; })) { await refreshCompany(); return; }
   if (!supabaseClient) throw new Error("Supabase não configurado.");
   const { error } = await supabaseClient
     .from("companies")
@@ -344,7 +447,7 @@ export async function createCompany(name: string, ownerEmail?: string): Promise<
   const { data, error } = await supabaseClient
     .from("companies")
     .insert({ name: clean, slug, settings: { blankTaxonomy: true } })
-    .select("id, name, slug, logo_url, settings, products")
+    .select("id, name, slug, logo_url, settings, products, product_expiry")
     .single();
   if (error) throw new Error(error.message);
   const company = rowToCompany(data);
@@ -356,9 +459,20 @@ export async function createCompany(name: string, ownerEmail?: string): Promise<
   return company;
 }
 
+// ponytail: token demo também vive no override de localStorage (chave à parte
+// do shape Company porque meta_access_token nunca entra no estado do cliente).
+const DEMO_TOKENS_KEY = "dm_demo_company_tokens_v1";
+
 /** Lê o token Meta salvo de uma empresa específica (para o painel DEV). */
 export async function fetchCompanyToken(companyId: string): Promise<string> {
-  if (!supabaseClient) return isDevModeActive() ? "EAADEMOdemoTOKENexample1234567890abcdef" : "";
+  if (!supabaseClient) {
+    if (!isDevModeActive()) return "";
+    try {
+      const saved = JSON.parse(localStorage.getItem(DEMO_TOKENS_KEY) ?? "{}")[companyId];
+      if (typeof saved === "string") return saved;
+    } catch {}
+    return "EAADEMOdemoTOKENexample1234567890abcdef";
+  }
   const { data, error } = await supabaseClient
     .from("companies")
     .select("meta_access_token")
@@ -374,6 +488,14 @@ export async function fetchCompanyToken(companyId: string): Promise<string> {
  * qualquer empresa sem trocar de contexto.
  */
 export async function setCompanyToken(companyId: string, token: string): Promise<void> {
+  if (!supabaseClient && isDevModeActive()) {
+    try {
+      const all = JSON.parse(localStorage.getItem(DEMO_TOKENS_KEY) ?? "{}");
+      all[companyId] = token.trim();
+      localStorage.setItem(DEMO_TOKENS_KEY, JSON.stringify(all));
+    } catch {}
+    return;
+  }
   if (!supabaseClient) throw new Error("Supabase não configurado.");
   const { error } = await supabaseClient
     .from("companies")
@@ -884,7 +1006,7 @@ export async function fetchAdminCompanies(): Promise<AdminCompany[]> {
   if (!supabaseClient) return [];
   const { data: comps, error } = await supabaseClient
     .from("companies")
-    .select("id, name, slug, logo_url, settings, products, meta_access_token")
+    .select("id, name, slug, logo_url, settings, products, product_expiry, meta_access_token")
     .order("name");
   if (error) throw new Error(error.message);
 
@@ -955,6 +1077,76 @@ export async function saveAdAccountSuggestions(
   suggestions: AdAccountSuggestion[],
 ): Promise<void> {
   await updateCompanySettings(companyId, { ...(settings ?? {}), [AD_ACCOUNT_SUGGESTIONS_KEY]: suggestions });
+}
+
+export interface PendingInvite { id: string; email: string; role: CompanyRole; createdAt: string }
+
+/** Convites ainda não materializados de uma empresa (owner ou super admin). */
+export async function fetchCompanyInvites(companyId: string): Promise<PendingInvite[]> {
+  if (!supabaseClient) return [];
+  const { data, error } = await supabaseClient
+    .from("company_invites")
+    .select("id, email, role, created_at")
+    .eq("company_id", companyId)
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((r) => ({
+    id: r.id as string, email: r.email as string,
+    role: r.role as CompanyRole, createdAt: r.created_at as string,
+  }));
+}
+
+export async function revokeCompanyInvite(inviteId: string): Promise<void> {
+  if (!supabaseClient) throw new Error("Supabase não configurado.");
+  const { error } = await supabaseClient.from("company_invites").delete().eq("id", inviteId);
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Manda o e-mail de convite de verdade — sem depender de nenhum serviço de
+ * e-mail próprio: um magic link do Supabase Auth (template "Magic Link"),
+ * que funciona tanto pra quem já tem conta quanto pra quem ainda não tem
+ * (`shouldCreateUser: true`). Ao clicar, a pessoa cai autenticada direto em
+ * /aceitar-convite e vê o convite pendente (migration 077).
+ *
+ * ponytail: usa o e-mail padrão do Supabase (grátis, mas limitado a poucas
+ * dezenas por hora). Se o volume de convites crescer, configurar SMTP
+ * próprio em Supabase → Settings → Auth → SMTP Settings.
+ */
+export async function sendInviteEmail(email: string): Promise<void> {
+  if (!supabaseClient) throw new Error("Supabase não configurado.");
+  const redirectTo = typeof window !== "undefined" ? `${window.location.origin}/aceitar-convite` : undefined;
+  const { error } = await supabaseClient.auth.signInWithOtp({
+    email: email.trim().toLowerCase(),
+    options: { shouldCreateUser: true, emailRedirectTo: redirectTo },
+  });
+  if (error) throw new Error(error.message);
+}
+
+// ─── Aceitar/recusar convite (tela /aceitar-convite) ───────────────────────────
+
+export interface MyPendingInvite { id: string; companyId: string; companyName: string; role: CompanyRole; createdAt: string }
+
+/** Convites pendentes endereçados ao e-mail do usuário LOGADO (migration 077). */
+export async function fetchMyPendingInvites(): Promise<MyPendingInvite[]> {
+  if (!supabaseClient) return [];
+  const { data, error } = await supabaseClient.rpc("fetch_my_pending_invites");
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as Array<{ id: string; company_id: string; company_name: string; role: string; created_at: string }>)
+    .map((r) => ({ id: r.id, companyId: r.company_id, companyName: r.company_name, role: r.role as CompanyRole, createdAt: r.created_at }));
+}
+
+export async function acceptCompanyInvite(inviteId: string): Promise<void> {
+  if (!supabaseClient) throw new Error("Supabase não configurado.");
+  const { error } = await supabaseClient.rpc("accept_company_invite", { p_invite_id: inviteId });
+  if (error) throw new Error(error.message);
+  await refreshCompany();
+}
+
+export async function declineCompanyInvite(inviteId: string): Promise<void> {
+  if (!supabaseClient) throw new Error("Supabase não configurado.");
+  const { error } = await supabaseClient.rpc("decline_company_invite", { p_invite_id: inviteId });
+  if (error) throw new Error(error.message);
 }
 
 export type InviteResult = "added" | "invited";

@@ -553,6 +553,112 @@
   --font-sans: var(--font-inter);
   --font-mono: var(--font-geist-mono);
   --font-display: var(--font-poppins);
+
+  /* ── PipeFlow (port fiel) — tokens shadcn escopados: valem dentro de .pf-app,
+     fora dela caem no fallback (nenhuma tela dm usa essas utilities). ── */
+  --color-border:                 var(--pf-border, currentColor);
+  --color-input:                  var(--pf-input, currentColor);
+  --color-ring:                   var(--pf-ring, currentColor);
+  --color-primary:                var(--pf-primary, currentColor);
+  --color-primary-foreground:     var(--pf-primary-foreground, currentColor);
+  --color-secondary:              var(--pf-secondary, currentColor);
+  --color-secondary-foreground:   var(--pf-secondary-foreground, currentColor);
+  --color-destructive:            var(--pf-destructive, currentColor);
+  --color-destructive-foreground: var(--pf-destructive-foreground, currentColor);
+  --color-muted:                  var(--pf-muted, currentColor);
+  --color-muted-foreground:       var(--pf-muted-foreground, currentColor);
+  --color-accent:                 var(--pf-accent, currentColor);
+  --color-accent-foreground:      var(--pf-accent-foreground, currentColor);
+  --color-popover:                var(--pf-popover, currentColor);
+  --color-popover-foreground:     var(--pf-popover-foreground, currentColor);
+  --color-card:                   var(--pf-card, currentColor);
+  --color-card-foreground:        var(--pf-card-foreground, currentColor);
+  --color-sidebar:                    var(--pf-sidebar, currentColor);
+  --color-sidebar-foreground:         var(--pf-sidebar-foreground, currentColor);
+  --color-sidebar-primary:            var(--pf-sidebar-primary, currentColor);
+  --color-sidebar-primary-foreground: var(--pf-sidebar-primary-foreground, currentColor);
+  --color-sidebar-accent:             var(--pf-sidebar-accent, currentColor);
+  --color-sidebar-accent-foreground:  var(--pf-sidebar-accent-foreground, currentColor);
+  --color-sidebar-border:             var(--pf-sidebar-border, currentColor);
+  --color-sidebar-ring:               var(--pf-sidebar-ring, currentColor);
+  --color-chart-1: var(--pf-chart-1, currentColor);
+  --color-chart-2: var(--pf-chart-2, currentColor);
+  --color-chart-3: var(--pf-chart-3, currentColor);
+  --color-chart-4: var(--pf-chart-4, currentColor);
+  --color-chart-5: var(--pf-chart-5, currentColor);
+
+  /* Escala tipográfica do PipeFlow (14px base) — fora de .pf-app usa o default TW */
+  --text-xs:  var(--pf-fs-xs, 0.75rem);
+  --text-xs--line-height:  var(--pf-lh-xs, 1rem);
+  --text-sm:  var(--pf-fs-sm, 0.875rem);
+  --text-sm--line-height:  var(--pf-lh-sm, 1.25rem);
+  --text-base: var(--pf-fs-base, 1rem);
+  --text-base--line-height: var(--pf-lh-base, 1.5rem);
+  --text-lg:  var(--pf-fs-lg, 1.125rem);
+  --text-lg--line-height:  var(--pf-lh-lg, 1.75rem);
+  --text-xl:  var(--pf-fs-xl, 1.25rem);
+  --text-xl--line-height:  var(--pf-lh-xl, 1.75rem);
+  --text-2xl: var(--pf-fs-2xl, 1.5rem);
+  --text-2xl--line-height: var(--pf-lh-2xl, 2rem);
+  --text-3xl: var(--pf-fs-3xl, 1.875rem);
+  --text-3xl--line-height: var(--pf-lh-3xl, 2.25rem);
+  --text-4xl: var(--pf-fs-4xl, 2.25rem);
+  --text-4xl--line-height: var(--pf-lh-4xl, 2.5rem);
+
+  /* Raio do PipeFlow (12px base) — idem */
+  --radius-xs:  var(--pf-r-xs, 0.125rem);
+  --radius-sm:  var(--pf-r-sm, 0.25rem);
+  --radius-md:  var(--pf-r-md, 0.375rem);
+  --radius-lg:  var(--pf-r-lg, 0.5rem);
+  --radius-xl:  var(--pf-r-xl, 0.75rem);
+  --radius-2xl: var(--pf-r-2xl, 1rem);
+}
+
+/* ── PipeFlow — paleta de marca, sombras e animações (nomes exclusivos, globais) ── */
+@theme {
+  --color-bunker: #0B0D11;
+  --color-bg-soft: #11151A;
+  --color-surface: #151A20;
+  --color-surface-elevated: #1B222A;
+  --color-surface-strong: #222A31;
+  --color-ebony: #222A31;
+  --color-canary: #c6f432;
+  --color-canary-hover: #B6E02E;
+  --color-canary-active: #A8CF2A;
+  --color-tidal: #E8FEAE;
+  --color-geyser: #D8DEE3;
+  --color-slate: #7B8793;
+  --color-success: #80ED99;
+  --color-warning: #FFD166;
+  --color-danger: #FF6B6B;
+  --color-info: #7DD3FC;
+
+  --text-2xs: 11px;
+  --text-2xs--line-height: 16px;
+  --text-md: 15px;
+  --text-md--line-height: 22px;
+
+  --shadow-card: 0 12px 32px rgba(0, 0, 0, 0.18);
+  --shadow-floating: 0 24px 64px rgba(0, 0, 0, 0.42);
+  --shadow-focus: 0 0 0 4px rgba(198, 244, 50, 0.14);
+  --shadow-inset-border: inset 0 0 0 1px rgba(216, 222, 227, 0.10);
+
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+  --animate-fade-in: fade-in 0.18s ease-out;
+
+  @keyframes accordion-down {
+    from { height: 0; }
+    to { height: var(--radix-accordion-content-height); }
+  }
+  @keyframes accordion-up {
+    from { height: var(--radix-accordion-content-height); }
+    to { height: 0; }
+  }
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
 }
 
 /* ── Superfície aterrada (antes: sombra "horizon" com offset diagonal que fazia
@@ -1289,10 +1395,7 @@ h1, h2, h3, h4, h5 {
   font-weight: 700;
   line-height: 1.08;
   letter-spacing: -0.02em;
-  background: linear-gradient(180deg, #ffffff 0%, #b8f0cf 125%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: #f2fff8;
 }
 .dtg-sub { margin: 26px 0 0; font-size: 13px; color: #7c9488; letter-spacing: 0.03em; }
 .dtg-timer {
@@ -1314,11 +1417,13 @@ h1, h2, h3, h4, h5 {
 }
 .dtg-bar > span {
   display: block;
+  width: 100%;
   height: 100%;
   border-radius: 999px;
   background: linear-gradient(90deg, #16a34a, #22c55e);
   box-shadow: 0 0 12px rgba(34, 197, 94, 0.7);
-  transition: width 0.3s linear;
+  transform-origin: left;
+  transition: transform 0.3s linear;
 }
 .dtg-note { margin: 18px 0 0; font-size: 11px; color: #4f6258; letter-spacing: 0.06em; }
 

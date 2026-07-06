@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "@/hooks/useToast";
-import { useCompany } from "@/hooks/useCompany";
+import { useCompany, memberAllowedProducts, readCompanyBranding, fetchMyPendingInvites } from "@/hooks/useCompany";
+import { AcceptInviteScreen } from "@/components/AcceptInviteScreen";
 import { RealtimeChannel, Session } from "@supabase/supabase-js";
 import { Dashboard } from "@/components/Dashboard";
 import { ControlPanel, type CPTab } from "@/components/ControlPanel";
@@ -14,6 +16,7 @@ import { CampaignData } from "@/types/campaign";
 import { getCompanyDataset, seedDemoData } from "@/utils/mockData";
 import { fetchCampaignSheetData, parseCampaignCsvFile } from "@/utils/googleSheets";
 import { isSupabaseConfigured, supabaseClient } from "@/lib/supabase";
+import { authedFetch } from "@/lib/authedFetch";
 import {
   fetchSharedDataSource,
   fetchSupabaseCampaigns,
@@ -61,6 +64,7 @@ function readLookbackDays(): number {
 }
 
 export default function Home() {
+  const router = useRouter();
   const [campaigns, setCampaigns]       = useState<CampaignData[]>([]);
   const [authError, setAuthError]       = useState<string | null>(null);
   const [session, setSession]           = useState<Session | null>(null);
@@ -438,6 +442,18 @@ export default function Home() {
     }
   };
 
+  const handleForgotPassword = async (email: string): Promise<void> => {
+    setAuthError(null);
+    if (!supabaseClient) return;
+    const { error: resetError } = await supabaseClient.auth.resetPasswordForEmail(email, {
+      redirectTo: typeof window !== "undefined" ? `${window.location.origin}/reset-password` : undefined,
+    });
+    // Não vaza se o e-mail existe ou não — mensagem genérica mesmo em erro de "usuário não encontrado".
+    if (resetError && !/user not found/i.test(resetError.message)) {
+      setAuthError(`Falha ao enviar e-mail: ${resetError.message}`);
+    }
+  };
+
   const handleOAuth = async (provider: "google" | "github" | "discord"): Promise<void> => {
     setAuthError(null);
     if (!supabaseClient) return;
@@ -518,6 +534,23 @@ export default function Home() {
     if (syncStatus.error) toast.error(syncStatus.error);
   }, [syncStatus.error]);
 
+  // Auditoria: grava 1 evento de login por sessão do browser (Painel Admin).
+  useEffect(() => {
+    if (!session) return;
+    try {
+      if (sessionStorage.getItem("dm_login_logged_v1") === "1") return;
+      sessionStorage.setItem("dm_login_logged_v1", "1");
+    } catch {}
+    void authedFetch("/api/auth/login-event", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: session.user?.email ?? "",
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      }),
+    }).catch(() => {});
+  }, [session]);
+
   // Modo dev sem Supabase — onboarding na primeira visita (o seed por empresa
   // é feito no effect dedicado abaixo, que reage à empresa ativa).
   useEffect(() => {
@@ -562,7 +595,7 @@ export default function Home() {
   }, []);
 
   // Empresa ativa (multi-empresa / super admin) — usada para recarregar ao trocar.
-  const { companyId: activeCompanyId, memberships, loading: companyLoading, switchCompany } = useCompany();
+  const { companyId: activeCompanyId, memberships, isSuperAdmin, loading: companyLoading, switchCompany } = useCompany();
   const companyLoadedRef = useRef<string | null>(null);
 
   // Dev mode (sem Supabase): cada empresa demo tem dataset próprio. Re-semeia o
@@ -591,6 +624,15 @@ export default function Home() {
   const [productChosen, setProductChosen] = useState<boolean>(() => {
     try { return sessionStorage.getItem(PRODUCT_CHOSEN_KEY) === "1"; } catch { return false; }
   });
+
+  // Gate de convites pendentes (tela de aceitar), 1x por sessão — checa antes
+  // do seletor de empresa, já que aceitar um convite pode adicionar empresa nova.
+  const INVITE_GATE_KEY = "dm_invite_gate_v1";
+  const [inviteGateDone, setInviteGateDone] = useState<boolean>(() => {
+    try { return sessionStorage.getItem(INVITE_GATE_KEY) === "1"; } catch { return false; }
+  });
+  const [hasPendingInvites, setHasPendingInvites] = useState<boolean | null>(null);
+  const inviteCheckedRef = useRef(false);
 
   useEffect(() => {
     if (!session?.user.id || !isSupabaseConfigured) {
@@ -731,6 +773,15 @@ export default function Home() {
 
   const devBypass = process.env.NODE_ENV === "development" && !isSupabaseConfigured;
 
+  // Checa convites pendentes 1x por sessão, assim que o login é confirmado.
+  useEffect(() => {
+    if (!session || devBypass || !isSupabaseConfigured || inviteGateDone || inviteCheckedRef.current) return;
+    inviteCheckedRef.current = true;
+    void fetchMyPendingInvites()
+      .then((list) => setHasPendingInvites(list.length > 0))
+      .catch(() => setHasPendingInvites(false));
+  }, [session, devBypass, inviteGateDone]);
+
   if (isSupabaseConfigured && !authReady) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-slate-50 dark:bg-[#0C0C0C] px-4">
@@ -746,6 +797,7 @@ export default function Home() {
         onSignIn={handleSignIn}
         onSignUp={handleSignUp}
         onOAuth={handleOAuth}
+        onForgotPassword={handleForgotPassword}
         authError={authError}
         supabaseReady={isSupabaseConfigured}
       />
@@ -756,6 +808,26 @@ export default function Home() {
     email: devBypass ? "dev@preview.local" : (session?.user.email ?? ""),
     name:  devBypass ? "Dev Preview" : String(session?.user.user_metadata?.full_name ?? "").trim(),
   };
+
+  // ── Convites pendentes: aceitar/recusar antes de escolher empresa ─────────────
+  if (session && isSupabaseConfigured && !devBypass && !inviteGateDone) {
+    if (hasPendingInvites === null) {
+      return (
+        <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-slate-50 dark:bg-[#0C0C0C] px-4">
+          <div className="h-9 w-9 animate-spin rounded-full border-2 border-[#16A34A] border-t-transparent" aria-hidden />
+          <p className="text-sm text-slate-600 dark:text-slate-400">Verificando convites…</p>
+        </div>
+      );
+    }
+    if (hasPendingInvites) {
+      return (
+        <AcceptInviteScreen onDone={() => {
+          try { sessionStorage.setItem(INVITE_GATE_KEY, "1"); } catch {}
+          setInviteGateDone(true);
+        }} />
+      );
+    }
+  }
 
   // ── Seletor de empresa pós-login (só com 2+ empresas, 1x por sessão) ──────────
   if (session && isSupabaseConfigured && !devBypass) {
@@ -785,17 +857,30 @@ export default function Home() {
   }
 
   // ── Seletor de produto pós-login (Monster Hub): Dash vs PipeFlow ──────────────
-  if ((session || devBypass) && !productChosen) {
+  // As cards refletem o que a EMPRESA ativa contratou (liberação via /admin) —
+  // inclusive pra super admin, senão a liberação não é demonstrável. Super admin
+  // sem empresa ativa (ex.: recém-provisionado) vê tudo. Empresa sem "dash" fica
+  // presa no hub mesmo com productChosen antigo no sessionStorage.
+  // memberAllowedProducts aplica também a restrição POR MEMBRO (settings.memberProducts).
+  const activeMembership = memberships.find((m) => m.company.id === activeCompanyId);
+  const activeProducts = activeMembership
+    ? memberAllowedProducts(activeMembership.company, currentUser.email)
+    : (isSuperAdmin ? ["dash", "pipe"] : ["dash"]);
+  if ((session || devBypass) && (!productChosen || !activeProducts.includes("dash"))) {
     return (
       <ProductSelectScreen
         userName={currentUser.name || currentUser.email.split("@")[0]}
         email={currentUser.email}
-        companyName={memberships.find((m) => m.company.id === activeCompanyId)?.company.name}
-        products={memberships.find((m) => m.company.id === activeCompanyId)?.company.products}
+        companyName={activeMembership?.company.name}
+        companyLogoUrl={activeMembership?.company.logoUrl}
+        companyBannerUrl={readCompanyBranding(activeMembership?.company.settings).bannerUrl}
+        companyDescription={readCompanyBranding(activeMembership?.company.settings).description}
+        products={activeProducts}
         onOpenDash={() => {
           try { sessionStorage.setItem(PRODUCT_CHOSEN_KEY, "1"); } catch {}
           setProductChosen(true);
         }}
+        onOpenPipe={() => router.push("/crm")}
         onSignOut={handleSignOut}
         onUpdateProfile={handleUpdateProfile}
         categories={userCategories}

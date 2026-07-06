@@ -94,7 +94,11 @@
       "Bash(awk '/^[A-Z]:/{f=$0} /error/{print f\" :: \"$0}')",
       "Bash(sed -E 's/G:\\\\\\\\CODEX\\\\\\\\dashmonster\\\\\\\\//')",
       "Bash(grep -E \"\\(^[A-Z]:\\\\\\\\\\\\\\\\|^[[:space:]]+[0-9]+:[0-9]+[[:space:]]+error\\)\")",
-      "Bash(awk '/^[A-Z]:/{f=$0; gsub\\(/.*dashmonster.../,\"\",f\\)} /error/{print f\" :: \"$0}')"
+      "Bash(awk '/^[A-Z]:/{f=$0; gsub\\(/.*dashmonster.../,\"\",f\\)} /error/{print f\" :: \"$0}')",
+      "Bash(./node_modules/.bin/tsc --noEmit)",
+      "Bash(./node_modules/.bin/eslint src/components/CampaignWizard.tsx src/components/CampaignCenter.tsx src/components/Dashboard.tsx src/utils/painelDashboardNavigation.ts)",
+      "Bash(git clone *)",
+      "PowerShell(git fetch *)"
     ]
   },
   "hooks": {

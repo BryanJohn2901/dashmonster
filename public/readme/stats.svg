@@ -1,0 +1,36 @@
+<svg width="1200" height="130" viewBox="0 0 1200 130" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Números da plataforma">
+  <defs>
+    <style>.t { font-family: 'Segoe UI', -apple-system, 'Helvetica Neue', Arial, sans-serif; }</style>
+  </defs>
+
+  <g class="t" text-anchor="middle">
+    <!-- card 1 -->
+    <g>
+      <rect x="0" y="0" width="285" height="130" rx="14" fill="#0E1108" stroke="#B6F500" stroke-opacity="0.2"/>
+      <text x="142" y="58" font-size="34" font-weight="800" fill="#B6F500">0 min</text>
+      <text x="142" y="86" font-size="13" fill="#9DA38C">de planilha por semana</text>
+      <text x="142" y="106" font-size="11" fill="#6E7560">sync direto da Graph API</text>
+    </g>
+    <!-- card 2 -->
+    <g>
+      <rect x="305" y="0" width="285" height="130" rx="14" fill="#0E1108" stroke="#B6F500" stroke-opacity="0.2"/>
+      <text x="447" y="58" font-size="34" font-weight="800" fill="#4ADE80">2 em 1</text>
+      <text x="447" y="86" font-size="13" fill="#9DA38C">analytics + CRM na mesma conta</text>
+      <text x="447" y="106" font-size="11" fill="#6E7560">liberados por empresa</text>
+    </g>
+    <!-- card 3 -->
+    <g>
+      <rect x="610" y="0" width="285" height="130" rx="14" fill="#0E1108" stroke="#B6F500" stroke-opacity="0.2"/>
+      <text x="752" y="58" font-size="34" font-weight="800" fill="#4ADE80">N empresas</text>
+      <text x="752" y="86" font-size="13" fill="#9DA38C">isoladas por RLS no banco</text>
+      <text x="752" y="106" font-size="11" fill="#6E7560">feito pra agência e infoproduto</text>
+    </g>
+    <!-- card 4 -->
+    <g>
+      <rect x="915" y="0" width="285" height="130" rx="14" fill="#0E1108" stroke="#B6F500" stroke-opacity="0.2"/>
+      <text x="1057" y="58" font-size="34" font-weight="800" fill="#B6F500">75</text>
+      <text x="1057" y="86" font-size="13" fill="#9DA38C">migrations de schema versionado</text>
+      <text x="1057" y="106" font-size="11" fill="#6E7560">auditoria, RLS e triggers no SQL</text>
+    </g>
+  </g>
+</svg>

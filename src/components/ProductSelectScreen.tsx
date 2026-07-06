@@ -12,7 +12,12 @@ interface ProductSelectScreenProps {
   userName: string;
   email?: string;
   companyName?: string;
+  /** Personalização da empresa (admin → Empresas → Personalização). */
+  companyLogoUrl?: string | null;
+  companyBannerUrl?: string;
+  companyDescription?: string;
   onOpenDash: () => void;
+  onOpenPipe: () => void;
   onSignOut?: () => void;
   onUpdateProfile?: (name: string) => Promise<void>;
   categories?: UserCategory[];
@@ -52,8 +57,10 @@ function useHoverProgress(active: boolean, duration = 850): number {
   return p;
 }
 
-export function ProductSelectScreen({ userName, email, companyName, onOpenDash, onSignOut, onUpdateProfile, categories, products = ["dash"] }: ProductSelectScreenProps) {
+export function ProductSelectScreen({ userName, email, companyName, companyLogoUrl, companyBannerUrl, companyDescription, onOpenDash, onOpenPipe, onSignOut, onUpdateProfile, categories, products = ["dash"] }: ProductSelectScreenProps) {
   const hasDash = products.includes("dash");
+  const pipeDef = PRODUCTS.find((p) => p.id === "pipe");
+  const pipeOpenable = pipeDef ? canOpenProduct(pipeDef, products) : false;
   const first = (userName || "").trim().split(" ").filter(Boolean)[0] || "de volta";
   const initials = (userName || "U").trim().split(" ").filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join("") || "U";
   const [menuOpen, setMenuOpen] = useState(false);
@@ -102,8 +109,14 @@ export function ProductSelectScreen({ userName, email, companyName, onOpenDash, 
           {menuOpen && (
             <>
               <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
-              <div className="absolute right-0 top-full z-50 mt-2 w-72 rounded-2xl p-2"
+              <div className="absolute right-0 top-full z-50 mt-2 w-72 overflow-hidden rounded-2xl p-2"
                 style={{ background: C.surface, border: `1px solid ${C.border}`, boxShadow: "0 12px 32px rgba(16,24,40,.16)" }}>
+                {/* Banner da empresa (personalização via admin) */}
+                {companyBannerUrl && (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img src={companyBannerUrl} alt="" aria-hidden="true"
+                    className="-m-2 mb-2 h-20 w-[calc(100%+16px)] max-w-none object-cover" />
+                )}
                 {/* Conta */}
                 <div className="flex items-center gap-3 px-2.5 py-2">
                   <span className="flex h-9 w-9 items-center justify-center rounded-full text-[13px] font-semibold text-white" style={{ background: C.violet }}>{initials}</span>
@@ -117,10 +130,19 @@ export function ProductSelectScreen({ userName, email, companyName, onOpenDash, 
 
                 {companyName && (
                   <div className="flex items-center gap-2.5 px-2.5 py-2">
-                    <Building2 size={15} style={{ color: C.tm }} />
+                    {companyLogoUrl ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img src={companyLogoUrl} alt="" aria-hidden="true"
+                        className="h-8 w-8 flex-shrink-0 rounded-full object-cover" style={{ border: `1px solid ${C.border}` }} />
+                    ) : (
+                      <Building2 size={15} style={{ color: C.tm }} />
+                    )}
                     <div className="min-w-0">
                       <p className="text-[11px]" style={{ color: C.tm }}>Empresa</p>
                       <p className="truncate text-sm font-medium" style={{ color: C.tp }}>{companyName}</p>
+                      {companyDescription && (
+                        <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug" style={{ color: C.ts }}>{companyDescription}</p>
+                      )}
                     </div>
                   </div>
                 )}
@@ -177,8 +199,8 @@ export function ProductSelectScreen({ userName, email, companyName, onOpenDash, 
         </div>
 
         <div className="grid grid-cols-1 items-stretch gap-6 md:grid-cols-2">
-          {/* PipeFlow: status "soon" → teaser p/ todos. DashMonster: só se contratado. */}
-          <PipeCard />
+          {/* PipeFlow: contratado → abre /crm; sem contrato → teaser. DashMonster: só se contratado. */}
+          <PipeCard openable={pipeOpenable} onOpen={onOpenPipe} />
           {hasDash && <DashCard onOpen={onOpenDash} />}
         </div>
 
@@ -275,8 +297,8 @@ function DashCard({ onOpen }: { onOpen: () => void }) {
   );
 }
 
-/* ── PipeFlow card (animado, placeholder) ─────────────────────────────────── */
-function PipeCard() {
+/* ── PipeFlow card (animado; contratado → abre, senão teaser) ─────────────── */
+function PipeCard({ openable, onOpen }: { openable: boolean; onOpen: () => void }) {
   const [hover, setHover] = useState(false);
   const e = easeOut(useHoverProgress(hover));
   const cols = [
@@ -289,7 +311,9 @@ function PipeCard() {
       className="relative flex h-full flex-col rounded-3xl p-7 transition-shadow"
       style={{ background: C.ink, boxShadow: hover ? "0 16px 40px rgba(14,17,8,.22)" : "0 8px 24px rgba(14,17,8,.12)" }}
     >
-      <span className="absolute right-5 top-5 rounded-md px-2 py-0.5 text-[11px] font-semibold" style={{ background: "#22271A", color: "#9AA37C" }}>Em breve</span>
+      {!openable && (
+        <span className="absolute right-5 top-5 rounded-md px-2 py-0.5 text-[11px] font-semibold" style={{ background: "#22271A", color: "#9AA37C" }}>Em breve</span>
+      )}
 
       {/* Preview (altura fixa) */}
       <div className="mb-6 flex h-[150px] items-end rounded-2xl p-4" style={{ background: C.inkSoft }}>
@@ -312,11 +336,19 @@ function PipeCard() {
         desc="Pipeline Kanban, gestão de leads e CRM para quem vende pelo Instagram."
         descColor="#9DA38C"
       />
-      <button type="button" disabled
-        className="mt-auto flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold opacity-60"
-        style={{ background: "#2A301F", color: "#9AA37C" }}>
-        Em breve
-      </button>
+      {openable ? (
+        <button type="button" onClick={onOpen}
+          className="mt-auto flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition hover:brightness-105"
+          style={{ background: C.lime, color: C.ink }}>
+          Abrir PipeFlow <ArrowRight size={16} />
+        </button>
+      ) : (
+        <button type="button" disabled
+          className="mt-auto flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold opacity-60"
+          style={{ background: "#2A301F", color: "#9AA37C" }}>
+          Em breve
+        </button>
+      )}
     </div>
   );
 }

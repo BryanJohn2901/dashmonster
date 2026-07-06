@@ -11,6 +11,8 @@ interface AuthScreenProps {
   onSignIn: (email: string, password: string) => Promise<void>;
   onSignUp: (name: string, email: string, password: string) => Promise<void>;
   onOAuth?: (provider: OAuthProvider) => Promise<void>;
+  /** Envia o e-mail de redefinição de senha (Supabase resetPasswordForEmail). */
+  onForgotPassword?: (email: string) => Promise<void>;
   authError: string | null;
   supabaseReady: boolean;
 }
@@ -32,18 +34,19 @@ const SLIDES = [
   { caption: "Todas as suas fontes, num só hub." },
 ];
 
-export function AuthScreen({ onSignIn, onSignUp, onOAuth, authError, supabaseReady }: AuthScreenProps) {
+export function AuthScreen({ onSignIn, onSignUp, onOAuth, onForgotPassword, authError, supabaseReady }: AuthScreenProps) {
   const [email,    setEmail]    = useState("");
   const [password, setPassword] = useState("");
   const [first,    setFirst]    = useState("");
   const [last,     setLast]     = useState("");
-  const [mode,     setMode]     = useState<"login" | "signup">("login");
+  const [mode,     setMode]     = useState<"login" | "signup" | "forgot">("login");
   const [agree,    setAgree]    = useState(false);
   const [showPw,   setShowPw]   = useState(false);
   const [loading,  setLoading]  = useState(false);
   const [busy,     setBusy]     = useState<OAuthProvider | null>(null);
   const [focused,  setFocused]  = useState<string | null>(null);
   const [slide,    setSlide]    = useState(0);
+  const [resetSent, setResetSent] = useState(false);
 
   // Carrossel automático
   useEffect(() => {
@@ -52,12 +55,19 @@ export function AuthScreen({ onSignIn, onSignUp, onOAuth, authError, supabaseRea
   }, []);
 
   const isSignup = mode === "signup";
+  const isForgot = mode === "forgot";
+
+  const switchMode = (next: "login" | "signup" | "forgot") => {
+    setMode(next);
+    setResetSent(false);
+  };
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
     try {
-      if (isSignup) await onSignUp(`${first} ${last}`.trim(), email, password);
+      if (isForgot) { await onForgotPassword?.(email); setResetSent(true); }
+      else if (isSignup) await onSignUp(`${first} ${last}`.trim(), email, password);
       else          await onSignIn(email, password);
     } finally {
       setLoading(false);
@@ -132,18 +142,31 @@ export function AuthScreen({ onSignIn, onSignUp, onOAuth, authError, supabaseRea
         <div className="flex flex-col justify-center px-6 py-10 sm:px-12">
           <div className="mx-auto w-full max-w-[400px]">
             <h1 className="text-[32px] font-semibold tracking-tight sm:text-[36px]" style={{ color: TXT }}>
-              {isSignup ? "Criar conta" : "Bem-vindo de volta"}
+              {isForgot ? "Redefinir senha" : isSignup ? "Criar conta" : "Bem-vindo de volta"}
             </h1>
             <p className="mt-2 text-[14px]" style={{ color: MUTED }}>
-              {isSignup ? "Já tem uma conta?" : "Ainda não tem conta?"}{" "}
-              <button
-                type="button"
-                onClick={() => setMode(isSignup ? "login" : "signup")}
-                className="font-semibold underline underline-offset-2 transition hover:opacity-80"
-                style={{ color: TXT }}
-              >
-                {isSignup ? "Entrar" : "Criar conta"}
-              </button>
+              {isForgot ? (
+                <button
+                  type="button"
+                  onClick={() => switchMode("login")}
+                  className="font-semibold underline underline-offset-2 transition hover:opacity-80"
+                  style={{ color: TXT }}
+                >
+                  ← Voltar para o login
+                </button>
+              ) : (
+                <>
+                  {isSignup ? "Já tem uma conta?" : "Ainda não tem conta?"}{" "}
+                  <button
+                    type="button"
+                    onClick={() => switchMode(isSignup ? "login" : "signup")}
+                    className="font-semibold underline underline-offset-2 transition hover:opacity-80"
+                    style={{ color: TXT }}
+                  >
+                    {isSignup ? "Entrar" : "Criar conta"}
+                  </button>
+                </>
+              )}
             </p>
 
             {!supabaseReady && (
@@ -152,6 +175,11 @@ export function AuthScreen({ onSignIn, onSignUp, onOAuth, authError, supabaseRea
               </div>
             )}
 
+            {isForgot && resetSent ? (
+              <div className="mt-7 rounded-xl border p-4 text-[13.5px] leading-relaxed" style={{ borderColor: "rgba(182,245,0,0.3)", background: "rgba(182,245,0,0.06)", color: TXT }}>
+                Se <strong>{email}</strong> tiver uma conta, enviamos um link de redefinição. Confira a caixa de entrada (e o spam) e clique no link pra criar uma nova senha.
+              </div>
+            ) : (
             <form onSubmit={handleSubmit} className="mt-7 space-y-3">
               {isSignup && (
                 <div className="grid grid-cols-2 gap-3">
@@ -162,16 +190,27 @@ export function AuthScreen({ onSignIn, onSignUp, onOAuth, authError, supabaseRea
 
               <Field id="email" placeholder="Email" type="email" value={email} onChange={setEmail} focused={focused} setFocused={setFocused} />
 
-              <Field
-                id="password" placeholder="Sua senha" type={showPw ? "text" : "password"}
-                value={password} onChange={setPassword} focused={focused} setFocused={setFocused} minLength={6}
-                trailing={
-                  <button type="button" onClick={() => setShowPw((v) => !v)} aria-label={showPw ? "Ocultar senha" : "Mostrar senha"}
-                    className="grid h-full place-items-center px-1 transition hover:opacity-80" style={{ color: MUTED }}>
-                    {showPw ? <EyeOff size={17} /> : <Eye size={17} />}
+              {!isForgot && (
+                <Field
+                  id="password" placeholder="Sua senha" type={showPw ? "text" : "password"}
+                  value={password} onChange={setPassword} focused={focused} setFocused={setFocused} minLength={6}
+                  trailing={
+                    <button type="button" onClick={() => setShowPw((v) => !v)} aria-label={showPw ? "Ocultar senha" : "Mostrar senha"}
+                      className="grid h-full place-items-center px-1 transition hover:opacity-80" style={{ color: MUTED }}>
+                      {showPw ? <EyeOff size={17} /> : <Eye size={17} />}
+                    </button>
+                  }
+                />
+              )}
+
+              {mode === "login" && (
+                <div className="flex justify-end">
+                  <button type="button" onClick={() => switchMode("forgot")}
+                    className="text-[12.5px] font-medium underline underline-offset-2 transition hover:opacity-80" style={{ color: MUTED }}>
+                    Esqueci minha senha
                   </button>
-                }
-              />
+                </div>
+              )}
 
               {isSignup && (
                 <label className="flex cursor-pointer items-center gap-2.5 pt-1 text-[13px]" style={{ color: MUTED }}>
@@ -202,11 +241,14 @@ export function AuthScreen({ onSignIn, onSignUp, onOAuth, authError, supabaseRea
                 style={{ padding: "12px", borderRadius: 11, background: GREEN_BTN, color: INK }}
               >
                 {loading
-                  ? <><Loader2 size={17} className="animate-spin" /> {isSignup ? "Criando…" : "Entrando…"}</>
-                  : (isSignup ? "Criar conta" : "Continuar")}
+                  ? <><Loader2 size={17} className="animate-spin" /> {isForgot ? "Enviando…" : isSignup ? "Criando…" : "Entrando…"}</>
+                  : (isForgot ? "Enviar link de redefinição" : isSignup ? "Criar conta" : "Continuar")}
               </button>
             </form>
+            )}
 
+            {!isForgot && (
+            <>
             {/* Divisor */}
             <div className="my-5 flex items-center gap-3">
               <span className="h-px flex-1" style={{ background: HAIR }} />
@@ -220,6 +262,8 @@ export function AuthScreen({ onSignIn, onSignUp, onOAuth, authError, supabaseRea
               <OAuthButton label="GitHub"  busy={busy === "github"}  disabled={!supabaseReady || busy !== null} onClick={() => handleOAuth("github")}><GitHubIcon /></OAuthButton>
               <OAuthButton label="Discord" busy={busy === "discord"} disabled={!supabaseReady || busy !== null} onClick={() => handleOAuth("discord")}><DiscordIcon /></OAuthButton>
             </div>
+            </>
+            )}
           </div>
         </div>
       </div>

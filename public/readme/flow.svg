@@ -1,0 +1,64 @@
+<svg width="1200" height="150" viewBox="0 0 1200 150" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Fluxo: anúncio, lead, negociação, venda, ROAS real">
+  <defs>
+    <style>.t { font-family: 'Segoe UI', -apple-system, 'Helvetica Neue', Arial, sans-serif; }</style>
+    <linearGradient id="fbg" x1="0" y1="0" x2="1200" y2="150" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0B0E07"/>
+      <stop offset="1" stop-color="#101408"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="150" rx="14" fill="url(#fbg)"/>
+  <rect x="0.5" y="0.5" width="1199" height="149" rx="13.5" stroke="#B6F500" stroke-opacity="0.18"/>
+
+  <!-- trilho -->
+  <path id="rail" d="M110 75 H1090" stroke="#22271A" stroke-width="2"/>
+  <path d="M110 75 H1090" stroke="#B6F500" stroke-opacity="0.35" stroke-width="2" stroke-dasharray="6 10">
+    <animate attributeName="stroke-dashoffset" values="0;-160" dur="4s" repeatCount="indefinite"/>
+  </path>
+
+  <!-- pulso viajante -->
+  <circle r="5" fill="#B6F500">
+    <animateMotion dur="5s" repeatCount="indefinite" path="M110 75 H1090"/>
+    <animate attributeName="opacity" values="0;1;1;1;0" keyTimes="0;0.08;0.5;0.92;1" dur="5s" repeatCount="indefinite"/>
+  </circle>
+  <circle r="11" fill="#B6F500" fill-opacity="0.25">
+    <animateMotion dur="5s" repeatCount="indefinite" path="M110 75 H1090"/>
+    <animate attributeName="opacity" values="0;1;1;1;0" keyTimes="0;0.08;0.5;0.92;1" dur="5s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- etapas -->
+  <g class="t" text-anchor="middle">
+    <g>
+      <circle cx="110" cy="75" r="26" fill="#16A34A" fill-opacity="0.12" stroke="#16A34A" stroke-opacity="0.6"/>
+      <text x="110" y="82" font-size="19">📣</text>
+      <text x="110" y="126" font-size="13" font-weight="700" fill="#D5DCC9">Anúncio</text>
+      <text x="110" y="36" font-size="10.5" fill="#6E7560">Meta Ads</text>
+    </g>
+    <g>
+      <circle cx="355" cy="75" r="26" fill="#16A34A" fill-opacity="0.12" stroke="#16A34A" stroke-opacity="0.6"/>
+      <text x="355" y="82" font-size="19">👤</text>
+      <text x="355" y="126" font-size="13" font-weight="700" fill="#D5DCC9">Lead</text>
+      <text x="355" y="36" font-size="10.5" fill="#6E7560">cai no Kanban</text>
+    </g>
+    <g>
+      <circle cx="600" cy="75" r="26" fill="#16A34A" fill-opacity="0.12" stroke="#16A34A" stroke-opacity="0.6"/>
+      <text x="600" y="82" font-size="19">💬</text>
+      <text x="600" y="126" font-size="13" font-weight="700" fill="#D5DCC9">Negociação</text>
+      <text x="600" y="36" font-size="10.5" fill="#6E7560">inbox + follow-up</text>
+    </g>
+    <g>
+      <circle cx="845" cy="75" r="26" fill="#16A34A" fill-opacity="0.12" stroke="#16A34A" stroke-opacity="0.6"/>
+      <text x="845" y="82" font-size="19">🤝</text>
+      <text x="845" y="126" font-size="13" font-weight="700" fill="#D5DCC9">Venda</text>
+      <text x="845" y="36" font-size="10.5" fill="#6E7560">etapa ganha</text>
+    </g>
+    <g>
+      <circle cx="1090" cy="75" r="26" fill="#B6F500" fill-opacity="0.14" stroke="#B6F500" stroke-opacity="0.8">
+        <animate attributeName="stroke-opacity" values="0.8;0.35;0.8" dur="2.2s" repeatCount="indefinite"/>
+      </circle>
+      <text x="1090" y="82" font-size="19">📈</text>
+      <text x="1090" y="126" font-size="13" font-weight="800" fill="#B6F500">ROAS real</text>
+      <text x="1090" y="36" font-size="10.5" fill="#6E7560">ciclo fechado</text>
+    </g>
+  </g>
+</svg>
