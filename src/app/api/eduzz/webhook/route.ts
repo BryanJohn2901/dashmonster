@@ -987,7 +987,7 @@ async function findProductPixelId(db: SupabaseClient, companyId: string, parentI
   return data.pixel_id as string;
 }
 
-// Papel (main/bump) configurado por produto (migration 072) — a Eduzz não
+// Papel (main/bump) configurado por produto (migration 078) — a Eduzz não
 // manda essa informação por item (orderBump.isMainSale é da FATURA inteira,
 // não do item), então é o usuário quem marca 1x por produto, reaproveitando
 // o mesmo catálogo já usado pro vínculo de pixel.
@@ -1003,7 +1003,7 @@ async function findProductRoles(db: SupabaseClient, companyId: string, parentIds
 // campaign_name usam esse). Venda com 1 item só: é main automático, sem
 // checar orderBump.has nem consultar papel nenhum. Venda com 2+ itens: o
 // primeiro que NÃO estiver marcado como "bump" no catálogo vence — produto
-// nunca configurado conta como "main" (default da migration 072), então uma
+// nunca configurado conta como "main" (default da migration 078), então uma
 // empresa que não configurou nada continua se comportando como antes
 // (primeiro item da lista). Só quando o usuário marca explicitamente 1
 // produto como "bump" é que a ordem deixa de decidir.
@@ -1107,7 +1107,7 @@ export async function recordSale(db: SupabaseClient, companyId: string, sale: Sa
   // Order bump: a Eduzz manda todos os produtos da venda juntos em
   // `items[]`, sem flag por item dizendo qual é o principal (orderBump.isMainSale
   // é da FATURA inteira). Usa o papel (main/bump) configurado por produto
-  // (migration 072) pra achar o item certo, e reordena `items` pondo ele em
+  // (migration 078) pra achar o item certo, e reordena `items` pondo ele em
   // [0] — o resto do pipeline abaixo (pixel, product_item_id, content_name,
   // campaign_name) já usa productParentId/productName/items[0] como sempre,
   // sem precisar mudar mais nada. Venda com 1 item só: sale.items já tem 1
@@ -1355,7 +1355,7 @@ export async function recordSale(db: SupabaseClient, companyId: string, sale: Sa
   return {};
 }
 
-// Itemização da venda pra exibição no histórico do visitante (migration 073,
+// Itemização da venda pra exibição no histórico do visitante (migration 079,
 // coluna `items` de events_log) — guarda nome/valor/papel de CADA produto da
 // fatura (principal + order bump), já que o resto do pipeline (pixel/CAPI/
 // catálogo) só usa o produto ESCOLHIDO como principal (productName/

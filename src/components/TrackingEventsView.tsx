@@ -69,7 +69,7 @@ export interface TrackingEvent {
   pixel_id: string | null;
   /** ID do produto pai Eduzz (eduzz_products.parent_id) — migration 048. */
   product_parent_id: string | null;
-  /** Itemização da fatura (migration 073) — nome/valor/papel de CADA produto (principal + order bump), já que product_name/product_parent_id só guardam o produto ESCOLHIDO como principal (ver src/app/api/eduzz/CLAUDE.md, "Correção 2026-07-06"). null em evento antigo (antes da migration) ou sem itens estruturados (postback antigo). */
+  /** Itemização da fatura (migration 079) — nome/valor/papel de CADA produto (principal + order bump), já que product_name/product_parent_id só guardam o produto ESCOLHIDO como principal (ver src/app/api/eduzz/CLAUDE.md, "Correção 2026-07-06"). null em evento antigo (antes da migration) ou sem itens estruturados (postback antigo). */
   items: { name: string; value: number; role: "main" | "bump" }[] | null;
   created_at: string;
 }

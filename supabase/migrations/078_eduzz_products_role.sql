@@ -1,6 +1,6 @@
 -- ============================================================
 -- DashMonster — papel do produto (main/bump) no catálogo Eduzz
--- Execute no Supabase SQL Editor (após a 071). Idempotente.
+-- Execute no Supabase SQL Editor (após a 077). Idempotente.
 --
 -- Quando uma venda tem order bump, `data.items[]` do invoice_paid vem com
 -- TODOS os produtos do checkout juntos, sem nenhuma flag por item dizendo

@@ -582,7 +582,7 @@ export interface EduzzProduct {
   pixelId: string | null;
   /** "main" (padrão) ou "bump" — usado pelo webhook pra escolher qual produto
    * vira o "principal" quando a venda tem order bump (2+ produtos na mesma
-   * fatura, sem flag da Eduzz dizendo qual é qual). Ver migration 072. */
+   * fatura, sem flag da Eduzz dizendo qual é qual). Ver migration 078. */
   role: "main" | "bump";
   offers: EduzzProductOffer[];
 }
@@ -612,7 +612,7 @@ export async function fetchEduzzCatalog(companyId: string): Promise<EduzzProduct
     parentId: row.parent_id as string,
     name: row.name as string,
     pixelId: (row.pixel_id as string) || null,
-    // Coluna pode ainda não existir (migration 072 pendente) — cai pro
+    // Coluna pode ainda não existir (migration 078 pendente) — cai pro
     // default "main", mesmo comportamento que sempre existiu.
     role: row.role === "bump" ? "bump" : "main",
     offers: offersByParent.get(row.parent_id as string) ?? [],
