@@ -69,6 +69,8 @@ export interface TrackingEvent {
   pixel_id: string | null;
   /** ID do produto pai Eduzz (eduzz_products.parent_id) — migration 048. */
   product_parent_id: string | null;
+  /** Itemização da fatura (migration 073) — nome/valor/papel de CADA produto (principal + order bump), já que product_name/product_parent_id só guardam o produto ESCOLHIDO como principal (ver src/app/api/eduzz/CLAUDE.md, "Correção 2026-07-06"). null em evento antigo (antes da migration) ou sem itens estruturados (postback antigo). */
+  items: { name: string; value: number; role: "main" | "bump" }[] | null;
   created_at: string;
 }
 
@@ -158,7 +160,7 @@ const EVENTS_LIMIT = 1000;
 const EVENTS_SELECT =
   "id, event_name, fingerprint_id, event_url, page_title, user_data, lead_email, lead_phone, lead_name, extra_fields, country, country_region, city, event_id, " +
   "utm_source, utm_medium, utm_campaign, utm_content, utm_term, utm_placement, utm_campaign_id, utm_adset_id, utm_ad_id, " +
-  "value, currency, external_transaction_id, source, payment_method, installments, installment_number, installment_value, recurrence_key, product_name, product_parent_id, is_order_bump, main_sale_transaction_id, client_user_agent, via, pixel_id, capi_status, capi_error, created_at";
+  "value, currency, external_transaction_id, source, payment_method, installments, installment_number, installment_value, recurrence_key, product_name, product_parent_id, is_order_bump, main_sale_transaction_id, items, client_user_agent, via, pixel_id, capi_status, capi_error, created_at";
 // Sem as colunas das migrations 033/034/036/038/039/040/043/044 — usado se alguma delas ainda não rodou
 // no banco, pra não derrubar a tela enquanto ela não é aplicada manualmente no Supabase.
 const EVENTS_SELECT_FALLBACK = "id, event_name, fingerprint_id, event_url, user_data, lead_email, lead_phone, capi_status, capi_error, created_at";
@@ -611,6 +613,25 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
                   {(p.product_name ?? p.extra_fields?.produto) && (
                     <span style={{ color: "var(--dm-text-tertiary)" }}>· {p.product_name ?? p.extra_fields?.produto}</span>
                   )}
+                  {p.items && p.items.length > 1 && (
+                    <div className="mt-1 flex w-full flex-col gap-0.5 pl-3">
+                      {p.items.map((item, i) => (
+                        <span key={i} className="flex items-center gap-1.5 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                          <span
+                            className="rounded-full px-1.5 py-0.5 text-[8px] font-semibold"
+                            style={
+                              item.role === "bump"
+                                ? { background: "rgba(22,163,74,0.12)", color: "#16A34A" }
+                                : { background: "rgba(100,116,139,0.12)", color: "var(--dm-text-tertiary)" }
+                            }
+                          >
+                            {item.role === "bump" ? "bump" : "principal"}
+                          </span>
+                          {item.name} · {formatMoney(item.value, p.currency)}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   {p.is_order_bump && (
                     <span
                       className="rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
@@ -730,6 +751,25 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
                       </div>
                       {(event.product_name ?? event.extra_fields?.produto) && (
                         <p className="mt-0.5 text-[11px]" style={{ color: "var(--dm-text-primary)" }}>{event.product_name ?? event.extra_fields?.produto}</p>
+                      )}
+                      {event.items && event.items.length > 1 && (
+                        <div className="mt-1 flex flex-col gap-0.5">
+                          {event.items.map((item, i) => (
+                            <span key={i} className="flex items-center gap-1.5 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                              <span
+                                className="rounded-full px-1.5 py-0.5 text-[8px] font-semibold"
+                                style={
+                                  item.role === "bump"
+                                    ? { background: "rgba(22,163,74,0.12)", color: "#16A34A" }
+                                    : { background: "rgba(100,116,139,0.12)", color: "var(--dm-text-tertiary)" }
+                                }
+                              >
+                                {item.role === "bump" ? "bump" : "principal"}
+                              </span>
+                              {item.name} · {formatMoney(item.value, event.currency)}
+                            </span>
+                          ))}
+                        </div>
                       )}
                       <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
                         {event.lead_name && <span className="flex items-center gap-1"><User size={10} /> {event.lead_name}</span>}

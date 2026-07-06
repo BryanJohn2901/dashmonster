@@ -6,7 +6,7 @@ import { toast } from "@/hooks/useToast";
 import { productBaseName } from "@/lib/eduzz";
 import {
   fetchEduzzWebhookConfigs, createEduzzWebhookConfig, renameEduzzWebhookConfig, deleteEduzzWebhookConfig,
-  fetchTrackingPixels, fetchEduzzCatalog, upsertEduzzProduct, setEduzzProductPixel,
+  fetchTrackingPixels, fetchEduzzCatalog, upsertEduzzProduct, setEduzzProductPixel, setEduzzProductRole,
   type Company, type EduzzWebhookConfig, type TrackingPixel, type EduzzProduct,
 } from "@/hooks/useCompany";
 
@@ -112,6 +112,7 @@ function ProductPixelMapSection({ company, canEdit }: { company: Company; canEdi
   const [pixels, setPixels] = useState<TrackingPixel[]>([]);
   const [products, setProducts] = useState<EduzzProduct[]>([]);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [savingRoleId, setSavingRoleId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const [newParentId, setNewParentId] = useState("");
@@ -143,6 +144,18 @@ function ProductPixelMapSection({ company, canEdit }: { company: Company; canEdi
     }
   };
 
+  const changeRole = async (parentId: string, role: "main" | "bump") => {
+    setSavingRoleId(parentId);
+    try {
+      await setEduzzProductRole(company.id, parentId, role);
+      setProducts((prev) => prev.map((p) => (p.parentId === parentId ? { ...p, role } : p)));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao salvar.");
+    } finally {
+      setSavingRoleId(null);
+    }
+  };
+
   const addProduct = async () => {
     if (!newParentId.trim()) {
       toast.error("Preencha o ID do produto (parentId).");
@@ -154,7 +167,7 @@ function ProductPixelMapSection({ company, canEdit }: { company: Company; canEdi
       if (newPixelId) await setEduzzProductPixel(company.id, newParentId.trim(), newPixelId);
       setProducts((prev) => [
         ...prev.filter((p) => p.parentId !== newParentId.trim()),
-        { parentId: newParentId.trim(), name: newName.trim() || newParentId.trim(), pixelId: newPixelId || null, offers: [] },
+        { parentId: newParentId.trim(), name: newName.trim() || newParentId.trim(), pixelId: newPixelId || null, role: "main", offers: [] },
       ]);
       setNewParentId("");
       setNewName("");
@@ -186,6 +199,12 @@ function ProductPixelMapSection({ company, canEdit }: { company: Company; canEdi
             Só manda pra Meta o produto que você vincular a um pixel aqui</strong> — sem vínculo, a venda continua salva no dashboard pra
             relatório, mas não é enviada. Cada produto (curso) pode ter várias ofertas (preço/parcelamento) — o pixel é vinculado 1x no
             produto e vale pra todas as ofertas dele automaticamente.
+          </p>
+          <p className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
+            Quando uma venda tem <strong style={{ color: "var(--dm-text-secondary)" }}>order bump</strong>, os 2 produtos chegam juntos na
+            mesma fatura, sem a Eduzz dizer qual é o principal. Marque abaixo qual papel cada produto tem — o webhook usa essa marcação pra
+            escolher automaticamente o produto principal (pixel/conteúdo enviado pra Meta), com o valor total pago. Produto nunca marcado
+            conta como &quot;Principal&quot; por padrão.
           </p>
 
           {!ready ? (
@@ -226,6 +245,17 @@ function ProductPixelMapSection({ company, canEdit }: { company: Company; canEdi
                             )}
                           </button>
                           <select
+                            value={p.role}
+                            disabled={!canEdit || savingRoleId === p.parentId}
+                            onChange={(e) => void changeRole(p.parentId, e.target.value as "main" | "bump")}
+                            title="Papel na venda com order bump"
+                            className="h-9 flex-shrink-0 rounded-lg border px-2 text-[11px] disabled:opacity-60"
+                            style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }}
+                          >
+                            <option value="main">Principal</option>
+                            <option value="bump">Order bump</option>
+                          </select>
+                          <select
                             value={p.pixelId ?? ""}
                             disabled={!canEdit || savingId === p.parentId}
                             onChange={(e) => void changePixel(p.parentId, e.target.value)}
@@ -237,7 +267,9 @@ function ProductPixelMapSection({ company, canEdit }: { company: Company; canEdi
                               <option key={px.id} value={px.id}>{px.name}</option>
                             ))}
                           </select>
-                          {savingId === p.parentId && <Loader2 size={13} className="animate-spin flex-shrink-0" style={{ color: "var(--dm-text-tertiary)" }} />}
+                          {(savingId === p.parentId || savingRoleId === p.parentId) && (
+                            <Loader2 size={13} className="animate-spin flex-shrink-0" style={{ color: "var(--dm-text-tertiary)" }} />
+                          )}
                         </div>
                         {expanded && p.offers.length > 0 && (
                           <div className="space-y-1 border-t px-3 py-2" style={{ borderColor: "var(--dm-border-default)" }}>
