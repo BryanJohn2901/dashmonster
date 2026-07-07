@@ -4141,7 +4141,7 @@ const ANALYTICS_EVENTS_SELECT =
   "country, country_region, city, event_id, utm_source, utm_medium, utm_campaign, utm_content, utm_term, " +
   "utm_placement, utm_campaign_id, utm_adset_id, utm_ad_id, value, currency, external_transaction_id, source, " +
   "payment_method, installments, installment_number, installment_value, recurrence_key, product_name, " +
-  "product_parent_id, is_order_bump, main_sale_transaction_id, client_user_agent, via, pixel_id, capi_status, capi_error, created_at";
+  "product_parent_id, is_order_bump, main_sale_transaction_id, items, client_user_agent, via, pixel_id, capi_status, capi_error, created_at";
 
 const ANALYTICS_EVENTS_PAGE_SIZE = 1000;
 const ANALYTICS_EVENTS_LIMIT = 10000; // teto de segurança (paginado)

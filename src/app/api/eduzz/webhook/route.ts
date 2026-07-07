@@ -947,26 +947,35 @@ async function resolveVisitMatch(db: SupabaseClient, companyId: string, sale: Sa
 async function upsertProductCatalog(db: SupabaseClient, companyId: string, sale: SaleEvent): Promise<void> {
   if (!sale.productParentId) return; // postback antigo não manda itens estruturados — sem catálogo possível.
 
-  // Nome provisório = título da oferta (até o usuário renomear) — só na 1ª
-  // vez que esse produto aparece; updates seguintes NUNCA sobrescrevem um
-  // nome que o usuário já possa ter customizado (por isso ignoreDuplicates).
-  await db
-    .from("eduzz_products")
-    .upsert(
-      { company_id: companyId, parent_id: sale.productParentId, name: sale.productName },
-      { onConflict: "company_id,parent_id", ignoreDuplicates: true },
-    );
+  // Venda com order bump manda 2+ itens com parentId's DIFERENTES no mesmo
+  // invoice_paid — precisa catalogar TODOS (não só items[0]), senão o produto
+  // do bump nunca aparece na tela de configuração pra o usuário escolher
+  // pixel/papel (main/bump) pra ele.
+  const seenParentIds = new Set<string>();
+  for (const item of sale.items) {
+    if (!item.parentId || seenParentIds.has(item.parentId)) continue;
+    seenParentIds.add(item.parentId);
 
-  const offerId = sale.items[0]?.productId;
-  if (offerId) {
-    // Oferta é só leitura pra UI — sempre seguro atualizar o nome (nunca é
-    // editado manualmente, não tem customização do usuário pra perder).
+    // Nome provisório = título da oferta (até o usuário renomear) — só na 1ª
+    // vez que esse produto aparece; updates seguintes NUNCA sobrescrevem um
+    // nome que o usuário já possa ter customizado (por isso ignoreDuplicates).
     await db
-      .from("eduzz_product_offers")
+      .from("eduzz_products")
       .upsert(
-        { company_id: companyId, parent_id: sale.productParentId, product_id: offerId, name: sale.productName },
-        { onConflict: "company_id,product_id" },
+        { company_id: companyId, parent_id: item.parentId, name: item.name },
+        { onConflict: "company_id,parent_id", ignoreDuplicates: true },
       );
+
+    if (item.productId) {
+      // Oferta é só leitura pra UI — sempre seguro atualizar o nome (nunca é
+      // editado manualmente, não tem customização do usuário pra perder).
+      await db
+        .from("eduzz_product_offers")
+        .upsert(
+          { company_id: companyId, parent_id: item.parentId, product_id: item.productId, name: item.name },
+          { onConflict: "company_id,product_id" },
+        );
+    }
   }
 }
 
@@ -976,6 +985,32 @@ async function findProductPixelId(db: SupabaseClient, companyId: string, parentI
   // Migration 050 pendente, produto nunca visto, ou visto mas sem pixel escolhido ainda.
   if (error || !data?.pixel_id) return null;
   return data.pixel_id as string;
+}
+
+// Papel (main/bump) configurado por produto (migration 078) — a Eduzz não
+// manda essa informação por item (orderBump.isMainSale é da FATURA inteira,
+// não do item), então é o usuário quem marca 1x por produto, reaproveitando
+// o mesmo catálogo já usado pro vínculo de pixel.
+async function findProductRoles(db: SupabaseClient, companyId: string, parentIds: (string | null)[]): Promise<Map<string, "main" | "bump">> {
+  const uniqueIds = Array.from(new Set(parentIds.filter((id): id is string => Boolean(id))));
+  if (!uniqueIds.length) return new Map();
+  const { data, error } = await db.from("eduzz_products").select("parent_id, role").eq("company_id", companyId).in("parent_id", uniqueIds);
+  if (error || !data) return new Map();
+  return new Map(data.map((row) => [row.parent_id as string, (row.role as "main" | "bump" | null) === "bump" ? "bump" : "main"]));
+}
+
+// Escolhe qual item da venda é o "produto principal" (pixel/content_name/
+// campaign_name usam esse). Venda com 1 item só: é main automático, sem
+// checar orderBump.has nem consultar papel nenhum. Venda com 2+ itens: o
+// primeiro que NÃO estiver marcado como "bump" no catálogo vence — produto
+// nunca configurado conta como "main" (default da migration 078), então uma
+// empresa que não configurou nada continua se comportando como antes
+// (primeiro item da lista). Só quando o usuário marca explicitamente 1
+// produto como "bump" é que a ordem deixa de decidir.
+function pickMainItem(items: SaleEvent["items"], roles: Map<string, "main" | "bump">): SaleEvent["items"][number] {
+  if (items.length <= 1) return items[0];
+  const nonBump = items.find((item) => roles.get(item.parentId ?? "") !== "bump");
+  return nonBump ?? items[0];
 }
 
 // Mesma fórmula usada nas 3 "famílias" de venda (Purchase/Renewal/Installment)
@@ -1024,6 +1059,7 @@ async function recordPendingSale(db: SupabaseClient, companyId: string, sale: Sa
     product_name: sale.productName,
     product_parent_id: sale.productParentId,
     product_item_id: sale.items[0]?.productId ?? null,
+    items: buildItemsForLog(sale.items),
     extra_fields: { produto: sale.productName },
     // capi_status fica "pending" — confirmPendingSubscription() vai chamar a
     // Meta depois; se expirar em 24h, a linha será deletada e nunca enviada.
@@ -1064,8 +1100,28 @@ async function recordPendingSale(db: SupabaseClient, companyId: string, sale: Sa
 export async function recordSale(db: SupabaseClient, companyId: string, sale: SaleEvent): Promise<{ excluded?: string; pending?: boolean }> {
   // Catálogo é populado mesmo numa venda que será descartada abaixo (queremos
   // o produto na lista de configuração de qualquer jeito) — por isso roda antes
-  // da checagem de "assinatura capturada tarde".
+  // da checagem de "assinatura capturada tarde". Cataloga TODOS os itens
+  // (produto principal + order bump), não só o primeiro.
   await upsertProductCatalog(db, companyId, sale);
+
+  // Order bump: a Eduzz manda todos os produtos da venda juntos em
+  // `items[]`, sem flag por item dizendo qual é o principal (orderBump.isMainSale
+  // é da FATURA inteira). Usa o papel (main/bump) configurado por produto
+  // (migration 078) pra achar o item certo, e reordena `items` pondo ele em
+  // [0] — o resto do pipeline abaixo (pixel, product_item_id, content_name,
+  // campaign_name) já usa productParentId/productName/items[0] como sempre,
+  // sem precisar mudar mais nada. Venda com 1 item só: sale.items já tem 1
+  // elemento, pickMainItem devolve ele direto, sem consultar nada.
+  if (sale.items.length > 1) {
+    const roles = await findProductRoles(db, companyId, sale.items.map((item) => item.parentId));
+    const mainItem = pickMainItem(sale.items, roles);
+    sale = {
+      ...sale,
+      productParentId: mainItem.parentId,
+      productName: mainItem.name,
+      items: [mainItem, ...sale.items.filter((item) => item !== mainItem)],
+    };
+  }
 
   // Regra "só compras reais" (2026-06-23): se é assinatura/contrato e a 1ª
   // cobrança que recebemos já NÃO é a nº 1 (contrato maduro, capturado tarde —
@@ -1168,6 +1224,7 @@ export async function recordSale(db: SupabaseClient, companyId: string, sale: Sa
     // fonte de verdade pra UI/resolução de pixel; isso aqui é só o "log" por venda.
     product_parent_id: sale.productParentId,
     product_item_id: sale.items[0]?.productId ?? null,
+    items: buildItemsForLog(sale.items),
     extra_fields: { produto: sale.productName },
     capi_status: metaConfigured ? "pending" : "skipped",
     country,
@@ -1296,6 +1353,18 @@ export async function recordSale(db: SupabaseClient, companyId: string, sale: Sa
   });
 
   return {};
+}
+
+// Itemização da venda pra exibição no histórico do visitante (migration 079,
+// coluna `items` de events_log) — guarda nome/valor/papel de CADA produto da
+// fatura (principal + order bump), já que o resto do pipeline (pixel/CAPI/
+// catálogo) só usa o produto ESCOLHIDO como principal (productName/
+// productParentId, ver pickMainItem acima) e o bump ficaria invisível se não
+// for persistido à parte. `items[0]` já é sempre o principal nesse ponto —
+// recordSale() reordena antes de chamar isso, recordPendingSale() recebe o
+// `sale` já reordenado por recordSale().
+function buildItemsForLog(items: SaleEvent["items"]): { name: string; value: number; role: "main" | "bump" }[] {
+  return items.map((item, index) => ({ name: item.name, value: item.value, role: index === 0 ? "main" : "bump" }));
 }
 
 // content_ids só inclui itens com productId real (formato antigo não tem) —

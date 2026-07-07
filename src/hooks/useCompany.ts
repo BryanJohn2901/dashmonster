@@ -702,6 +702,10 @@ export interface EduzzProduct {
   parentId: string;
   name: string;
   pixelId: string | null;
+  /** "main" (padrão) ou "bump" — usado pelo webhook pra escolher qual produto
+   * vira o "principal" quando a venda tem order bump (2+ produtos na mesma
+   * fatura, sem flag da Eduzz dizendo qual é qual). Ver migration 078. */
+  role: "main" | "bump";
   offers: EduzzProductOffer[];
 }
 
@@ -715,7 +719,7 @@ export interface EduzzProduct {
 export async function fetchEduzzCatalog(companyId: string): Promise<EduzzProduct[]> {
   if (!supabaseClient) return [];
   const [productsRes, offersRes] = await Promise.all([
-    supabaseClient.from("eduzz_products").select("parent_id, name, pixel_id").eq("company_id", companyId),
+    supabaseClient.from("eduzz_products").select("parent_id, name, pixel_id, role").eq("company_id", companyId),
     supabaseClient.from("eduzz_product_offers").select("parent_id, product_id, name").eq("company_id", companyId),
   ]);
   if (productsRes.error || !productsRes.data) return [];
@@ -730,6 +734,9 @@ export async function fetchEduzzCatalog(companyId: string): Promise<EduzzProduct
     parentId: row.parent_id as string,
     name: row.name as string,
     pixelId: (row.pixel_id as string) || null,
+    // Coluna pode ainda não existir (migration 078 pendente) — cai pro
+    // default "main", mesmo comportamento que sempre existiu.
+    role: row.role === "bump" ? "bump" : "main",
     offers: offersByParent.get(row.parent_id as string) ?? [],
   }));
 }
@@ -749,6 +756,17 @@ export async function setEduzzProductPixel(companyId: string, parentId: string, 
   const { error } = await supabaseClient
     .from("eduzz_products")
     .update({ pixel_id: pixelId })
+    .eq("company_id", companyId)
+    .eq("parent_id", parentId);
+  if (error) throw new Error(error.message);
+}
+
+/** Marca um produto como "principal" ou "order bump" — usado pelo webhook (recordSale/pickMainItem) pra decidir, quando a venda tem 2+ produtos na mesma fatura, qual deles é o conteúdo/pixel enviado pra Meta. */
+export async function setEduzzProductRole(companyId: string, parentId: string, role: "main" | "bump"): Promise<void> {
+  if (!supabaseClient) throw new Error("Supabase não configurado.");
+  const { error } = await supabaseClient
+    .from("eduzz_products")
+    .update({ role })
     .eq("company_id", companyId)
     .eq("parent_id", parentId);
   if (error) throw new Error(error.message);

@@ -239,6 +239,73 @@ function BarList({ items, color, empty, formatValue }: {
   );
 }
 
+// Lista dedicada pra order bumps: 2 métricas por item (qtd + receita), não dá
+// pra reaproveitar o BarList genérico (que é pensado pra 1 valor só e injeta
+// um "% do total" que não faz sentido aqui — ficava tudo espremido e ilegível).
+function OrderBumpList({ items, totalQty, totalRevenue, color, empty, currency }: {
+  items: { label: string; qty: number; revenue: number }[];
+  totalQty: number;
+  totalRevenue: number;
+  color: string;
+  empty: string;
+  currency: string | null;
+}) {
+  const shown = useMounted();
+  if (items.length === 0) return <EmptyHint text={empty} />;
+  const maxRevenue = Math.max(...items.map((i) => i.revenue), 1);
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-xl border p-3" style={{ borderColor: "var(--dm-border-default)" }}>
+          <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: "var(--dm-text-tertiary)" }}>
+            Vendas com order bump
+          </p>
+          <p className="mt-1 text-[22px] font-bold leading-none tabular-nums" style={{ color: "var(--dm-text-primary)" }}>
+            {fmtInt(totalQty)}
+          </p>
+        </div>
+        <div className="rounded-xl border p-3" style={{ borderColor: "var(--dm-border-default)" }}>
+          <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: "var(--dm-text-tertiary)" }}>
+            Faturamento com order bump
+          </p>
+          <p className="mt-1 text-[22px] font-bold leading-none tabular-nums" style={{ color: C.money }}>
+            {formatMoney(totalRevenue, currency)}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-3">
+        {items.map((it, i) => (
+          <div key={it.label}>
+            <div className="mb-1.5 flex items-center justify-between gap-3">
+              <span className="truncate text-[12px] font-medium" style={{ color: "var(--dm-text-secondary)" }}>{it.label}</span>
+              <span className="flex flex-shrink-0 items-baseline gap-2.5 tabular-nums">
+                <span className="text-[11px] font-semibold" style={{ color: "var(--dm-text-tertiary)" }}>
+                  {fmtInt(it.qty)} venda{it.qty !== 1 ? "s" : ""}
+                </span>
+                <span className="text-[13.5px] font-bold" style={{ color: "var(--dm-text-primary)" }}>
+                  {formatMoney(it.revenue, currency)}
+                </span>
+              </span>
+            </div>
+            <div className="h-2 w-full overflow-hidden rounded-full" style={{ background: "var(--dm-bg-elevated)" }}>
+              <div
+                className="h-full rounded-full"
+                style={{
+                  width: shown ? `${(it.revenue / maxRevenue) * 100}%` : "0%",
+                  background: `linear-gradient(90deg, ${color}cc, ${color})`,
+                  transition: "width 0.8s cubic-bezier(0.16,1,0.3,1)",
+                  transitionDelay: `${i * 50}ms`,
+                }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function EmptyHint({ text }: { text: string }) {
   return <p className="py-4 text-center text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>{text}</p>;
 }
@@ -450,6 +517,30 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
     }));
   }, [events]);
 
+  // ── Order bumps vendidos (nome, quantidade, valor) ───────────────────────────
+  // `event.items` (migration 079) guarda a itemização completa de cada Purchase
+  // (produto principal + order bump) — aqui só os itens com role "bump" contam,
+  // 1 ocorrência por venda em que apareceram. Vendas antigas (antes da migration)
+  // ou sem order bump ficam de fora (items null ou sem item "bump").
+  const orderBumpsSold = useMemo(() => {
+    const qty = new Map<string, number>();
+    const rev = new Map<string, number>();
+    for (const e of events) {
+      if (e.event_name !== "Purchase" || !e.items) continue;
+      for (const item of e.items) {
+        if (item.role !== "bump") continue;
+        qty.set(item.name, (qty.get(item.name) ?? 0) + 1);
+        rev.set(item.name, (rev.get(item.name) ?? 0) + item.value);
+      }
+    }
+    const items = [...qty.entries()]
+      .map(([label, count]) => ({ label, qty: count, revenue: rev.get(label) ?? 0 }))
+      .sort((a, b) => b.revenue - a.revenue);
+    const totalQty = items.reduce((s, i) => s + i.qty, 0);
+    const totalRevenue = items.reduce((s, i) => s + i.revenue, 0);
+    return { items, totalQty, totalRevenue };
+  }, [events]);
+
   // ── Dispositivos ─────────────────────────────────────────────────────────────
   const deviceStats = useMemo(() => {
     const counts = new Map<string, number>();
@@ -472,24 +563,31 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
 
   // ── Eventos por UTM (tabela) ─────────────────────────────────────────────────
   const utmRows = useMemo(() => {
-    const scopedConv = new Map<string, { leads: number; sales: number; revenue: number }>();
+    const scopedConv = new Map<string, { leads: number; sales: number; revenue: number; orderBumps: number }>();
     for (const e of events) {
       if (e.event_name !== "Lead" && e.event_name !== "Purchase") continue;
-      if (!scopedConv.has(e.fingerprint_id)) scopedConv.set(e.fingerprint_id, { leads: 0, sales: 0, revenue: 0 });
+      if (!scopedConv.has(e.fingerprint_id)) scopedConv.set(e.fingerprint_id, { leads: 0, sales: 0, revenue: 0, orderBumps: 0 });
       const c = scopedConv.get(e.fingerprint_id)!;
       if (e.event_name === "Lead") c.leads += 1;
-      if (e.event_name === "Purchase") { c.sales += 1; c.revenue += e.value ?? 0; }
+      if (e.event_name === "Purchase") {
+        c.sales += 1;
+        c.revenue += e.value ?? 0;
+        // Venda inclui order bump: `items` (migration 079) tem um item com role
+        // "bump" — não detalha qual/quantos, só conta a venda como "com bump".
+        if (e.items?.some((item) => item.role === "bump")) c.orderBumps += 1;
+      }
     }
-    const m = new Map<string, { users: number; leads: number; sales: number; revenue: number }>();
+    const m = new Map<string, { users: number; leads: number; sales: number; revenue: number; orderBumps: number }>();
     for (const v of visitors) {
       const rawKey = visitorUtm(v)[utmDim]?.trim();
       const key = rawKey || UNDEFINED_LABEL;
-      const cur = m.get(key) ?? { users: 0, leads: 0, sales: 0, revenue: 0 };
-      const conv = scopedConv.get(v.fingerprintId) ?? { leads: 0, sales: 0, revenue: 0 };
+      const cur = m.get(key) ?? { users: 0, leads: 0, sales: 0, revenue: 0, orderBumps: 0 };
+      const conv = scopedConv.get(v.fingerprintId) ?? { leads: 0, sales: 0, revenue: 0, orderBumps: 0 };
       cur.users += 1;
       if (conv.leads > 0) cur.leads += 1;
       cur.sales += conv.sales;
       cur.revenue += conv.revenue;
+      cur.orderBumps += conv.orderBumps;
       m.set(key, cur);
     }
     return [...m.entries()]
@@ -500,9 +598,14 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
   const utmTotals = useMemo(
     () => utmRows.reduce((acc, r) => ({
       users: acc.users + r.users, leads: acc.leads + r.leads, sales: acc.sales + r.sales, revenue: acc.revenue + r.revenue,
-    }), { users: 0, leads: 0, sales: 0, revenue: 0 }),
+      orderBumps: acc.orderBumps + r.orderBumps,
+    }), { users: 0, leads: 0, sales: 0, revenue: 0, orderBumps: 0 }),
     [utmRows],
   );
+
+  // Coluna "Order bumps" só aparece quando existe pelo menos 1 venda com bump
+  // no período/funil — sem isso, fica poluindo a tabela pra empresa que nunca usa.
+  const hasOrderBumps = utmTotals.orderBumps > 0;
 
   // ── Funil de conversão ──────────────────────────────────────────────────────
   const funnelSteps = [
@@ -743,6 +846,21 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
         </Panel>
       </div>
 
+      {/* Order bumps vendidos */}
+      <Panel title="Order bumps vendidos" icon={ShoppingBag} delay={380}>
+        <OrderBumpList
+          color={C.teal}
+          currency={currency}
+          empty="Nenhum order bump vendido no período."
+          items={orderBumpsSold.items}
+          totalQty={orderBumpsSold.totalQty}
+          totalRevenue={orderBumpsSold.totalRevenue}
+        />
+        <p className="mt-3 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+          Vendas antigas (antes da itemização por produto) não entram aqui.
+        </p>
+      </Panel>
+
       {/* Dispositivos */}
       <Panel
         title="Dispositivos dos usuários"
@@ -795,7 +913,7 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
                   <th className="px-2 py-2 text-left font-semibold" style={{ color: "var(--dm-text-tertiary)" }}>
                     {utmDimLabel[utmDim]}
                   </th>
-                  {([["users", "Usuários"], ["leads", "Leads"], ["sales", "Vendas"], ["revenue", "Receita"]] as [UtmSortCol, string][]).map(([col, label]) => (
+                  {([["users", "Usuários"], ["leads", "Leads"], ["sales", "Vendas"]] as [UtmSortCol, string][]).map(([col, label]) => (
                     <th
                       key={col}
                       onClick={() => setUtmSort(col)}
@@ -805,6 +923,18 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
                       {label}
                     </th>
                   ))}
+                  {hasOrderBumps && (
+                    <th className="px-2 py-2 text-right font-semibold" style={{ color: "var(--dm-text-tertiary)" }}>
+                      Order bumps
+                    </th>
+                  )}
+                  <th
+                    onClick={() => setUtmSort("revenue")}
+                    className="cursor-pointer select-none px-2 py-2 text-right font-semibold transition-opacity hover:opacity-70"
+                    style={{ color: utmSort === "revenue" ? "var(--dm-primary)" : "var(--dm-text-tertiary)" }}
+                  >
+                    Receita
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -818,6 +948,11 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
                     <td className="px-2 py-2 text-right tabular-nums" style={{ color: "var(--dm-text-primary)" }}>{fmtInt(r.users)}</td>
                     <td className="px-2 py-2 text-right tabular-nums" style={{ color: "var(--dm-text-primary)" }}>{fmtInt(r.leads)}</td>
                     <td className="px-2 py-2 text-right tabular-nums" style={{ color: "var(--dm-text-primary)" }}>{fmtInt(r.sales)}</td>
+                    {hasOrderBumps && (
+                      <td className="px-2 py-2 text-right tabular-nums" style={{ color: r.orderBumps > 0 ? C.teal : "var(--dm-text-tertiary)" }}>
+                        {r.orderBumps > 0 ? fmtInt(r.orderBumps) : "—"}
+                      </td>
+                    )}
                     <td className="px-2 py-2 text-right font-semibold tabular-nums" style={{ color: r.revenue > 0 ? C.money : "var(--dm-text-tertiary)" }}>
                       {r.revenue > 0 ? formatMoney(r.revenue, currency) : "—"}
                     </td>
@@ -830,6 +965,9 @@ export function TrackingAnalytics({ visitors, events, eventsCapped, funnelHasPro
                   <td className="px-2 py-2 text-right font-bold tabular-nums" style={{ color: "var(--dm-text-primary)" }}>{fmtInt(utmTotals.users)}</td>
                   <td className="px-2 py-2 text-right font-bold tabular-nums" style={{ color: "var(--dm-text-primary)" }}>{fmtInt(utmTotals.leads)}</td>
                   <td className="px-2 py-2 text-right font-bold tabular-nums" style={{ color: "var(--dm-text-primary)" }}>{fmtInt(utmTotals.sales)}</td>
+                  {hasOrderBumps && (
+                    <td className="px-2 py-2 text-right font-bold tabular-nums" style={{ color: C.teal }}>{fmtInt(utmTotals.orderBumps)}</td>
+                  )}
                   <td className="px-2 py-2 text-right font-bold tabular-nums" style={{ color: C.money }}>{formatMoney(utmTotals.revenue, currency)}</td>
                 </tr>
               </tfoot>
