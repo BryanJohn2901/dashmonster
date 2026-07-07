@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { useCompany } from "@/hooks/useCompany";
+import { companyTemplateCategories } from "@/types/userConfig";
 import {
   Activity, Award, BarChart2, BookMarked, CalendarDays, FileText,
   Globe, GraduationCap, Heart, ImageIcon, Loader2, Package,
@@ -337,6 +339,21 @@ export function CategoryGate({
   onRemoveSection,
 }: CategoryGateProps) {
   const [showModal, setShowModal] = useState(false);
+  const { company } = useCompany();
+
+  // ponytail: template da empresa decide os cards — legado sem config mantém os 5 fixos.
+  const templateCats = useMemo(
+    () => companyTemplateCategories(company?.settings),
+    [company?.settings],
+  );
+  const builtinCards = useMemo(() => {
+    const slugs = new Set(templateCats.map((c) => c.slug));
+    return CATEGORY_CONFIGS.filter((c) => slugs.has(c.id));
+  }, [templateCats]);
+  const companyCards = useMemo(() => {
+    const builtinIds = new Set<string>(CATEGORY_CONFIGS.map((c) => c.id));
+    return templateCats.filter((c) => !builtinIds.has(c.slug));
+  }, [templateCats]);
 
   const handleAddSection = (section: CustomSection) => {
     onAddSection?.(section);
@@ -379,7 +396,7 @@ export function CategoryGate({
 
         {/* Cards — responsive grid */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {CATEGORY_CONFIGS.map((cat) => (
+          {builtinCards.map((cat) => (
             <button
               key={cat.id}
               type="button"
@@ -432,6 +449,55 @@ export function CategoryGate({
               />
             </button>
           ))}
+
+          {/* Filtros configurados no Painel Admin (empresa nova sem os 5 fixos) */}
+          {companyCards.map((cat) => (
+            <button
+              key={cat.slug}
+              type="button"
+              onClick={() => onSelect(cat.slug)}
+              className="dm-cat-card group relative flex flex-col rounded-2xl border p-6 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg"
+              style={{
+                backgroundColor: "var(--dm-bg-surface)",
+                borderColor: "var(--dm-border-default)",
+                "--dm-cat-card-hover-border": "var(--dm-brand-500)",
+              } as React.CSSProperties}
+            >
+              <div
+                className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl"
+                style={{ backgroundColor: "var(--dm-bg-elevated)" }}
+              >
+                <Target size={20} style={{ color: "var(--dm-brand-500)" }} />
+              </div>
+              <p className="text-[15px] font-semibold" style={{ color: "var(--dm-text-primary)" }}>{cat.name}</p>
+              <p className="mt-1.5 text-xs leading-relaxed" style={{ color: "var(--dm-text-secondary)" }}>
+                Filtro configurado pela empresa
+              </p>
+              <div className="mt-4">
+                <span
+                  className="rounded-md px-2 py-0.5 text-[10px] font-medium"
+                  style={{ backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)" }}
+                >
+                  Empresa
+                </span>
+              </div>
+              <span
+                className="absolute right-4 top-4 h-2 w-2 rounded-full opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+                style={{ backgroundColor: "var(--dm-brand-500)" }}
+              />
+            </button>
+          ))}
+
+          {/* Empresa nova sem filtros configurados */}
+          {builtinCards.length === 0 && companyCards.length === 0 && customSections.length === 0 && (
+            <div
+              className="col-span-full rounded-2xl border border-dashed p-6 text-center text-sm"
+              style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}
+            >
+              Esta empresa ainda não tem filtros configurados. Peça ao administrador para configurar
+              em Painel Admin → Filtros &amp; histórico, ou crie uma categoria personalizada abaixo.
+            </div>
+          )}
 
           {/* Separador visual — só aparece se houver categorias personalizadas */}
           {customSections.length > 0 && (
