@@ -2,7 +2,7 @@ import {
   detectRowResultValue, computeCustomResult, autoDetectResultType,
   resolveGoalResultValue, resolveRowResult,
 } from "@/lib/resultDetection";
-import type { MetaInsight } from "@/lib/metaTransform";
+import { extractConversions, type MetaInsight } from "@/lib/metaTransform";
 
 function insight(
   actions: { action_type: string; value: string }[],
@@ -181,5 +181,27 @@ describe("resolveRowResult — orquestra config > objetivo Meta > auto-detect", 
 
   it("sem objetivo e sem config → cai no auto-detect (28)", () => {
     expect(resolveRowResult(leadCampaignEndForm, {})).toBe(28);
+  });
+});
+
+describe("extractConversions — conta nova sem Purchase padrão configurado", () => {
+  it("sem purchase/omni_purchase/fb_pixel_purchase, cai pro evento custom de pixel", () => {
+    const actions = [
+      { action_type: "link_click", value: "50" },
+      { action_type: "offsite_conversion.fb_pixel_custom", value: "7" },
+    ];
+    expect(extractConversions(actions)).toBe(7);
+  });
+
+  it("com purchase padrão presente, ignora o custom (evita contar 2x)", () => {
+    const actions = [
+      { action_type: "purchase", value: "4" },
+      { action_type: "offsite_conversion.fb_pixel_custom", value: "7" },
+    ];
+    expect(extractConversions(actions)).toBe(4);
+  });
+
+  it("sem nenhum dos dois, devolve 0", () => {
+    expect(extractConversions([{ action_type: "link_click", value: "50" }])).toBe(0);
   });
 });

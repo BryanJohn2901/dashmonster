@@ -64,7 +64,9 @@ function detectMediaType(ad: MetaAdRaw): MetaCampaignCreative["mediaType"] {
 /**
  * GET /api/meta/creatives?accessToken=EAAx...&adAccountId=act_123
  *
- * Returns ALL active/paused ads with thumbnail, preview link, media type.
+ * Returns ALL active/paused/archived ads with thumbnail, preview link, media type
+ * (archived = removed by advertiser but still readable — excluding it silently drops
+ * its spend from the per-creative breakdown while the campaign total still counts it).
  */
 /**
  * GET /api/meta/creatives?accessToken=EAAx...&adAccountId=act_123[&cursor=ENCODED_URL]
@@ -109,7 +111,13 @@ export async function GET(request: NextRequest) {
           "instagram_permalink_url",
           "creative{id,thumbnail_url,video_id,instagram_permalink_url,object_story_spec{link_data{link,message,name,description,child_attachments},video_data{image_url,message,title}}}",
         ].join(","),
-        effective_status: JSON.stringify(["ACTIVE", "PAUSED"]),
+        // ARCHIVED = anúncio removido pelo anunciante (não é "deletado" de verdade
+        // pra API — continua legível). Sem isso, um anúncio que gastou dinheiro e foi
+        // arquivado (comum em conta nova ainda testando/limpando criativo fraco)
+        // some da galeria mas o gasto dele continua contando no total da campanha —
+        // a soma "por criativo" fica menor que o investimento real (bug real: R$600
+        // de diferença numa conta nova, ads de teste já removidos).
+        effective_status: JSON.stringify(["ACTIVE", "PAUSED", "ARCHIVED"]),
         limit: "200",
       }).toString();
 

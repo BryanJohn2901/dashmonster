@@ -3,7 +3,7 @@
 // de forma isolada. O objetivo: descobrir SOZINHO qual é o resultado real de uma
 // campanha (compra, lead, EndForm, seguidor…), sem o usuário precisar configurar.
 
-import { parseMetaNum, type MetaInsight } from "@/lib/metaTransform";
+import { parseMetaNum, customPixelEventValue, type MetaInsight } from "@/lib/metaTransform";
 import type { ResultType } from "@/hooks/useAdvertiserStore"; // type-only: não puxa runtime
 
 export function getActionValue(actions: MetaInsight["actions"], type: string): number {
@@ -60,22 +60,8 @@ export function detectRowResultValue(d: MetaInsight): number {
     if (v > 0) return v;
   }
   // 2º) Eventos custom de pixel — pega o de maior valor.
-  // A Meta reporta tanto o AGREGADO ("offsite_conversion.fb_pixel_custom", sem
-  // sufixo) quanto, às vezes, por evento ("...fb_pixel_custom.EndForm"). Sem exigir
-  // ponto final, pegamos o agregado (total real) ou o evento, o que tiver maior valor.
-  if (d.actions) {
-    let best = 0;
-    for (const a of d.actions) {
-      if (
-        a.action_type.startsWith("offsite_conversion.custom") ||
-        a.action_type.startsWith("offsite_conversion.fb_pixel_custom")
-      ) {
-        const v = Number(a.value) || 0;
-        if (v > best) best = v;
-      }
-    }
-    if (best > 0) return best;
-  }
+  const customBest = customPixelEventValue(d.actions);
+  if (customBest > 0) return customBest;
   // 3º) Leads e demais tipos padrão.
   const LOW_PRIORITY: ResultType[] = [
     "offsite_conversion.fb_pixel_lead",

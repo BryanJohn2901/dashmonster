@@ -54,9 +54,36 @@ function pickAction(actions: MetaAction[] | undefined, ...types: string[]): numb
   return 0;
 }
 
-/** Conta conversões (compras). Primeiro match vence (tipos mutuamente exclusivos). */
+/**
+ * Maior valor entre os eventos CUSTOM de pixel (fbq trackCustom / conversão
+ * personalizada) de uma linha — comuns em contas novas que ainda não convergiram
+ * pro Purchase/Lead padrão da Meta (ex.: evento de checkout próprio). A Meta reporta
+ * tanto o AGREGADO ("offsite_conversion.fb_pixel_custom", sem sufixo) quanto, às
+ * vezes, por evento ("...fb_pixel_custom.EndForm") — sem exigir nome exato, pega
+ * o agregado (total real) ou o evento, o que tiver maior valor.
+ */
+export function customPixelEventValue(actions: MetaAction[] | undefined): number {
+  if (!actions) return 0;
+  let best = 0;
+  for (const a of actions) {
+    if (
+      a.action_type.startsWith("offsite_conversion.custom") ||
+      a.action_type.startsWith("offsite_conversion.fb_pixel_custom")
+    ) {
+      const v = Number(a.value) || 0;
+      if (v > best) best = v;
+    }
+  }
+  return best;
+}
+
+/**
+ * Conta conversões (compras). Primeiro match vence (tipos mutuamente exclusivos);
+ * sem nenhum tipo padrão, cai pro evento custom de pixel (conta nova sem Purchase
+ * nativo configurado ainda) — sem isso, "Conversões" ficava sempre 0 nesses casos.
+ */
 export function extractConversions(actions: MetaAction[] | undefined): number {
-  return pickAction(actions, "purchase", "omni_purchase", "offsite_conversion.fb_pixel_purchase");
+  return pickAction(actions, "purchase", "omni_purchase", "offsite_conversion.fb_pixel_purchase") || customPixelEventValue(actions);
 }
 
 /**
