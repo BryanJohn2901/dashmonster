@@ -843,6 +843,9 @@ function ProfileForm({
   // ── Instagram picker (3.1) — usa o token Meta já configurado ──────────────
   const metaCreds  = loadMetaCredentials();
   const hasIgToken = Boolean(metaCreds.accessToken);
+  const { company: igCompany } = useCompany();
+  // @ conectado da empresa (InstagramConnectShell) — auto-vincula ao buscar.
+  const companyIgHandle = String(igCompany?.settings?.instagramHandle ?? "").replace(/^@/, "").trim();
   const [igAccounts, setIgAccounts]     = useState<InstagramAccount[]>([]);
   const [igLoading, setIgLoading]       = useState(false);
   const [igError, setIgError]           = useState<string | null>(null);
@@ -853,7 +856,16 @@ function ProfileForm({
     try {
       const list = await fetchInstagramAccounts(metaCreds.accessToken);
       setIgAccounts(list);
-      setShowIgPicker(true);
+      // ponytail: match direto pelo @ da empresa — picker só abre se não achar.
+      const match = companyIgHandle && !form.instagramUserId
+        ? list.find((a) => a.username.toLowerCase() === companyIgHandle.toLowerCase())
+        : null;
+      if (match) {
+        setForm((f) => ({ ...f, instagramUserId: match.id }));
+        setShowIgPicker(false);
+      } else {
+        setShowIgPicker(true);
+      }
     } catch (e) {
       setIgError(e instanceof Error ? e.message : "Erro ao buscar contas Instagram.");
     } finally {
@@ -1040,6 +1052,12 @@ function ProfileForm({
               </div>
             )}
             {igError && <p className="mt-1.5 text-[10px] text-red-500">{igError}</p>}
+            {companyIgHandle && !form.instagramUserId && (
+              <p className="mt-1.5 flex items-center gap-1 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                <AtSign size={9} />
+                Empresa conectada como <span className="font-semibold">@{companyIgHandle}</span> — clique em Buscar para vincular automaticamente.
+              </p>
+            )}
           </div>
         </>
       )}
@@ -2249,6 +2267,94 @@ function ProfileOverviewPanel({
             })}
         </div>
 
+        {/* ── Cards personalizados ── */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+          {customCards.map((cc) => (
+            <article key={cc.id}
+              className="relative flex flex-col rounded-[20px] border shadow-horizon card-hover overflow-hidden"
+              style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)", padding: "18px 18px 18px 22px" }}>
+              <div className="absolute left-0 top-0 bottom-0 w-[3px]" style={{ backgroundColor: "#16A34A" }} />
+              <div className="mb-2 flex items-start justify-between gap-2">
+                <p className="text-[11px] font-semibold leading-tight" style={{ color: "var(--dm-text-secondary)" }}>
+                  {cc.title}
+                </p>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <button type="button"
+                    onClick={() => setCardForm({ id: cc.id, title: cc.title, value: cc.value, note: cc.note ?? "" })}
+                    className="flex h-6 w-6 items-center justify-center rounded-full transition hover:opacity-80"
+                    style={{ backgroundColor: "rgba(22,163,74,0.10)", color: "#16A34A" }} title="Editar card">
+                    <Edit2 size={11} />
+                  </button>
+                  <button type="button"
+                    onClick={() => persistCustomCards(customCards.filter((x) => x.id !== cc.id))}
+                    className="flex h-6 w-6 items-center justify-center rounded-full transition hover:opacity-80"
+                    style={{ backgroundColor: "rgba(238,93,80,0.10)", color: "#EE5D50" }} title="Remover card">
+                    <Trash2 size={11} />
+                  </button>
+                </div>
+              </div>
+              <p className="mt-1 text-[26px] font-bold tabular-nums tracking-tight leading-tight"
+                style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins), Poppins, sans-serif" }}>
+                {cc.value || "—"}
+              </p>
+              {cc.note && (
+                <p className="mt-1 text-[10px] leading-snug" style={{ color: "var(--dm-text-tertiary)" }}>{cc.note}</p>
+              )}
+            </article>
+          ))}
+          {cardForm ? (
+            <article className="flex flex-col gap-2 rounded-[20px] border-2 shadow-horizon"
+              style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "#16A34A", padding: "18px" }}>
+              <input autoFocus type="text" value={cardForm.title}
+                onChange={(e) => setCardForm({ ...cardForm, title: e.target.value })}
+                placeholder="Título (ex: Vendas WhatsApp)"
+                className="h-8 rounded-lg border px-2 text-[11px] font-semibold outline-none"
+                style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }} />
+              <input type="text" value={cardForm.value}
+                onChange={(e) => setCardForm({ ...cardForm, value: e.target.value })}
+                placeholder="Valor (ex: 32 ou R$ 1.200)"
+                className="h-8 rounded-lg border px-2 text-[11px] font-bold outline-none"
+                style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }} />
+              <input type="text" value={cardForm.note}
+                onChange={(e) => setCardForm({ ...cardForm, note: e.target.value })}
+                placeholder="Observação (opcional)"
+                className="h-8 rounded-lg border px-2 text-[10px] outline-none"
+                style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }} />
+              <div className="mt-1 flex gap-2">
+                <button type="button" onClick={() => setCardForm(null)}
+                  className="flex-1 rounded-lg border py-1.5 text-[10px] font-semibold transition hover:opacity-80"
+                  style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>
+                  Cancelar
+                </button>
+                <button type="button" disabled={!cardForm.title.trim()}
+                  onClick={() => {
+                    const card = {
+                      id: cardForm.id ?? `cc_${Date.now()}`,
+                      title: cardForm.title.trim(),
+                      value: cardForm.value.trim(),
+                      note: cardForm.note.trim() || undefined,
+                    };
+                    persistCustomCards(cardForm.id
+                      ? customCards.map((x) => (x.id === cardForm.id ? card : x))
+                      : [...customCards, card]);
+                    setCardForm(null);
+                  }}
+                  className="flex-1 rounded-lg py-1.5 text-[10px] font-bold text-white transition hover:opacity-90 disabled:opacity-40"
+                  style={{ background: "linear-gradient(135deg,#16A34A 0%,#15803D 100%)" }}>
+                  Salvar card
+                </button>
+              </div>
+            </article>
+          ) : (
+            <button type="button" onClick={() => setCardForm({ id: null, title: "", value: "", note: "" })}
+              className="flex min-h-[120px] flex-col items-center justify-center gap-2 rounded-[20px] border-2 border-dashed transition hover:opacity-80"
+              style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-tertiary)" }}>
+              <Plus size={18} />
+              <span className="text-[11px] font-semibold">Card personalizado</span>
+            </button>
+          )}
+        </div>
+
         {/* Linha do tempo + Funil de conversão */}
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
 
@@ -2526,93 +2632,6 @@ function ProfileOverviewPanel({
           </div>
         </div>
 
-        {/* ── Cards personalizados ── */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          {customCards.map((cc) => (
-            <article key={cc.id}
-              className="relative flex flex-col rounded-[20px] border shadow-horizon card-hover overflow-hidden"
-              style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)", padding: "18px 18px 18px 22px" }}>
-              <div className="absolute left-0 top-0 bottom-0 w-[3px]" style={{ backgroundColor: "#16A34A" }} />
-              <div className="mb-2 flex items-start justify-between gap-2">
-                <p className="text-[11px] font-semibold leading-tight" style={{ color: "var(--dm-text-secondary)" }}>
-                  {cc.title}
-                </p>
-                <div className="flex shrink-0 items-center gap-1.5">
-                  <button type="button"
-                    onClick={() => setCardForm({ id: cc.id, title: cc.title, value: cc.value, note: cc.note ?? "" })}
-                    className="flex h-6 w-6 items-center justify-center rounded-full transition hover:opacity-80"
-                    style={{ backgroundColor: "rgba(22,163,74,0.10)", color: "#16A34A" }} title="Editar card">
-                    <Edit2 size={11} />
-                  </button>
-                  <button type="button"
-                    onClick={() => persistCustomCards(customCards.filter((x) => x.id !== cc.id))}
-                    className="flex h-6 w-6 items-center justify-center rounded-full transition hover:opacity-80"
-                    style={{ backgroundColor: "rgba(238,93,80,0.10)", color: "#EE5D50" }} title="Remover card">
-                    <Trash2 size={11} />
-                  </button>
-                </div>
-              </div>
-              <p className="mt-1 text-[26px] font-bold tabular-nums tracking-tight leading-tight"
-                style={{ color: "var(--dm-text-primary)", fontFamily: "var(--font-poppins), Poppins, sans-serif" }}>
-                {cc.value || "—"}
-              </p>
-              {cc.note && (
-                <p className="mt-1 text-[10px] leading-snug" style={{ color: "var(--dm-text-tertiary)" }}>{cc.note}</p>
-              )}
-            </article>
-          ))}
-          {cardForm ? (
-            <article className="flex flex-col gap-2 rounded-[20px] border-2 shadow-horizon"
-              style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "#16A34A", padding: "18px" }}>
-              <input autoFocus type="text" value={cardForm.title}
-                onChange={(e) => setCardForm({ ...cardForm, title: e.target.value })}
-                placeholder="Título (ex: Vendas WhatsApp)"
-                className="h-8 rounded-lg border px-2 text-[11px] font-semibold outline-none"
-                style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }} />
-              <input type="text" value={cardForm.value}
-                onChange={(e) => setCardForm({ ...cardForm, value: e.target.value })}
-                placeholder="Valor (ex: 32 ou R$ 1.200)"
-                className="h-8 rounded-lg border px-2 text-[11px] font-bold outline-none"
-                style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }} />
-              <input type="text" value={cardForm.note}
-                onChange={(e) => setCardForm({ ...cardForm, note: e.target.value })}
-                placeholder="Observação (opcional)"
-                className="h-8 rounded-lg border px-2 text-[10px] outline-none"
-                style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }} />
-              <div className="mt-1 flex gap-2">
-                <button type="button" onClick={() => setCardForm(null)}
-                  className="flex-1 rounded-lg border py-1.5 text-[10px] font-semibold transition hover:opacity-80"
-                  style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>
-                  Cancelar
-                </button>
-                <button type="button" disabled={!cardForm.title.trim()}
-                  onClick={() => {
-                    const card = {
-                      id: cardForm.id ?? `cc_${Date.now()}`,
-                      title: cardForm.title.trim(),
-                      value: cardForm.value.trim(),
-                      note: cardForm.note.trim() || undefined,
-                    };
-                    persistCustomCards(cardForm.id
-                      ? customCards.map((x) => (x.id === cardForm.id ? card : x))
-                      : [...customCards, card]);
-                    setCardForm(null);
-                  }}
-                  className="flex-1 rounded-lg py-1.5 text-[10px] font-bold text-white transition hover:opacity-90 disabled:opacity-40"
-                  style={{ background: "linear-gradient(135deg,#16A34A 0%,#15803D 100%)" }}>
-                  Salvar card
-                </button>
-              </div>
-            </article>
-          ) : (
-            <button type="button" onClick={() => setCardForm({ id: null, title: "", value: "", note: "" })}
-              className="flex min-h-[120px] flex-col items-center justify-center gap-2 rounded-[20px] border-2 border-dashed transition hover:opacity-80"
-              style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-tertiary)" }}>
-              <Plus size={18} />
-              <span className="text-[11px] font-semibold">Card personalizado</span>
-            </button>
-          )}
-        </div>
       </section>
 
 
