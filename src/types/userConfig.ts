@@ -76,3 +76,8 @@ export function companyTemplateCategories(
   if (settings?.blankTaxonomy) return [];
   return FIXED_CATEGORIES;
 }
+
+/** true = empresa legada sem config própria — herda taxonomia e templates PTA. */
+export function isLegacyCompanyTaxonomy(settings?: Record<string, unknown>): boolean {
+  return readCompanyFilterDefs(settings).length === 0 && !settings?.blankTaxonomy;
+}
