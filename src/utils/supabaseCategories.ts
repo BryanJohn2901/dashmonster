@@ -81,11 +81,13 @@ export async function upsertUserCategory(cat: {
   emoji?: string | null;
   position?: number;
   isEnabled?: boolean;
+  /** Empresa alvo — default: a ativa. Painel Admin passa a do escopo. */
+  companyId?: string;
 }): Promise<UserCategory> {
   if (!supabaseClient) throw new Error("Supabase não configurado.");
   const userId = await getCurrentUserId();
   if (!userId) throw new Error("Usuário não autenticado.");
-  const companyId = await getCompanyId();
+  const companyId = cat.companyId ?? (await getCompanyId());
 
   const payload: Record<string, unknown> = {
     user_id:    userId,

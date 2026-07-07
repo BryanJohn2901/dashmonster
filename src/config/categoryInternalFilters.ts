@@ -85,6 +85,30 @@ export function getInternalFiltersForCategorySlug(slug: string): CategoryInterna
   return CATEGORY_INTERNAL_FILTERS[slug] ?? [];
 }
 
+/**
+ * Sub-filtros da categoria considerando a EMPRESA: os subfilters configurados
+ * no Painel Admin (settings.companyFilters) entram como opções — usam o
+ * mecanismo `custom-filter:` existente, então o resto do app já entende.
+ */
+export function getInternalFiltersForCategory(
+  slug: string,
+  companySettings?: Record<string, unknown>,
+): CategoryInternalFilterOption[] {
+  const builtin = getInternalFiltersForCategorySlug(slug);
+  const raw = companySettings?.companyFilters;
+  if (!Array.isArray(raw)) return builtin;
+  const filter = raw.find((f) => f && (f as { id?: string }).id === slug) as
+    | { subfilters?: unknown }
+    | undefined;
+  const subs = Array.isArray(filter?.subfilters) ? filter.subfilters.map(String) : [];
+  const fromCompany = subs.map((label) => ({
+    id: createCustomInternalFilterId(slug, label),
+    label,
+  }));
+  const seen = new Set(builtin.map((o) => o.id));
+  return [...builtin, ...fromCompany.filter((o) => !seen.has(o.id))];
+}
+
 export function getInternalFilterLabel(
   slug: string,
   filterId: string | null | undefined,

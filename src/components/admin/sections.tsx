@@ -29,6 +29,7 @@ import {
 import { FacebookConnectShell, InstagramConnectShell } from "@/components/hub/ConnectShells";
 import { fetchMetaAdAccounts, type MetaAdAccount } from "@/utils/metaApi";
 import { fetchPipelines, fetchCrmStats, ensureDefaultPipeline, deletePipeline, type CrmPipeline, type CrmStats } from "@/lib/crm";
+import { upsertUserCategory } from "@/utils/supabaseCategories";
 import { toast } from "@/hooks/useToast";
 
 export interface ScopedProps {
@@ -1220,7 +1221,12 @@ export function FiltrosSection({ selected, reload }: ScopedProps) {
   const addFilter = () => {
     const nm = newFilter.trim();
     if (!nm) return;
-    void saveSettings({ [COMPANY_FILTERS_KEY]: [...filters, { id: slugify(nm) || `f-${Date.now()}`, name: nm, subfilters: [] }] });
+    const id = slugify(nm) || `f-${Date.now()}`;
+    void saveSettings({ [COMPANY_FILTERS_KEY]: [...filters, { id, name: nm, subfilters: [] }] });
+    // Materializa a categoria no dashboard da empresa (propagação imediata pro
+    // Painel de Controle / Conectar conta). Falha silenciosa: o template
+    // dinâmico do ControlPanel cobre quando o membro abrir o painel.
+    void upsertUserCategory({ slug: id, name: nm, type: "fixed", emoji: "🏷️", position: filters.length, companyId: selected.company.id }).catch(() => {});
     setNewFilter("");
   };
 

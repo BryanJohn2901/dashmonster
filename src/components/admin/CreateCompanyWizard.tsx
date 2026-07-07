@@ -14,6 +14,7 @@ import {
 import { createCompany, inviteMemberByEmail, updateCompanySettings, useCompany } from "@/hooks/useCompany";
 import { BUILTIN_HISTORY_KINDS, HISTORICAL_KIND_LABELS, CUSTOM_HISTORY_TABS_KEY, type CustomHistoryTab } from "@/types/historical";
 import { toast } from "@/hooks/useToast";
+import { upsertUserCategory } from "@/utils/supabaseCategories";
 import {
   INVITE_ROLES, MEMBER_TITLES_KEY, COMPANY_FILTERS_KEY, slugify,
   type CompanyFilter,
@@ -130,6 +131,12 @@ export function CreateCompanyWizard({ onDone }: { onDone: () => void }) {
         [COMPANY_FILTERS_KEY]: filters,
         [MEMBER_TITLES_KEY]: titles,
       });
+
+      // Materializa os filtros como categorias do dashboard da empresa nova
+      // (Painel de Controle / Conectar conta enxergam na hora).
+      for (const [i, f] of filters.entries()) {
+        await upsertUserCategory({ slug: f.id, name: f.name, type: "fixed", emoji: "🏷️", position: i, companyId: company.id }).catch(() => {});
+      }
 
       switchCompany(company.id);
       setCreated(company.name);

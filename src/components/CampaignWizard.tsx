@@ -22,7 +22,7 @@ import { useCompany, readAdAccountSuggestions } from "@/hooks/useCompany";
 import { upsertUserCategory, upsertUserAccountEntry } from "@/utils/supabaseCategories";
 import { useUserConfig } from "@/hooks/useUserConfig";
 import {
-  getInternalFiltersForCategorySlug,
+  getInternalFiltersForCategory,
   createCustomInternalFilterId,
   isCustomInternalFilterId,
   parseCustomInternalFilterId,
@@ -34,9 +34,7 @@ import {
   PTA_PAINEL_SAVE_NAV_EVENT,
   mapPainelInternalFilterToDashboardGroupId,
 } from "@/utils/painelDashboardNavigation";
-import { FIXED_CATEGORIES } from "@/types/userConfig";
-
-const FIXED_SLUGS = new Set(FIXED_CATEGORIES.map((c) => c.slug));
+import { companyTemplateCategories } from "@/types/userConfig";
 
 const UNIT_PLACEHOLDER: Record<string, string> = {
   qtd: "0", brl: "R$ 0,00", pct: "0%", x: "0,0x",
@@ -93,8 +91,12 @@ export function CampaignWizard({ onClose, onSave, nameSuggestions = [] }: {
   const meta = INTENT_META[intent];
   const catLabel = newCat.trim() || cats.find((c) => c.slug === catSlug)?.name || "";
 
-  // Categoria custom = nova OU slug fora das 5 fixas → sem filtro interno (usa panel-entry)
-  const isCustomCat = Boolean(newCat.trim()) || (Boolean(catSlug) && !FIXED_SLUGS.has(catSlug));
+  // Categoria custom = nova OU slug fora do template da empresa → sem filtro interno (usa panel-entry)
+  const templateSlugs = useMemo(
+    () => new Set(companyTemplateCategories(company?.settings).map((c) => c.slug)),
+    [company?.settings],
+  );
+  const isCustomCat = Boolean(newCat.trim()) || (Boolean(catSlug) && !templateSlugs.has(catSlug));
   // Filtros custom já criados nesta categoria (derivados das entries) + os recém-criados aqui.
   const customFilters = useMemo<CategoryInternalFilterOption[]>(() => {
     if (isCustomCat || !catSlug) return [];
@@ -113,7 +115,7 @@ export function CampaignWizard({ onClose, onSave, nameSuggestions = [] }: {
 
   const filterOptions = useMemo(() => {
     if (isCustomCat || !catSlug) return [];
-    const builtins = getInternalFiltersForCategorySlug(catSlug);
+    const builtins = getInternalFiltersForCategory(catSlug, company?.settings);
     const ids = new Set(builtins.map((o) => o.id));
     // inclui o filtro recém-selecionado mesmo que ainda não esteja nas entries
     const extra = customFilters.filter((o) => !ids.has(o.id));
@@ -121,7 +123,7 @@ export function CampaignWizard({ onClose, onSave, nameSuggestions = [] }: {
       extra.push({ id: internalFilter, label: getCustomInternalFilterLabel(internalFilter) ?? internalFilter });
     }
     return [...builtins, ...extra];
-  }, [isCustomCat, catSlug, customFilters, internalFilter]);
+  }, [isCustomCat, catSlug, customFilters, internalFilter, company?.settings]);
   const needsFilter = !isCustomCat && Boolean(catSlug);
 
   const createFilter = () => {

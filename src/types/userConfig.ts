@@ -41,3 +41,38 @@ export const FIXED_CATEGORIES: ReadonlyArray<{
 // Filtros personalizados por empresa, além dos 5 padrão. Folga para empresas
 // com taxonomias diferentes da PTA (cada empresa monta os seus).
 export const MAX_CUSTOM_CATEGORIES = 10;
+
+// ─── Template de filtros da EMPRESA ─────────────────────────────────────────
+// Fonte única do que aparece como "filtro fixo" no Painel de Controle e nos
+// wizards de conta: 1) settings.companyFilters (Painel Admin / wizard de criar
+// empresa); 2) empresa nova sem filtros (blankTaxonomy) → NADA de PTA;
+// 3) empresas legadas (sem flag) → os 5 fixos PTA de sempre.
+
+export interface CompanyFilterDef {
+  id: string;
+  name: string;
+  subfilters: string[];
+}
+
+export function readCompanyFilterDefs(settings?: Record<string, unknown>): CompanyFilterDef[] {
+  const raw = settings?.companyFilters;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((f): f is CompanyFilterDef => !!f && typeof (f as CompanyFilterDef).id === "string")
+    .map((f) => ({
+      id: f.id,
+      name: String(f.name ?? ""),
+      subfilters: Array.isArray(f.subfilters) ? f.subfilters.map(String) : [],
+    }));
+}
+
+export function companyTemplateCategories(
+  settings?: Record<string, unknown>,
+): ReadonlyArray<{ slug: string; name: string; emoji: string; defaultPosition: number }> {
+  const filters = readCompanyFilterDefs(settings);
+  if (filters.length > 0) {
+    return filters.map((f, i) => ({ slug: f.id, name: f.name, emoji: "🏷️", defaultPosition: i }));
+  }
+  if (settings?.blankTaxonomy) return [];
+  return FIXED_CATEGORIES;
+}
