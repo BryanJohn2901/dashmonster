@@ -17,6 +17,7 @@ import {
   fetchCompanyInvites, revokeCompanyInvite, type PendingInvite,
   readMemberProducts, MEMBER_PRODUCTS_KEY,
   readCompanyBranding, updateCompanyLogo, COMPANY_BRANDING_KEY, type CompanyBranding,
+  deleteCompany, readCompanyTag,
   type AdminCompany, type CompanyRole, type CompanyMember, type AdAccountEntry,
 } from "@/hooks/useCompany";
 import { PRODUCTS } from "@/config/products";
@@ -120,9 +121,10 @@ export function EmpresasSection({ companies, onSelect, reload, onCreate, onGo }:
   const [editName, setEditName] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const q = query.trim().toLowerCase();
-  const filtered = companies.filter((c) => !q || c.company.name.toLowerCase().includes(q) || c.company.slug.toLowerCase().includes(q));
+  const filtered = companies.filter((c) => !q || c.company.name.toLowerCase().includes(q) || c.company.slug.toLowerCase().includes(q) || readCompanyTag(c.company.settings).toLowerCase().includes(q));
 
   const saveRename = async (c: AdminCompany) => {
     const nm = editName.trim();
@@ -131,6 +133,14 @@ export function EmpresasSection({ companies, onSelect, reload, onCreate, onGo }:
     setBusyId(c.company.id);
     try { await renameCompany(c.company.id, nm); await reload(); toast.success("Empresa renomeada."); }
     catch (e) { toast.error(e instanceof Error ? e.message : "Erro ao renomear."); }
+    finally { setBusyId(null); }
+  };
+
+  const doDelete = async (c: AdminCompany) => {
+    setConfirmDeleteId(null);
+    setBusyId(c.company.id);
+    try { await deleteCompany(c.company.id); await reload(); toast.success(`Empresa "${c.company.name}" excluída.`); }
+    catch (e) { toast.error(e instanceof Error ? e.message : "Erro ao excluir."); }
     finally { setBusyId(null); }
   };
 
@@ -173,7 +183,15 @@ export function EmpresasSection({ companies, onSelect, reload, onCreate, onGo }:
                     onBlur={() => void saveRename(c)}
                     className="h-8 w-full rounded-lg border px-2 text-[13px] outline-none" style={inputStyle} />
                 ) : (
-                  <p className="truncate text-[14px] font-bold" style={{ color: "var(--dm-text-primary)" }}>{c.company.name}</p>
+                  <p className="flex items-center gap-2 truncate text-[14px] font-bold" style={{ color: "var(--dm-text-primary)" }}>
+                    <span className="truncate">{c.company.name}</span>
+                    {readCompanyTag(c.company.settings) && (
+                      <span className="flex-shrink-0 rounded-md border px-1.5 py-0.5 text-[10px] font-bold tracking-widest"
+                        style={{ borderColor: "var(--dm-primary)", color: "var(--dm-primary)" }}>
+                        {readCompanyTag(c.company.settings)}
+                      </span>
+                    )}
+                  </p>
                 )}
                 <p className="truncate text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
                   {c.memberCount} membro{c.memberCount === 1 ? "" : "s"} · {c.company.slug}
@@ -218,7 +236,33 @@ export function EmpresasSection({ companies, onSelect, reload, onCreate, onGo }:
                 style={{ borderColor: "var(--dm-border-default)", color: open ? "var(--dm-primary)" : "var(--dm-text-secondary)" }}>
                 {open ? "Fechar" : "Detalhes"}
               </button>
+              <button type="button" title="Excluir empresa"
+                onClick={() => setConfirmDeleteId(confirmDeleteId === c.company.id ? null : c.company.id)}
+                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg transition hover:bg-red-500/10"
+                style={{ color: "#EE5D50" }}>
+                <Trash2 size={14} />
+              </button>
             </div>
+
+            {/* Confirmação de exclusão — apaga a empresa e TODOS os dados dela */}
+            {confirmDeleteId === c.company.id && (
+              <div className="flex flex-wrap items-center gap-2 border-t px-4 py-3"
+                style={{ borderColor: "rgba(238,93,80,0.4)", background: "rgba(238,93,80,0.06)" }}>
+                <p className="min-w-0 flex-1 text-[12px] font-semibold" style={{ color: "#EE5D50" }}>
+                  Excluir &quot;{c.company.name}&quot;? Apaga membros, filtros, contas e histórico. Não tem volta.
+                </p>
+                <button type="button" onClick={() => setConfirmDeleteId(null)}
+                  className="h-8 rounded-lg border px-3 text-[11px] font-bold transition hover:opacity-80"
+                  style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>
+                  Cancelar
+                </button>
+                <button type="button" onClick={() => void doDelete(c)} disabled={busyId === c.company.id}
+                  className="flex h-8 items-center gap-1.5 rounded-lg px-3 text-[11px] font-bold text-white transition hover:opacity-90 disabled:opacity-50"
+                  style={{ background: "#EE5D50" }}>
+                  <Trash2 size={12} /> Excluir de vez
+                </button>
+              </div>
+            )}
 
             {/* Drill-down: visão completa da conta + atalhos pras seções já no escopo dela */}
             {open && (

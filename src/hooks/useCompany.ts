@@ -121,7 +121,7 @@ const DEMO_COMPANIES: Company[] = [
 // Overrides do modo demo (mutações feitas no painel admin) — persistem em
 // localStorage pra sobreviver à navegação entre /admin e o hub.
 const DEMO_OVERRIDES_KEY = "dm_demo_company_overrides_v1";
-type DemoOverride = Partial<Pick<Company, "name" | "products" | "settings" | "logoUrl" | "productExpiry">>;
+type DemoOverride = Partial<Pick<Company, "name" | "products" | "settings" | "logoUrl" | "productExpiry">> & { deleted?: boolean };
 
 function readDemoOverrides(): Record<string, DemoOverride> {
   try { return JSON.parse(localStorage.getItem(DEMO_OVERRIDES_KEY) ?? "{}"); } catch { return {}; }
@@ -129,7 +129,7 @@ function readDemoOverrides(): Record<string, DemoOverride> {
 
 function demoCompanies(): Company[] {
   const overrides = readDemoOverrides();
-  return DEMO_COMPANIES.map((c) => ({ ...c, ...overrides[c.id] }));
+  return DEMO_COMPANIES.filter((c) => !overrides[c.id]?.deleted).map((c) => ({ ...c, ...overrides[c.id] }));
 }
 
 function demoState(): CompanyState {
@@ -432,12 +432,34 @@ export async function renameCompany(companyId: string, name: string): Promise<vo
   await refreshCompany();
 }
 
+/** TAG curta de identificação da empresa (3 letras, ex.: PTA) — vive em settings. */
+export const COMPANY_TAG_KEY = "companyTag";
+
+export function readCompanyTag(settings?: Record<string, unknown>): string {
+  const raw = settings?.[COMPANY_TAG_KEY];
+  return typeof raw === "string" ? raw.toUpperCase() : "";
+}
+
 /** Cria uma empresa nova e, opcionalmente, convida um e-mail como dono.
  *  RLS: passa pela policy `companies_superadmin_all` (super admin). */
-export async function createCompany(name: string, ownerEmail?: string): Promise<Company> {
+export async function createCompany(name: string, ownerEmail?: string, tag?: string): Promise<Company> {
   if (!supabaseClient) throw new Error("Supabase não configurado.");
   const clean = name.trim();
   if (!clean) throw new Error("Informe o nome da empresa.");
+  const cleanTag = (tag ?? "").trim().toUpperCase();
+  if (!/^[A-Z]{3}$/.test(cleanTag)) throw new Error("TAG obrigatória: exatamente 3 letras (ex.: PTA).");
+
+  // Sem duplicada: nome (case-insensitive) e TAG são únicos na plataforma.
+  const { data: existing } = await supabaseClient.from("companies").select("name, settings");
+  for (const row of existing ?? []) {
+    if (String(row.name).trim().toLowerCase() === clean.toLowerCase()) {
+      throw new Error(`Já existe uma empresa chamada "${clean}".`);
+    }
+    if (readCompanyTag((row.settings as Record<string, unknown>) ?? undefined) === cleanTag) {
+      throw new Error(`A TAG ${cleanTag} já está em uso por outra empresa.`);
+    }
+  }
+
   const slug =
     clean.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) +
     "-" + Math.random().toString(36).slice(2, 7);
@@ -446,7 +468,7 @@ export async function createCompany(name: string, ownerEmail?: string): Promise<
   // Empresas antigas (sem a flag) seguem com a taxonomia PTA hardcoded.
   const { data, error } = await supabaseClient
     .from("companies")
-    .insert({ name: clean, slug, settings: { blankTaxonomy: true } })
+    .insert({ name: clean, slug, settings: { blankTaxonomy: true, [COMPANY_TAG_KEY]: cleanTag } })
     .select("id, name, slug, logo_url, settings, products, product_expiry")
     .single();
   if (error) throw new Error(error.message);
@@ -457,6 +479,24 @@ export async function createCompany(name: string, ownerEmail?: string): Promise<
   }
   await refreshCompany();
   return company;
+}
+
+/** Apaga a empresa e tudo dela (FKs em cascade). RLS: só super admin. */
+export async function deleteCompany(companyId: string): Promise<void> {
+  if (!supabaseClient) {
+    if (!isDevModeActive()) throw new Error("Supabase não configurado.");
+    const overrides = readDemoOverrides();
+    overrides[companyId] = { ...overrides[companyId], deleted: true };
+    try { localStorage.setItem(DEMO_OVERRIDES_KEY, JSON.stringify(overrides)); } catch {}
+    await refreshCompany();
+    return;
+  }
+  const { error } = await supabaseClient
+    .from("companies")
+    .delete()
+    .eq("id", companyId);
+  if (error) throw new Error(error.message);
+  await refreshCompany();
 }
 
 // ponytail: token demo também vive no override de localStorage (chave à parte

@@ -46,8 +46,10 @@ export function CreateCompanyWizard({ onDone }: { onDone: () => void }) {
   const [creating, setCreating] = useState(false);
   const [created, setCreated] = useState<string | null>(null);
 
-  // Passo 1 — nome
+  // Passo 1 — nome + TAG (3 letras, única na plataforma)
   const [name, setName] = useState("");
+  const [tag, setTag] = useState("");
+  const tagValid = /^[A-Za-z]{3}$/.test(tag.trim());
 
   // Passo 2 — abas do histórico
   const [kinds, setKinds] = useState<string[]>([...BUILTIN_HISTORY_KINDS]);
@@ -68,7 +70,7 @@ export function CreateCompanyWizard({ onDone }: { onDone: () => void }) {
   const ownersClean = owners.map((o) => o.trim()).filter(Boolean);
   const ownersValid = ownersClean.every((o) => EMAIL_RE.test(o));
   const canNext =
-    step === 0 ? name.trim().length > 0 :
+    step === 0 ? name.trim().length > 0 && tagValid :
     step === 3 ? ownersValid :
     true;
 
@@ -106,7 +108,7 @@ export function CreateCompanyWizard({ onDone }: { onDone: () => void }) {
   const submit = async () => {
     setCreating(true);
     try {
-      const company = await createCompany(name.trim(), ownersClean[0]);
+      const company = await createCompany(name.trim(), ownersClean[0], tag.trim());
 
       // 2º dono + equipe (papel do banco vem do mapa INVITE_ROLES).
       const titles: Record<string, string> = {};
@@ -203,7 +205,7 @@ export function CreateCompanyWizard({ onDone }: { onDone: () => void }) {
         })}
       </div>
 
-      {/* ── Passo 0: nome ── */}
+      {/* ── Passo 0: nome + TAG ── */}
       {step === 0 && (
         <div>
           <label className="mb-1.5 block text-[12px] font-semibold" style={{ color: "var(--dm-text-secondary)" }}>Nome da empresa</label>
@@ -212,6 +214,17 @@ export function CreateCompanyWizard({ onDone }: { onDone: () => void }) {
             placeholder="Ex: PT Academy"
             className="h-12 w-full rounded-xl border px-4 text-[14px] outline-none" style={inputStyle} />
           <p className="mt-2 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>Como aparece no seletor de empresas do hub.</p>
+
+          <label className="mb-1.5 mt-5 block text-[12px] font-semibold" style={{ color: "var(--dm-text-secondary)" }}>
+            TAG <span className="font-normal" style={{ color: "var(--dm-text-tertiary)" }}>(3 letras, única — ex.: PTA)</span>
+          </label>
+          <input value={tag} maxLength={3}
+            onChange={(e) => setTag(e.target.value.replace(/[^A-Za-z]/g, "").toUpperCase())}
+            onKeyDown={(e) => { if (e.key === "Enter" && canNext) setStep(1); }}
+            placeholder="PTA"
+            className="h-12 w-28 rounded-xl border px-4 text-center text-[15px] font-bold tracking-[0.3em] uppercase outline-none"
+            style={{ ...inputStyle, borderColor: tag && !tagValid ? "#ef4444" : "var(--dm-border-default)" }} />
+          <p className="mt-2 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>Identificação curta da empresa nas listas do painel. Obrigatória.</p>
         </div>
       )}
 
@@ -405,6 +418,7 @@ export function CreateCompanyWizard({ onDone }: { onDone: () => void }) {
         <div className="rounded-2xl border p-5" style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)" }}>
           <p className="mb-3 text-[13px] font-bold" style={{ color: "var(--dm-text-primary)" }}>Revisar</p>
           <ReviewRow label="Empresa" value={name.trim() || "—"} />
+          <ReviewRow label="TAG" value={tag.trim().toUpperCase() || "—"} />
           <ReviewRow label="Abas do histórico" value={[
             ...kinds.map((k) => HISTORICAL_KIND_LABELS[k] ?? k),
             ...customTabs.map((t) => t.label),
@@ -433,7 +447,7 @@ export function CreateCompanyWizard({ onDone }: { onDone: () => void }) {
             Continuar <ArrowRight size={14} />
           </button>
         ) : (
-          <button type="button" onClick={() => void submit()} disabled={creating || !name.trim()}
+          <button type="button" onClick={() => void submit()} disabled={creating || !name.trim() || !tagValid}
             className="flex h-10 items-center gap-1.5 rounded-xl px-5 text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-40"
             style={{ background: "var(--dm-btn-primary-bg)" }}>
             {creating ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Criar empresa
