@@ -17,7 +17,7 @@ import {
   fetchCompanyInvites, revokeCompanyInvite, type PendingInvite,
   readMemberProducts, MEMBER_PRODUCTS_KEY,
   readCompanyBranding, updateCompanyLogo, COMPANY_BRANDING_KEY, type CompanyBranding,
-  deleteCompany, readCompanyTag,
+  deleteCompany, readCompanyTag, COMPANY_TAG_KEY,
   type AdminCompany, type CompanyRole, type CompanyMember, type AdAccountEntry,
 } from "@/hooks/useCompany";
 import { PRODUCTS } from "@/config/products";
@@ -119,6 +119,7 @@ export function EmpresasSection({ companies, onSelect, reload, onCreate, onGo }:
   const [query, setQuery] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
+  const [editTag, setEditTag] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -126,13 +127,26 @@ export function EmpresasSection({ companies, onSelect, reload, onCreate, onGo }:
   const q = query.trim().toLowerCase();
   const filtered = companies.filter((c) => !q || c.company.name.toLowerCase().includes(q) || c.company.slug.toLowerCase().includes(q) || readCompanyTag(c.company.settings).toLowerCase().includes(q));
 
-  const saveRename = async (c: AdminCompany) => {
+  const saveEdit = async (c: AdminCompany) => {
     const nm = editName.trim();
+    const tg = editTag.trim().toUpperCase();
+    if (!nm) { toast.error("Nome não pode ficar vazio."); return; }
+    if (tg && !/^[A-Z]{3}$/.test(tg)) { toast.error("TAG: exatamente 3 letras (ex.: PTA)."); return; }
+    if (tg && companies.some((x) => x.company.id !== c.company.id && readCompanyTag(x.company.settings) === tg)) {
+      toast.error(`A TAG ${tg} já está em uso por outra empresa.`);
+      return;
+    }
     setEditingId(null);
-    if (!nm || nm === c.company.name) return;
     setBusyId(c.company.id);
-    try { await renameCompany(c.company.id, nm); await reload(); toast.success("Empresa renomeada."); }
-    catch (e) { toast.error(e instanceof Error ? e.message : "Erro ao renomear."); }
+    try {
+      if (nm !== c.company.name) await renameCompany(c.company.id, nm);
+      if (tg !== readCompanyTag(c.company.settings)) {
+        await updateCompanySettings(c.company.id, { ...c.company.settings, [COMPANY_TAG_KEY]: tg });
+      }
+      await reload();
+      toast.success("Empresa atualizada.");
+    }
+    catch (e) { toast.error(e instanceof Error ? e.message : "Erro ao salvar."); }
     finally { setBusyId(null); }
   };
 
@@ -178,10 +192,28 @@ export function EmpresasSection({ companies, onSelect, reload, onCreate, onGo }:
               </span>
               <div className="min-w-0 flex-1">
                 {editing ? (
-                  <input value={editName} autoFocus onChange={(e) => setEditName(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") void saveRename(c); if (e.key === "Escape") setEditingId(null); }}
-                    onBlur={() => void saveRename(c)}
-                    className="h-8 w-full rounded-lg border px-2 text-[13px] outline-none" style={inputStyle} />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input value={editName} autoFocus onChange={(e) => setEditName(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") void saveEdit(c); if (e.key === "Escape") setEditingId(null); }}
+                      placeholder="Nome da empresa"
+                      className="h-8 min-w-0 flex-1 rounded-lg border px-2 text-[13px] outline-none" style={inputStyle} />
+                    <input value={editTag} maxLength={3}
+                      onChange={(e) => setEditTag(e.target.value.replace(/[^A-Za-z]/g, "").toUpperCase())}
+                      onKeyDown={(e) => { if (e.key === "Enter") void saveEdit(c); if (e.key === "Escape") setEditingId(null); }}
+                      placeholder="TAG"
+                      className="h-8 w-16 rounded-lg border px-2 text-center text-[12px] font-bold tracking-widest uppercase outline-none"
+                      style={{ ...inputStyle, borderColor: editTag && !/^[A-Z]{3}$/.test(editTag) ? "#ef4444" : "var(--dm-border-default)" }} />
+                    <button type="button" onClick={() => void saveEdit(c)}
+                      className="flex h-8 items-center gap-1 rounded-lg px-3 text-[11px] font-bold text-white transition hover:opacity-90"
+                      style={{ background: "var(--dm-btn-primary-bg)" }}>
+                      <Check size={12} /> Finalizar
+                    </button>
+                    <button type="button" onClick={() => setEditingId(null)} title="Cancelar"
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border transition hover:opacity-80"
+                      style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-tertiary)" }}>
+                      <X size={13} />
+                    </button>
+                  </div>
                 ) : (
                   <p className="flex items-center gap-2 truncate text-[14px] font-bold" style={{ color: "var(--dm-text-primary)" }}>
                     <span className="truncate">{c.company.name}</span>
@@ -221,7 +253,7 @@ export function EmpresasSection({ companies, onSelect, reload, onCreate, onGo }:
               </span>
 
               {busyId === c.company.id && <Loader2 size={14} className="animate-spin" style={{ color: "var(--dm-text-tertiary)" }} />}
-              <button type="button" title="Renomear" onClick={() => { setEditingId(c.company.id); setEditName(c.company.name); }}
+              <button type="button" title="Editar nome e TAG" onClick={() => { setEditingId(c.company.id); setEditName(c.company.name); setEditTag(readCompanyTag(c.company.settings)); }}
                 className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg transition hover:bg-black/5 dark:hover:bg-white/5"
                 style={{ color: "var(--dm-text-tertiary)" }}>
                 <Pencil size={14} />
