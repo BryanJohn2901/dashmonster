@@ -301,6 +301,8 @@ export async function fetchAdInsights(
   accessToken: string,
   dateFrom: string,
   dateTo: string,
+  /** Restringe a UM anúncio (/{adId}/insights) — leve, pra fallback pontual. */
+  adId?: string,
 ): Promise<AdInsight[]> {
   if (!adAccountId || !accessToken || !dateFrom || !dateTo) return [];
 
@@ -308,6 +310,7 @@ export async function fetchAdInsights(
     adAccountId, dateFrom, dateTo,
     level: "ad",
     timeIncrement: "all_days",
+    ...(adId ? { adId } : {}),
   });
 
   const res = await metaFetch(`/api/meta/insights?${params.toString()}`, accessToken);

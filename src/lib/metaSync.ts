@@ -9,6 +9,9 @@ export interface FetchInsightsServerOpts {
   level?: "campaign" | "adset" | "ad";
   timeIncrement?: "1" | "all_days";
   campaignIds?: string[];
+  /** Busca insights de UM anúncio (/{adId}/insights) — leve, não estoura o
+   *  limite de dados da Meta em conta grande. */
+  adId?: string;
 }
 
 const BASE_FIELDS = [
@@ -66,9 +69,10 @@ export async function fetchMetaInsightsServer(
     }
   }
 
+  const node = opts.adId ? opts.adId : `act_${accountId}`;
   const all: MetaInsight[] = [];
   let nextUrl: string | null =
-    `https://graph.facebook.com/${META_API_VERSION}/act_${accountId}/insights?${params.toString()}`;
+    `https://graph.facebook.com/${META_API_VERSION}/${node}/insights?${params.toString()}`;
 
   while (nextUrl) {
     const res  = await fetch(nextUrl, { cache: "no-store" });

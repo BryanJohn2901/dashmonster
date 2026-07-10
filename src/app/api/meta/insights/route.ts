@@ -13,6 +13,7 @@ export async function GET(request: NextRequest) {
   const dateFrom    = sp.get("dateFrom");
   const dateTo      = sp.get("dateTo");
   const campaignIds   = sp.get("campaignIds");                   // optional: comma-separated
+  const adId          = sp.get("adId");                          // optional: insights de 1 anúncio só
   const level         = (sp.get("level") ?? "campaign") as "campaign" | "adset" | "ad";
   const timeIncrement = (sp.get("timeIncrement") ?? "1") as "1" | "all_days";
 
@@ -25,6 +26,7 @@ export async function GET(request: NextRequest) {
       level,
       timeIncrement,
       campaignIds: campaignIds ? campaignIds.split(",") : undefined,
+      adId: adId ?? undefined,
     });
     return NextResponse.json(data);
   } catch (e) {

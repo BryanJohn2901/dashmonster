@@ -1441,25 +1441,29 @@ export function BestCreatives({
     setAdInsights(map);
   }, [accessToken, dateFrom, dateTo]);
 
-  // Métricas TOTAIS por anúncio (últimos 365d) — fallback do modal quando o
-  // anúncio não entregou no período selecionado (comum em conjunto pausado).
-  // ponytail: busca uma vez, só quando algum modal precisar.
+  // Métricas TOTAIS de UM anúncio (últimos 365d) — fallback do modal quando o
+  // anúncio não entregou no período. Busca pontual (/{adId}/insights): a versão
+  // conta-inteira estourava o limite de dados da Meta em conta grande
+  // ("Please reduce the amount of data you're asking for").
   const [lifetimeInsights, setLifetimeInsights] = useState<Map<string, AdInsight>>(new Map());
-  const lifetimeRequested = useRef(false);
-  const ensureLifetimeInsights = useCallback(() => {
-    if (lifetimeRequested.current || !accessToken) return;
+  const lifetimeRequested = useRef(new Set<string>());
+  const ensureLifetimeInsight = useCallback((adId: string) => {
+    if (!accessToken || !adId || lifetimeRequested.current.has(adId)) return;
     const ids = getIds();
     if (!ids.length) return;
-    lifetimeRequested.current = true;
+    lifetimeRequested.current.add(adId);
     const today   = new Date().toISOString().slice(0, 10);
     const yearAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    void Promise.all(
-      ids.map((id) => fetchAdInsights(id, accessToken, yearAgo, today).catch(() => [] as AdInsight[]))
-    ).then((batches) => {
-      const map = new Map<string, AdInsight>();
-      for (const b of batches) for (const r of b) map.set(r.ad_id, r);
-      setLifetimeInsights(map);
-    });
+    void fetchAdInsights(ids[0], accessToken, yearAgo, today, adId)
+      .then((rows) => {
+        if (rows.length === 0) return;
+        setLifetimeInsights((prev) => {
+          const m = new Map(prev);
+          for (const r of rows) m.set(r.ad_id, r);
+          return m;
+        });
+      })
+      .catch(() => { lifetimeRequested.current.delete(adId); });
   }, [accessToken, getIds]);
 
   const doFetch = useCallback((force = false) => {
@@ -1877,7 +1881,7 @@ export function BestCreatives({
           ad={previewAd}
           insight={adInsights.get(previewAd.adId)}
           lifetimeInsight={lifetimeInsights.get(previewAd.adId)}
-          onNeedLifetime={ensureLifetimeInsights}
+          onNeedLifetime={() => ensureLifetimeInsight(previewAd.adId)}
           starred={store[previewAd.adId]?.starred ?? false}
           accessToken={accessToken}
           onClose={() => setPreviewAd(null)}
