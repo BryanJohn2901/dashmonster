@@ -122,7 +122,10 @@ export async function GET(request: NextRequest) {
           "PENDING_REVIEW", "DISAPPROVED", "WITH_ISSUES", "IN_PROCESS",
           "PREAPPROVED", "PENDING_BILLING_INFO",
         ]),
-        limit: "200",
+        // 50, não 200: com o creative{...} aninhado a página de 200 estoura o
+        // limite de dados da Meta em conta grande ("Please reduce the amount
+        // of data"). Mais páginas leves > uma pesada; a paginação já existe.
+        limit: "50",
       }).toString();
 
   try {
