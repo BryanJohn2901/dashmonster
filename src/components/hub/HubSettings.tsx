@@ -21,8 +21,9 @@ import {
   IdentidadeSection, HistoricoSection, TrackingSection, EquipeSection, ConexaoSection, ContasSection,
 } from "@/components/CompanyStudio";
 import type { UserCategory } from "@/types/userConfig";
+import { fetchAuditLog, type AuditLogEntry } from "@/lib/adminAudit";
 
-type NavId = "perfil" | "identidade" | "conexao" | "contas" | "instagram" | "historico" | "tracking" | "colaboradores" | "devacesso";
+type NavId = "perfil" | "identidade" | "conexao" | "contas" | "instagram" | "historico" | "tracking" | "colaboradores" | "auditoria" | "devacesso";
 
 interface HubSettingsProps {
   open: boolean;
@@ -38,7 +39,8 @@ interface HubSettingsProps {
 
 // Essencial do usuário + Conexões (pré-configuração fácil: BM, contas de
 // anúncio, Instagram). Gestão de plataforma (produtos, criar empresa,
-// auditoria, filtros de todas as empresas) mora no /admin.
+// filtros de todas as empresas) mora no /admin — auditoria da PRÓPRIA
+// empresa (dono/gestor) mora aqui; visão de TODAS as empresas fica no /admin.
 const NAV: { group: string; items: { id: NavId; label: string; icon: typeof UserRound; sub: string }[] }[] = [
   { group: "Conta", items: [
     { id: "perfil", label: "Perfil", icon: UserRound, sub: "Seu nome e dados de acesso" },
@@ -53,6 +55,7 @@ const NAV: { group: string; items: { id: NavId; label: string; icon: typeof User
     { id: "historico",  label: "Histórico", icon: History,          sub: "Sub-abas e layout de dados" },
     { id: "tracking",      label: "Tracking",      icon: Radar,  sub: "Pixel server-side e Eduzz" },
     { id: "colaboradores", label: "Colaboradores", icon: Users,  sub: "Membros e papéis da empresa" },
+    { id: "auditoria",     label: "Auditoria",     icon: History, sub: "Navegação e exportações da equipe" },
   ]},
   { group: "Avançado", items: [
     { id: "devacesso",  label: "Acesso DEV", icon: Lock,            sub: "Senha que libera acesso total" },
@@ -481,6 +484,8 @@ function EmpresaSections({ nav }: { nav: NavId }) {
         return <TrackingSection company={company} canEdit={canWrite} open onToggle={noop} variant="panel" />;
       case "colaboradores":
         return <EquipeSection company={company} canEdit={isOwner} members={members} setMembers={setMembers} open onToggle={noop} variant="panel" />;
+      case "auditoria":
+        return canWrite ? <AuditoriaCompanySection companyId={company.id} /> : <SemAcessoAuditoria />;
       default:
         return null;
     }
@@ -490,6 +495,63 @@ function EmpresaSections({ nav }: { nav: NavId }) {
     <div className="space-y-4">
       <CompanyContextBar company={company} role={role} memberships={memberships} switchCompany={switchCompany} />
       {section}
+    </div>
+  );
+}
+
+function SemAcessoAuditoria() {
+  return (
+    <div className="rounded-2xl border p-8 text-center" style={{ background: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
+      <History size={24} className="mx-auto mb-2" style={{ color: "var(--dm-text-tertiary)" }} />
+      <p className="text-[13px]" style={{ color: "var(--dm-text-secondary)" }}>
+        Só dono e gestor veem a auditoria da empresa.
+      </p>
+    </div>
+  );
+}
+
+const HUB_AUDIT_ACTION_LABELS: Record<string, string> = {
+  page_view: "Navegação", export: "Exportação", product_change: "Produto",
+  create: "Criação", update: "Edição", delete: "Exclusão",
+};
+
+/** Auditoria escopada à própria empresa — visível pra dono/gestor (RLS: can_write_company). */
+function AuditoriaCompanySection({ companyId }: { companyId: string }) {
+  const [events, setEvents] = useState<AuditLogEntry[] | null>(null);
+
+  useEffect(() => {
+    setEvents(null);
+    void fetchAuditLog(companyId).then(setEvents).catch(() => setEvents([]));
+  }, [companyId]);
+
+  return (
+    <div className="rounded-2xl border p-5" style={{ background: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
+      <p className="mb-1 text-[14px] font-bold" style={{ color: "var(--dm-text-primary)" }}>Auditoria da equipe</p>
+      <p className="mb-4 text-[12px]" style={{ color: "var(--dm-text-tertiary)" }}>
+        Navegação, exportações de dados e mudanças de produto — não é log de cada clique.
+      </p>
+
+      {events === null ? (
+        <Loader2 size={16} className="animate-spin" style={{ color: "var(--dm-text-tertiary)" }} />
+      ) : events.length === 0 ? (
+        <p className="text-[13px]" style={{ color: "var(--dm-text-tertiary)" }}>Nenhum evento registrado ainda.</p>
+      ) : (
+        <div className="overflow-hidden rounded-xl border" style={{ borderColor: "var(--dm-border-default)" }}>
+          {events.map((e, i) => (
+            <div key={e.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 text-[12px]"
+              style={{ borderTop: i > 0 ? "1px solid var(--dm-border-default)" : undefined }}>
+              <span className="w-[120px] font-semibold tabular-nums" style={{ color: "var(--dm-text-tertiary)" }}>
+                {new Date(e.createdAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+              </span>
+              <span className="w-[100px] font-bold" style={{ color: "var(--dm-primary)" }}>
+                {HUB_AUDIT_ACTION_LABELS[e.action] ?? e.action}
+              </span>
+              <span className="min-w-[160px] flex-1 truncate font-semibold" style={{ color: "var(--dm-text-primary)" }}>{e.entityLabel ?? "—"}</span>
+              <span className="min-w-[140px] truncate" style={{ color: "var(--dm-text-secondary)" }}>{e.userEmail ?? "—"}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -67,6 +67,7 @@ import { EmpresaTab } from "@/components/EmpresaTab";
 import { HubSettings } from "@/components/hub/HubSettings";
 import { toast } from "@/hooks/useToast";
 import { exportDashboardCsv } from "@/utils/exportCsv";
+import { logAudit } from "@/lib/auditLog";
 import { useManualMetrics } from "@/hooks/useManualMetrics";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -1878,6 +1879,20 @@ export function Dashboard({
   const customHistTabs = readCustomHistoryTabs(activeCompany?.settings);
   const [myAccountTab, setMyAccountTab]     = useState<MyAccountTabId>("profile");
 
+  // Auditoria: navegação entre seções e, dentro de Histórico, entre pastas/filtros.
+  useEffect(() => {
+    if (!activeCompany) return;
+    const isHistory = mainTab === "history";
+    void logAudit({
+      companyId: activeCompany.id,
+      action: "page_view",
+      entityType: isHistory ? "folder" : "page",
+      entityLabel: isHistory ? historyKindLabel(histKind, histLabels) : mainTab,
+      details: isHistory ? { section: "history", folder: histKind } : { section: mainTab },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mainTab, histKind, activeCompany?.id]);
+
   // ── Sistema de abas (browser tabs) ─────────────────────────────────────────
   // Cada aba = uma view (mainTab + sub). Trocar de aba reaplica a navegação.
   type OpenTab = { id: string; label: string; baseLabel?: string; tab: MainTab; sub?: string };
@@ -3437,13 +3452,29 @@ export function Dashboard({
                 type="button"
                 title="Exportar CSV"
                 aria-label="Exportar CSV"
-                onClick={() => exportDashboardCsv({
-                  campaigns: campaignsWithOverrides,
-                  totals,
-                  dateFrom,
-                  dateTo,
-                  overrides: manualOverrides,
-                })}
+                onClick={() => {
+                  exportDashboardCsv({
+                    campaigns: campaignsWithOverrides,
+                    totals,
+                    dateFrom,
+                    dateTo,
+                    overrides: manualOverrides,
+                  });
+                  if (activeCompany) {
+                    void logAudit({
+                      companyId: activeCompany.id,
+                      action: "export",
+                      entityType: "campaign",
+                      entityLabel: `Dashboard (${campaignsWithOverrides.length} campanha${campaignsWithOverrides.length === 1 ? "" : "s"})`,
+                      details: {
+                        page: "overview",
+                        dateFrom, dateTo,
+                        campaigns: campaignsWithOverrides.slice(0, 20).map((c) => c.campaignName),
+                        campaignCount: campaignsWithOverrides.length,
+                      },
+                    });
+                  }
+                }}
                 className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-700"
               >
                 <Download size={16} />

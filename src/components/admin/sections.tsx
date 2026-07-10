@@ -24,14 +24,15 @@ import { PRODUCTS } from "@/config/products";
 import { readCustomHistoryTabs, CUSTOM_HISTORY_TABS_KEY, HISTORICAL_KIND_LABELS, BUILTIN_HISTORY_KINDS, type CustomHistoryTab } from "@/types/historical";
 import {
   fetchGlobalMembers, fetchLoginEvents, isActiveMember, parseUserAgent, formatLocation,
-  fetchAdminUser, updateAdminUser, isBanned,
-  type GlobalMember, type LoginEvent, type AdminUserDetail, type BanDuration,
+  fetchAdminUser, updateAdminUser, isBanned, fetchAuditLog,
+  type GlobalMember, type LoginEvent, type AdminUserDetail, type BanDuration, type AuditLogEntry,
 } from "@/lib/adminAudit";
 import { FacebookConnectShell, InstagramConnectShell } from "@/components/hub/ConnectShells";
 import { fetchMetaAdAccounts, type MetaAdAccount } from "@/utils/metaApi";
 import { fetchPipelines, fetchCrmStats, ensureDefaultPipeline, deletePipeline, type CrmPipeline, type CrmStats } from "@/lib/crm";
 import { upsertUserCategory } from "@/utils/supabaseCategories";
 import { toast } from "@/hooks/useToast";
+import { logAudit } from "@/lib/auditLog";
 
 export interface ScopedProps {
   companies: AdminCompany[];
@@ -429,7 +430,15 @@ export function ProdutosSection({ companies, reload }: ScopedProps) {
       delete expiry[productId];
     }
     setBusy(`${c.company.id}:${productId}`);
-    try { await setCompanyProducts(c.company.id, next, expiry); await reload(); }
+    try {
+      await setCompanyProducts(c.company.id, next, expiry);
+      await reload();
+      void logAudit({
+        companyId: c.company.id, action: "product_change", entityType: "product",
+        entityLabel: `${c.company.name} — ${productId}`,
+        details: { productId, enabled: on, before: owned, after: next, expiryDays: days ?? null },
+      });
+    }
     catch (e) { toast.error(e instanceof Error ? e.message : "Erro ao salvar produtos."); }
     finally { setBusy(null); }
   };
@@ -880,6 +889,104 @@ export function AtividadeSection(_props: ScopedProps) {
               <span style={{ color: "var(--dm-text-secondary)" }}>{parseUserAgent(e.userAgent)}</span>
               <span style={{ color: "var(--dm-text-secondary)" }}>{formatLocation(e)}</span>
               <span className="tabular-nums" style={{ color: "var(--dm-text-tertiary)" }}>{e.ip ?? "—"}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Auditoria ────────────────────────────────────────────────────────────────
+
+const AUDIT_ACTION_LABELS: Record<string, string> = {
+  page_view: "Navegação", export: "Exportação", product_change: "Produto",
+  create: "Criação", update: "Edição", delete: "Exclusão",
+};
+
+function auditActionLabel(action: string): string {
+  return AUDIT_ACTION_LABELS[action] ?? action;
+}
+
+function auditDetail(e: AuditLogEntry): string {
+  const d = e.details;
+  if (e.action === "export") {
+    const count = d.campaignCount ?? d.count;
+    return typeof count === "number" ? `${count} item${count === 1 ? "" : "s"}` : "";
+  }
+  if (e.action === "product_change") {
+    return d.enabled ? "ativado" : "desativado";
+  }
+  return "";
+}
+
+export function AuditoriaSection({ selected, selectedId }: ScopedProps) {
+  const [events, setEvents] = useState<AuditLogEntry[] | null>(null);
+  const [query, setQuery] = useState("");
+  const [actionFilter, setActionFilter] = useState<string>("all");
+  const [scopeAll, setScopeAll] = useState(true);
+
+  useEffect(() => {
+    setEvents(null);
+    void fetchAuditLog(scopeAll ? undefined : (selectedId ?? undefined))
+      .then(setEvents)
+      .catch((e) => {
+        toast.error(e instanceof Error ? e.message : "Erro ao carregar auditoria.");
+        setEvents([]);
+      });
+  }, [scopeAll, selectedId]);
+
+  const q = query.trim().toLowerCase();
+  const filtered = (events ?? []).filter((e) =>
+    (actionFilter === "all" || e.action === actionFilter)
+    && (!q || (e.userEmail ?? "").toLowerCase().includes(q) || (e.entityLabel ?? "").toLowerCase().includes(q)),
+  );
+
+  return (
+    <div>
+      <SectionHeader icon={History} title="Auditoria" desc="Navegação, exportações e mudanças relevantes — não é log de cada clique" />
+
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[220px] flex-1">
+          <Search size={14} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: "var(--dm-text-tertiary)" }} />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filtrar por e-mail ou item…"
+            className="h-10 w-full rounded-xl border pl-10 pr-3 text-[13px] outline-none" style={inputStyle} />
+        </div>
+        <select value={actionFilter} onChange={(e) => setActionFilter(e.target.value)}
+          className="h-10 rounded-xl border px-3 text-[13px] outline-none" style={inputStyle}>
+          <option value="all">Todas as ações</option>
+          {Object.entries(AUDIT_ACTION_LABELS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+        </select>
+        <button type="button" onClick={() => setScopeAll((v) => !v)}
+          className="h-10 rounded-xl border px-3 text-[12px] font-semibold transition-colors"
+          style={scopeAll
+            ? { borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }
+            : { borderColor: "var(--dm-primary)", color: "var(--dm-primary)", background: "var(--dm-primary-soft)" }}>
+          {scopeAll ? "Todas as empresas" : `Só ${selected?.company.name ?? "empresa selecionada"}`}
+        </button>
+      </div>
+
+      {events === null ? (
+        <Card><Loader2 size={16} className="animate-spin" style={{ color: "var(--dm-text-tertiary)" }} /></Card>
+      ) : filtered.length === 0 ? (
+        <Card>
+          <p className="text-[13px]" style={{ color: "var(--dm-text-tertiary)" }}>
+            Nenhum evento de auditoria ainda (migration 081 precisa estar aplicada no Supabase).
+          </p>
+        </Card>
+      ) : (
+        <div className="overflow-hidden rounded-2xl border" style={{ borderColor: "var(--dm-border-default)" }}>
+          {filtered.map((e, i) => (
+            <div key={e.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 text-[12px]"
+              style={{ background: "var(--dm-bg-surface)", borderTop: i > 0 ? "1px solid var(--dm-border-default)" : undefined }}>
+              <span className="w-[130px] font-semibold tabular-nums" style={{ color: "var(--dm-text-tertiary)" }}>
+                {new Date(e.createdAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+              </span>
+              <span className="w-[110px] font-bold" style={{ color: "var(--dm-primary)" }}>{auditActionLabel(e.action)}</span>
+              <span className="min-w-[160px] flex-1 truncate font-semibold" style={{ color: "var(--dm-text-primary)" }}>{e.entityLabel ?? "—"}</span>
+              {scopeAll && <span className="w-[140px] truncate" style={{ color: "var(--dm-text-secondary)" }}>{e.companyName ?? "—"}</span>}
+              <span className="min-w-[140px] truncate" style={{ color: "var(--dm-text-secondary)" }}>{e.userEmail ?? "—"}</span>
+              <span className="w-[90px]" style={{ color: "var(--dm-text-tertiary)" }}>{auditDetail(e)}</span>
             </div>
           ))}
         </div>

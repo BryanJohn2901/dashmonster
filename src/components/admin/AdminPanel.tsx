@@ -9,20 +9,20 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Activity, Building2, Home, KanbanSquare, KeyRound, LayoutGrid, Megaphone, Package, Plus,
+  Activity, Building2, History, Home, KanbanSquare, KeyRound, LayoutGrid, Megaphone, Package, Plus,
   Search, Settings, ShieldCheck, SlidersHorizontal, Users, Mail, Camera, ChevronDown, Check,
 } from "lucide-react";
 import { useCompany, fetchAdminCompanies, type AdminCompany } from "@/hooks/useCompany";
 import { useDevMode } from "@/hooks/useDevMode";
 import {
   EmpresasSection, ProdutosSection, UsuariosSection, ConvitesSection, AtividadeSection,
-  MetaSection, ContasSection, InstagramSection, FiltrosSection, PipeFlowSection,
+  MetaSection, ContasSection, InstagramSection, FiltrosSection, PipeFlowSection, AuditoriaSection,
 } from "./sections";
 import { CreateCompanyWizard } from "./CreateCompanyWizard";
 
 export type AdminNavId =
   | "overview" | "empresas" | "produtos" | "criar"
-  | "usuarios" | "convites" | "atividade"
+  | "usuarios" | "convites" | "atividade" | "auditoria"
   | "meta" | "contas" | "instagram"
   | "filtros" | "pipeflow";
 
@@ -43,6 +43,7 @@ const NAV_GROUPS: { group: string; desc: string; items: NavItem[] }[] = [
       { id: "usuarios",  label: "Usuários & papéis", icon: Users,   desc: "Status, último acesso, dispositivo e localização" },
       { id: "convites",  label: "Convites",          icon: Mail,    desc: "Convide por e-mail pra entrar numa empresa" },
       { id: "atividade", label: "Atividade",         icon: Activity, desc: "Todos os logins: quando, de onde, por qual device" },
+      { id: "auditoria", label: "Auditoria",         icon: History,  desc: "Navegação, exportações e mudanças de produto por usuário" },
     ],
   },
   {
@@ -200,6 +201,7 @@ export function AdminPanel() {
           {nav === "usuarios" && <UsuariosSection {...scoped} />}
           {nav === "convites" && <ConvitesSection {...scoped} />}
           {nav === "atividade" && <AtividadeSection {...scoped} />}
+          {nav === "auditoria" && <AuditoriaSection {...scoped} />}
           {nav === "meta" && <MetaSection {...scoped} />}
           {nav === "contas" && <ContasSection {...scoped} />}
           {nav === "instagram" && <InstagramSection {...scoped} />}

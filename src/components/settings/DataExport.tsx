@@ -4,6 +4,8 @@ import { useState, useTransition } from 'react'
 import { Download, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { exportLeadsCSV } from '@/lib/actions/data'
+import { getCompanyContext } from '@/hooks/useCompany'
+import { logAudit } from '@/lib/auditLog'
 
 export function DataExport() {
   const [isPending, startTransition] = useTransition()
@@ -28,6 +30,17 @@ export function DataExport() {
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
       setLastExport({ count: result.count, at: new Date() })
+
+      const state = await getCompanyContext()
+      if (state.company) {
+        void logAudit({
+          companyId: state.company.id,
+          action: 'export',
+          entityType: 'lead',
+          entityLabel: `Leads CRM (${result.count})`,
+          details: { page: 'crm/settings/data', count: result.count },
+        })
+      }
     })
   }
 

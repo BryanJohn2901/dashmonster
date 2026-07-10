@@ -157,6 +157,43 @@ export async function fetchLoginEvents(limit = 100): Promise<LoginEvent[]> {
   }));
 }
 
+export interface AuditLogEntry {
+  id: string;
+  companyId: string | null;
+  companyName: string | null;
+  userId: string | null;
+  userEmail: string | null;
+  action: string;
+  entityType: string | null;
+  entityLabel: string | null;
+  details: Record<string, unknown>;
+  createdAt: string;
+}
+
+/**
+ * Lista o registro de auditoria (migration 081). Sem `companyId` = todas as
+ * empresas (só super admin passa RLS nesse caso); com `companyId` = escopado
+ * a 1 empresa (owner/manager também passam, via can_write_company).
+ */
+export async function fetchAuditLog(companyId?: string, limit = 300): Promise<AuditLogEntry[]> {
+  if (!supabaseClient) return [];
+  let query = supabaseClient
+    .from("audit_log")
+    .select("id, company_id, user_id, user_email, action, entity_type, entity_label, details, created_at, companies(name)")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (companyId) query = query.eq("company_id", companyId);
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((r) => ({
+    id: r.id, companyId: r.company_id, userId: r.user_id, userEmail: r.user_email,
+    action: r.action, entityType: r.entity_type, entityLabel: r.entity_label,
+    details: (r.details as Record<string, unknown>) ?? {}, createdAt: r.created_at,
+    companyName: (r.companies as unknown as { name: string } | null)?.name ?? null,
+  }));
+}
+
 export async function fetchGlobalMembers(): Promise<GlobalMember[]> {
   if (!supabaseClient) return isDevModeActive() ? demoMembers() : [];
 
