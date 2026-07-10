@@ -19,7 +19,7 @@ export type {
   CrmChannel, CrmChannelProvider, CrmConversation, CrmConversationStatus, CrmMessage, CrmNotification,
   CrmFieldEntity, CrmFieldType, CrmFieldDef, CrmGoal, CrmGoalEntry, CrmApiToken, CrmWebhook,
   GlobalSearchResult, CrmPlaybook, CrmPlaybookActivity, CrmCompanyHistoryEvent,
-  CrmLegacyActivity, CrmLegacyActivityType,
+  CrmLegacyActivity, CrmLegacyActivityType, CrmInboundWebhook,
 } from "@/lib/crmSupabase";
 
 export { CRM_WEBHOOK_EVENTS } from "@/lib/crmSupabase";
@@ -52,4 +52,5 @@ export const {
   globalSearch, findDuplicateDeals, findDuplicateLeads,
   fetchApiTokens, createApiToken, revokeApiToken,
   fetchWebhooks, createWebhook, setWebhookActive, deleteWebhook,
+  fetchInboundWebhooks, createInboundWebhook, updateInboundWebhook, deleteInboundWebhook, regenerateInboundWebhookKey,
 } = impl;

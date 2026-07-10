@@ -1,7 +1,13 @@
 // ─── Adapter: lib/actions/inbound-webhooks do PipeFlow original ────────────────
-// ponytail: stub — webhooks de ENTRADA (captação de lead via URL pública) exigem
-// endpoint server-side que ainda não existe aqui. A tela lista vazio e o criar
-// explica. Implementar junto com a API pública (Onda 5).
+// Onda 5: captação pública de leads via POST /api/v1/inbound/webhooks/[key].
+
+import { getCompanyContext } from '@/hooks/useCompany'
+import {
+  fetchInboundWebhooks, createInboundWebhook as crmCreateInboundWebhook,
+  updateInboundWebhook as crmUpdateInboundWebhook, deleteInboundWebhook as crmDeleteInboundWebhook,
+  regenerateInboundWebhookKey as crmRegenerateInboundWebhookKey,
+  type CrmInboundWebhook,
+} from '@/lib/crm'
 
 export interface InboundWebhookListItem {
   id: string
@@ -17,13 +23,30 @@ export interface InboundWebhookListItem {
   created_at: string
 }
 
-const NOT_READY = 'Webhooks de entrada chegam com a API pública — em desenvolvimento.'
-
-export async function listInboundWebhooks(): Promise<{ data?: InboundWebhookListItem[]; error?: string }> {
-  return { data: [] }
+function toRow(w: CrmInboundWebhook): InboundWebhookListItem {
+  return {
+    id: w.id, name: w.name, webhook_key: w.webhookKey, pipeline_id: w.pipelineId,
+    default_stage_id: w.defaultStageId, default_owner_id: w.defaultOwnerId, default_tags: w.defaultTags,
+    default_product: w.defaultProduct, field_map: w.fieldMap, is_active: w.isActive, created_at: w.createdAt,
+  }
 }
 
-export async function createInboundWebhook(_input: {
+async function activeCompanyId(): Promise<string> {
+  const state = await getCompanyContext()
+  if (!state.company) throw new Error('Nenhuma empresa ativa.')
+  return state.company.id
+}
+
+export async function listInboundWebhooks(): Promise<{ data?: InboundWebhookListItem[]; error?: string }> {
+  try {
+    const companyId = await activeCompanyId()
+    return { data: (await fetchInboundWebhooks(companyId)).map(toRow) }
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Erro ao listar webhooks de entrada' }
+  }
+}
+
+export async function createInboundWebhook(input: {
   name: string
   pipeline_id?: string | null
   default_stage_id?: string | null
@@ -32,20 +55,44 @@ export async function createInboundWebhook(_input: {
   default_product?: string | null
   field_map?: Record<string, string>
 }): Promise<{ data?: InboundWebhookListItem; error?: string }> {
-  return { error: NOT_READY }
+  try {
+    const companyId = await activeCompanyId()
+    const created = await crmCreateInboundWebhook(companyId, {
+      name: input.name, pipelineId: input.pipeline_id, defaultStageId: input.default_stage_id,
+    })
+    return { data: toRow(created) }
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Erro ao criar webhook de entrada' }
+  }
 }
 
 export async function updateInboundWebhook(
-  _id: string,
-  _input: Partial<{ name: string; is_active: boolean }>,
+  id: string,
+  input: Partial<{ name: string; is_active: boolean }>,
 ): Promise<{ data?: InboundWebhookListItem; error?: string }> {
-  return { error: NOT_READY }
+  try {
+    const companyId = await activeCompanyId()
+    await crmUpdateInboundWebhook(id, companyId, { name: input.name, isActive: input.is_active })
+    return {}
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Erro ao atualizar webhook de entrada' }
+  }
 }
 
-export async function deleteInboundWebhook(_id: string): Promise<{ error?: string }> {
-  return { error: NOT_READY }
+export async function deleteInboundWebhook(id: string): Promise<{ error?: string }> {
+  try {
+    await crmDeleteInboundWebhook(id, await activeCompanyId())
+    return {}
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Erro ao excluir webhook de entrada' }
+  }
 }
 
-export async function regenerateInboundWebhookKey(_id: string): Promise<{ data?: { webhook_key: string }; error?: string }> {
-  return { error: NOT_READY }
+export async function regenerateInboundWebhookKey(id: string): Promise<{ data?: { webhook_key: string }; error?: string }> {
+  try {
+    const webhook_key = await crmRegenerateInboundWebhookKey(id, await activeCompanyId())
+    return { data: { webhook_key } }
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Erro ao regenerar chave' }
+  }
 }

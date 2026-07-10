@@ -10,7 +10,7 @@ import type {
   CrmStats, SavePipelineInput, CrmCompany, CrmStageTemplate, CrmCalendarItem,
   CrmChannel, CrmConversation, CrmConversationStatus, CrmMessage, CrmNotification,
   CrmFieldDef, CrmFieldEntity, CrmFieldType, CrmGoal, CrmGoalEntry, CrmApiToken, CrmWebhook,
-  CrmPlaybookActivity,
+  CrmPlaybookActivity, CrmInboundWebhook,
 } from "@/lib/crmSupabase";
 
 // Constante compartilhada (a fachada exige paridade de exports com o real)
@@ -38,6 +38,7 @@ interface DB {
   goals: Array<CrmGoalEntry & { id: string }>;
   apiTokens: CrmApiToken[];
   webhooks: CrmWebhook[];
+  inboundWebhooks: CrmInboundWebhook[];
   playbooks: import("@/lib/crmSupabase").CrmPlaybook[];
   leadActivities: import("@/lib/crmSupabase").CrmLegacyActivity[];
 }
@@ -55,7 +56,7 @@ function emptyDb(): DB {
     pipelines: [], stages: [], deals: [], leads: [], activities: [], tags: [], dealTags: [],
     history: [], crmCompanies: [], templates: [], channels: [], conversations: [], messages: [], notifications: [],
     fieldDefs: [], fieldValues: [], goals: [], apiTokens: [], webhooks: [], playbooks: [],
-    leadActivities: [],
+    leadActivities: [], inboundWebhooks: [],
   };
 }
 
@@ -965,6 +966,45 @@ export async function setWebhookActive(webhookId: string, companyId: string, isA
 export async function deleteWebhook(webhookId: string, companyId: string): Promise<void> {
   const d = db(companyId);
   d.webhooks = d.webhooks.filter((w) => w.id !== webhookId);
+}
+
+// ─── Webhooks de entrada ──────────────────────────────────────────────────────
+
+export async function fetchInboundWebhooks(companyId: string): Promise<CrmInboundWebhook[]> {
+  return [...db(companyId).inboundWebhooks];
+}
+
+export async function createInboundWebhook(
+  companyId: string,
+  input: { name: string; pipelineId?: string | null; defaultStageId?: string | null },
+): Promise<CrmInboundWebhook> {
+  const w: CrmInboundWebhook = {
+    id: uid(), name: input.name.trim(), webhookKey: `wh_demo_${uid().replace(/-/g, "")}`,
+    pipelineId: input.pipelineId ?? null, defaultStageId: input.defaultStageId ?? null,
+    defaultOwnerId: null, defaultTags: [], defaultProduct: null, fieldMap: {},
+    isActive: true, createdAt: new Date().toISOString(),
+  };
+  db(companyId).inboundWebhooks.unshift(w);
+  return w;
+}
+
+export async function updateInboundWebhook(id: string, companyId: string, patch: { name?: string; isActive?: boolean }): Promise<void> {
+  const w = db(companyId).inboundWebhooks.find((x) => x.id === id);
+  if (!w) return;
+  if ("name" in patch && patch.name) w.name = patch.name.trim();
+  if ("isActive" in patch) w.isActive = patch.isActive!;
+}
+
+export async function deleteInboundWebhook(id: string, companyId: string): Promise<void> {
+  const d = db(companyId);
+  d.inboundWebhooks = d.inboundWebhooks.filter((w) => w.id !== id);
+}
+
+export async function regenerateInboundWebhookKey(id: string, companyId: string): Promise<string> {
+  const w = db(companyId).inboundWebhooks.find((x) => x.id === id);
+  const key = `wh_demo_${uid().replace(/-/g, "")}`;
+  if (w) w.webhookKey = key;
+  return key;
 }
 
 // ─── Campos personalizados ────────────────────────────────────────────────────
