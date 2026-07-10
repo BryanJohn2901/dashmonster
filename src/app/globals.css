@@ -614,24 +614,27 @@
   --radius-2xl: var(--pf-r-2xl, 1rem);
 }
 
-/* ── PipeFlow — paleta de marca, sombras e animações (nomes exclusivos, globais) ── */
+/* ── PipeFlow — paleta unificada com o Dashmonster (dm-*) ──────────────────────
+   Nomes Nexo (bunker/canary/geyser/...) preservados como ALIASES pra não exigir
+   editar os ~80 componentes copiados do original — cada nome aponta pro token
+   dm-* equivalente, então light/dark e a paleta viram os mesmos do hub. */
 @theme {
-  --color-bunker: #0B0D11;
-  --color-bg-soft: #11151A;
-  --color-surface: #151A20;
-  --color-surface-elevated: #1B222A;
-  --color-surface-strong: #222A31;
-  --color-ebony: #222A31;
-  --color-canary: #c6f432;
-  --color-canary-hover: #B6E02E;
-  --color-canary-active: #A8CF2A;
-  --color-tidal: #E8FEAE;
-  --color-geyser: #D8DEE3;
-  --color-slate: #7B8793;
-  --color-success: #80ED99;
-  --color-warning: #FFD166;
-  --color-danger: #FF6B6B;
-  --color-info: #7DD3FC;
+  --color-bunker: var(--dm-bg-page);
+  --color-bg-soft: var(--dm-bg-elevated);
+  --color-surface: var(--dm-bg-surface);
+  --color-surface-elevated: var(--dm-bg-elevated);
+  --color-surface-strong: var(--dm-bg-card-soft);
+  --color-ebony: var(--dm-bg-elevated);
+  --color-canary: var(--dm-lime);
+  --color-canary-hover: color-mix(in srgb, var(--dm-lime) 85%, black);
+  --color-canary-active: color-mix(in srgb, var(--dm-lime) 70%, black);
+  --color-tidal: color-mix(in srgb, var(--dm-lime) 30%, white);
+  --color-geyser: var(--dm-text-secondary);
+  --color-slate: var(--dm-text-tertiary);
+  --color-success: var(--dm-success-base);
+  --color-warning: var(--dm-warning-base);
+  --color-danger: var(--dm-error-base);
+  --color-info: var(--dm-info-base);
 
   --text-2xs: 11px;
   --text-2xs--line-height: 16px;
@@ -640,7 +643,7 @@
 
   --shadow-card: 0 12px 32px rgba(0, 0, 0, 0.18);
   --shadow-floating: 0 24px 64px rgba(0, 0, 0, 0.42);
-  --shadow-focus: 0 0 0 4px rgba(198, 244, 50, 0.14);
+  --shadow-focus: var(--dm-focus-ring);
   --shadow-inset-border: inset 0 0 0 1px rgba(216, 222, 227, 0.10);
 
   --animate-accordion-down: accordion-down 0.2s ease-out;
