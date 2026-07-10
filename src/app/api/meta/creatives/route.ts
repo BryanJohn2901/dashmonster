@@ -111,13 +111,17 @@ export async function GET(request: NextRequest) {
           "instagram_permalink_url",
           "creative{id,thumbnail_url,video_id,instagram_permalink_url,object_story_spec{link_data{link,message,name,description,child_attachments},video_data{image_url,message,title}}}",
         ].join(","),
-        // ARCHIVED = anúncio removido pelo anunciante (não é "deletado" de verdade
-        // pra API — continua legível). Sem isso, um anúncio que gastou dinheiro e foi
-        // arquivado (comum em conta nova ainda testando/limpando criativo fraco)
-        // some da galeria mas o gasto dele continua contando no total da campanha —
-        // a soma "por criativo" fica menor que o investimento real (bug real: R$600
-        // de diferença numa conta nova, ads de teste já removidos).
-        effective_status: JSON.stringify(["ACTIVE", "PAUSED", "ARCHIVED"]),
+        // Todos os estados não-deletados. PAUSED sozinho NÃO cobre anúncio sob
+        // pai pausado: conjunto pausado → ADSET_PAUSED, campanha pausada →
+        // CAMPAIGN_PAUSED (bug real: campanha com 10+ anúncios mostrava só os 4
+        // de conjuntos ativos). ARCHIVED = removido pelo anunciante mas o gasto
+        // continua no total (bug real: R$600 de diferença em conta nova). O
+        // status/route.ts já usa a mesma lista ampliada pelo mesmo motivo.
+        effective_status: JSON.stringify([
+          "ACTIVE", "PAUSED", "ADSET_PAUSED", "CAMPAIGN_PAUSED", "ARCHIVED",
+          "PENDING_REVIEW", "DISAPPROVED", "WITH_ISSUES", "IN_PROCESS",
+          "PREAPPROVED", "PENDING_BILLING_INFO",
+        ]),
         limit: "200",
       }).toString();
 

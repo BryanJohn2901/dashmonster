@@ -54,7 +54,8 @@ const TYPE_COLOR: Record<MetaCampaignCreative["mediaType"], { bg: string; text: 
   unknown:  { bg: "var(--dm-bg-elevated)", text: "var(--dm-text-tertiary)" },
 };
 
-function getCacheKey(ids: string[]) { return `pta_creatives_v2_${ids.sort().join(",")}`; }
+// v3: invalida caches truncados pelo filtro de status estreito (só ACTIVE/PAUSED/ARCHIVED).
+function getCacheKey(ids: string[]) { return `pta_creatives_v3_${ids.sort().join(",")}`; }
 function readCache(key: string): MetaCampaignCreative[] | null {
   try {
     const raw = localStorage.getItem(key);
