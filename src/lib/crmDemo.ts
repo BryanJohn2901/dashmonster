@@ -799,6 +799,11 @@ export async function fetchChannels(companyId: string): Promise<CrmChannel[]> {
   return [...db(companyId).channels];
 }
 
+export async function deleteChannelConnection(connectionId: string, companyId: string): Promise<void> {
+  const d = db(companyId);
+  d.channels = d.channels.filter((c) => c.id !== connectionId);
+}
+
 export async function fetchConversations(companyId: string): Promise<CrmConversation[]> {
   return [...db(companyId).conversations].sort((a, b) => b.lastMessageAt.localeCompare(a.lastMessageAt));
 }

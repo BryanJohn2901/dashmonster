@@ -1,12 +1,26 @@
 // ─── Adapter: lib/actions/channels do PipeFlow original ────────────────────────
-// ponytail: leitura real via fachada; conectar/desconectar exigem OAuth da Meta
-// ou Z-API server-side — entram quando houver credenciais reais configuradas.
+// Instagram DM reaproveita a conta já vinculada à empresa (Perfil/onboarding);
+// WhatsApp Cloud é conexão manual validada na Graph API. Z-API segue sem
+// credenciais configuradas neste ambiente.
 
 import { getCompanyContext } from '@/hooks/useCompany'
-import { fetchChannels } from '@/lib/crm'
+import { supabaseClient } from '@/lib/supabase'
+import { fetchChannels, deleteChannelConnection as crmDeleteChannelConnection } from '@/lib/crm'
 import type { ChannelConnectionSummary } from '@/types/channel-connections'
 
-const NOT_READY = 'Conexão real de canal (OAuth Meta / Z-API) ainda não está configurada neste ambiente.'
+async function authedFetch(path: string, body: Record<string, unknown>): Promise<{ error?: string }> {
+  const { data } = (await supabaseClient?.auth.getSession()) ?? { data: { session: null } }
+  const accessToken = data.session?.access_token
+  if (!accessToken) return { error: 'Não autenticado.' }
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify(body),
+  })
+  const json = await res.json().catch(() => ({})) as { error?: string }
+  if (!res.ok) return { error: json.error ?? 'Falha ao conectar.' }
+  return {}
+}
 
 export async function getChannelConnections(): Promise<{ data: ChannelConnectionSummary[]; error: string | null }> {
   try {
@@ -32,6 +46,29 @@ export async function getChannelConnections(): Promise<{ data: ChannelConnection
   }
 }
 
-export async function deleteChannelConnection(_connectionId: string): Promise<{ error: string | null }> {
-  return { error: NOT_READY }
+export async function connectInstagramChannel(): Promise<{ error?: string }> {
+  const state = await getCompanyContext()
+  if (!state.company) return { error: 'Nenhuma empresa ativa.' }
+  return authedFetch('/api/crm/channels/connect-instagram', { companyId: state.company.id })
+}
+
+export async function connectWhatsappCloudChannel(input: {
+  phoneNumberId: string
+  wabaId: string
+  accessToken: string
+}): Promise<{ error?: string }> {
+  const state = await getCompanyContext()
+  if (!state.company) return { error: 'Nenhuma empresa ativa.' }
+  return authedFetch('/api/crm/channels/connect-whatsapp-cloud', { companyId: state.company.id, ...input })
+}
+
+export async function deleteChannelConnection(connectionId: string): Promise<{ error: string | null }> {
+  try {
+    const state = await getCompanyContext()
+    if (!state.company) throw new Error('Nenhuma empresa ativa.')
+    await crmDeleteChannelConnection(connectionId, state.company.id)
+    return { error: null }
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Erro ao desconectar' }
+  }
 }

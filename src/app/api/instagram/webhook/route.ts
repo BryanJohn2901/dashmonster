@@ -34,10 +34,18 @@ interface WebhookChange {
   value: Record<string, unknown>;
 }
 
+interface WebhookMessagingEvent {
+  sender?: { id: string };
+  recipient?: { id: string };
+  timestamp?: number;
+  message?: { mid?: string; text?: string; is_echo?: boolean };
+}
+
 interface WebhookEntry {
   id: string;          // Instagram Business Account ID
   time: number;        // Unix timestamp
-  changes: WebhookChange[];
+  changes?: WebhookChange[];
+  messaging?: WebhookMessagingEvent[]; // DM (CRM inbox) — payload separado dos `changes`
 }
 
 interface WebhookPayload {
@@ -84,6 +92,10 @@ export async function POST(request: NextRequest) {
 
   for (const entry of body.entry ?? []) {
     const igAccountId = entry.id;
+
+    if (db && entry.messaging?.length) {
+      await handleInstagramMessaging(igAccountId, entry.messaging, db);
+    }
 
     for (const change of entry.changes ?? []) {
       // Persistir evento bruto para auditoria / reprocessamento futuro
@@ -212,4 +224,57 @@ async function handleStoryInsights(
     );
 
   console.info(`[webhook] story_insights para ${igAccountId}: reach=${reach}, impressions=${impressions}`);
+}
+
+/**
+ * DM do Instagram (inbox do CRM) — payload separado dos `changes` de
+ * insights/comentários. Roteia pra empresa via channel_connections
+ * (external_config.instagramBusinessAccountId), grava em conversations/messages.
+ * `is_echo: true` = mensagem que o PRÓPRIO negócio mandou (via app oficial do
+ * Instagram, não pelo CRM) — ignorada aqui pra não duplicar o que sendMessage já grava.
+ */
+async function handleInstagramMessaging(
+  igAccountId: string,
+  events: Array<{ sender?: { id: string }; recipient?: { id: string }; timestamp?: number; message?: { mid?: string; text?: string; is_echo?: boolean } }>,
+  db: NonNullable<ReturnType<typeof adminClient>>,
+) {
+  const { data: channel } = await db
+    .from("channel_connections")
+    .select("id, company_id")
+    .eq("provider", "instagram")
+    .contains("external_config", { instagramBusinessAccountId: igAccountId })
+    .maybeSingle();
+  if (!channel) return;
+
+  for (const event of events) {
+    const senderId = event.sender?.id;
+    const text = event.message?.text;
+    if (!senderId || !text || event.message?.is_echo) continue;
+
+    const timestamp = new Date(event.timestamp ?? Date.now()).toISOString();
+
+    const { data: conversation } = await db
+      .from("conversations")
+      .upsert(
+        {
+          company_id: channel.company_id, channel_connection_id: channel.id, provider: "instagram",
+          provider_thread_id: senderId, contact_handle: senderId,
+          last_message_at: timestamp, last_message_preview: text.slice(0, 120),
+        },
+        { onConflict: "channel_connection_id,provider_thread_id", ignoreDuplicates: false },
+      )
+      .select("id, unread_count")
+      .single();
+    if (!conversation) continue;
+
+    await db.from("messages").insert({
+      conversation_id: conversation.id, company_id: channel.company_id, direction: "inbound",
+      sender_type: "contact", provider_message_id: event.message?.mid ?? null, content: text,
+      provider_timestamp: timestamp,
+    });
+    await db.from("conversations").update({
+      unread_count: (conversation.unread_count ?? 0) + 1,
+      last_message_at: timestamp, last_message_preview: text.slice(0, 120),
+    }).eq("id", conversation.id);
+  }
 }

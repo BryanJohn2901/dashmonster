@@ -1844,6 +1844,12 @@ export interface CrmMessage {
   createdAt: string;
 }
 
+export async function deleteChannelConnection(connectionId: string, companyId: string): Promise<void> {
+  const sb = requireClient();
+  const { error } = await sb.from("channel_connections").delete().eq("id", connectionId).eq("company_id", companyId);
+  if (error) throw new Error(error.message);
+}
+
 export async function fetchChannels(companyId: string): Promise<CrmChannel[]> {
   const sb = requireClient();
   const { data, error } = await sb
@@ -1937,6 +1943,8 @@ export async function sendMessage(conversationId: string, companyId: string, con
     .update({ last_message_at: new Date().toISOString(), last_message_preview: text.slice(0, 120) })
     .eq("id", conversationId)
     .eq("company_id", companyId);
+
+  void dispatchOutboundMessage(companyId, data.id, conversationId);
 
   return {
     id: data.id,
@@ -2360,6 +2368,24 @@ async function triggerWebhooks(companyId: string, event: string, payload: Record
     });
   } catch {
     // best-effort — falha de rede não pode quebrar a mutação principal
+  }
+}
+
+/** Dispara o envio real da mensagem pelo provedor (WhatsApp Cloud/Instagram). */
+async function dispatchOutboundMessage(companyId: string, messageId: string, conversationId: string): Promise<void> {
+  try {
+    const sb = requireClient();
+    const { data } = await sb.auth.getSession();
+    const accessToken = data.session?.access_token;
+    if (!accessToken) return;
+    await fetch("/api/crm/messages/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({ companyId, messageId, conversationId }),
+    });
+  } catch {
+    // best-effort — status "failed" fica só se a rota responder; sem rede, mensagem
+    // segue "sent" otimista no banco (mesma politica de fire-and-forget dos webhooks)
   }
 }
 
