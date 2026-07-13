@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Search, RefreshCw, Calendar, Radar, X, Mail, Phone, MapPin, User, ShoppingBag, CreditCard, Hash, Smartphone, Monitor, Tablet, BarChart3, Table2, Filter, Workflow, SlidersHorizontal } from "lucide-react";
 import { supabaseClient } from "@/lib/supabase";
+import { fetchEventsLogSplit } from "@/lib/eventsLogFetch";
 import { isDevModeActive } from "@/hooks/useDevMode";
 import { DEMO_TRACKING_EVENTS } from "@/lib/demoTracking";
 import { DateRangePicker } from "@/components/DateRangePicker";
@@ -154,10 +155,6 @@ const UTM_KEYS = [
   "utm_adset_id",
   "utm_ad_id",
 ];
-
-// Teto de linhas por busca — protege o browser de agrupar volume absurdo de
-// uma vez. Quando atingido, a UI avisa que pode estar truncado (ver eventsCapped).
-const EVENTS_LIMIT = 1000;
 
 const EVENTS_SELECT =
   "id, event_name, fingerprint_id, event_url, page_title, user_data, lead_email, lead_phone, lead_name, extra_fields, country, country_region, city, event_id, " +
@@ -373,15 +370,6 @@ export function parseBrowser(ua: string | null): string | null {
   if (/FxiOS|Firefox/.test(ua)) return "Firefox";
   if (/Safari/.test(ua) && /Version\//.test(ua)) return "Safari";
   return null;
-}
-
-// Converte data YYYY-MM-DD para ISO UTC usando o timezone LOCAL do browser.
-// Garante que o filtro "até 27/06" inclua eventos até 23:59:59 BRT (= 02:59:59 UTC do dia 28).
-function localDayStart(dateStr: string): string {
-  return new Date(`${dateStr}T00:00:00`).toISOString();
-}
-function localDayEnd(dateStr: string): string {
-  return new Date(`${dateStr}T23:59:59.999`).toISOString();
 }
 
 // Builders de formulário (Elementor, WP Forms etc.) costumam nomear o input
@@ -909,6 +897,9 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
 export function TrackingEventsView() {
   const { company, companyId, canWrite } = useCompany();
   const [events, setEvents] = useState<TrackingEvent[]>([]);
+  // true só quando o grupo de "ruído" (PageView etc) bateu no teto de segurança —
+  // Lead/Purchase/Installment são sempre buscados por completo, nunca truncados.
+  const [noiseCapped, setNoiseCapped] = useState(false);
   const [funnels, setFunnels] = useState<TrackingFunnel[]>([]);
   // true se PELO MENOS 1 pixel da empresa tem Pixel ID preenchido (banner "Meta não configurada").
   const [anyMetaConfigured, setAnyMetaConfigured] = useState(false);
@@ -953,17 +944,10 @@ export function TrackingEventsView() {
     const requestId = ++fetchSeq.current;
 
     try {
-    const [eventsRes, pixelsRes] = await Promise.all([
-      supabaseClient
-        .from("events_log")
-        .select(EVENTS_SELECT)
-        .eq("company_id", companyId)
-        .or("sale_confirmed.is.null,sale_confirmed.eq.true")
-        .neq("event_name", "Renewal")
-        .gte("created_at", localDayStart(dateFrom))
-        .lte("created_at", localDayEnd(dateTo))
-        .order("created_at", { ascending: false })
-        .limit(EVENTS_LIMIT),
+    // Uma query de sonda (1 linha) só pra detectar se as colunas novas existem —
+    // decide qual EVENTS_SELECT usar antes de disparar a busca paginada de verdade.
+    const [probeRes, pixelsRes] = await Promise.all([
+      supabaseClient.from("events_log").select(EVENTS_SELECT).eq("company_id", companyId).limit(1),
       supabaseClient.from("tracking_pixels").select("id, name, meta_pixel_id").eq("company_id", companyId),
     ]);
     if (requestId !== fetchSeq.current) return;
@@ -986,28 +970,24 @@ export function TrackingEventsView() {
       "utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "utm_placement", "utm_campaign_id", "utm_adset_id", "utm_ad_id",
       "lead_name", "value", "currency", "external_transaction_id", "source", "payment_method", "installments", "installment_number", "installment_value", "recurrence_key", "product_name", "product_parent_id",
       "is_order_bump", "main_sale_transaction_id", "client_user_agent", "via", "pixel_id", "sale_confirmed",
-    ].some((col) => eventsRes.error?.message?.includes(col));
-    if (missingNewColumn) {
-      // Migration 033/034/038/039/040 ainda não rodou no Supabase — busca sem as colunas novas em vez de quebrar a tela.
-      const retry = await supabaseClient
-        .from("events_log")
-        .select(EVENTS_SELECT_FALLBACK)
-        .eq("company_id", companyId)
-        .neq("event_name", "Renewal")
-        .gte("created_at", localDayStart(dateFrom))
-        .lte("created_at", localDayEnd(dateTo))
-        .order("created_at", { ascending: false })
-        .limit(EVENTS_LIMIT);
-      if (retry.error) {
-        setError(retry.error.message);
-      } else {
-        setEvents((retry.data as TrackingEvent[]) ?? []);
-      }
-    } else if (eventsRes.error) {
-      setError(eventsRes.error.message);
-    } else {
-      setEvents((eventsRes.data as unknown as TrackingEvent[]) ?? []);
-    }
+    ].some((col) => probeRes.error?.message?.includes(col));
+
+    const select = missingNewColumn ? EVENTS_SELECT_FALLBACK : EVENTS_SELECT;
+    // Lead/Purchase/Installment (negócio) são buscados por completo, sem teto —
+    // visitantes/receita/leads nunca ficam sub-contados. Só PageView e afins
+    // (ruído, alto volume) são paginados até um teto de segurança pro browser.
+    const { rows, noiseCapped: capped } = await fetchEventsLogSplit<TrackingEvent>(supabaseClient, {
+      select,
+      companyId,
+      dateFrom,
+      dateTo,
+      extraFilter: (q) => q.or("sale_confirmed.is.null,sale_confirmed.eq.true"),
+      businessEventNames: ["Lead", "Purchase", "Installment"],
+      excludeEventNames: ["Renewal"],
+    });
+    if (requestId !== fetchSeq.current) return;
+    setEvents(rows as unknown as TrackingEvent[]);
+    setNoiseCapped(capped);
 
     } catch (e) {
       if (requestId === fetchSeq.current) setError(e instanceof Error ? e.message : "Erro ao buscar eventos.");
@@ -1161,10 +1141,7 @@ export function TrackingEventsView() {
   const deviceCategories = [...new Set(visitors.map((v) => parseUserAgent(v.lastUserAgent)?.device).filter((d): d is "mobile" | "tablet" | "desktop" => Boolean(d)))];
   // Captura funciona sem Meta — isso é só um lembrete de que o envio CAPI está desligado, não um erro.
   const metaNotConfigured = !loading && !error && !anyMetaConfigured;
-  // A query tem limit(1000) — quando bate exatamente nisso, provavelmente há
-  // mais eventos no período que não vieram, então visitantes/receita podem estar
-  // truncados. Avisa em vez de mostrar números silenciosamente errados.
-  const eventsCapped = events.length >= EVENTS_LIMIT;
+  const eventsCapped = noiseCapped;
 
   // Mantém o drawer em sincronia se um refresh trouxer novos eventos do mesmo visitante.
   const openVisitor = selectedVisitor
@@ -1188,7 +1165,7 @@ export function TrackingEventsView() {
                 : `${visitors.length} visitante${visitors.length !== 1 ? "s" : ""}`)
               : `${filteredVisitors.length} visitante${filteredVisitors.length !== 1 ? "s" : ""}`
             } · {visibleEvents.length} evento{visibleEvents.length !== 1 ? "s" : ""}
-            {eventsCapped && <span style={{ color: "#d97706" }}> · mostrando os {EVENTS_LIMIT} mais recentes (estreite o período pra ver tudo)</span>}
+            {eventsCapped && <span style={{ color: "#d97706" }}> · volume de navegação (PageView) truncado no período — visitantes/vendas/leads não são afetados</span>}
           </p>
         </div>
         <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
