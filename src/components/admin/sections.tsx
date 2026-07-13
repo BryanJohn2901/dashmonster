@@ -8,8 +8,9 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Building2, Camera, Check, CheckCircle2, Eye, EyeOff, KeyRound, Loader2,
-  Mail, Megaphone, Pencil, Plus, Save, Search, SlidersHorizontal, Trash2, Users, X, History,
+  Mail, Megaphone, Pencil, Plus, Save, Search, SlidersHorizontal, Trash2, Users, X, History, Radar,
 } from "lucide-react";
+import { TrackingSection } from "@/components/CompanyStudio";
 import {
   fetchCompanyMembers, updateMemberRole, removeMember, renameCompany, setCompanyProducts,
   fetchCompanyToken, setCompanyToken, inviteMemberByEmail, sendInviteEmail, fetchCompanyAdAccounts,
@@ -1118,6 +1119,21 @@ export function ConvitesSection({ selected, reload }: ScopedProps) {
 }
 
 // ─── Conexão Meta (token por empresa) ───────────────────────────────────────────
+
+// ─── Tracking (pixel server-side + Eduzz) por empresa ──────────────────────────
+// Reusa a TrackingSection do Estúdio (variant painel). Super admin sempre edita.
+export function TrackingAdminSection({ selected }: ScopedProps) {
+  return (
+    <div>
+      <SectionHeader icon={Radar} title="Tracking" desc="Pixel server-side e conexão Eduzz, por empresa" />
+      {selected ? (
+        <TrackingSection company={selected.company} canEdit open onToggle={() => {}} variant="panel" />
+      ) : (
+        <ScopeHint selected={null} />
+      )}
+    </div>
+  );
+}
 
 export function MetaSection({ companies, selected, reload }: ScopedProps) {
   const [token, setToken] = useState("");

@@ -10,20 +10,21 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Activity, Building2, History, Home, KanbanSquare, KeyRound, LayoutGrid, Megaphone, Package, Plus,
-  Search, Settings, ShieldCheck, SlidersHorizontal, Users, Mail, Camera, ChevronDown, Check,
+  Search, Settings, ShieldCheck, SlidersHorizontal, Users, Mail, Camera, ChevronDown, Check, Radar,
 } from "lucide-react";
 import { useCompany, fetchAdminCompanies, type AdminCompany } from "@/hooks/useCompany";
 import { useDevMode } from "@/hooks/useDevMode";
 import {
   EmpresasSection, ProdutosSection, UsuariosSection, ConvitesSection, AtividadeSection,
   MetaSection, ContasSection, InstagramSection, FiltrosSection, PipeFlowSection, AuditoriaSection,
+  TrackingAdminSection,
 } from "./sections";
 import { CreateCompanyWizard } from "./CreateCompanyWizard";
 
 export type AdminNavId =
   | "overview" | "empresas" | "produtos" | "criar"
   | "usuarios" | "convites" | "atividade" | "auditoria"
-  | "meta" | "contas" | "instagram"
+  | "meta" | "contas" | "instagram" | "tracking"
   | "filtros" | "pipeflow";
 
 interface NavItem { id: AdminNavId; label: string; icon: typeof Users; desc: string }
@@ -52,6 +53,7 @@ const NAV_GROUPS: { group: string; desc: string; items: NavItem[] }[] = [
       { id: "meta",      label: "Conexão Meta",      icon: KeyRound,  desc: "Token de acesso da API por empresa" },
       { id: "contas",    label: "Contas de anúncio", icon: Megaphone, desc: "ACTs configuradas e sugestões por empresa" },
       { id: "instagram", label: "Instagram",         icon: Camera,    desc: "Perfil IG vinculado a cada empresa" },
+      { id: "tracking",  label: "Tracking",          icon: Radar,     desc: "Pixel server-side e Eduzz por empresa" },
     ],
   },
   {
@@ -205,6 +207,7 @@ export function AdminPanel() {
           {nav === "meta" && <MetaSection {...scoped} />}
           {nav === "contas" && <ContasSection {...scoped} />}
           {nav === "instagram" && <InstagramSection {...scoped} />}
+          {nav === "tracking" && <TrackingAdminSection {...scoped} />}
           {nav === "filtros" && <FiltrosSection {...scoped} />}
           {nav === "pipeflow" && <PipeFlowSection {...scoped} />}
         </div>
