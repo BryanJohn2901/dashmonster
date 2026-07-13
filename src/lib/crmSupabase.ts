@@ -612,6 +612,7 @@ export async function createDeal(input: {
 
   void addDealHistory(row.id, input.companyId, "deal_created", `Negócio "${title}" foi criado no funil`);
   void instantiateStagePlaybook(row.id, input.stageId, input.companyId).catch(() => {});
+  void triggerWebhooks(input.companyId, "deal.created", { id: row.id, title: row.title, value: row.value, status: row.status });
 
   const meta = auth.user.user_metadata as Record<string, unknown> | null;
   return {
@@ -726,6 +727,9 @@ export async function moveDeal(
     void instantiateStagePlaybook(deal.id, newStage.id, companyId).catch(() => {});
     // Notifica o dono do negócio (se não foi ele quem moveu)
     void notifyDealOwner(deal.id, companyId, "deal_stage_changed", `Negócio movido para "${newStage.name}"`).catch(() => {});
+    void triggerWebhooks(companyId, "deal.stage_changed", { id: deal.id, stageId: newStage.id, status });
+    if (status === "won") void triggerWebhooks(companyId, "deal.won", { id: deal.id, stageId: newStage.id });
+    if (status === "lost") void triggerWebhooks(companyId, "deal.lost", { id: deal.id, stageId: newStage.id });
   }
 
   return { status, stageEnteredAt };
@@ -1100,6 +1104,7 @@ export async function createLead(
     .select(LEAD_COLS)
     .single();
   if (error) throw new Error(error.message);
+  void triggerWebhooks(companyId, "lead.created", { id: data.id, name: data.name, email: data.email });
   return mapLead(data as unknown as Record<string, unknown>);
 }
 
@@ -1839,6 +1844,12 @@ export interface CrmMessage {
   createdAt: string;
 }
 
+export async function deleteChannelConnection(connectionId: string, companyId: string): Promise<void> {
+  const sb = requireClient();
+  const { error } = await sb.from("channel_connections").delete().eq("id", connectionId).eq("company_id", companyId);
+  if (error) throw new Error(error.message);
+}
+
 export async function fetchChannels(companyId: string): Promise<CrmChannel[]> {
   const sb = requireClient();
   const { data, error } = await sb
@@ -1932,6 +1943,8 @@ export async function sendMessage(conversationId: string, companyId: string, con
     .update({ last_message_at: new Date().toISOString(), last_message_preview: text.slice(0, 120) })
     .eq("id", conversationId)
     .eq("company_id", companyId);
+
+  void dispatchOutboundMessage(companyId, data.id, conversationId);
 
   return {
     id: data.id,
@@ -2245,6 +2258,135 @@ export async function deleteWebhook(webhookId: string, companyId: string): Promi
   const sb = requireClient();
   const { error } = await sb.from("webhook_subscriptions").delete().eq("id", webhookId).eq("company_id", companyId);
   if (error) throw new Error(error.message);
+}
+
+// ─── Webhooks de entrada (inbound_webhooks) — captação pública de leads ───────
+
+export interface CrmInboundWebhook {
+  id: string;
+  name: string;
+  webhookKey: string;
+  pipelineId: string | null;
+  defaultStageId: string | null;
+  defaultOwnerId: string | null;
+  defaultTags: string[];
+  defaultProduct: string | null;
+  fieldMap: Record<string, string>;
+  isActive: boolean;
+  createdAt: string;
+}
+
+function mapInboundWebhook(r: Record<string, unknown>): CrmInboundWebhook {
+  return {
+    id: r.id as string, name: r.name as string, webhookKey: r.webhook_key as string,
+    pipelineId: (r.pipeline_id as string) ?? null, defaultStageId: (r.default_stage_id as string) ?? null,
+    defaultOwnerId: (r.default_owner_id as string) ?? null, defaultTags: (r.default_tags as string[]) ?? [],
+    defaultProduct: (r.default_product as string) ?? null, fieldMap: (r.field_map as Record<string, string>) ?? {},
+    isActive: r.is_active as boolean, createdAt: r.created_at as string,
+  };
+}
+
+const INBOUND_COLS =
+  "id, name, webhook_key, pipeline_id, default_stage_id, default_owner_id, default_tags, default_product, field_map, is_active, created_at";
+
+export async function fetchInboundWebhooks(companyId: string): Promise<CrmInboundWebhook[]> {
+  const sb = requireClient();
+  const { data, error } = await sb.from("inbound_webhooks").select(INBOUND_COLS).eq("company_id", companyId)
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((r) => mapInboundWebhook(r as Record<string, unknown>));
+}
+
+function genWebhookKey(): string {
+  const raw = new Uint8Array(20);
+  crypto.getRandomValues(raw);
+  return `wh_${Array.from(raw).map((b) => b.toString(16).padStart(2, "0")).join("")}`;
+}
+
+export async function createInboundWebhook(
+  companyId: string,
+  input: { name: string; pipelineId?: string | null; defaultStageId?: string | null },
+): Promise<CrmInboundWebhook> {
+  const sb = requireClient();
+  if (!input.name.trim()) throw new Error("Nome obrigatório.");
+  const { data: auth } = await sb.auth.getUser();
+  if (!auth.user) throw new Error("Não autenticado.");
+
+  const { data, error } = await sb
+    .from("inbound_webhooks")
+    .insert({
+      company_id: companyId, name: input.name.trim(), webhook_key: genWebhookKey(),
+      pipeline_id: input.pipelineId ?? null, default_stage_id: input.defaultStageId ?? null,
+      default_owner_id: auth.user.id,
+    })
+    .select(INBOUND_COLS)
+    .single();
+  if (error) throw new Error(error.message);
+  return mapInboundWebhook(data as Record<string, unknown>);
+}
+
+export async function updateInboundWebhook(
+  id: string, companyId: string, patch: { name?: string; isActive?: boolean },
+): Promise<void> {
+  const sb = requireClient();
+  const row: Record<string, unknown> = {};
+  if ("name" in patch) row.name = patch.name?.trim();
+  if ("isActive" in patch) row.is_active = patch.isActive;
+  if (Object.keys(row).length === 0) return;
+  const { error } = await sb.from("inbound_webhooks").update(row).eq("id", id).eq("company_id", companyId);
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteInboundWebhook(id: string, companyId: string): Promise<void> {
+  const sb = requireClient();
+  const { error } = await sb.from("inbound_webhooks").delete().eq("id", id).eq("company_id", companyId);
+  if (error) throw new Error(error.message);
+}
+
+export async function regenerateInboundWebhookKey(id: string, companyId: string): Promise<string> {
+  const sb = requireClient();
+  const webhookKey = genWebhookKey();
+  const { error } = await sb.from("inbound_webhooks").update({ webhook_key: webhookKey }).eq("id", id).eq("company_id", companyId);
+  if (error) throw new Error(error.message);
+  return webhookKey;
+}
+
+// ─── Disparo de webhooks a partir do cliente (deal.*/lead.*) ─────────────────
+// Fire-and-forget: a entrega HTTP real roda no servidor (/api/crm/webhooks/dispatch)
+// pra evitar CORS/SSRF do browser. Chamado de createDeal/moveDeal/createLead.
+
+async function triggerWebhooks(companyId: string, event: string, payload: Record<string, unknown>): Promise<void> {
+  try {
+    const sb = requireClient();
+    const { data } = await sb.auth.getSession();
+    const accessToken = data.session?.access_token;
+    if (!accessToken) return;
+    await fetch("/api/crm/webhooks/dispatch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({ companyId, event, payload }),
+    });
+  } catch {
+    // best-effort — falha de rede não pode quebrar a mutação principal
+  }
+}
+
+/** Dispara o envio real da mensagem pelo provedor (WhatsApp Cloud/Instagram). */
+async function dispatchOutboundMessage(companyId: string, messageId: string, conversationId: string): Promise<void> {
+  try {
+    const sb = requireClient();
+    const { data } = await sb.auth.getSession();
+    const accessToken = data.session?.access_token;
+    if (!accessToken) return;
+    await fetch("/api/crm/messages/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({ companyId, messageId, conversationId }),
+    });
+  } catch {
+    // best-effort — status "failed" fica só se a rota responder; sem rede, mensagem
+    // segue "sent" otimista no banco (mesma politica de fire-and-forget dos webhooks)
+  }
 }
 
 // ─── Campos personalizados (custom_field_definitions / values) ────────────────

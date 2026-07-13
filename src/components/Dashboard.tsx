@@ -6,7 +6,7 @@ import { ALL_METRIC_IDS, useMetricVisibility } from "@/hooks/useMetricVisibility
 import { useAvatarUrl, resolveAvatarSrc } from "@/hooks/useAvatarUrl";
 import { useDateRange } from "@/hooks/useDateRange";
 import {
-  Activity, BadgeDollarSign, BarChart2, BookOpen, CalendarDays,
+  Activity, BadgeDollarSign, BarChart2, Bell, BookOpen, CalendarDays,
   CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CircleDollarSign, Download, Dumbbell, FileText,
   FileUp, Filter, Flag, GraduationCap, Home, ImageIcon, Link2, Loader2, LogOut, Menu, Moon,
   Building2, Megaphone, MousePointerClick, Package, Pencil, Plus, Repeat, RotateCcw, Search, Settings2, SlidersHorizontal, Sun,
@@ -52,7 +52,8 @@ import { HistoricalView } from "@/components/HistoricalView";
 import { LeadsView } from "@/components/LeadsView";
 import { TrackingEventsView } from "@/components/TrackingEventsView";
 import { HISTORY_TAB_LABELS_KEY, historyKindLabel, readCustomHistoryTabs, type HistoricalKind } from "@/types/historical";
-import { useCompany } from "@/hooks/useCompany";
+import { useCompany, fetchMyPendingInvites, type MyPendingInvite } from "@/hooks/useCompany";
+import { AcceptInviteScreen } from "@/components/AcceptInviteScreen";
 import { BestCreatives } from "@/components/BestCreatives";
 import { ProfileAnalysis } from "@/components/ProfileAnalysis";
 import { useAdvertiserStore } from "@/hooks/useAdvertiserStore";
@@ -66,6 +67,7 @@ import { EmpresaTab } from "@/components/EmpresaTab";
 import { HubSettings } from "@/components/hub/HubSettings";
 import { toast } from "@/hooks/useToast";
 import { exportDashboardCsv } from "@/utils/exportCsv";
+import { logAudit } from "@/lib/auditLog";
 import { useManualMetrics } from "@/hooks/useManualMetrics";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -1859,6 +1861,16 @@ export function Dashboard({
   // Conta + Empresa saíram do dash → centralizadas no modal de Configurações do hub.
   const visibleMainTabs = MAIN_TABS.filter((t) => t.id !== "empresa" && t.id !== "myaccount");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Convites pendentes: visível o tempo todo dentro do dash (não só no gate pós-login),
+  // pois o gate de page.tsx roda 1x por sessão e é pulável ("Decidir depois").
+  const [pendingInvites, setPendingInvites] = useState<MyPendingInvite[]>([]);
+  const [inviteScreenOpen, setInviteScreenOpen] = useState(false);
+  useEffect(() => {
+    const refresh = () => { void fetchMyPendingInvites().then(setPendingInvites).catch(() => {}); };
+    refresh();
+    const id = setInterval(refresh, 60_000);
+    return () => clearInterval(id);
+  }, []);
   // Tab salvo (localStorage) pode apontar p/ empresa/myaccount removidos → cai p/ overview.
   useEffect(() => {
     if (mainTab === "empresa" || mainTab === "myaccount") setMainTab("overview");
@@ -1866,6 +1878,20 @@ export function Dashboard({
   const histLabels = activeCompany?.settings?.[HISTORY_TAB_LABELS_KEY] as Record<string, string> | undefined;
   const customHistTabs = readCustomHistoryTabs(activeCompany?.settings);
   const [myAccountTab, setMyAccountTab]     = useState<MyAccountTabId>("profile");
+
+  // Auditoria: navegação entre seções e, dentro de Histórico, entre pastas/filtros.
+  useEffect(() => {
+    if (!activeCompany) return;
+    const isHistory = mainTab === "history";
+    void logAudit({
+      companyId: activeCompany.id,
+      action: "page_view",
+      entityType: isHistory ? "folder" : "page",
+      entityLabel: isHistory ? historyKindLabel(histKind, histLabels) : mainTab,
+      details: isHistory ? { section: "history", folder: histKind } : { section: mainTab },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mainTab, histKind, activeCompany?.id]);
 
   // ── Sistema de abas (browser tabs) ─────────────────────────────────────────
   // Cada aba = uma view (mainTab + sub). Trocar de aba reaplica a navegação.
@@ -2990,9 +3016,26 @@ export function Dashboard({
               })}
             </div>
 
-            {/* Bottom — tema, configurações, avatar (mock) */}
+            {/* Bottom — tema, convites, configurações, avatar (mock) */}
             <div className="flex flex-col items-center gap-1.5">
               <RailThemeToggle />
+              {pendingInvites.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => { setInviteScreenOpen(true); setRailFlyout(null); }}
+                  aria-label="Convites pendentes"
+                  data-tip="Convites pendentes"
+                  className="dm-sidebar-tooltip relative flex h-10 w-10 items-center justify-center rounded-xl transition-colors hover:bg-[var(--dm-nav-hover-bg)]"
+                  style={{ color: "#8A8F84" }}
+                >
+                  <Bell size={19} strokeWidth={1.9} />
+                  <span
+                    className="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[#B6F500] text-[9px] font-bold text-[#0E1108]"
+                  >
+                    {pendingInvites.length > 9 ? "9+" : pendingInvites.length}
+                  </span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => { setSettingsOpen(true); setRailFlyout(null); }}
@@ -3098,7 +3141,25 @@ export function Dashboard({
                     </div>
                   )}
                 </button>
-                <SidebarThemeToggle />
+                <div className="flex items-center gap-1.5">
+                  {pendingInvites.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setInviteScreenOpen(true)}
+                      title="Convites pendentes"
+                      className="relative flex h-8 w-8 items-center justify-center rounded-full transition hover:bg-[var(--dm-bg-elevated)]"
+                      style={{ color: "var(--dm-text-tertiary)" }}
+                    >
+                      <Bell size={17} strokeWidth={1.9} />
+                      <span
+                        className="absolute right-0.5 top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#B6F500] text-[8px] font-bold text-[#0E1108]"
+                      >
+                        {pendingInvites.length > 9 ? "9+" : pendingInvites.length}
+                      </span>
+                    </button>
+                  )}
+                  <SidebarThemeToggle />
+                </div>
               </div>
               {/* Data */}
               <p className="text-[10px] font-bold uppercase tracking-widest leading-tight" style={{ color: "var(--dm-text-tertiary)" }}>
@@ -3391,13 +3452,29 @@ export function Dashboard({
                 type="button"
                 title="Exportar CSV"
                 aria-label="Exportar CSV"
-                onClick={() => exportDashboardCsv({
-                  campaigns: campaignsWithOverrides,
-                  totals,
-                  dateFrom,
-                  dateTo,
-                  overrides: manualOverrides,
-                })}
+                onClick={() => {
+                  exportDashboardCsv({
+                    campaigns: campaignsWithOverrides,
+                    totals,
+                    dateFrom,
+                    dateTo,
+                    overrides: manualOverrides,
+                  });
+                  if (activeCompany) {
+                    void logAudit({
+                      companyId: activeCompany.id,
+                      action: "export",
+                      entityType: "campaign",
+                      entityLabel: `Dashboard (${campaignsWithOverrides.length} campanha${campaignsWithOverrides.length === 1 ? "" : "s"})`,
+                      details: {
+                        page: "overview",
+                        dateFrom, dateTo,
+                        campaigns: campaignsWithOverrides.slice(0, 20).map((c) => c.campaignName),
+                        campaignCount: campaignsWithOverrides.length,
+                      },
+                    });
+                  }
+                }}
                 className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-700"
               >
                 <Download size={16} />
@@ -3666,6 +3743,17 @@ export function Dashboard({
       </div>
 
       {/* Right panel removed — campaigns filtered via context bar */}
+
+      {inviteScreenOpen && (
+        <div className="fixed inset-0 z-[200]">
+          <AcceptInviteScreen
+            onDone={() => {
+              setInviteScreenOpen(false);
+              void fetchMyPendingInvites().then(setPendingInvites).catch(() => {});
+            }}
+          />
+        </div>
+      )}
 
       <HubSettings
         open={settingsOpen}

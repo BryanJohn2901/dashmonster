@@ -153,10 +153,32 @@ Decisão do usuário: CRM usa a identidade ORIGINAL do PipeFlow, não os tokens 
 - [x] Config → Webhooks: criar (nome + URL https + eventos deal.*/lead.*), pausar/ativar,
       excluir; secret `whsec_…` gerado no cliente; CRM_WEBHOOK_EVENTS compartilhado
 
-**Onda 5 (restante):**
-- [ ] Rotas server da API v1 (/api/crm/v1/leads|deals, Bearer pf_… → api_tokens via hash,
-      supabaseAdmin) + dispatcher de webhooks out (rota interna assina HMAC e entrega + log)
-- [ ] Integrações reais de canal: Z-API / WhatsApp Cloud / IG (envs + webhooks de entrada)
+**Onda 5 (parcial ✅ 2026-07-09):**
+- [x] Rotas server da API v1 pública: `/api/v1/crm/leads` e `/api/v1/crm/deals`
+      (GET lista / POST cria, Bearer `pf_…` → `api_tokens` via sha256, `supabaseAdmin`)
+- [x] Dispatcher de webhooks out: `/api/crm/webhooks/dispatch` (chamado pelo cliente após
+      createDeal/moveDeal/createLead) assina HMAC-SHA256 e entrega + loga em
+      `webhook_delivery_logs` — server-side, evita CORS/SSRF do browser
+- [x] Webhook de entrada público: `/api/v1/inbound/webhooks/[key]` recebe lead de
+      formulário externo, cria `crm_leads` (+ `deals`/tags se o webhook tiver funil
+      configurado); fachada `fetchInboundWebhooks/createInboundWebhook/...` real+demo
+- [x] Instagram DM ✅ 2026-07-10 — reaproveita `instagram_accounts` já vinculada à
+      empresa (Perfil/onboarding); `IG_OAUTH_SCOPES` ganhou `instagram_manage_messages`
+      + `pages_messaging`. `/api/crm/channels/connect-instagram` copia o token cifrado
+      pra `channel_connections`. Webhook (`/api/instagram/webhook`) ganhou handler de
+      `entry.messaging` (formato separado dos `changes` de insights) → grava em
+      conversations/messages. Envio real via `/api/crm/messages/send` → Graph API
+      `POST /{ig-business-id}/messages`. Contas conectadas ANTES desta mudança
+      precisam reconectar em Perfil pra ganhar o escopo de mensagens.
+- [x] WhatsApp Cloud API ✅ 2026-07-10 — conexão MANUAL (sem Embedded Signup, exige
+      `config_id` do App Dashboard que não temos): empresa cola Phone Number ID + WABA
+      ID + token permanente (System User) em `/crm/settings/channels`;
+      `/api/crm/channels/connect-whatsapp-cloud` valida na Graph API antes de gravar
+      cifrado. Webhook próprio `/api/crm/webhook/whatsapp-cloud` (verify token
+      `WHATSAPP_CLOUD_WEBHOOK_VERIFY_TOKEN`), roteia por `metadata.phone_number_id`
+      → `channel_connections.external_config`. Só mensagens de texto por ora (mídia
+      fica pra depois). Falta configurar o webhook no painel Meta + testar com número real.
+- [ ] Z-API — sem credenciais configuradas ainda, não pedido nesta rodada.
 - [ ] Dashboard builder (widgets custom) — tabelas prontas na 073
 - [ ] Lembretes de atividade (activity_reminder) — precisa cron (Vercel Hobby = diário)
 - [ ] Command palette (Ctrl+K); sidebar colapsável; multi_select real
@@ -178,7 +200,22 @@ Decisão do usuário: CRM usa a identidade ORIGINAL do PipeFlow, não os tokens 
 - [ ] Calendário
 - [ ] Cron (atenção: Vercel Hobby só aceita cron diário)
 
-### Fase 5 — PORT FIEL da UI original (decisão 2026-07-03: usuário rejeitou a UI recriada)
+### Fase 6 — Unificação de UI/UX com o hub (decisão 2026-07-09: reverte a Fase 2.5/5)
+A identidade "Nexo" fixa (dark absoluto + canary, independente do tema do hub) foi
+**revertida** a pedido do usuário — `/ui-ux-pro-max` unificou o CRM com o Dashmonster.
+- [x] `src/app/globals.css` (`@theme`) e `src/app/crm/crm.css` (`.pf-app`): tokens
+      Nexo (bunker/canary/geyser/slate/tidal/ebony + `--pf-*` shadcn) viraram ALIASES
+      de `var(--dm-*)` — zero edição nos ~80 componentes copiados do original, porque
+      eles só consomem essas variáveis, nunca hex cru
+- [x] CRM segue `.dark`/`[data-theme]` do hub (antes: `color-scheme: dark` forçado)
+- [x] Sidebar/rail do CRM continua sempre escura com acento lime — reaproveita
+      `--dm-bg-sidebar`/`--dm-lime`/`--dm-nav-active-*`, que o dm já reservava pro
+      PipeFlow (não é regressão visual, é o mesmo rail do resto do hub)
+- [x] Botões primários passam a usar `--dm-primary` (verde, "1 CTA por tela" — regra
+      já vigente no resto do dm) em vez do canary neon do original
+
+### Fase 5 — PORT FIEL da UI original (decisão 2026-07-03: usuário rejeitou a UI recriada;
+revertido pela Fase 6 acima em 2026-07-09 — texto abaixo é histórico)
 O CRM deve SER o PipeFlow original (layout/telas idênticos), exceto: configurações de
 conta/empresa e liberação do produto ficam no padrão Monster Hub (super admin liga `pipe`
 em `companies.products`; sem workspace/billing/Stripe do original).

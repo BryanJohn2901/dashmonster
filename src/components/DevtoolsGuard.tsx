@@ -8,9 +8,15 @@
  * Network, view-source:, proxy). Isto é dissuasão/anti-tamper, não proteção.
  * Proteção de verdade = segredo no servidor, nunca ofuscar o cliente.
  *
- * Comportamento: ao detectar DevTools aberto, desloga o usuário e tranca a tela
- * por 30 min (persiste em localStorage — refresh não escapa) com um overlay de
- * "sistema quebrando".
+ * Comportamento: ao detectar DevTools aberto (F12/inspeção/console), desloga o
+ * usuário e tranca a tela por 30 min (persiste em localStorage — refresh não
+ * escapa) com um overlay de "sistema quebrando". O usuário pode liberar antes
+ * digitando a senha da conta ("acha que foi engano? entre de novo").
+ *
+ * NOTA: a heurística de tamanho de janela foi REMOVIDA de propósito — ela dava
+ * falso-positivo ao dar zoom / aumentar as letras (Ctrl +), que encolhe o
+ * innerWidth sem DevTools nenhum aberto. Fica só o que indica inspeção real:
+ * getter-bait do console + timing do `debugger` + bloqueio de atalhos.
  *
  * Bypass p/ desenvolvimento: localStorage.setItem("pf_devbypass", "1").
  */
@@ -19,9 +25,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 
 const LOCK_KEY = "pf_lockout_until";
+const LOCK_EMAIL_KEY = "pf_lockout_email";
 const BYPASS_KEY = "pf_devbypass";
 const LOCK_MS = 30 * 60 * 1000; // 30 minutos
-const SIZE_THRESHOLD = 170;     // delta janela↔viewport quando DevTools dockado
 
 const MESSAGE = "Você não deveria ver algo que não pode.";
 
@@ -52,7 +58,15 @@ export function DevtoolsGuard() {
     const until = Date.now() + LOCK_MS;
     try { localStorage.setItem(LOCK_KEY, String(until)); } catch {}
     setRemaining(LOCK_MS);
-    try { void createClient().auth.signOut(); } catch {}
+    // Guarda o e-mail logado ANTES de deslogar — é o que o desbloqueio por senha
+    // usa pra reautenticar (sem isso o form pediria o e-mail de novo).
+    try {
+      void createClient().auth.getUser().then(({ data }) => {
+        const email = data.user?.email;
+        if (email) { try { localStorage.setItem(LOCK_EMAIL_KEY, email); } catch {} }
+        void createClient().auth.signOut();
+      });
+    } catch {}
   }, []);
 
   useEffect(() => {
@@ -63,9 +77,6 @@ export function DevtoolsGuard() {
     if (left > 0) { engagedRef.current = true; setRemaining(left); }
 
     let raf = 0;
-    const sizeOpen = () =>
-      window.outerWidth - window.innerWidth > SIZE_THRESHOLD ||
-      window.outerHeight - window.innerHeight > SIZE_THRESHOLD;
 
     // Truque do getter: o console acessa .id ao renderizar o objeto logado.
     let getterHit = false;
@@ -82,7 +93,9 @@ export function DevtoolsGuard() {
       const t0 = performance.now();
       try { (new Function("debugger"))(); } catch { /* CSP/eval bloqueado — ignora */ }
       const debuggerPaused = performance.now() - t0 > 120;
-      if (getterHit || sizeOpen() || debuggerPaused) engage();
+      // Sem heurística de tamanho de janela: dava falso-positivo no zoom/aumento
+      // de fonte. Só getter-bait + debugger indicam inspeção de verdade.
+      if (getterHit || debuggerPaused) engage();
       raf = window.setTimeout(probe, 1000);
     };
     probe();
@@ -117,7 +130,7 @@ export function DevtoolsGuard() {
     const id = window.setInterval(() => {
       const left = readLockRemaining();
       if (left <= 0) {
-        try { localStorage.removeItem(LOCK_KEY); } catch {}
+        try { localStorage.removeItem(LOCK_KEY); localStorage.removeItem(LOCK_EMAIL_KEY); } catch {}
         window.location.reload();
       } else {
         setRemaining(left);
@@ -125,6 +138,35 @@ export function DevtoolsGuard() {
     }, 250);
     return () => window.clearInterval(id);
   }, [remaining]);
+
+  // Desbloqueio por senha: reautentica com o e-mail guardado antes do signOut.
+  const [unlockOpen, setUnlockOpen] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [unlocking, setUnlocking] = useState(false);
+  const [unlockError, setUnlockError] = useState("");
+
+  useEffect(() => {
+    if (!unlockOpen) return;
+    try { setEmail(localStorage.getItem(LOCK_EMAIL_KEY) ?? ""); } catch {}
+  }, [unlockOpen]);
+
+  const submitUnlock = useCallback(async () => {
+    const mail = email.trim().toLowerCase();
+    if (!mail || !password) { setUnlockError("Preencha e-mail e senha."); return; }
+    setUnlocking(true);
+    setUnlockError("");
+    try {
+      const { error } = await createClient().auth.signInWithPassword({ email: mail, password });
+      if (error) { setUnlockError("E-mail ou senha incorretos."); setUnlocking(false); return; }
+      // Credencial válida = foi engano do detector. Libera e recarrega logado.
+      try { localStorage.removeItem(LOCK_KEY); localStorage.removeItem(LOCK_EMAIL_KEY); } catch {}
+      window.location.reload();
+    } catch {
+      setUnlockError("Falha ao validar. Tente de novo.");
+      setUnlocking(false);
+    }
+  }, [email, password]);
 
   if (remaining <= 0) return null;
 
@@ -140,7 +182,45 @@ export function DevtoolsGuard() {
         <p className="dtg-sub">Sessão encerrada. Acesso bloqueado por segurança.</p>
         <div className="dtg-timer" aria-live="polite">{fmt(remaining)}</div>
         <div className="dtg-bar" aria-hidden="true"><span style={{ transform: `scaleX(${pct / 100})` }} /></div>
-        <p className="dtg-note">Aguarde o fim da contagem para voltar.</p>
+
+        {!unlockOpen ? (
+          <>
+            <p className="dtg-note">Aguarde o fim da contagem para voltar.</p>
+            <button type="button" className="dtg-unlock-link" onClick={() => setUnlockOpen(true)}>
+              Acha que foi um engano? Entre com sua senha para liberar agora.
+            </button>
+          </>
+        ) : (
+          <form
+            className="dtg-unlock-form"
+            onSubmit={(e) => { e.preventDefault(); void submitUnlock(); }}
+          >
+            <input
+              type="email"
+              className="dtg-input"
+              placeholder="Seu e-mail"
+              value={email}
+              autoComplete="username"
+              onChange={(e) => setEmail(e.target.value)}
+            />
+            <input
+              type="password"
+              className="dtg-input"
+              placeholder="Sua senha"
+              value={password}
+              autoFocus
+              autoComplete="current-password"
+              onChange={(e) => setPassword(e.target.value)}
+            />
+            {unlockError && <p className="dtg-unlock-error">{unlockError}</p>}
+            <button type="submit" className="dtg-unlock-btn" disabled={unlocking}>
+              {unlocking ? "Verificando…" : "Liberar acesso"}
+            </button>
+            <button type="button" className="dtg-unlock-cancel" onClick={() => setUnlockOpen(false)}>
+              Cancelar
+            </button>
+          </form>
+        )}
       </div>
     </div>
   );

@@ -10,11 +10,11 @@ import {
   RefreshCw, Save, RotateCcw, Sun, Moon, Database, AtSign, Search, Pencil, Target,
 } from "lucide-react";
 import type { UserCategory, UserAccountEntry } from "@/types/userConfig";
-import { FIXED_CATEGORIES, MAX_CUSTOM_CATEGORIES } from "@/types/userConfig";
+import { MAX_CUSTOM_CATEGORIES, companyTemplateCategories } from "@/types/userConfig";
 import {
   createCustomInternalFilterId,
   getCustomInternalFilterLabel,
-  getInternalFiltersForCategorySlug,
+  getInternalFiltersForCategory,
   getInternalFilterLabel,
   isCustomInternalFilterId,
   parseCustomInternalFilterId,
@@ -126,14 +126,15 @@ function AddEntryForm({
     () => {
       if (isCustomCategory) return [];
       const seen = new Set<string>();
-      return [...getInternalFiltersForCategorySlug(categorySlug), ...customFilterOptions]
+      // Sub-filtros da empresa (Painel Admin) entram junto com os builtin.
+      return [...getInternalFiltersForCategory(categorySlug, company?.settings), ...customFilterOptions]
         .filter((opt) => {
           if (seen.has(opt.id)) return false;
           seen.add(opt.id);
           return true;
         });
     },
-    [categorySlug, customFilterOptions, isCustomCategory],
+    [categorySlug, customFilterOptions, isCustomCategory, company?.settings],
   );
   const needsInternalFilter = !isCustomCategory && filterOptions.length > 0;
   const accountReady = Boolean(accountId.trim());
@@ -1502,13 +1503,17 @@ export function TabAccounts({ categories, accountEntries, onCategoriesChange, on
   const [newCatEmoji, setNewCatEmoji] = useState("📌");
   const [savingCat, setSavingCat] = useState(false);
   const [catErr, setCatErr] = useState("");
+  const { company } = useCompany();
+
+  // Template da EMPRESA: filtros do Painel Admin > vazio (empresa nova) > PTA legado.
+  const templateCats = useMemo(() => companyTemplateCategories(company?.settings), [company?.settings]);
 
   const customCats = categories.filter(c => c.type === "custom");
   const canAddCustom = customCats.length < MAX_CUSTOM_CATEGORIES;
 
   const handleToggleCategory = async (slug: string, enabled: boolean) => {
     const existing = categories.find(c => c.slug === slug);
-    const fixedDef = FIXED_CATEGORIES.find(f => f.slug === slug);
+    const fixedDef = templateCats.find(f => f.slug === slug);
     const updated = await upsertUserCategory({
       id:        existing?.id,
       slug,
@@ -1578,9 +1583,16 @@ export function TabAccounts({ categories, accountEntries, onCategoriesChange, on
     <div className="space-y-3">
       <div>
         <p className="text-[11px] font-bold uppercase tracking-wider mb-3"
-          style={{ color: "var(--dm-text-tertiary)" }}>Categorias fixas</p>
+          style={{ color: "var(--dm-text-tertiary)" }}>Filtros da empresa</p>
+        {templateCats.length === 0 && (
+          <p className="mb-2 rounded-xl border border-dashed p-3 text-[12px]"
+            style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-tertiary)" }}>
+            Esta empresa ainda não tem filtros configurados. Configure em
+            {" "}<b>Painel Admin → Filtros &amp; histórico</b> ou crie categorias personalizadas abaixo.
+          </p>
+        )}
         <div className="space-y-2">
-          {FIXED_CATEGORIES.map(fc => {
+          {templateCats.map(fc => {
             const catRecord = categories.find(c => c.slug === fc.slug);
             const entries   = catRecord
               ? accountEntries.filter(e => e.categoryId === catRecord.id)

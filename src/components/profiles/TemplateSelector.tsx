@@ -2,8 +2,13 @@
 
 import { TEMPLATE_LIST } from "@/lib/templates";
 import type { TemplateId } from "@/lib/templates/types";
+import { useCompany } from "@/hooks/useCompany";
+import { isLegacyCompanyTaxonomy } from "@/types/userConfig";
 import { ChevronDown, Settings2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+
+// Templates de nicho da empresa original (PTA) — empresa nova/configurada não os herda.
+const PTA_TEMPLATE_IDS = new Set<TemplateId>(["pos", "imersao"]);
 
 const BRAND_GRAD = "var(--dm-btn-primary-bg)";
 
@@ -17,6 +22,14 @@ interface Props {
 export function TemplateSelector({ current, onChange, variant = "dropdown", onOpenBuilder }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const { company } = useCompany();
+
+  const visibleTemplates = useMemo(
+    () => isLegacyCompanyTaxonomy(company?.settings)
+      ? TEMPLATE_LIST
+      : TEMPLATE_LIST.filter((t) => !PTA_TEMPLATE_IDS.has(t.id)),
+    [company?.settings],
+  );
 
   const currentTpl = TEMPLATE_LIST.find((t) => t.id === current) ?? TEMPLATE_LIST[0];
 
@@ -32,7 +45,7 @@ export function TemplateSelector({ current, onChange, variant = "dropdown", onOp
   if (variant === "modal") {
     return (
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4">
-        {TEMPLATE_LIST.map((tpl) => {
+        {visibleTemplates.map((tpl) => {
           const isPersonalizado = tpl.id === "personalizado";
           const isSelected = current === tpl.id;
           return (
@@ -117,7 +130,7 @@ export function TemplateSelector({ current, onChange, variant = "dropdown", onOp
             {/* Gradient top bar */}
             <div className="h-1" style={{ background: BRAND_GRAD }} />
             <div className="py-1.5">
-              {TEMPLATE_LIST.map((tpl) => {
+              {visibleTemplates.map((tpl) => {
                 const isSelected = tpl.id === current;
                 return (
                   <button

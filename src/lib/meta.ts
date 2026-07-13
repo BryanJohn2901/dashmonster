@@ -9,8 +9,10 @@ export const FB_WWW_BASE = `https://www.facebook.com/${META_API_VERSION}`;
 export const IG_OAUTH_SCOPES = [
   "instagram_basic",
   "instagram_manage_insights",
+  "instagram_manage_messages",
   "pages_show_list",
   "pages_read_engagement",
+  "pages_messaging",
   "business_management",
 ] as const;
 

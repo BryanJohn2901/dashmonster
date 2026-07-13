@@ -19,7 +19,7 @@ export type {
   CrmChannel, CrmChannelProvider, CrmConversation, CrmConversationStatus, CrmMessage, CrmNotification,
   CrmFieldEntity, CrmFieldType, CrmFieldDef, CrmGoal, CrmGoalEntry, CrmApiToken, CrmWebhook,
   GlobalSearchResult, CrmPlaybook, CrmPlaybookActivity, CrmCompanyHistoryEvent,
-  CrmLegacyActivity, CrmLegacyActivityType,
+  CrmLegacyActivity, CrmLegacyActivityType, CrmInboundWebhook,
 } from "@/lib/crmSupabase";
 
 export { CRM_WEBHOOK_EVENTS } from "@/lib/crmSupabase";
@@ -43,7 +43,7 @@ export const {
   fetchCrmCompany, searchCrmCompanies, createCrmCompany, updateCrmCompany, linkDealCrmCompany,
   addDealNote, fetchStageTemplates, saveStageTemplates, instantiateStagePlaybook, fetchCalendar,
   // inbox e notificações
-  fetchChannels, fetchConversations, fetchMessages, sendMessage, markConversationRead, setConversationStatus, linkConversationLead,
+  fetchChannels, deleteChannelConnection, fetchConversations, fetchMessages, sendMessage, markConversationRead, setConversationStatus, linkConversationLead,
   fetchNotifications, markNotificationRead, markAllNotificationsRead,
   // campos personalizados, gestão de tags e metas
   fetchFieldDefs, saveFieldDef, deleteFieldDef, fetchFieldValues, setFieldValue,
@@ -52,4 +52,5 @@ export const {
   globalSearch, findDuplicateDeals, findDuplicateLeads,
   fetchApiTokens, createApiToken, revokeApiToken,
   fetchWebhooks, createWebhook, setWebhookActive, deleteWebhook,
+  fetchInboundWebhooks, createInboundWebhook, updateInboundWebhook, deleteInboundWebhook, regenerateInboundWebhookKey,
 } = impl;

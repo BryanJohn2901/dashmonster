@@ -1,84 +1,87 @@
-/* ── PipeFlow (port fiel) — tokens e base escopados em .pf-app ────────────────
-   Copiado de pipeflow-crm/app/globals.css; triplets HSL viraram hsl() completos
-   porque as utilities TW4 recebem o var pronto (ver @theme inline no globals). */
+/* ── PipeFlow (port fiel) — tokens escopados em .pf-app, ALIASADOS pro dm-* ────
+   2026-07-09: unificação de UI/UX — CRM deixou de ter identidade "Nexo" fixa
+   (dark absoluto + canary) e passou a herdar tema claro/escuro + paleta do
+   Dashmonster. Nomes --color-* e --pf-* preservados (usados por ~80 componentes
+   copiados do original) mas agora só redirecionam pra var(--dm-*), que já
+   responde a .dark/[data-theme] via globals.css. Sidebar/rail continua escura
+   com acento lime — dm já reservava --dm-bg-sidebar/--dm-lime pro PipeFlow. */
 
 @import "tw-animate-css";
 
 .pf-app {
-  color-scheme: dark;
+  /* ── Design Tokens (aliases) ── */
+  --color-bunker: var(--dm-bg-sidebar);
+  --color-ebony: var(--dm-bg-elevated);
+  --color-slate: var(--dm-text-tertiary);
+  --color-geyser: var(--dm-text-secondary);
+  --color-canary: var(--dm-lime);
+  --color-tidal: color-mix(in srgb, var(--dm-lime) 30%, white);
 
-  /* ── Design Tokens ── */
-  --color-bunker: #0B0D11;
-  --color-ebony: #222A31;
-  --color-slate: #7B8793;
-  --color-geyser: #D8DEE3;
-  --color-canary: #c6f432;
-  --color-tidal: #E8FEAE;
+  --color-background: var(--dm-bg-page);
+  --color-background-soft: var(--dm-bg-elevated);
+  --color-surface: var(--dm-bg-surface);
+  --color-surface-elevated: var(--dm-bg-elevated);
+  --color-surface-strong: var(--dm-bg-card-soft);
 
-  --color-background: #0B0D11;
-  --color-background-soft: #11151A;
-  --color-surface: #151A20;
-  --color-surface-elevated: #1B222A;
-  --color-surface-strong: #222A31;
+  --color-border-subtle: var(--dm-border-subtle);
+  --color-border-default: var(--dm-border-default);
+  --color-border-strong: var(--dm-border-strong);
 
-  --color-border-subtle: rgba(216, 222, 227, 0.06);
-  --color-border-default: rgba(216, 222, 227, 0.10);
-  --color-border-strong: rgba(216, 222, 227, 0.20);
+  --color-text-primary: var(--dm-text-primary);
+  --color-text-secondary: var(--dm-text-secondary);
+  --color-text-muted: var(--dm-text-tertiary);
+  --color-text-disabled: var(--dm-text-disabled);
+  --color-text-inverse: var(--dm-text-inverse);
 
-  --color-text-primary: #F7F9FA;
-  --color-text-secondary: #D8DEE3;
-  --color-text-muted: #7B8793;
-  --color-text-disabled: rgba(123, 135, 147, 0.55);
-  --color-text-inverse: #0B0D11;
+  --color-primary: var(--dm-primary);
+  --color-primary-hover: var(--dm-primary-hover);
+  --color-primary-active: var(--dm-primary-hover);
+  --color-primary-soft: var(--dm-primary-soft);
+  --color-primary-border: var(--dm-primary-border);
 
-  --color-primary: #c6f432;
-  --color-primary-hover: #B6E02E;
-  --color-primary-active: #A8CF2A;
-  --color-primary-soft: rgba(198, 244, 50, 0.10);
-  --color-primary-border: rgba(198, 244, 50, 0.28);
-
-  --color-success: #80ED99;
-  --color-success-soft: rgba(128, 237, 153, 0.10);
-  --color-warning: #FFD166;
-  --color-warning-soft: rgba(255, 209, 102, 0.10);
-  --color-danger: #FF6B6B;
-  --color-danger-soft: rgba(255, 107, 107, 0.10);
-  --color-info: #7DD3FC;
-  --color-info-soft: rgba(125, 211, 252, 0.10);
+  --color-success: var(--dm-success-base);
+  --color-success-soft: var(--dm-success-bg);
+  --color-warning: var(--dm-warning-base);
+  --color-warning-soft: var(--dm-warning-bg);
+  --color-danger: var(--dm-error-base);
+  --color-danger-soft: var(--dm-error-bg);
+  --color-info: var(--dm-info-base);
+  --color-info-soft: var(--dm-info-bg);
 
   /* ── shadcn tokens (consumidos pelo @theme inline do globals.css) ── */
-  --background: hsl(220 21% 4%);
-  --foreground: hsl(210 17% 95%);
-  --pf-card: hsl(214 17% 10%);
-  --pf-card-foreground: hsl(210 17% 95%);
-  --pf-popover: hsl(215 17% 11%);
-  --pf-popover-foreground: hsl(210 17% 95%);
-  --pf-primary: hsl(77 100% 71%);
-  --pf-primary-foreground: hsl(220 21% 5%);
-  --pf-secondary: hsl(214 17% 13%);
-  --pf-secondary-foreground: hsl(207 17% 87%);
-  --pf-muted: hsl(214 17% 13%);
-  --pf-muted-foreground: hsl(210 11% 58%);
-  --pf-accent: hsl(74 95% 84%);
-  --pf-accent-foreground: hsl(220 21% 5%);
-  --pf-destructive: hsl(0 86% 70%);
-  --pf-destructive-foreground: hsl(220 21% 5%);
-  --pf-border: hsl(215 14% 10%);
-  --pf-input: hsl(213 16% 15%);
-  --pf-ring: hsl(77 100% 71%);
-  --pf-sidebar: hsl(220 21% 4%);
-  --pf-sidebar-foreground: hsl(207 17% 87%);
-  --pf-sidebar-primary: hsl(77 100% 71%);
-  --pf-sidebar-primary-foreground: hsl(220 21% 5%);
-  --pf-sidebar-accent: hsl(214 17% 13%);
-  --pf-sidebar-accent-foreground: hsl(207 17% 87%);
-  --pf-sidebar-border: hsl(215 14% 10%);
-  --pf-sidebar-ring: hsl(77 100% 71%);
-  --pf-chart-1: hsl(77 100% 71%);
-  --pf-chart-2: hsl(74 95% 84%);
-  --pf-chart-3: hsl(142 54% 67%);
-  --pf-chart-4: hsl(38 92% 70%);
-  --pf-chart-5: hsl(0 86% 70%);
+  --background: var(--dm-bg-page);
+  --foreground: var(--dm-text-primary);
+  --pf-card: var(--dm-bg-surface);
+  --pf-card-foreground: var(--dm-text-primary);
+  --pf-popover: var(--dm-bg-surface);
+  --pf-popover-foreground: var(--dm-text-primary);
+  --pf-primary: var(--dm-primary);
+  --pf-primary-foreground: var(--dm-text-inverse);
+  --pf-secondary: var(--dm-bg-elevated);
+  --pf-secondary-foreground: var(--dm-text-primary);
+  --pf-muted: var(--dm-bg-elevated);
+  --pf-muted-foreground: var(--dm-text-secondary);
+  --pf-accent: var(--dm-primary-soft);
+  --pf-accent-foreground: var(--dm-text-primary);
+  --pf-destructive: var(--dm-error-base);
+  --pf-destructive-foreground: var(--dm-text-inverse);
+  --pf-border: var(--dm-border-default);
+  --pf-input: var(--dm-bg-input);
+  --pf-ring: var(--dm-primary);
+  /* Sidebar/rail: sempre escura com acento lime, como o resto do hub */
+  --pf-sidebar: var(--dm-bg-sidebar);
+  --pf-sidebar-foreground: var(--dm-nav-default-text);
+  --pf-sidebar-primary: var(--dm-lime);
+  --pf-sidebar-primary-foreground: var(--dm-ink);
+  --pf-sidebar-accent: var(--dm-nav-active-bg);
+  --pf-sidebar-accent-foreground: var(--dm-nav-active-text);
+  --pf-sidebar-border: var(--dm-ink-soft);
+  --pf-sidebar-ring: var(--dm-lime);
+  --pf-chart-1: var(--dm-chart-1);
+  --pf-chart-2: var(--dm-chart-2);
+  --pf-chart-3: var(--dm-chart-3);
+  --pf-chart-4: var(--dm-chart-4);
+  --pf-chart-5: var(--dm-chart-5);
 
   --radius: 0.75rem;
 
@@ -116,7 +119,7 @@
 
   /* base do original (body) */
   background-color: var(--color-background);
-  color: hsl(210 17% 95%);
+  color: var(--color-text-primary);
   font-feature-settings: "rlig" 1, "calt" 1;
   font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
@@ -170,17 +173,17 @@ html[data-density="spacious"] .pf-app {
 .pf-app ::-webkit-scrollbar-track { background: transparent; }
 .pf-app ::-webkit-scrollbar-thumb { background: rgba(216, 222, 227, 0.10); border-radius: 999px; }
 .pf-app ::-webkit-scrollbar-thumb:hover { background: rgba(216, 222, 227, 0.18); }
-.pf-app ::selection { background: rgba(198, 244, 50, 0.22); color: #F7F9FA; }
+.pf-app ::selection { background: rgba(182, 245, 0, 0.22); color: var(--color-text-primary); }
 
 .pf-app select option,
 .pf-app select optgroup {
-  background-color: #151A20;
-  color: #F7F9FA;
+  background-color: var(--color-surface);
+  color: var(--color-text-primary);
 }
 .pf-app select option:checked,
 .pf-app select option:hover {
-  background-color: #222A31;
-  color: #F7F9FA;
+  background-color: var(--color-surface-elevated);
+  color: var(--color-text-primary);
 }
 
 /* ── Utilities do original ── */
@@ -212,8 +215,8 @@ html[data-density="spacious"] .pf-app {
 
 .pf-app .focus-ring {
   outline: none;
-  box-shadow: 0 0 0 4px rgba(198, 244, 50, 0.14);
-  border-color: rgba(198, 244, 50, 0.60) !important;
+  box-shadow: 0 0 0 4px rgba(182, 245, 0, 0.14);
+  border-color: rgba(182, 245, 0, 0.60) !important;
 }
 
 .pf-app .card-glow { position: relative; overflow: hidden; }
@@ -221,7 +224,7 @@ html[data-density="spacious"] .pf-app {
   content: '';
   position: absolute; top: 0; right: 0;
   width: 180px; height: 180px;
-  background: radial-gradient(circle at top right, rgba(198,244,50,0.08), transparent 65%);
+  background: radial-gradient(circle at top right, rgba(182,245,0,0.08), transparent 65%);
   pointer-events: none;
 }
 
@@ -232,18 +235,18 @@ html[data-density="spacious"] .pf-app {
 .pf-app .bg-canary .text-white { color: var(--pf-primary-foreground); }
 .pf-app .bg-primary svg,
 .pf-app .bg-canary svg { color: var(--pf-primary-foreground); }
-.pf-app .ui-muted-readable { color: rgba(216, 222, 227, 0.72); }
-.pf-app .ui-muted-subtle { color: rgba(216, 222, 227, 0.58); }
+.pf-app .ui-muted-readable { color: var(--color-text-secondary); }
+.pf-app .ui-muted-subtle { color: var(--color-text-muted); }
 
 /* Sonner */
 .cn-toast {
-  border: 1px solid rgba(216, 222, 227, 0.16) !important;
-  background: #151A20 !important;
-  color: #F7F9FA !important;
+  border: 1px solid var(--color-border-strong) !important;
+  background: var(--color-surface) !important;
+  color: var(--color-text-primary) !important;
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.42) !important;
 }
-.cn-toast [data-title] { color: #F7F9FA !important; font-weight: 700 !important; }
-.cn-toast [data-description] { color: #D8DEE3 !important; }
+.cn-toast [data-title] { color: var(--color-text-primary) !important; font-weight: 700 !important; }
+.cn-toast [data-description] { color: var(--color-text-secondary) !important; }
 
 /* ── Skeleton shimmer ── */
 @keyframes skeleton-shimmer {

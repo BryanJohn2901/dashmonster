@@ -21,7 +21,9 @@ const mockConfigSelect = jest.fn(() => ({ eq: () => ({ maybeSingle: mockConfigMa
 // maybeSingle(), dá await direto na query (espera um array) — por isso tem
 // mock PRÓPRIO (mockEventsLogCount), pra não disputar a mesma fila do
 // maybeSingle (senão bagunçaria a ordem de TODOS os outros testes).
-const mockEventsLogMaybeSingle = jest.fn(() => Promise.resolve({ data: null, error: null }));
+const mockEventsLogMaybeSingle = jest.fn(
+  (): Promise<{ data: unknown; error: { message: string } | null }> => Promise.resolve({ data: null, error: null }),
+);
 const mockEventsLogCount = jest.fn((): Promise<{ data: unknown[]; error: { message: string } | null }> => Promise.resolve({ data: [], error: null }));
 function makeEventsLogQuery() {
   const query: { eq: jest.Mock; ilike: jest.Mock; is: jest.Mock; gte: jest.Mock; order: jest.Mock; limit: jest.Mock; maybeSingle: () => unknown; then: (...args: never[]) => unknown } = {
@@ -134,7 +136,7 @@ const mockOffersUpsert = jest.fn(() => Promise.resolve({ data: null, error: null
 // outros mocks "sem dado" desta suite).
 const mockContractMaybeSingle = jest.fn(
   (): Promise<{
-    data: { total_installments: number; is_finite: boolean; current_charge?: number; charge_value?: number } | null;
+    data: { total_installments: number | null; is_finite: boolean; current_charge?: number; charge_value?: number; created_received?: boolean } | null;
     error: { message: string } | null;
   }> => Promise.resolve({ data: null, error: null }),
 );
@@ -528,10 +530,11 @@ describe("POST /api/eduzz/webhook", () => {
     );
   });
 
-  it("assinatura recorrente: 1ª cobrança sem ficha de contrato (contract_created nunca recebido) usa o valor da cobrança, sem inventar total", async () => {
+  it("assinatura recorrente: 1ª cobrança sem contract_created ainda fica PENDENTE (sale_confirmed=false), sem multiplicar valor nem somar receita/Meta", async () => {
     mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // shouldSkipRecurring: 1ª vez, sem renovação anterior
     mockNotYetProcessed();
+    // findContractInfo: nenhuma ficha ainda (contract_created nunca recebido) -> createdReceived null -> pendente.
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por email
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por telefone
     // produto sem pixel escolhido — teste só verifica os campos gravados, não o envio à Meta.
@@ -542,11 +545,13 @@ describe("POST /api/eduzz/webhook", () => {
     };
     const res = await POST(buildRequest(payload));
     expect(res.status).toBe(200);
-    expect(mockInsert).toHaveBeenCalledWith(expect.objectContaining({ value: 970, recurrence_key: "sub-1" }));
-    expect(mockInsert).not.toHaveBeenCalledWith(expect.objectContaining({ sale_confirmed: false }));
+    // value = invoiceValue cru (970), sem multiplicar — o total só é conhecido quando contract_created chegar e backfillContractValues() corrigir.
+    expect(mockInsert).toHaveBeenCalledWith(expect.objectContaining({ value: 970, recurrence_key: "sub-1", sale_confirmed: false }));
+    expect(mockMetricsUpsert).not.toHaveBeenCalled();
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  it("assinatura sem ficha mas com data.installments usa esse total como fallback para valor cheio", async () => {
+  it("assinatura sem ficha conhecida mas com data.installments: fica pendente até contract_created (o total já capturado em total_installments_raw serve de fallback só no backfill)", async () => {
     mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // isKnownRecurrence: 1ª cobrança
     mockNotYetProcessed();
@@ -564,12 +569,14 @@ describe("POST /api/eduzz/webhook", () => {
     };
     await POST(buildRequest(payload));
 
+    // Gate (ab2b131): sem contract_created confirmado, sempre pendente — mesmo já sabendo o total via data.installments.
     expect(mockInsert).toHaveBeenCalledWith(
       expect.objectContaining({
-        value: 4351,
+        value: 229,
         installment_value: 229,
-        installments: 19,
+        total_installments_raw: 19,
         recurrence_key: "sub-sem-ficha-com-total",
+        sale_confirmed: false,
       }),
     );
   });
@@ -895,8 +902,8 @@ describe("POST /api/eduzz/webhook", () => {
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por telefone
     mockProductPixelConfigured();
     mockPixelMaybeSingle.mockResolvedValueOnce({ data: PIXEL_OK, error: null });
-    // ficha do contrato: 12 parcelas, fim definido — achada por findContractTotalInstallments().
-    mockContractMaybeSingle.mockResolvedValueOnce({ data: { total_installments: 12, is_finite: true }, error: null });
+    // ficha do contrato JÁ CONFIRMADA (contract_created recebido): 12 parcelas, fim definido.
+    mockContractMaybeSingle.mockResolvedValueOnce({ data: { total_installments: 12, is_finite: true, created_received: true }, error: null });
 
     const payload = { ...MODERN_PAYLOAD, data: { ...MODERN_PAYLOAD.data, paid: { value: 10, currency: "BRL" }, contract: { id: "sub-psl-1" } } };
     await POST(buildRequest(payload));
@@ -927,8 +934,8 @@ describe("POST /api/eduzz/webhook", () => {
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por telefone
     mockProductPixelConfigured();
     mockPixelMaybeSingle.mockResolvedValueOnce({ data: PIXEL_OK, error: null });
-    // ficha: 19 parcelas de R$197 (preço normal) — mas essa fatura cobrou só R$98,50 (1ª com 50% off).
-    mockContractMaybeSingle.mockResolvedValueOnce({ data: { total_installments: 19, is_finite: true, current_charge: 1, charge_value: 197 }, error: null });
+    // ficha CONFIRMADA: 19 parcelas de R$197 (preço normal) — mas essa fatura cobrou só R$98,50 (1ª com 50% off).
+    mockContractMaybeSingle.mockResolvedValueOnce({ data: { total_installments: 19, is_finite: true, current_charge: 1, charge_value: 197, created_received: true }, error: null });
 
     const payload = { ...MODERN_PAYLOAD, data: { ...MODERN_PAYLOAD.data, paid: { value: 98.5, currency: "BRL" }, contract: { id: "sub-1a-com-desconto" } } };
     await POST(buildRequest(payload));
@@ -949,7 +956,7 @@ describe("POST /api/eduzz/webhook", () => {
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por telefone
     mockProductPixelConfigured();
     mockPixelMaybeSingle.mockResolvedValueOnce({ data: PIXEL_OK, error: null });
-    mockContractMaybeSingle.mockResolvedValueOnce({ data: { total_installments: 6, is_finite: true, current_charge: 1 }, error: null });
+    mockContractMaybeSingle.mockResolvedValueOnce({ data: { total_installments: 6, is_finite: true, current_charge: 1, created_received: true }, error: null });
 
     const payload = {
       ...MODERN_PAYLOAD,
@@ -1034,12 +1041,14 @@ describe("POST /api/eduzz/webhook", () => {
     expect(mockInsert).toHaveBeenCalledWith(expect.objectContaining({ value: 10, recurrence_key: "sub-psl-novo" }));
   });
 
-  it("assinatura sem ficha mas com código da oferta 19x197 infere o total pelo nome e mostra o valor cheio", async () => {
+  it("assinatura com ficha confirmada mas sem total (contract_created chegou sem is_finite/total_installments): código da oferta 19x197 infere o total pelo nome e mostra o valor cheio", async () => {
     mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // isKnownRecurrence: 1ª cobrança
     mockNotYetProcessed();
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por email
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por telefone
+    // ficha CONFIRMADA (passa o gate) mas sem total utilizável -> cai no fallback por nome da oferta.
+    mockContractMaybeSingle.mockResolvedValueOnce({ data: { total_installments: null, is_finite: true, created_received: true }, error: null });
 
     const payload = {
       ...MODERN_PAYLOAD,
@@ -1122,11 +1131,13 @@ describe("POST /api/eduzz/webhook", () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  it("formato flat moderno preserva installments raiz para calcular valor cheio de assinatura", async () => {
+  it("formato flat moderno com ficha confirmada preserva installments raiz para calcular valor cheio de assinatura", async () => {
     mockConfigMaybeSingle.mockResolvedValueOnce({ data: COMPANY_OK, error: null });
     mockNotYetProcessed();
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por email
     mockEventsLogMaybeSingle.mockResolvedValueOnce({ data: null, error: null }); // sem match por telefone
+    // ficha CONFIRMADA mas sem total utilizável -> cai no fallback por data.installments (totalInstallmentsRaw).
+    mockContractMaybeSingle.mockResolvedValueOnce({ data: { total_installments: null, is_finite: true, created_received: true }, error: null });
 
     const payload = {
       status: "paid",

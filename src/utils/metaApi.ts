@@ -301,6 +301,8 @@ export async function fetchAdInsights(
   accessToken: string,
   dateFrom: string,
   dateTo: string,
+  /** Restringe a UM anúncio (/{adId}/insights) — leve, pra fallback pontual. */
+  adId?: string,
 ): Promise<AdInsight[]> {
   if (!adAccountId || !accessToken || !dateFrom || !dateTo) return [];
 
@@ -308,6 +310,7 @@ export async function fetchAdInsights(
     adAccountId, dateFrom, dateTo,
     level: "ad",
     timeIncrement: "all_days",
+    ...(adId ? { adId } : {}),
   });
 
   const res = await metaFetch(`/api/meta/insights?${params.toString()}`, accessToken);
@@ -331,7 +334,9 @@ export async function fetchAdInsights(
         : parseMetaNum(r.ctr);
       const cpm         = parseMetaNum(r.cpm);
 
-      const conversions = pickActionRaw(r.actions, "purchase", "omni_purchase", "offsite_conversion.fb_pixel_purchase");
+      // extractConversions cai pro evento custom de pixel quando não há Purchase padrão —
+      // sem isso, contas novas (ainda sem Purchase nativo configurado) ficavam sempre em 0.
+      const conversions = extractConversions(r.actions);
       const leads       = pickActionRaw(r.actions, "onsite_conversion.lead_grouped", "lead", "offsite_conversion.fb_pixel_lead");
       const revenue     = pickActionRaw(r.action_values, "purchase", "omni_purchase", "offsite_conversion.fb_pixel_purchase");
 

@@ -17,19 +17,22 @@ import {
   fetchCompanyInvites, revokeCompanyInvite, type PendingInvite,
   readMemberProducts, MEMBER_PRODUCTS_KEY,
   readCompanyBranding, updateCompanyLogo, COMPANY_BRANDING_KEY, type CompanyBranding,
+  deleteCompany, readCompanyTag, COMPANY_TAG_KEY,
   type AdminCompany, type CompanyRole, type CompanyMember, type AdAccountEntry,
 } from "@/hooks/useCompany";
 import { PRODUCTS } from "@/config/products";
 import { readCustomHistoryTabs, CUSTOM_HISTORY_TABS_KEY, HISTORICAL_KIND_LABELS, BUILTIN_HISTORY_KINDS, type CustomHistoryTab } from "@/types/historical";
 import {
   fetchGlobalMembers, fetchLoginEvents, isActiveMember, parseUserAgent, formatLocation,
-  fetchAdminUser, updateAdminUser, isBanned,
-  type GlobalMember, type LoginEvent, type AdminUserDetail, type BanDuration,
+  fetchAdminUser, updateAdminUser, isBanned, fetchAuditLog,
+  type GlobalMember, type LoginEvent, type AdminUserDetail, type BanDuration, type AuditLogEntry,
 } from "@/lib/adminAudit";
 import { FacebookConnectShell, InstagramConnectShell } from "@/components/hub/ConnectShells";
 import { fetchMetaAdAccounts, type MetaAdAccount } from "@/utils/metaApi";
 import { fetchPipelines, fetchCrmStats, ensureDefaultPipeline, deletePipeline, type CrmPipeline, type CrmStats } from "@/lib/crm";
+import { upsertUserCategory } from "@/utils/supabaseCategories";
 import { toast } from "@/hooks/useToast";
+import { logAudit } from "@/lib/auditLog";
 
 export interface ScopedProps {
   companies: AdminCompany[];
@@ -117,19 +120,42 @@ export function EmpresasSection({ companies, onSelect, reload, onCreate, onGo }:
   const [query, setQuery] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
+  const [editTag, setEditTag] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const q = query.trim().toLowerCase();
-  const filtered = companies.filter((c) => !q || c.company.name.toLowerCase().includes(q) || c.company.slug.toLowerCase().includes(q));
+  const filtered = companies.filter((c) => !q || c.company.name.toLowerCase().includes(q) || c.company.slug.toLowerCase().includes(q) || readCompanyTag(c.company.settings).toLowerCase().includes(q));
 
-  const saveRename = async (c: AdminCompany) => {
+  const saveEdit = async (c: AdminCompany) => {
     const nm = editName.trim();
+    const tg = editTag.trim().toUpperCase();
+    if (!nm) { toast.error("Nome não pode ficar vazio."); return; }
+    if (tg && !/^[A-Z]{3}$/.test(tg)) { toast.error("TAG: exatamente 3 letras (ex.: PTA)."); return; }
+    if (tg && companies.some((x) => x.company.id !== c.company.id && readCompanyTag(x.company.settings) === tg)) {
+      toast.error(`A TAG ${tg} já está em uso por outra empresa.`);
+      return;
+    }
     setEditingId(null);
-    if (!nm || nm === c.company.name) return;
     setBusyId(c.company.id);
-    try { await renameCompany(c.company.id, nm); await reload(); toast.success("Empresa renomeada."); }
-    catch (e) { toast.error(e instanceof Error ? e.message : "Erro ao renomear."); }
+    try {
+      if (nm !== c.company.name) await renameCompany(c.company.id, nm);
+      if (tg !== readCompanyTag(c.company.settings)) {
+        await updateCompanySettings(c.company.id, { ...c.company.settings, [COMPANY_TAG_KEY]: tg });
+      }
+      await reload();
+      toast.success("Empresa atualizada.");
+    }
+    catch (e) { toast.error(e instanceof Error ? e.message : "Erro ao salvar."); }
+    finally { setBusyId(null); }
+  };
+
+  const doDelete = async (c: AdminCompany) => {
+    setConfirmDeleteId(null);
+    setBusyId(c.company.id);
+    try { await deleteCompany(c.company.id); await reload(); toast.success(`Empresa "${c.company.name}" excluída.`); }
+    catch (e) { toast.error(e instanceof Error ? e.message : "Erro ao excluir."); }
     finally { setBusyId(null); }
   };
 
@@ -167,12 +193,38 @@ export function EmpresasSection({ companies, onSelect, reload, onCreate, onGo }:
               </span>
               <div className="min-w-0 flex-1">
                 {editing ? (
-                  <input value={editName} autoFocus onChange={(e) => setEditName(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") void saveRename(c); if (e.key === "Escape") setEditingId(null); }}
-                    onBlur={() => void saveRename(c)}
-                    className="h-8 w-full rounded-lg border px-2 text-[13px] outline-none" style={inputStyle} />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input value={editName} autoFocus onChange={(e) => setEditName(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") void saveEdit(c); if (e.key === "Escape") setEditingId(null); }}
+                      placeholder="Nome da empresa"
+                      className="h-8 min-w-0 flex-1 rounded-lg border px-2 text-[13px] outline-none" style={inputStyle} />
+                    <input value={editTag} maxLength={3}
+                      onChange={(e) => setEditTag(e.target.value.replace(/[^A-Za-z]/g, "").toUpperCase())}
+                      onKeyDown={(e) => { if (e.key === "Enter") void saveEdit(c); if (e.key === "Escape") setEditingId(null); }}
+                      placeholder="TAG"
+                      className="h-8 w-16 rounded-lg border px-2 text-center text-[12px] font-bold tracking-widest uppercase outline-none"
+                      style={{ ...inputStyle, borderColor: editTag && !/^[A-Z]{3}$/.test(editTag) ? "#ef4444" : "var(--dm-border-default)" }} />
+                    <button type="button" onClick={() => void saveEdit(c)}
+                      className="flex h-8 items-center gap-1 rounded-lg px-3 text-[11px] font-bold text-white transition hover:opacity-90"
+                      style={{ background: "var(--dm-btn-primary-bg)" }}>
+                      <Check size={12} /> Finalizar
+                    </button>
+                    <button type="button" onClick={() => setEditingId(null)} title="Cancelar"
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border transition hover:opacity-80"
+                      style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-tertiary)" }}>
+                      <X size={13} />
+                    </button>
+                  </div>
                 ) : (
-                  <p className="truncate text-[14px] font-bold" style={{ color: "var(--dm-text-primary)" }}>{c.company.name}</p>
+                  <p className="flex items-center gap-2 truncate text-[14px] font-bold" style={{ color: "var(--dm-text-primary)" }}>
+                    <span className="truncate">{c.company.name}</span>
+                    {readCompanyTag(c.company.settings) && (
+                      <span className="flex-shrink-0 rounded-md border px-1.5 py-0.5 text-[10px] font-bold tracking-widest"
+                        style={{ borderColor: "var(--dm-primary)", color: "var(--dm-primary)" }}>
+                        {readCompanyTag(c.company.settings)}
+                      </span>
+                    )}
+                  </p>
                 )}
                 <p className="truncate text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
                   {c.memberCount} membro{c.memberCount === 1 ? "" : "s"} · {c.company.slug}
@@ -202,7 +254,7 @@ export function EmpresasSection({ companies, onSelect, reload, onCreate, onGo }:
               </span>
 
               {busyId === c.company.id && <Loader2 size={14} className="animate-spin" style={{ color: "var(--dm-text-tertiary)" }} />}
-              <button type="button" title="Renomear" onClick={() => { setEditingId(c.company.id); setEditName(c.company.name); }}
+              <button type="button" title="Editar nome e TAG" onClick={() => { setEditingId(c.company.id); setEditName(c.company.name); setEditTag(readCompanyTag(c.company.settings)); }}
                 className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg transition hover:bg-black/5 dark:hover:bg-white/5"
                 style={{ color: "var(--dm-text-tertiary)" }}>
                 <Pencil size={14} />
@@ -217,7 +269,33 @@ export function EmpresasSection({ companies, onSelect, reload, onCreate, onGo }:
                 style={{ borderColor: "var(--dm-border-default)", color: open ? "var(--dm-primary)" : "var(--dm-text-secondary)" }}>
                 {open ? "Fechar" : "Detalhes"}
               </button>
+              <button type="button" title="Excluir empresa"
+                onClick={() => setConfirmDeleteId(confirmDeleteId === c.company.id ? null : c.company.id)}
+                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg transition hover:bg-red-500/10"
+                style={{ color: "#EE5D50" }}>
+                <Trash2 size={14} />
+              </button>
             </div>
+
+            {/* Confirmação de exclusão — apaga a empresa e TODOS os dados dela */}
+            {confirmDeleteId === c.company.id && (
+              <div className="flex flex-wrap items-center gap-2 border-t px-4 py-3"
+                style={{ borderColor: "rgba(238,93,80,0.4)", background: "rgba(238,93,80,0.06)" }}>
+                <p className="min-w-0 flex-1 text-[12px] font-semibold" style={{ color: "#EE5D50" }}>
+                  Excluir &quot;{c.company.name}&quot;? Apaga membros, filtros, contas e histórico. Não tem volta.
+                </p>
+                <button type="button" onClick={() => setConfirmDeleteId(null)}
+                  className="h-8 rounded-lg border px-3 text-[11px] font-bold transition hover:opacity-80"
+                  style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}>
+                  Cancelar
+                </button>
+                <button type="button" onClick={() => void doDelete(c)} disabled={busyId === c.company.id}
+                  className="flex h-8 items-center gap-1.5 rounded-lg px-3 text-[11px] font-bold text-white transition hover:opacity-90 disabled:opacity-50"
+                  style={{ background: "#EE5D50" }}>
+                  <Trash2 size={12} /> Excluir de vez
+                </button>
+              </div>
+            )}
 
             {/* Drill-down: visão completa da conta + atalhos pras seções já no escopo dela */}
             {open && (
@@ -352,7 +430,15 @@ export function ProdutosSection({ companies, reload }: ScopedProps) {
       delete expiry[productId];
     }
     setBusy(`${c.company.id}:${productId}`);
-    try { await setCompanyProducts(c.company.id, next, expiry); await reload(); }
+    try {
+      await setCompanyProducts(c.company.id, next, expiry);
+      await reload();
+      void logAudit({
+        companyId: c.company.id, action: "product_change", entityType: "product",
+        entityLabel: `${c.company.name} — ${productId}`,
+        details: { productId, enabled: on, before: owned, after: next, expiryDays: days ?? null },
+      });
+    }
     catch (e) { toast.error(e instanceof Error ? e.message : "Erro ao salvar produtos."); }
     finally { setBusy(null); }
   };
@@ -811,6 +897,104 @@ export function AtividadeSection(_props: ScopedProps) {
   );
 }
 
+// ─── Auditoria ────────────────────────────────────────────────────────────────
+
+const AUDIT_ACTION_LABELS: Record<string, string> = {
+  page_view: "Navegação", export: "Exportação", product_change: "Produto",
+  create: "Criação", update: "Edição", delete: "Exclusão",
+};
+
+function auditActionLabel(action: string): string {
+  return AUDIT_ACTION_LABELS[action] ?? action;
+}
+
+function auditDetail(e: AuditLogEntry): string {
+  const d = e.details;
+  if (e.action === "export") {
+    const count = d.campaignCount ?? d.count;
+    return typeof count === "number" ? `${count} item${count === 1 ? "" : "s"}` : "";
+  }
+  if (e.action === "product_change") {
+    return d.enabled ? "ativado" : "desativado";
+  }
+  return "";
+}
+
+export function AuditoriaSection({ selected, selectedId }: ScopedProps) {
+  const [events, setEvents] = useState<AuditLogEntry[] | null>(null);
+  const [query, setQuery] = useState("");
+  const [actionFilter, setActionFilter] = useState<string>("all");
+  const [scopeAll, setScopeAll] = useState(true);
+
+  useEffect(() => {
+    setEvents(null);
+    void fetchAuditLog(scopeAll ? undefined : (selectedId ?? undefined))
+      .then(setEvents)
+      .catch((e) => {
+        toast.error(e instanceof Error ? e.message : "Erro ao carregar auditoria.");
+        setEvents([]);
+      });
+  }, [scopeAll, selectedId]);
+
+  const q = query.trim().toLowerCase();
+  const filtered = (events ?? []).filter((e) =>
+    (actionFilter === "all" || e.action === actionFilter)
+    && (!q || (e.userEmail ?? "").toLowerCase().includes(q) || (e.entityLabel ?? "").toLowerCase().includes(q)),
+  );
+
+  return (
+    <div>
+      <SectionHeader icon={History} title="Auditoria" desc="Navegação, exportações e mudanças relevantes — não é log de cada clique" />
+
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[220px] flex-1">
+          <Search size={14} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: "var(--dm-text-tertiary)" }} />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filtrar por e-mail ou item…"
+            className="h-10 w-full rounded-xl border pl-10 pr-3 text-[13px] outline-none" style={inputStyle} />
+        </div>
+        <select value={actionFilter} onChange={(e) => setActionFilter(e.target.value)}
+          className="h-10 rounded-xl border px-3 text-[13px] outline-none" style={inputStyle}>
+          <option value="all">Todas as ações</option>
+          {Object.entries(AUDIT_ACTION_LABELS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+        </select>
+        <button type="button" onClick={() => setScopeAll((v) => !v)}
+          className="h-10 rounded-xl border px-3 text-[12px] font-semibold transition-colors"
+          style={scopeAll
+            ? { borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }
+            : { borderColor: "var(--dm-primary)", color: "var(--dm-primary)", background: "var(--dm-primary-soft)" }}>
+          {scopeAll ? "Todas as empresas" : `Só ${selected?.company.name ?? "empresa selecionada"}`}
+        </button>
+      </div>
+
+      {events === null ? (
+        <Card><Loader2 size={16} className="animate-spin" style={{ color: "var(--dm-text-tertiary)" }} /></Card>
+      ) : filtered.length === 0 ? (
+        <Card>
+          <p className="text-[13px]" style={{ color: "var(--dm-text-tertiary)" }}>
+            Nenhum evento de auditoria ainda (migration 081 precisa estar aplicada no Supabase).
+          </p>
+        </Card>
+      ) : (
+        <div className="overflow-hidden rounded-2xl border" style={{ borderColor: "var(--dm-border-default)" }}>
+          {filtered.map((e, i) => (
+            <div key={e.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 text-[12px]"
+              style={{ background: "var(--dm-bg-surface)", borderTop: i > 0 ? "1px solid var(--dm-border-default)" : undefined }}>
+              <span className="w-[130px] font-semibold tabular-nums" style={{ color: "var(--dm-text-tertiary)" }}>
+                {new Date(e.createdAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+              </span>
+              <span className="w-[110px] font-bold" style={{ color: "var(--dm-primary)" }}>{auditActionLabel(e.action)}</span>
+              <span className="min-w-[160px] flex-1 truncate font-semibold" style={{ color: "var(--dm-text-primary)" }}>{e.entityLabel ?? "—"}</span>
+              {scopeAll && <span className="w-[140px] truncate" style={{ color: "var(--dm-text-secondary)" }}>{e.companyName ?? "—"}</span>}
+              <span className="min-w-[140px] truncate" style={{ color: "var(--dm-text-secondary)" }}>{e.userEmail ?? "—"}</span>
+              <span className="w-[90px]" style={{ color: "var(--dm-text-tertiary)" }}>{auditDetail(e)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Convites ───────────────────────────────────────────────────────────────────
 
 export function ConvitesSection({ selected, reload }: ScopedProps) {
@@ -1220,7 +1404,12 @@ export function FiltrosSection({ selected, reload }: ScopedProps) {
   const addFilter = () => {
     const nm = newFilter.trim();
     if (!nm) return;
-    void saveSettings({ [COMPANY_FILTERS_KEY]: [...filters, { id: slugify(nm) || `f-${Date.now()}`, name: nm, subfilters: [] }] });
+    const id = slugify(nm) || `f-${Date.now()}`;
+    void saveSettings({ [COMPANY_FILTERS_KEY]: [...filters, { id, name: nm, subfilters: [] }] });
+    // Materializa a categoria no dashboard da empresa (propagação imediata pro
+    // Painel de Controle / Conectar conta). Falha silenciosa: o template
+    // dinâmico do ControlPanel cobre quando o membro abrir o painel.
+    void upsertUserCategory({ slug: id, name: nm, type: "fixed", emoji: "🏷️", position: filters.length, companyId: selected.company.id }).catch(() => {});
     setNewFilter("");
   };
 

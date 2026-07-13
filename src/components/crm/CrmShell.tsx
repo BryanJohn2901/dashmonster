@@ -7,8 +7,10 @@
 // A prop `active` ficou sem uso (nav é por pathname no SidebarNav) — mantida
 // para não tocar nas páginas até cada uma ser portada.
 
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
+import { usePathname } from "next/navigation";
 import { useCompany } from "@/hooks/useCompany";
+import { logAudit } from "@/lib/auditLog";
 
 interface CrmShellProps {
   active?: "pipeline" | "inbox" | "leads" | "calendar" | "dashboard" | "config";
@@ -17,6 +19,17 @@ interface CrmShellProps {
 
 export function CrmShell({ children }: CrmShellProps) {
   const { company, isSuperAdmin, loading, canWrite } = useCompany();
+  const pathname = usePathname();
+
+  // Auditoria: cada página do CRM visitada (rotas reais, uma por navegação).
+  useEffect(() => {
+    if (!company) return;
+    void logAudit({
+      companyId: company.id, action: "page_view", entityType: "page",
+      entityLabel: pathname, details: { section: "crm" },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [company?.id, pathname]);
 
   // AppShell já cobre loading/gate com a UI original; aqui só evita render sem contexto.
   if (loading || !company) return null;

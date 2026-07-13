@@ -54,7 +54,8 @@ const TYPE_COLOR: Record<MetaCampaignCreative["mediaType"], { bg: string; text: 
   unknown:  { bg: "var(--dm-bg-elevated)", text: "var(--dm-text-tertiary)" },
 };
 
-function getCacheKey(ids: string[]) { return `pta_creatives_v2_${ids.sort().join(",")}`; }
+// v3: invalida caches truncados pelo filtro de status estreito (só ACTIVE/PAUSED/ARCHIVED).
+function getCacheKey(ids: string[]) { return `pta_creatives_v3_${ids.sort().join(",")}`; }
 function readCache(key: string): MetaCampaignCreative[] | null {
   try {
     const raw = localStorage.getItem(key);
@@ -685,6 +686,8 @@ function mq(metric: "ctr" | "cpl" | "roas" | "default", val: number): Quality {
 
 function computeScore(i?: AdInsight): number | null {
   if (!i || i.spend === 0) return null;
+  // Volume mínimo: com meia dúzia de impressões a nota sai 0 e só engana.
+  if (i.impressions < 100) return null;
   const ctr  = Math.min(i.ctr / 0.03, 1) * 40;
   const leads = i.leads > 0 ? Math.min(i.leads / 100, 1) * 30 : i.conversions > 0 ? Math.min(i.conversions / 20, 1) * 30 : 0;
   const roas  = i.roas > 0 ? Math.min(i.roas / 5, 1) * 30 : 0;
@@ -915,11 +918,15 @@ function VideoPlayer({
 // ─── Preview Modal ────────────────────────────────────────────────────────────
 
 function PreviewModal({
-  ad, insight, starred, accessToken, onClose, onToggleStar,
+  ad, insight: periodInsight, lifetimeInsight, onNeedLifetime,
+  starred, accessToken, onClose, onToggleStar,
   allAds, allInsights, onNavigate,
 }: {
-  ad:           MetaCampaignCreative;
-  insight?:     AdInsight;
+  ad:              MetaCampaignCreative;
+  insight?:        AdInsight;
+  /** Totais dos últimos 365d — usado quando o anúncio não entregou no período. */
+  lifetimeInsight?: AdInsight;
+  onNeedLifetime:  () => void;
   starred:      boolean;
   accessToken:  string;
   onClose:      () => void;
@@ -928,6 +935,12 @@ function PreviewModal({
   allInsights:  Map<string, AdInsight>;
   onNavigate:   (ad: MetaCampaignCreative) => void;
 }) {
+  // Sem entrega no período selecionado → cai pros totais (senão o modal mostra
+  // tudo zerado/vazio pra anúncio antigo ou de conjunto pausado).
+  const periodEmpty = !periodInsight || periodInsight.impressions === 0;
+  const insight     = periodEmpty ? (lifetimeInsight ?? periodInsight) : periodInsight;
+  const usingTotals = periodEmpty && !!lifetimeInsight && lifetimeInsight.impressions > 0;
+  useEffect(() => { if (periodEmpty) onNeedLifetime(); }, [periodEmpty, onNeedLifetime]);
   // Modal abre direto no live preview para todos os ads.
   // "Ver imagem estática" ainda disponível como opção.
   const [showIframe, setShowIframe] = useState(true);
@@ -978,7 +991,7 @@ function PreviewModal({
   const metricCards: { label: string; value: string | null; valueColor: string }[] = insight ? [
     { label: "Investimento", value: formatCurrency(insight.spend),                                                               valueColor: "var(--dm-text-primary)" },
     { label: "CTR",          value: formatPercent(insight.ctr),                                                                  valueColor: insight.ctr >= 0.02 ? "#05CD99" : insight.ctr >= 0.01 ? "#F4A60D" : "#EE5D50" },
-    { label: cplVal != null ? "CPL" : cpaVal != null ? "CPA" : "CPC", value: formatCurrency(cplVal ?? cpaVal ?? insight.cpc),   valueColor: mq("cpl", cplVal ?? cpaVal ?? insight.cpc) === "good" ? "#05CD99" : "var(--dm-text-primary)" },
+    { label: cplVal != null ? "CPL" : cpaVal != null ? "CPA" : "CPC", value: cplVal != null || cpaVal != null || insight.clicks > 0 ? formatCurrency(cplVal ?? cpaVal ?? insight.cpc) : null, valueColor: mq("cpl", cplVal ?? cpaVal ?? insight.cpc) === "good" ? "#05CD99" : "var(--dm-text-primary)" },
     { label: "Leads",        value: insight.leads > 0 ? insight.leads.toLocaleString("pt-BR") : null,                           valueColor: "#05CD99" },
     { label: "Vendas",       value: insight.conversions > 0 ? insight.conversions.toLocaleString("pt-BR") : null,               valueColor: "#05CD99" },
     { label: "Cliques",      value: insight.clicks.toLocaleString("pt-BR"),                                                      valueColor: "var(--dm-text-primary)" },
@@ -1217,7 +1230,9 @@ function PreviewModal({
               {/* Metrics grid */}
               {metricCards.length > 0 ? (
                 <div>
-                  <p className="mb-2.5 text-[9px] font-bold uppercase tracking-widest" style={{ color: "var(--dm-text-tertiary)" }}>Métricas do período</p>
+                  <p className="mb-2.5 text-[9px] font-bold uppercase tracking-widest" style={{ color: usingTotals ? "#F4A60D" : "var(--dm-text-tertiary)" }}>
+                    {usingTotals ? "Métricas totais · sem entrega no período selecionado" : "Métricas do período"}
+                  </p>
                   <div className="grid grid-cols-4 gap-1.5">
                     {metricCards.map(({ label, value, valueColor }) => {
                       const hasData = value !== null;
@@ -1244,7 +1259,9 @@ function PreviewModal({
               ) : (
                 <div className="rounded-[10px] p-4 text-center text-[11px]"
                   style={{ backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-tertiary)", border: "1px solid var(--dm-border-subtle)" }}>
-                  Aguardando métricas — clique em <strong>Atualizar</strong> ou selecione um período.
+                  {periodEmpty
+                    ? <>Sem entrega no período selecionado — buscando métricas totais…</>
+                    : <>Aguardando métricas — clique em <strong>Atualizar</strong> ou selecione um período.</>}
                 </div>
               )}
 
@@ -1423,6 +1440,31 @@ export function BestCreatives({
     for (const b of batches) for (const r of b) map.set(r.ad_id, r);
     setAdInsights(map);
   }, [accessToken, dateFrom, dateTo]);
+
+  // Métricas TOTAIS de UM anúncio (últimos 365d) — fallback do modal quando o
+  // anúncio não entregou no período. Busca pontual (/{adId}/insights): a versão
+  // conta-inteira estourava o limite de dados da Meta em conta grande
+  // ("Please reduce the amount of data you're asking for").
+  const [lifetimeInsights, setLifetimeInsights] = useState<Map<string, AdInsight>>(new Map());
+  const lifetimeRequested = useRef(new Set<string>());
+  const ensureLifetimeInsight = useCallback((adId: string) => {
+    if (!accessToken || !adId || lifetimeRequested.current.has(adId)) return;
+    const ids = getIds();
+    if (!ids.length) return;
+    lifetimeRequested.current.add(adId);
+    const today   = new Date().toISOString().slice(0, 10);
+    const yearAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    void fetchAdInsights(ids[0], accessToken, yearAgo, today, adId)
+      .then((rows) => {
+        if (rows.length === 0) return;
+        setLifetimeInsights((prev) => {
+          const m = new Map(prev);
+          for (const r of rows) m.set(r.ad_id, r);
+          return m;
+        });
+      })
+      .catch(() => { lifetimeRequested.current.delete(adId); });
+  }, [accessToken, getIds]);
 
   const doFetch = useCallback((force = false) => {
     const ids = getIds();
@@ -1838,6 +1880,8 @@ export function BestCreatives({
         <PreviewModal
           ad={previewAd}
           insight={adInsights.get(previewAd.adId)}
+          lifetimeInsight={lifetimeInsights.get(previewAd.adId)}
+          onNeedLifetime={() => ensureLifetimeInsight(previewAd.adId)}
           starred={store[previewAd.adId]?.starred ?? false}
           accessToken={accessToken}
           onClose={() => setPreviewAd(null)}

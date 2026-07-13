@@ -64,7 +64,9 @@ function detectMediaType(ad: MetaAdRaw): MetaCampaignCreative["mediaType"] {
 /**
  * GET /api/meta/creatives?accessToken=EAAx...&adAccountId=act_123
  *
- * Returns ALL active/paused ads with thumbnail, preview link, media type.
+ * Returns ALL active/paused/archived ads with thumbnail, preview link, media type
+ * (archived = removed by advertiser but still readable — excluding it silently drops
+ * its spend from the per-creative breakdown while the campaign total still counts it).
  */
 /**
  * GET /api/meta/creatives?accessToken=EAAx...&adAccountId=act_123[&cursor=ENCODED_URL]
@@ -109,8 +111,21 @@ export async function GET(request: NextRequest) {
           "instagram_permalink_url",
           "creative{id,thumbnail_url,video_id,instagram_permalink_url,object_story_spec{link_data{link,message,name,description,child_attachments},video_data{image_url,message,title}}}",
         ].join(","),
-        effective_status: JSON.stringify(["ACTIVE", "PAUSED"]),
-        limit: "200",
+        // Todos os estados não-deletados. PAUSED sozinho NÃO cobre anúncio sob
+        // pai pausado: conjunto pausado → ADSET_PAUSED, campanha pausada →
+        // CAMPAIGN_PAUSED (bug real: campanha com 10+ anúncios mostrava só os 4
+        // de conjuntos ativos). ARCHIVED = removido pelo anunciante mas o gasto
+        // continua no total (bug real: R$600 de diferença em conta nova). O
+        // status/route.ts já usa a mesma lista ampliada pelo mesmo motivo.
+        effective_status: JSON.stringify([
+          "ACTIVE", "PAUSED", "ADSET_PAUSED", "CAMPAIGN_PAUSED", "ARCHIVED",
+          "PENDING_REVIEW", "DISAPPROVED", "WITH_ISSUES", "IN_PROCESS",
+          "PREAPPROVED", "PENDING_BILLING_INFO",
+        ]),
+        // 50, não 200: com o creative{...} aninhado a página de 200 estoura o
+        // limite de dados da Meta em conta grande ("Please reduce the amount
+        // of data"). Mais páginas leves > uma pesada; a paginação já existe.
+        limit: "50",
       }).toString();
 
   try {
