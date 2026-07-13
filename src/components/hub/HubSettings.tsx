@@ -91,8 +91,8 @@ export function HubSettings({ open, onClose, userName, email, onUpdateProfile, o
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="flex w-full max-w-[1000px] overflow-hidden rounded-2xl border shadow-[0_40px_120px_-30px_rgba(0,0,0,0.6)]"
-        style={{ height: "min(86vh, 720px)", background: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}
+        className="flex w-full max-w-[1240px] overflow-hidden rounded-2xl border shadow-[0_40px_120px_-30px_rgba(0,0,0,0.6)]"
+        style={{ height: "min(92vh, 900px)", background: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}
       >
         {/* ── Nav lateral ──────────────────────────────────────────── */}
         <aside className="flex w-[248px] flex-shrink-0 flex-col border-r" style={{ background: "var(--dm-bg-elevated)", borderColor: "var(--dm-border-default)" }}>

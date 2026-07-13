@@ -59,7 +59,7 @@ export function TrackingConfigPanel({ company, canEdit }: { company: Company; ca
           Somente o dono ou o gestor de tráfego da empresa podem editar essas configurações — os campos abaixo estão travados pro seu papel atual.
         </p>
       )}
-      <p className="text-[12px] leading-relaxed" style={{ color: "var(--dm-text-tertiary)" }}>
+      <p className="text-[13px] leading-relaxed" style={{ color: "var(--dm-text-secondary)" }}>
         Um pixel por landing page ou produto. Ele captura visitas e leads sozinho — a Meta (Conversions API) é opcional.
       </p>
 
@@ -353,7 +353,7 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
 
         <div className="rounded-xl border" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
           <div className="flex items-center justify-between border-b px-3 py-1.5" style={{ borderColor: "var(--dm-border-default)" }}>
-            <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Código de instalação</span>
+            <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Código de instalação</span>
             <button type="button" onClick={() => void copySnippet()} className="text-[10px] font-bold transition-opacity hover:opacity-70" style={{ color: copied ? "#05CD99" : BRAND }}>
               {copied ? "Copiado!" : "Copiar"}
             </button>
@@ -380,7 +380,7 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
 
         {/* Testar instalação */}
         <div className="rounded-xl border px-3 py-2.5" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
-          <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Testar instalação</span>
+          <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Testar instalação</span>
           <div className="flex items-center gap-2">
             <input
               value={testUrl}
@@ -420,7 +420,7 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
 
         {/* Domínio autorizado */}
         <label className="flex flex-col gap-1">
-          <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
+          <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
             <Globe size={11} /> Domínio autorizado <span className="font-normal normal-case">(opcional)</span>
           </span>
           <input value={dominio} disabled={!canEdit} onChange={(e) => setDominio(e.target.value)} placeholder="meusite.com.br" className={`${inputCls} h-10 font-mono disabled:opacity-60`} style={inputStyle} />
@@ -431,11 +431,11 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
       {/* ── Passo 2 — Meta Conversions API (opcional) ── */}
       <Collapsible icon={Send} title="Enviar pra Meta (Conversions API)" subtitle="Opcional — dobra o sinal com o servidor" defaultOpen={capiActive} badge={capiActive ? { tone: "ok", label: "ativo" } : { tone: "neutral", label: "opcional" }}>
         <label className="flex flex-col gap-1">
-          <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Pixel ID (Meta)</span>
+          <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Pixel ID (Meta)</span>
           <input value={pixelId} disabled={!canEdit} onChange={(e) => setPixelId(e.target.value)} placeholder="123456789012345" className={`${inputCls} h-10 font-mono disabled:opacity-60`} style={inputStyle} />
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Token CAPI (Conversions API)</span>
+          <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Token CAPI (Conversions API)</span>
           <div className="flex items-center gap-2">
             <input
               type={revealToken ? "text" : "password"}
@@ -464,7 +464,7 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
           <span className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>Gere em Events Manager → Configurações → Conversions API (não é o token da Conexão Meta).</span>
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Código de teste <span className="font-normal normal-case">(só durante validação)</span></span>
+          <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Código de teste <span className="font-normal normal-case">(só durante validação)</span></span>
           <input value={testEventCode} disabled={!canEdit} onChange={(e) => setTestEventCode(e.target.value)} placeholder="TEST12345" className={`${inputCls} h-10 font-mono disabled:opacity-60`} style={inputStyle} />
           <span className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>Da aba <strong style={{ color: "var(--dm-text-secondary)" }}>Eventos de teste</strong> do Events Manager. Apague depois de validar.</span>
         </label>
@@ -504,7 +504,7 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
         {/* URL do webhook */}
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-1.5">
-            <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>URL do Webhook</span>
+            <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>URL do Webhook</span>
             <button
               type="button"
               onClick={() => setShowWebhookInfo(true)}
@@ -532,7 +532,7 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
         {newWebhookSecret && (
           <div className="space-y-1.5 rounded-xl border p-3" style={{ borderColor: "#F4A60D", backgroundColor: "rgba(244,166,13,0.06)" }}>
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "#F4A60D" }}>Secret gerado — copie agora</span>
+              <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "#F4A60D" }}>Secret gerado — copie agora</span>
               <button type="button" onClick={() => void copyNewSecret()} className="text-[10px] font-bold" style={{ color: webhookSecretCopied ? "#05CD99" : BRAND }}>
                 {webhookSecretCopied ? "Copiado!" : "Copiar"}
               </button>
@@ -546,7 +546,7 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
 
         {/* Gerenciamento do secret */}
         <div className="flex flex-col gap-1">
-          <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
+          <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
             Secret de autenticação
             {(pixel.hasWebhookSecret || newWebhookSecret) && (
               <span className="font-normal normal-case" style={{ color: "#05CD99" }}>✓ configurado</span>
@@ -749,7 +749,7 @@ function WH_FieldTable({ fields }: { fields: WH_FIELD[] }) {
 function WH_Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="space-y-2 border-t pt-4" style={{ borderColor: "var(--dm-border-default)" }}>
-      <h3 className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>{title}</h3>
+      <h3 className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>{title}</h3>
       {children}
     </div>
   );
@@ -785,14 +785,14 @@ function WebhookInfoModal({ url, onClose }: { url: string; onClose: () => void }
           {/* Endpoint e Autenticação */}
           <div className="space-y-3">
             <div className="space-y-1.5">
-              <h3 className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Endpoint</h3>
+              <h3 className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Endpoint</h3>
               <div className="flex items-center gap-2 rounded-lg border px-3 py-2" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
                 <span className="flex-shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold" style={{ background: "rgba(22,163,74,0.15)", color: BRAND }}>POST</span>
                 <code className="flex-1 overflow-x-auto text-[10px]" style={{ color: "var(--dm-text-secondary)" }}>{url}</code>
               </div>
             </div>
             <div className="space-y-1.5">
-              <h3 className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Autenticação</h3>
+              <h3 className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Autenticação</h3>
               <div className="rounded-lg border px-3 py-2.5 space-y-1.5" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
                 <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>Use um dos dois headers abaixo (qualquer um é aceito):</p>
                 <code className="block text-[10px]" style={{ color: "var(--dm-text-secondary)" }}>
@@ -953,8 +953,8 @@ function Collapsible({ icon: Icon, title, subtitle, defaultOpen, badge, children
           <Icon size={15} style={{ color: BRAND }} />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-[13px] font-bold" style={{ color: "var(--dm-text-primary)" }}>{title}</p>
-          {subtitle && <p className="truncate text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>{subtitle}</p>}
+          <p className="text-[14.5px] font-bold" style={{ color: "var(--dm-text-primary)" }}>{title}</p>
+          {subtitle && <p className="truncate text-[11.5px]" style={{ color: "var(--dm-text-tertiary)" }}>{subtitle}</p>}
         </div>
         {badge && <Chip tone={badge.tone} label={badge.label} />}
         <ChevronDown size={16} className="flex-shrink-0 transition-transform duration-200" style={{ color: "var(--dm-text-tertiary)", transform: open ? "rotate(0deg)" : "rotate(-90deg)" }} />
