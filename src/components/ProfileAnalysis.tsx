@@ -4679,6 +4679,13 @@ function ProfileDetailView({
   });
   const [showBuilder, setShowBuilder] = useState(false);
 
+  // Foco em UMA campanha: clique no chip filtra os painéis; clique de novo volta
+  // pra visão consolidada. null = todas.
+  const [focusedCampaignId, setFocusedCampaignId] = useState<string | null>(null);
+  const visibleCampaigns = focusedCampaignId
+    ? profile.campaigns.filter((c) => c.id === focusedCampaignId)
+    : profile.campaigns;
+
   const PERSONALIZADO_LS_KEY = "pta_personalizado_v1";
   const [personalizadoConfig, setPersonalizadoConfig] = useState<PersonalizadoConfig>(() => {
     if (typeof window === "undefined") return DEFAULT_PERSONALIZADO_CONFIG;
@@ -4782,7 +4789,8 @@ function ProfileDetailView({
             {profileTab !== "instagram" && (
               <button
                 type="button"
-                onClick={() => setShowBuilder(true)}
+                onClick={() => setShowTemplateModal(true)}
+                title="Trocar o template de métricas deste perfil"
                 className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12px] font-semibold transition"
                 style={{
                   borderColor: "var(--dm-border-default)",
@@ -4791,7 +4799,7 @@ function ProfileDetailView({
                 }}
               >
                 <SlidersHorizontal size={12} />
-                Configurar
+                Template
               </button>
             )}
             {/* Seletor de funil de tracking */}
@@ -4859,15 +4867,23 @@ function ProfileDetailView({
           className="flex flex-wrap items-center gap-2 border-t px-5 py-3"
           style={{ borderColor: "var(--dm-border-subtle)" }}
         >
-          {profile.campaigns.map((camp) => (
+          {profile.campaigns.map((camp) => {
+            const isFocused = focusedCampaignId === camp.id;
+            const dimmed = focusedCampaignId !== null && !isFocused;
+            return (
             <div key={camp.id} className="group relative flex items-center">
-              <span
-                className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold"
-                style={{ backgroundColor: "var(--dm-bg-elevated)", borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}
+              <button
+                type="button"
+                onClick={() => setFocusedCampaignId(isFocused ? null : camp.id)}
+                title={isFocused ? "Voltar à visão consolidada" : "Analisar só esta campanha"}
+                className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition"
+                style={isFocused
+                  ? { backgroundColor: "var(--dm-brand-500)", borderColor: "var(--dm-brand-500)", color: "#fff" }
+                  : { backgroundColor: "var(--dm-bg-elevated)", borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)", opacity: dimmed ? 0.45 : 1 }}
               >
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: isFocused ? "#fff" : "#10b981" }} />
                 {camp.name.length > 36 ? camp.name.slice(0, 36) + "…" : camp.name}
-              </span>
+              </button>
               {/* Remove campaign button */}
               {confirmRemoveId === camp.id ? (
                 <div
@@ -4896,7 +4912,8 @@ function ProfileDetailView({
                 </button>
               )}
             </div>
-          ))}
+            );
+          })}
 
           {/* Add campaign */}
           <button
@@ -4942,12 +4959,20 @@ function ProfileDetailView({
 
       {/* Template selector modal */}
       {showTemplateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setShowTemplateModal(false)}>
           <div className="w-full max-w-3xl rounded-xl border p-6 shadow-2xl"
-            style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}>
-            <h2 className="mb-4 text-base font-semibold" style={{ color: "var(--dm-text-primary)" }}>
-              Qual tipo de campanha é essa?
-            </h2>
+            style={{ backgroundColor: "var(--dm-bg-surface)", borderColor: "var(--dm-border-default)" }}
+            onClick={(e) => e.stopPropagation()}>
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-base font-semibold" style={{ color: "var(--dm-text-primary)" }}>
+                Qual tipo de campanha é essa?
+              </h2>
+              <button type="button" onClick={() => setShowTemplateModal(false)} aria-label="Fechar"
+                className="rounded-lg p-1.5 transition hover:opacity-70" style={{ color: "var(--dm-text-tertiary)" }}>
+                <X size={16} />
+              </button>
+            </div>
             <TemplateSelector current={templateId} onChange={handleTemplateChange}
               variant="modal" onOpenBuilder={() => setShowBuilder(true)} />
           </div>
@@ -4982,10 +5007,10 @@ function ProfileDetailView({
       {profileTab === "overview" && (
         hasToken && profile.campaigns.length > 0 ? (
           <ProfileOverviewPanel
-            key={`overview-${profile.id}`}
+            key={`overview-${profile.id}-${focusedCampaignId ?? "all"}`}
             profileId={profile.id}
             adAccountId={profile.adAccountId}
-            campaigns={profile.campaigns}
+            campaigns={visibleCampaigns}
             dateFrom={dateFrom}
             dateTo={dateTo}
             template={resolvedTemplate}
@@ -5018,9 +5043,9 @@ function ProfileDetailView({
       {profileTab === "nova" && (
         linkedFunnel && hasToken && profile.campaigns.length > 0 ? (
           <ProfileAnalyticsPanel
-            key={`analytics-${profile.id}-${linkedFunnel.id}`}
+            key={`analytics-${profile.id}-${linkedFunnel.id}-${focusedCampaignId ?? "all"}`}
             adAccountId={profile.adAccountId}
-            campaigns={profile.campaigns}
+            campaigns={visibleCampaigns}
             dateFrom={dateFrom}
             dateTo={dateTo}
             linkedFunnel={linkedFunnel}
