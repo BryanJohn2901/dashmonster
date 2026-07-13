@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
-import { Search, RefreshCw, Calendar, Radar, X, Mail, Phone, MapPin, User, ShoppingBag, CreditCard, Hash, Smartphone, Monitor, Tablet, BarChart3, Table2, Filter, Workflow, SlidersHorizontal } from "lucide-react";
+import { Search, RefreshCw, Calendar, Radar, X, Mail, Phone, MapPin, User, ShoppingBag, CreditCard, Hash, Smartphone, Monitor, Tablet, BarChart3, Table2, Filter, Workflow, SlidersHorizontal, ChevronLeft, ChevronRight } from "lucide-react";
 import { supabaseClient } from "@/lib/supabase";
 import { fetchEventsLogSplit } from "@/lib/eventsLogFetch";
 import { isDevModeActive } from "@/hooks/useDevMode";
@@ -922,6 +922,11 @@ export function TrackingEventsView() {
   const [advFiltersOpen, setAdvFiltersOpen] = useState(false);
   const fetchSeq = useRef(0);
 
+  // Renderizar milhares de linhas de uma vez trava o browser — a tabela/cards
+  // de visitantes mostram só 1 página (50) por vez, o resto fica só no total.
+  const VISITORS_PAGE_SIZE = 50;
+  const [visitorsPage, setVisitorsPage] = useState(1);
+
   const fetchEvents = useCallback(async () => {
     if (!supabaseClient) {
       // Sem backend: em modo DEV mostra dados demo pra visualizar a tela populada.
@@ -1126,6 +1131,20 @@ export function TrackingEventsView() {
     }
     return true;
   });
+
+  // Volta pra página 1 sempre que o resultado filtrado muda de tamanho
+  // (novo filtro/busca/período) — evita ficar numa página vazia.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setVisitorsPage(1);
+  }, [dateFrom, dateTo, search, eventFilter, paymentMethodFilter, productFilter, deviceFilter, funnelFilter]);
+
+  const visitorsPageCount = Math.max(1, Math.ceil(filteredVisitors.length / VISITORS_PAGE_SIZE));
+  const visitorsPageSafe = Math.min(visitorsPage, visitorsPageCount);
+  const pagedVisitors = filteredVisitors.slice(
+    (visitorsPageSafe - 1) * VISITORS_PAGE_SIZE,
+    visitorsPageSafe * VISITORS_PAGE_SIZE,
+  );
 
   const eventTypes = [...new Set(visibleEvents.map((e) => e.event_name))];
   // Formas de pagamento das vendas (Purchase) realmente vistas no período — só
@@ -1485,7 +1504,7 @@ export function TrackingEventsView() {
               </tr>
             </thead>
             <tbody>
-              {filteredVisitors.map((visitor, i) => {
+              {pagedVisitors.map((visitor, i) => {
                 const utmEntries = Object.entries(visitor.lastUtm);
                 const device = parseUserAgent(visitor.lastUserAgent);
                 const os = parseOS(visitor.lastUserAgent);
@@ -1498,7 +1517,7 @@ export function TrackingEventsView() {
                     onClick={() => setSelectedVisitor(visitor)}
                     className="cursor-pointer transition-colors hover:opacity-80"
                     style={{
-                      borderBottom: i < filteredVisitors.length - 1 ? "1px solid var(--dm-border-subtle)" : undefined,
+                      borderBottom: i < pagedVisitors.length - 1 ? "1px solid var(--dm-border-subtle)" : undefined,
                       background: i % 2 === 0 ? "var(--dm-bg-surface)" : "var(--dm-bg-card)",
                     }}
                   >
@@ -1620,7 +1639,7 @@ export function TrackingEventsView() {
       {/* Cards — 1 por visitante (mobile < md) */}
       {view === "visitors" && filteredVisitors.length > 0 && (
         <div className="flex flex-col gap-2 md:hidden">
-          {filteredVisitors.map((visitor) => {
+          {pagedVisitors.map((visitor) => {
             const device = parseUserAgent(visitor.lastUserAgent);
             const os = parseOS(visitor.lastUserAgent);
             const browser = parseBrowser(visitor.lastUserAgent);
@@ -1678,6 +1697,37 @@ export function TrackingEventsView() {
               </button>
             );
           })}
+        </div>
+      )}
+
+      {/* Paginação — evita renderizar milhares de linhas/cards de uma vez só */}
+      {view === "visitors" && filteredVisitors.length > VISITORS_PAGE_SIZE && (
+        <div className="mt-3 flex items-center justify-between gap-3">
+          <span className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
+            Página {visitorsPageSafe} de {visitorsPageCount} · {filteredVisitors.length} visitantes
+          </span>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setVisitorsPage((p) => Math.max(1, p - 1))}
+              disabled={visitorsPageSafe <= 1}
+              className="flex h-7 w-7 items-center justify-center rounded-lg border transition disabled:opacity-40"
+              style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}
+              aria-label="Página anterior"
+            >
+              <ChevronLeft size={14} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setVisitorsPage((p) => Math.min(visitorsPageCount, p + 1))}
+              disabled={visitorsPageSafe >= visitorsPageCount}
+              className="flex h-7 w-7 items-center justify-center rounded-lg border transition disabled:opacity-40"
+              style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}
+              aria-label="Próxima página"
+            >
+              <ChevronRight size={14} />
+            </button>
+          </div>
         </div>
       )}
 
