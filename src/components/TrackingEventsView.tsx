@@ -76,6 +76,8 @@ export interface TrackingEvent {
 
 export interface Visitor {
   fingerprintId: string;
+  /** Todos os fingerprint_id's unidos neste visitante (>1 quando a mesma pessoa apareceu em dispositivos/cookies diferentes mas com o MESMO email ou telefone — ver groupByVisitor). Sempre inclui fingerprintId. */
+  mergedFingerprintIds: string[];
   events: TrackingEvent[]; // mais recente primeiro
   firstSeen: string;
   lastSeen: string;
@@ -438,55 +440,125 @@ function isVisibleTrackingEvent(e: TrackingEvent): boolean {
   return e.value !== e.installment_value;
 }
 
+// Normalização mínima e conservadora — só pra evitar falso-negativo óbvio
+// (espaço/maiúscula), nunca pra "adivinhar" (ex.: telefone com/sem DDI ou
+// máscara não é normalizado — limitação conhecida, ver CLAUDE.md). Melhor
+// deixar de unir um visitante do que unir 2 pessoas diferentes por engano.
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+function normalizePhone(phone: string): string {
+  return phone.trim();
+}
+
+function buildVisitorFromEvents(fingerprintId: string, list: TrackingEvent[], mergedFingerprintIds: string[]): Visitor {
+  const sorted = [...list].sort((a, b) => b.created_at.localeCompare(a.created_at));
+  // event_name === "Lead" especificamente — Purchase (venda Eduzz) também
+  // grava lead_email/lead_phone (mesmo comprador), mas não é um cadastro de
+  // formulário, não deve aparecer como "Lead" nem entrar no seletor de
+  // "Dados capturados" do drawer (ver VisitorDrawer).
+  const leadEvent = sorted.find((e) => e.event_name === "Lead");
+  const purchaseEvents = sorted.filter((e) => e.event_name === "Purchase");
+  return {
+    fingerprintId,
+    mergedFingerprintIds,
+    events: sorted,
+    lastSeen: sorted[0].created_at,
+    firstSeen: sorted[sorted.length - 1].created_at,
+    isLead: Boolean(leadEvent),
+    leadEmail: leadEvent?.lead_email ?? null,
+    leadPhone: leadEvent?.lead_phone ?? null,
+    anyEmail: sorted.find((e) => e.lead_email)?.lead_email ?? null,
+    anyPhone: sorted.find((e) => e.lead_phone)?.lead_phone ?? null,
+    leadFields: leadEvent?.extra_fields ?? {},
+    lastUrl: sorted[0].event_url,
+    lastPageTitle: sorted[0].page_title,
+    lastUtm: resolveUtm(sorted[0]),
+    // Geo: prefere evento com cidade/estado (browser real) — evita que uma
+    // Purchase/Lead server-side (IP do servidor, geralmente US) sobrescreva
+    // a localização real do visitante que veio da PageView anterior.
+    lastLocation: (() => {
+      const withCity = sorted.find((e) => e.city || e.country_region);
+      const withCountry = sorted.find((e) => e.country);
+      const best = withCity ?? withCountry ?? sorted[0];
+      return { country: best.country, countryRegion: best.country_region, city: best.city };
+    })(),
+    // Mais recente primeiro (sorted) — pega o 1º evento que TEM UA, não
+    // necessariamente sorted[0] (ex.: a Purchase mais recente pode não ter
+    // UA por não ter casado com nenhuma visita, mas a PageView anterior tem).
+    lastUserAgent: sorted.find((e) => e.client_user_agent)?.client_user_agent ?? null,
+    lastVia: sorted.find((e) => e.via)?.via ?? null,
+    isCustomer: purchaseEvents.length > 0,
+    totalRevenue: purchaseEvents.reduce((sum, e) => sum + (e.value ?? 0), 0),
+    purchaseCount: purchaseEvents.length,
+  };
+}
+
 export function groupByVisitor(events: TrackingEvent[]): Visitor[] {
-  const map = new Map<string, TrackingEvent[]>();
+  const byFingerprint = new Map<string, TrackingEvent[]>();
   for (const e of events) {
-    const list = map.get(e.fingerprint_id);
+    const list = byFingerprint.get(e.fingerprint_id);
     if (list) list.push(e);
-    else map.set(e.fingerprint_id, [e]);
+    else byFingerprint.set(e.fingerprint_id, [e]);
+  }
+
+  // Une fingerprints da MESMA pessoa em dispositivos/cookies diferentes —
+  // cookie (_dm_uid) vive por navegador, então trocar de aparelho sempre gera
+  // um fingerprint novo; email/telefone (capturados em Lead OU Purchase) são o
+  // único jeito de saber que são a mesma pessoa. Union-Find: 2 fingerprints
+  // entram no mesmo grupo se QUALQUER evento de um bate (email OU telefone,
+  // exato/normalizado) com QUALQUER evento do outro.
+  const parent = new Map<string, string>();
+  const find = (x: string): string => {
+    let root = x;
+    while (parent.get(root) && parent.get(root) !== root) root = parent.get(root)!;
+    parent.set(x, root);
+    return root;
+  };
+  const union = (a: string, b: string) => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent.set(ra, rb);
+  };
+  for (const fp of byFingerprint.keys()) parent.set(fp, fp);
+
+  const fpsByEmail = new Map<string, Set<string>>();
+  const fpsByPhone = new Map<string, Set<string>>();
+  for (const [fp, list] of byFingerprint) {
+    for (const e of list) {
+      if (e.lead_email) {
+        const key = normalizeEmail(e.lead_email);
+        if (!fpsByEmail.has(key)) fpsByEmail.set(key, new Set());
+        fpsByEmail.get(key)!.add(fp);
+      }
+      if (e.lead_phone) {
+        const key = normalizePhone(e.lead_phone);
+        if (!fpsByPhone.has(key)) fpsByPhone.set(key, new Set());
+        fpsByPhone.get(key)!.add(fp);
+      }
+    }
+  }
+  for (const group of [...fpsByEmail.values(), ...fpsByPhone.values()]) {
+    const [first, ...rest] = [...group];
+    for (const fp of rest) union(first, fp);
+  }
+
+  const mergedGroups = new Map<string, string[]>(); // root -> fingerprintIds
+  for (const fp of byFingerprint.keys()) {
+    const root = find(fp);
+    const list = mergedGroups.get(root) ?? [];
+    list.push(fp);
+    mergedGroups.set(root, list);
   }
 
   const visitors: Visitor[] = [];
-  for (const [fingerprintId, list] of map) {
-    const sorted = [...list].sort((a, b) => b.created_at.localeCompare(a.created_at));
-    // event_name === "Lead" especificamente — Purchase (venda Eduzz) também
-    // grava lead_email/lead_phone (mesmo comprador), mas não é um cadastro de
-    // formulário, não deve aparecer como "Lead" nem entrar no seletor de
-    // "Dados capturados" do drawer (ver VisitorDrawer).
-    const leadEvent = sorted.find((e) => e.event_name === "Lead");
-    const purchaseEvents = sorted.filter((e) => e.event_name === "Purchase");
-    visitors.push({
-      fingerprintId,
-      events: sorted,
-      lastSeen: sorted[0].created_at,
-      firstSeen: sorted[sorted.length - 1].created_at,
-      isLead: Boolean(leadEvent),
-      leadEmail: leadEvent?.lead_email ?? null,
-      leadPhone: leadEvent?.lead_phone ?? null,
-      anyEmail: sorted.find((e) => e.lead_email)?.lead_email ?? null,
-      anyPhone: sorted.find((e) => e.lead_phone)?.lead_phone ?? null,
-      leadFields: leadEvent?.extra_fields ?? {},
-      lastUrl: sorted[0].event_url,
-      lastPageTitle: sorted[0].page_title,
-      lastUtm: resolveUtm(sorted[0]),
-      // Geo: prefere evento com cidade/estado (browser real) — evita que uma
-      // Purchase/Lead server-side (IP do servidor, geralmente US) sobrescreva
-      // a localização real do visitante que veio da PageView anterior.
-      lastLocation: (() => {
-        const withCity = sorted.find((e) => e.city || e.country_region);
-        const withCountry = sorted.find((e) => e.country);
-        const best = withCity ?? withCountry ?? sorted[0];
-        return { country: best.country, countryRegion: best.country_region, city: best.city };
-      })(),
-      // Mais recente primeiro (sorted) — pega o 1º evento que TEM UA, não
-      // necessariamente sorted[0] (ex.: a Purchase mais recente pode não ter
-      // UA por não ter casado com nenhuma visita, mas a PageView anterior tem).
-      lastUserAgent: sorted.find((e) => e.client_user_agent)?.client_user_agent ?? null,
-      lastVia: sorted.find((e) => e.via)?.via ?? null,
-      isCustomer: purchaseEvents.length > 0,
-      totalRevenue: purchaseEvents.reduce((sum, e) => sum + (e.value ?? 0), 0),
-      purchaseCount: purchaseEvents.length,
-    });
+  for (const fingerprintIds of mergedGroups.values()) {
+    const allEvents = fingerprintIds.flatMap((fp) => byFingerprint.get(fp)!);
+    // Representante do grupo: fingerprint do evento mais recente — só usado
+    // como chave/id de exibição (drawer, key de lista); cada evento individual
+    // mantém seu próprio fingerprint_id original, intocado.
+    const newestFp = [...allEvents].sort((a, b) => b.created_at.localeCompare(a.created_at))[0].fingerprint_id;
+    visitors.push(buildVisitorFromEvents(newestFp, allEvents, fingerprintIds));
   }
 
   return visitors.sort((a, b) => b.lastSeen.localeCompare(a.lastSeen));
@@ -540,7 +612,18 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
       >
         <div className="flex flex-shrink-0 items-center justify-between border-b px-6 py-4" style={{ borderColor: "var(--dm-border-default)" }}>
           <div>
-            <h3 className="text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>Histórico do visitante</h3>
+            <div className="flex items-center gap-1.5">
+              <h3 className="text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>Histórico do visitante</h3>
+              {visitor.mergedFingerprintIds.length > 1 && (
+                <span
+                  className="rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
+                  style={{ background: "rgba(22,163,74,0.12)", color: "var(--dm-primary)" }}
+                  title="Mesmo email/telefone visto em navegadores ou dispositivos diferentes — jornadas unidas."
+                >
+                  {visitor.mergedFingerprintIds.length} dispositivos
+                </span>
+              )}
+            </div>
             <p className="font-mono text-[10px] mt-0.5" style={{ color: "var(--dm-text-tertiary)" }}>{visitor.fingerprintId}</p>
           </div>
           <button type="button" onClick={onClose} aria-label="Fechar" className="flex h-7 w-7 items-center justify-center rounded-full transition-opacity hover:opacity-70" style={{ color: "var(--dm-text-tertiary)" }}>
@@ -1449,6 +1532,15 @@ export function TrackingEventsView() {
                           <span className="block truncate text-[11px] font-medium" style={{ color: "var(--dm-text-secondary)", maxWidth: 170 }} title={email}>{email}</span>
                         ) : (
                           <span className="font-mono text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>{visitor.fingerprintId.slice(0, 12)}…</span>
+                        )}
+                        {visitor.mergedFingerprintIds.length > 1 && (
+                          <span
+                            className="flex-shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
+                            style={{ background: "rgba(22,163,74,0.12)", color: "var(--dm-primary)" }}
+                            title="Mesmo email/telefone visto em navegadores ou dispositivos diferentes — jornadas unidas."
+                          >
+                            {visitor.mergedFingerprintIds.length}📱
+                          </span>
                         )}
                       </div>
                     </td>
