@@ -1,14 +1,10 @@
 import type { Metadata } from "next";
-import { LegalLayout } from "@/components/LegalLayout";
+import { LegalLayout, H } from "@/components/LegalLayout";
 
 export const metadata: Metadata = {
   title: "Exclusão de Dados · DashMonster",
   description: "Como solicitar a exclusão dos seus dados no DashMonster.",
 };
-
-function H({ children }: { children: React.ReactNode }) {
-  return <h2 className="mt-4 text-xl font-bold" style={{ color: "var(--dm-text-primary)" }}>{children}</h2>;
-}
 
 export default function DataDeletionPage() {
   return (
@@ -31,7 +27,7 @@ export default function DataDeletionPage() {
 
       <H>Excluir todos os seus dados</H>
       <p>Para apagar por completo os dados da sua conta e da sua empresa (métricas, leads, conversas, eventos de rastreamento e tokens), envie um pedido por um dos caminhos:</p>
-      <ul className="ml-5 list-disc flex flex-col gap-1">
+      <ul>
         <li>
           Email para{" "}
           <a href="mailto:contato@dashmonster.com.br?subject=Exclus%C3%A3o%20de%20dados" className="underline">

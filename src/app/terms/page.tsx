@@ -1,21 +1,17 @@
 import type { Metadata } from "next";
-import { LegalLayout } from "@/components/LegalLayout";
+import { LegalLayout, H } from "@/components/LegalLayout";
 
 export const metadata: Metadata = {
   title: "Termos de Serviço · DashMonster",
   description: "Termos de uso da plataforma DashMonster.",
 };
 
-function H({ children }: { children: React.ReactNode }) {
-  return <h2 className="mt-4 text-xl font-bold" style={{ color: "var(--dm-text-primary)" }}>{children}</h2>;
-}
-
 export default function TermsPage() {
   return (
     <LegalLayout title="Termos de Serviço" updated="17 de julho de 2026">
       <p>
         Estes Termos regem o uso da plataforma <strong>DashMonster</strong>, operada por
-        [RAZÃO SOCIAL], CNPJ [CNPJ]. Ao criar uma conta ou usar o serviço, você concorda com eles.
+        GSAStúdio. Ao criar uma conta ou usar o serviço, você concorda com eles.
       </p>
 
       <H>1. O serviço</H>

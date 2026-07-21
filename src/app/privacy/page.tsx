@@ -1,21 +1,17 @@
 import type { Metadata } from "next";
-import { LegalLayout } from "@/components/LegalLayout";
+import { LegalLayout, H } from "@/components/LegalLayout";
 
 export const metadata: Metadata = {
   title: "Política de Privacidade · DashMonster",
   description: "Como o DashMonster coleta, usa, armazena e exclui dados.",
 };
 
-function H({ children }: { children: React.ReactNode }) {
-  return <h2 className="mt-4 text-xl font-bold" style={{ color: "var(--dm-text-primary)" }}>{children}</h2>;
-}
-
 export default function PrivacyPage() {
   return (
     <LegalLayout title="Política de Privacidade" updated="17 de julho de 2026">
       <p>
         Esta Política descreve como o <strong>DashMonster</strong> (&quot;nós&quot;), operado por
-        [RAZÃO SOCIAL], CNPJ [CNPJ], coleta, usa, armazena e exclui informações ao fornecer sua
+        GSAStúdio, coleta, usa, armazena e exclui informações ao fornecer sua
         plataforma de análise de campanhas e CRM. Ao usar o serviço, você concorda com esta Política.
       </p>
 
@@ -29,7 +25,7 @@ export default function PrivacyPage() {
       <H>2. Dados que coletamos</H>
       <p><strong>2.1. Da sua conta.</strong> Email e credenciais de acesso, eventos de login (data, endereço IP, dispositivo e localização aproximada) para segurança.</p>
       <p><strong>2.2. Dados da Plataforma Meta.</strong> Quando você conecta uma conta Facebook/Instagram/WhatsApp via login oficial da Meta, acessamos, conforme as permissões concedidas por você:</p>
-      <ul className="ml-5 list-disc flex flex-col gap-1">
+      <ul>
         <li>métricas e relatórios de contas de anúncios (<code>ads_read</code>), gestão de negócio (<code>business_management</code>);</li>
         <li>lista de Páginas e engajamento (<code>pages_show_list</code>, <code>pages_read_engagement</code>);</li>
         <li>dados e mensagens do Instagram (<code>instagram_basic</code>, <code>instagram_manage_insights</code>, <code>instagram_manage_messages</code>);</li>
@@ -48,7 +44,7 @@ export default function PrivacyPage() {
 
       <H>4. Compartilhamento</H>
       <p>Compartilhamos dados apenas com subprocessadores necessários à operação:</p>
-      <ul className="ml-5 list-disc flex flex-col gap-1">
+      <ul>
         <li><strong>Supabase</strong> (banco de dados e autenticação);</li>
         <li><strong>Vercel</strong> (hospedagem);</li>
         <li><strong>Meta</strong> (envio de eventos de conversão e leitura de métricas, conforme sua autorização).</li>

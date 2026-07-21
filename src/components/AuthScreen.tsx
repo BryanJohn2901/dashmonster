@@ -223,7 +223,10 @@ export function AuthScreen({ onSignIn, onSignUp, onOAuth, onForgotPassword, auth
                       <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M2.5 6.2l2.2 2.2 4.8-5" stroke="#0E1108" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
                     )}
                   </span>
-                  Concordo com os <span className="font-medium underline underline-offset-2" style={{ color: TXT }}>Termos &amp; Condições</span>
+                  Concordo com os{" "}
+                  <Link href="/terms" target="_blank" className="font-medium underline underline-offset-2" style={{ color: TXT }}>Termos</Link>
+                  {" "}e a{" "}
+                  <Link href="/privacy" target="_blank" className="font-medium underline underline-offset-2" style={{ color: TXT }}>Privacidade</Link>
                 </label>
               )}
 
@@ -264,6 +267,20 @@ export function AuthScreen({ onSignIn, onSignUp, onOAuth, onForgotPassword, auth
             </div>
             </>
             )}
+
+            {/* Assinatura */}
+            <p className="mt-8 text-center text-[11.5px]" style={{ color: MUTED }}>
+              Feito pela{" "}
+              <a
+                href="https://gsaweb.com.br"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-semibold underline underline-offset-2 transition hover:opacity-80"
+                style={{ color: TXT }}
+              >
+                GSAStúdio
+              </a>
+            </p>
           </div>
         </div>
       </div>

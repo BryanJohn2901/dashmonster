@@ -1299,6 +1299,49 @@ h1, h2, h3, h4, h5 {
   color: #4a5568;
 }
 
+/* ============================================================
+   LEGAL PROSE — páginas públicas (privacy / terms / data-deletion)
+   Ritmo de documento único (disciplina Apple): corpo 16px/1.65,
+   seções separadas por 40px, parágrafos por 16px. Definido aqui uma
+   vez — as páginas só entregam <h2>/<p>/<ul> sem classes de espaço.
+   ============================================================ */
+.legal-prose {
+  font-size: 16px;
+  line-height: 1.65;
+  color: var(--dm-text-secondary);
+}
+.legal-prose > * + * { margin-top: 16px; }
+.legal-prose h2 {
+  margin-top: 40px;
+  font-family: var(--font-poppins), var(--font-inter), system-ui, sans-serif;
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  color: var(--dm-text-primary);
+}
+.legal-prose h2:first-child { margin-top: 0; }
+.legal-prose strong { color: var(--dm-text-primary); font-weight: 600; }
+.legal-prose a {
+  color: var(--dm-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.legal-prose ul {
+  margin-left: 1.15rem;
+  list-style: disc;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.legal-prose code {
+  font-size: 0.9em;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--dm-bg-muted);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+}
+
 /* ── Monster Hub — cenas animadas do login (AuthScreen carousel) ──────────── */
 @keyframes dm-radar-spin { to { transform: rotate(360deg); } }
 @keyframes dm-ring-pulse {

@@ -74,11 +74,11 @@ export function CompanySelectScreen({
                 key={company.id}
                 type="button"
                 onClick={() => onSelect(company.id)}
-                className="dm-reveal group flex items-center gap-3.5 rounded-2xl border p-4 text-left transition-all hover:-translate-y-0.5 hover:opacity-95 active:scale-[0.99]"
+                className="dm-reveal group flex items-center gap-3.5 rounded-2xl border p-4 text-left transition-all hover:-translate-y-0.5 active:scale-[0.99]"
                 style={{
                   background: "var(--dm-bg-surface)",
                   borderColor: active ? "#16A34A" : "var(--dm-border-default)",
-                  boxShadow: active ? "0 0 0 3px rgba(22,163,74,0.15)" : "0 4px 16px rgba(0,0,0,0.08)",
+                  boxShadow: active ? "0 0 0 3px rgba(22,163,74,0.15)" : "var(--dm-shadow-soft)",
                   animationDelay: `${80 + i * 70}ms`,
                 }}
               >
