@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "@/hooks/useToast";
 import { useCompany, memberAllowedProducts, readCompanyBranding, fetchMyPendingInvites } from "@/hooks/useCompany";
 import { AcceptInviteScreen } from "@/components/AcceptInviteScreen";
+import { NoAccessScreen } from "@/components/NoAccessScreen";
 import { RealtimeChannel, Session } from "@supabase/supabase-js";
 import { Dashboard } from "@/components/Dashboard";
 import { ControlPanel, type CPTab } from "@/components/ControlPanel";
@@ -274,6 +275,12 @@ export default function Home() {
     setCompanyChosen(false);
     try { sessionStorage.removeItem(PRODUCT_CHOSEN_KEY); } catch {}
     setProductChosen(false);
+    // Reseta o gate de convite/acesso — senão o próximo login no mesmo tab herda
+    // o estado (poderia furar o bloqueio "só por convite").
+    try { sessionStorage.removeItem(INVITE_GATE_KEY); } catch {}
+    setInviteGateDone(false);
+    setHasPendingInvites(null);
+    inviteCheckedRef.current = false;
     setSession(null);
   };
 
@@ -827,6 +834,19 @@ export default function Home() {
         }} />
       );
     }
+  }
+
+  // ── Segurança: acesso só por convite ─────────────────────────────────────────
+  // Usuário autenticado que não é super admin, não pertence a nenhuma empresa e
+  // não tem convite pendente = barrado. Cobre login E cadastro (o signup também
+  // cai aqui). Só decide quando empresas e convites já resolveram (evita barrar
+  // durante o carregamento). hasPendingInvites === false = checado e sem convite.
+  if (
+    session && isSupabaseConfigured && !devBypass &&
+    !isSuperAdmin && !companyLoading &&
+    hasPendingInvites === false && memberships.length === 0
+  ) {
+    return <NoAccessScreen email={currentUser.email} onSignOut={handleSignOut} />;
   }
 
   // ── Seletor de empresa pós-login (só com 2+ empresas, 1x por sessão) ──────────
