@@ -7,7 +7,7 @@ const EMPTY_HASH = sha(""); // e3b0c442... — o "hash de string vazia" que NÃO
 describe("metaHash", () => {
   describe("hashLower", () => {
     it("trim + lowercase antes de hashear", () => {
-      expect(hashLower("  Wesley@Teste.COM ")).toBe(sha("wesley@teste.com"));
+      expect(hashLower("  Ana@Teste.COM ")).toBe(sha("ana@teste.com"));
     });
     it("vazio/whitespace/null => undefined (nunca hash de vazio)", () => {
       expect(hashLower("")).toBeUndefined();

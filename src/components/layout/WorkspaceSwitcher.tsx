@@ -1,7 +1,6 @@
 'use client'
 
-// Port fiel de pipeflow-crm/components/layout/WorkspaceSwitcher.tsx.
-// Workspaces → EMPRESAS do Monster Hub (useCompany). Criar workspace saiu:
+// Seletor de EMPRESAS (useCompany). Criar empresa não sai daqui:
 // empresa nasce no hub (super admin); item final leva de volta ao hub.
 
 import { useState, useTransition } from 'react'

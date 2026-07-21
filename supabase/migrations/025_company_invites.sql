@@ -1,5 +1,5 @@
 -- ============================================================
--- Analytics PTA — Convite de membros por e-mail
+-- GSAStúdio Hub — Convite de membros por e-mail
 -- Execute este SQL no Supabase SQL Editor (após a 024)
 --
 -- 1) company_invites: convites pendentes (pessoa ainda sem conta)

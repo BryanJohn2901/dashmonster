@@ -1,5 +1,5 @@
 -- ============================================================
--- Analytics PTA — Super Admin (acesso DEV a todas as empresas)
+-- GSAStúdio Hub — Super Admin (acesso DEV a todas as empresas)
 -- Execute este SQL no Supabase SQL Editor (após a 025)
 --
 -- O modo DEV do app é só client-side (a senha vive no bundle). Para

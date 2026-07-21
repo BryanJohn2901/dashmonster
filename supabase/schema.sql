@@ -1,5 +1,5 @@
 -- ============================================================
--- Analytics PTA — Schema completo
+-- GSAStúdio Hub — Schema completo
 -- Gerado de supabase/migrations/ (001 → 013)
 -- Execute no Supabase SQL Editor: cole tudo e rode uma vez.
 -- ============================================================

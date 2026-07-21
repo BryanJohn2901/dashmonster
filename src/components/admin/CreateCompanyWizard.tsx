@@ -30,7 +30,7 @@ const STEPS = [
 
 // Sugestões prontas pro passo de filtros (um clique adiciona).
 const FILTER_SUGGESTIONS = ["Lançamentos", "Eventos", "Perpétuo"];
-const SUB_SUGGESTIONS = ["Pós-graduação", "Info produtos"];
+const SUB_SUGGESTIONS = ["Cursos", "Info produtos"];
 
 interface TeamEntry { email: string; roleId: string }
 
@@ -211,17 +211,17 @@ export function CreateCompanyWizard({ onDone }: { onDone: () => void }) {
           <label className="mb-1.5 block text-[12px] font-semibold" style={{ color: "var(--dm-text-secondary)" }}>Nome da empresa</label>
           <input autoFocus value={name} onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && canNext) setStep(1); }}
-            placeholder="Ex: PT Academy"
+            placeholder="Ex: Minha Empresa"
             className="h-12 w-full rounded-xl border px-4 text-[14px] outline-none" style={inputStyle} />
           <p className="mt-2 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>Como aparece no seletor de empresas do hub.</p>
 
           <label className="mb-1.5 mt-5 block text-[12px] font-semibold" style={{ color: "var(--dm-text-secondary)" }}>
-            TAG <span className="font-normal" style={{ color: "var(--dm-text-tertiary)" }}>(3 letras, única — ex.: PTA)</span>
+            TAG <span className="font-normal" style={{ color: "var(--dm-text-tertiary)" }}>(3 letras, única — ex.: ABC)</span>
           </label>
           <input value={tag} maxLength={3}
             onChange={(e) => setTag(e.target.value.replace(/[^A-Za-z]/g, "").toUpperCase())}
             onKeyDown={(e) => { if (e.key === "Enter" && canNext) setStep(1); }}
-            placeholder="PTA"
+            placeholder="ABC"
             className="h-12 w-28 rounded-xl border px-4 text-center text-[15px] font-bold tracking-[0.3em] uppercase outline-none"
             style={{ ...inputStyle, borderColor: tag && !tagValid ? "#ef4444" : "var(--dm-border-default)" }} />
           <p className="mt-2 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>Identificação curta da empresa nas listas do painel. Obrigatória.</p>
@@ -280,7 +280,7 @@ export function CreateCompanyWizard({ onDone }: { onDone: () => void }) {
         <div>
           <p className="mb-1 text-[13px] font-bold" style={{ color: "var(--dm-text-primary)" }}>Filtros do dashboard</p>
           <p className="mb-3 text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
-            Ex.: Lançamentos, Eventos — e subfiltros dentro de cada um (Pós-graduação, Info produtos…).
+            Ex.: Lançamentos, Eventos — e subfiltros dentro de cada um (Cursos, Info produtos…).
           </p>
 
           <div className="mb-3 flex flex-wrap gap-1.5">

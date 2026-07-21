@@ -24,7 +24,9 @@ export interface UserAccountEntry {
   isEnabled: boolean;
 }
 
-// The 5 built-in fixed categories — always present, cannot be deleted
+// Conjunto genérico de categorias que uma empresa PODE adotar (educação /
+// infoproduto). Não é mais auto-aplicado: cada empresa define os próprios
+// filtros em companyFilters. Mantido como default opcional/selecionável.
 export const FIXED_CATEGORIES: ReadonlyArray<{
   slug: string;
   name: string;
@@ -38,15 +40,14 @@ export const FIXED_CATEGORIES: ReadonlyArray<{
   { slug: "eventos",  name: "Eventos",       emoji: "🎫", defaultPosition: 4 },
 ];
 
-// Filtros personalizados por empresa, além dos 5 padrão. Folga para empresas
-// com taxonomias diferentes da PTA (cada empresa monta os seus).
+// Filtros personalizados por empresa. Cada empresa monta a própria taxonomia.
 export const MAX_CUSTOM_CATEGORIES = 10;
 
 // ─── Template de filtros da EMPRESA ─────────────────────────────────────────
 // Fonte única do que aparece como "filtro fixo" no Painel de Controle e nos
-// wizards de conta: 1) settings.companyFilters (Painel Admin / wizard de criar
-// empresa); 2) empresa nova sem filtros (blankTaxonomy) → NADA de PTA;
-// 3) empresas legadas (sem flag) → os 5 fixos PTA de sempre.
+// wizards de conta: settings.companyFilters (Painel Admin / wizard de criar
+// empresa). Empresa sem filtros configurados = taxonomia vazia (mostra o
+// estado de "configure seus filtros"). Não há taxonomia embutida.
 
 export interface CompanyFilterDef {
   id: string;
@@ -73,11 +74,11 @@ export function companyTemplateCategories(
   if (filters.length > 0) {
     return filters.map((f, i) => ({ slug: f.id, name: f.name, emoji: "🏷️", defaultPosition: i }));
   }
-  if (settings?.blankTaxonomy) return [];
-  return FIXED_CATEGORIES;
+  // Sem filtros configurados = taxonomia vazia. Nenhuma categoria embutida.
+  return [];
 }
 
-/** true = empresa legada sem config própria — herda taxonomia e templates PTA. */
-export function isLegacyCompanyTaxonomy(settings?: Record<string, unknown>): boolean {
-  return readCompanyFilterDefs(settings).length === 0 && !settings?.blankTaxonomy;
+/** Mantido por compatibilidade de assinatura — nunca há tenant legado no fork. */
+export function isLegacyCompanyTaxonomy(_settings?: Record<string, unknown>): boolean {
+  return false;
 }

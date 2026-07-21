@@ -207,16 +207,9 @@ export function parseTxtTemplate(
   result.turmaVinculada = kv(idSec, "TURMA VINCULADA", "TURMA") || undefined;
 
   // ── CURSO ─────────────────────────────────────────────────────────────────────
-  const curso = n(kv(idSec, "CURSO") || "");
-  const cursoMap: Record<string, CourseGroupId> = {
-    BIOMECANICA: "biomecanica", BM: "biomecanica",
-    MUSCULACAO: "musculacao",   MPA: "musculacao",
-    FISIOLOGIA: "fisiologia",  FE: "fisiologia",
-    BODYBUILDING: "bodybuilding", BB: "bodybuilding",
-    FEMININO: "feminino", SM: "feminino",
-    FUNCIONAL: "funcional", TF: "funcional",
-  };
-  if (cursoMap[curso]) result.courseGroup = cursoMap[curso];
+  // Sem catálogo de curso embutido: o valor do campo é a própria linha da empresa.
+  const curso = (kv(idSec, "CURSO") || "").trim();
+  if (curso) result.courseGroup = curso as CourseGroupId;
 
   // ── EQUIPE ────────────────────────────────────────────────────────────────────
   const eqSec = sec(sections, "EQUIPE", "BASE", "INFORMACOES GERAIS");
@@ -570,8 +563,7 @@ NOME:             Nome completo do produto
 NOME DO EXPERT:   Prof. Nome Sobrenome
 TURMA VINCULADA:  (ex: Turma 5 — deixe em branco se não houver)
 
-CURSO:            Biomecânica
-[Opções: Biomecânica | Musculação | Fisiologia | Bodybuilding | Treinamento Feminino | Treinamento Funcional]
+CURSO:            (nome da linha/curso da sua empresa — livre)
 
 
 ── EQUIPE ────────────────────────────────────────────
@@ -690,10 +682,10 @@ BÔNUS:
 ── PARA QUEM É ───────────────────────────────────────
 [Descreva o público-alvo. Pode ser texto livre ou lista com -]
 
-Esta formação é ideal para:
+Este produto é ideal para:
 
-  - Personal Trainers que buscam aprofundar conhecimentos
-  - Professores de academia que desejam se especializar
+  - Público 1 que busca resolver a dor X
+  - Público 2 que deseja alcançar o objetivo Y
   - Profissionais da área que querem crescer na carreira
 
 

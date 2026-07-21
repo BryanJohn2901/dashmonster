@@ -1,7 +1,7 @@
 // ─── Meta Graph API — configuração central ────────────────────────────────────
 // Única fonte da versão da API. Antes estava hardcoded ("v21.0") em cada rota.
 
-export const META_API_VERSION = "v21.0";
+export const META_API_VERSION = "v23.0";
 export const GRAPH_BASE = `https://graph.facebook.com/${META_API_VERSION}`;
 export const FB_WWW_BASE = `https://www.facebook.com/${META_API_VERSION}`;
 
@@ -17,9 +17,13 @@ export const IG_OAUTH_SCOPES = [
 ] as const;
 
 // Escopos do OAuth de Ads (botão "Conectar Facebook" — token global do app).
+// Só LEITURA: o app lê insights/campanhas/adsets/criativos e nunca cria nem
+// edita anúncio (nenhum POST/PUT/DELETE na Ads API). `ads_management` foi
+// removido de propósito — pedir escrita sem usar é motivo comum de rejeição
+// no App Review. Se algum endpoint de leitura passar a exigir, reintroduzir
+// com justificativa.
 export const ADS_OAUTH_SCOPES = [
   "ads_read",
-  "ads_management",
   "business_management",
 ] as const;
 

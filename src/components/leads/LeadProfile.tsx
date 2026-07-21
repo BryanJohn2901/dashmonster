@@ -155,7 +155,7 @@ function CompanyRow({ lead, companies, onRefresh }: { lead: LeadRow; companies: 
                   id="lead-company-name"
                   value={newCompanyName}
                   onChange={(event) => setNewCompanyName(event.target.value)}
-                  placeholder="Ex: Atlas Fitness"
+                  placeholder="Ex: Acme LTDA"
                 />
               </div>
             )}

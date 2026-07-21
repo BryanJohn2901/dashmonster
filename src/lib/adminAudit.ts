@@ -72,10 +72,10 @@ const DEMO_UA = {
 function demoEvents(): LoginEvent[] {
   const h = (n: number) => new Date(Date.now() - n * 3600_000).toISOString();
   return [
-    { id: "e1", userId: "u1", email: "dono@ptacademy.com",   ip: "187.55.10.2",  userAgent: DEMO_UA.win,     city: "São Paulo",      region: "SP", country: "BR", timezone: "America/Sao_Paulo", createdAt: h(2) },
-    { id: "e2", userId: "u2", email: "gestor@ptacademy.com", ip: "191.33.200.8", userAgent: DEMO_UA.mac,     city: "Curitiba",       region: "PR", country: "BR", timezone: "America/Sao_Paulo", createdAt: h(28) },
-    { id: "e3", userId: "u1", email: "dono@ptacademy.com",   ip: "187.55.10.2",  userAgent: DEMO_UA.android, city: "São Paulo",      region: "SP", country: "BR", timezone: "America/Sao_Paulo", createdAt: h(50) },
-    { id: "e4", userId: "u3", email: "social@ptacademy.com", ip: "45.170.4.77",  userAgent: DEMO_UA.win,     city: "Belo Horizonte", region: "MG", country: "BR", timezone: "America/Sao_Paulo", createdAt: h(24 * 41) },
+    { id: "e1", userId: "u1", email: "dono@empresademo.com",   ip: "187.55.10.2",  userAgent: DEMO_UA.win,     city: "São Paulo",      region: "SP", country: "BR", timezone: "America/Sao_Paulo", createdAt: h(2) },
+    { id: "e2", userId: "u2", email: "gestor@empresademo.com", ip: "191.33.200.8", userAgent: DEMO_UA.mac,     city: "Curitiba",       region: "PR", country: "BR", timezone: "America/Sao_Paulo", createdAt: h(28) },
+    { id: "e3", userId: "u1", email: "dono@empresademo.com",   ip: "187.55.10.2",  userAgent: DEMO_UA.android, city: "São Paulo",      region: "SP", country: "BR", timezone: "America/Sao_Paulo", createdAt: h(50) },
+    { id: "e4", userId: "u3", email: "social@empresademo.com", ip: "45.170.4.77",  userAgent: DEMO_UA.win,     city: "Belo Horizonte", region: "MG", country: "BR", timezone: "America/Sao_Paulo", createdAt: h(24 * 41) },
   ];
 }
 
@@ -83,10 +83,10 @@ function demoMembers(): GlobalMember[] {
   const ev = demoEvents();
   const d = (n: number) => new Date(Date.now() - n * 24 * 3600_000).toISOString();
   return [
-    { userId: "u1", email: "dono@ptacademy.com",   companies: [{ companyId: "demo-1", companyName: "Personal Trainer Academy (Demo)", role: "owner" }],   lastLogin: ev[0], memberSince: d(220) },
-    { userId: "u2", email: "gestor@ptacademy.com", companies: [{ companyId: "demo-1", companyName: "Personal Trainer Academy (Demo)", role: "manager" }, { companyId: "demo-2", companyName: "Loja Fitness Online (Demo)", role: "manager" }], lastLogin: ev[1], memberSince: d(140) },
-    { userId: "u3", email: "social@ptacademy.com", companies: [{ companyId: "demo-1", companyName: "Personal Trainer Academy (Demo)", role: "viewer" }],  lastLogin: ev[3], memberSince: d(90) },
-    { userId: "u4", email: "novo@loja.com",        companies: [{ companyId: "demo-2", companyName: "Loja Fitness Online (Demo)", role: "viewer" }],       lastLogin: null,  memberSince: d(3) },
+    { userId: "u1", email: "dono@empresademo.com",   companies: [{ companyId: "demo-1", companyName: "Empresa Demo A", role: "owner" }],   lastLogin: ev[0], memberSince: d(220) },
+    { userId: "u2", email: "gestor@empresademo.com", companies: [{ companyId: "demo-1", companyName: "Empresa Demo A", role: "manager" }, { companyId: "demo-2", companyName: "Empresa Demo B", role: "manager" }], lastLogin: ev[1], memberSince: d(140) },
+    { userId: "u3", email: "social@empresademo.com", companies: [{ companyId: "demo-1", companyName: "Empresa Demo A", role: "viewer" }],  lastLogin: ev[3], memberSince: d(90) },
+    { userId: "u4", email: "novo@empresademo.com",   companies: [{ companyId: "demo-2", companyName: "Empresa Demo B", role: "viewer" }],       lastLogin: null,  memberSince: d(3) },
   ];
 }
 

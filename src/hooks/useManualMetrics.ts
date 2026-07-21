@@ -7,7 +7,7 @@ import {
   type ManualOverrideFields,
 } from "@/utils/supabaseManualOverrides";
 
-const STORE_KEY = "pta_manual_overrides_v1";
+const STORE_KEY = "gsah_manual_overrides_v1";
 
 export interface ManualOverride {
   conversions?:   number;

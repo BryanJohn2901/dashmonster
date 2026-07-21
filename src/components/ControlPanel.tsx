@@ -1505,7 +1505,7 @@ export function TabAccounts({ categories, accountEntries, onCategoriesChange, on
   const [catErr, setCatErr] = useState("");
   const { company } = useCompany();
 
-  // Template da EMPRESA: filtros do Painel Admin > vazio (empresa nova) > PTA legado.
+  // Template da EMPRESA: filtros do Painel Admin, ou vazio quando ainda não configurados.
   const templateCats = useMemo(() => companyTemplateCategories(company?.settings), [company?.settings]);
 
   const customCats = categories.filter(c => c.type === "custom");
@@ -1708,7 +1708,7 @@ export function TabAccounts({ categories, accountEntries, onCategoriesChange, on
 // ─── Tab: Integrações ─────────────────────────────────────────────────────────
 
 // ─── Instagram localStorage key ──────────────────────────────────────────────
-const IG_TOKEN_LS_KEY = "pta_ig_app_token_v1";
+const IG_TOKEN_LS_KEY = "gsah_ig_app_token_v1";
 
 function loadIgToken(): string {
   if (typeof window === "undefined") return "";
@@ -1722,7 +1722,7 @@ function saveIgToken(t: string) {
 function loadAdvertiserProfiles(): Array<{ id: string; name: string; instagramUserId?: string; instagramUsername?: string }> {
   if (typeof window === "undefined") return [];
   try {
-    const raw = localStorage.getItem("pta_advertiser_profiles_v2");
+    const raw = localStorage.getItem("gsah_advertiser_profiles_v2");
     if (!raw) return [];
     return JSON.parse(raw) as Array<{ id: string; name: string; instagramUserId?: string; instagramUsername?: string }>;
   } catch { return []; }
@@ -2234,7 +2234,7 @@ function AdditionalSourcesSection() {
 // ─── Tab: Sincronização ───────────────────────────────────────────────────────
 
 const META_SYNC_LOOKBACK_DAYS = 730;
-const SYNC_LOOKBACK_LS_KEY = "pta_sync_lookback_days";
+const SYNC_LOOKBACK_LS_KEY = "gsah_sync_lookback_days";
 const LOOKBACK_OPTIONS = [
   { label: "Últimos 7 dias",   value: 7   },
   { label: "Últimos 15 dias",  value: 15  },

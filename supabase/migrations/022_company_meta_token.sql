@@ -1,5 +1,5 @@
 -- ============================================================
--- Analytics PTA — Token Meta da Empresa
+-- GSAStúdio Hub — Token Meta da Empresa
 -- Execute este SQL no Supabase SQL Editor (após a 021)
 --
 -- Regra de ouro: o DONO da empresa configura o Access Token da

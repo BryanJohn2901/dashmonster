@@ -34,8 +34,8 @@ export const METRIC_LABELS: Record<MetricId, string> = {
   cpa_pos:        "Custo por Venda de Pós",
 };
 
-const STORAGE_KEY = "pta_hidden_metrics_v1";
-const LEGACY_KEY  = "pta_hidden_kpis_v1";
+const STORAGE_KEY = "gsah_hidden_metrics_v1";
+const LEGACY_KEY  = "gsah_hidden_kpis_v1";
 
 function loadHidden(): Set<MetricId> {
   try {

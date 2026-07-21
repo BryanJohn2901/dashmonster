@@ -2,7 +2,7 @@ import type { UserAccountEntry } from "@/types/userConfig";
 import { isCustomInternalFilterId } from "@/config/categoryInternalFilters";
 
 /** Evento disparado após salvar vínculo no Painel — o Dashboard aplica foco na categoria/grupo. */
-export const PTA_PAINEL_SAVE_NAV_EVENT = "pta:apply-painel-save" as const;
+export const PAINEL_SAVE_NAV_EVENT = "painel:apply-save" as const;
 
 export interface PainelSaveNavDetail {
   entry: UserAccountEntry;
@@ -20,60 +20,9 @@ export function mapPainelInternalFilterToDashboardGroupId(
   categorySlug: string,
   internalFilter: string | null,
 ): string {
-  const fallback: Record<string, string> = {
-    pos: "biomecanica",
-    livros: "livros",
-    ebooks: "ebookJoelho",
-    perpetuo: "perpetuo",
-    eventos: "bs",
-  };
-  const fb = fallback[categorySlug] ?? "biomecanica";
+  // Sem taxonomia embutida de nenhum nicho: os grupos vêm dos filtros que a
+  // empresa configura. Filtro custom → é o próprio id do grupo. Sem filtro
+  // custom, o grupo é o subfiltro (quando houver) ou a própria categoria.
   if (isCustomInternalFilterId(internalFilter)) return internalFilter;
-
-  if (categorySlug === "pos") {
-    const m: Record<string, string> = {
-      bm: "biomecanica",
-      tf: "funcional",
-      sm: "feminino",
-      mpa: "musculacao",
-      bb: "bodybuilding",
-      fe: "fisiologia",
-      "pos-outros": fb,
-    };
-    return (internalFilter && m[internalFilter]) || fb;
-  }
-  if (categorySlug === "livros") {
-    const m: Record<string, string> = {
-      "livro-bio": "livros",
-      "livro-mkt": "livroMarketing",
-      "livro-outros": fb,
-    };
-    return (internalFilter && m[internalFilter]) || fb;
-  }
-  if (categorySlug === "ebooks") {
-    const m: Record<string, string> = {
-      "ebook-bio-joelho": "ebookJoelho",
-      "ebook-bio-coluna": "ebookColuna",
-      "ebook-outros": fb,
-    };
-    return (internalFilter && m[internalFilter]) || fb;
-  }
-  if (categorySlug === "perpetuo") {
-    const m: Record<string, string> = {
-      "notavel-play": "perpetuo",
-      "perpetuo-outros": fb,
-    };
-    return (internalFilter && m[internalFilter]) || fb;
-  }
-  if (categorySlug === "eventos") {
-    const m: Record<string, string> = {
-      "bio-spec": "bs",
-      "mentoria-scala": "mentoria",
-      next: "next",
-      "power-trainer": "powertrainer",
-      "eventos-outros": fb,
-    };
-    return (internalFilter && m[internalFilter]) || fb;
-  }
-  return fb;
+  return internalFilter || categorySlug;
 }

@@ -687,7 +687,7 @@ function PersonaSegmentos({
       {segments.map((s) => (
         <div key={s.id} className="rounded-lg border border-[color:var(--dm-border-default)] bg-[var(--dm-bg-elevated)] p-3 space-y-2">
           <div className="flex gap-2 items-center">
-            <input value={s.titulo} onChange={(e) => update(s.id, "titulo", e.target.value)} placeholder="Ex: Profissional iniciante" className={`${cls.input} font-semibold`} />
+            <input value={s.titulo} onChange={(e) => update(s.id, "titulo", e.target.value)} placeholder="Ex: perfil do público" className={`${cls.input} font-semibold`} />
             <button type="button" onClick={() => remove(s.id)} className={cls.removeBtn}><X size={13} /></button>
           </div>
           <textarea
@@ -1080,7 +1080,7 @@ export function ProductForm({ product, existingCategories = [], onSave, onCancel
                 <input
                   value={form.nome}
                   onChange={(e) => set("nome", e.target.value)}
-                  placeholder="Ex: Pós-graduação em Musculação e Periodização"
+                  placeholder="Ex: nome do produto"
                   className={cls.input}
                 />
               </Field>
@@ -1214,7 +1214,7 @@ export function ProductForm({ product, existingCategories = [], onSave, onCancel
                   <DynamicList
                     items={form.oQueVaiAprender}
                     onChange={(v) => set("oQueVaiAprender", v)}
-                    placeholder="Ex: Estratégias de periodização aplicada"
+                    placeholder="Ex: tema ou módulo do produto"
                     addLabel="Adicionar item"
                   />
                 </Field>
@@ -1222,7 +1222,7 @@ export function ProductForm({ product, existingCategories = [], onSave, onCancel
                   <textarea
                     value={form.temaAulaInaugural}
                     onChange={(e) => set("temaAulaInaugural", e.target.value)}
-                    placeholder="Ex: Transforme Seu Treinamento — como profissionais de alta performance prescrevem…"
+                    placeholder="Ex: promessa principal do produto…"
                     rows={3}
                     className={cls.textarea}
                   />
@@ -1323,7 +1323,7 @@ export function ProductForm({ product, existingCategories = [], onSave, onCancel
                 links={form.paginasCaptura}
                 onChange={(l) => set("paginasCaptura", l)}
                 addLabel="Adicionar página de captura"
-                placeholder="Ex: Pré-Especialização"
+                placeholder="Ex: Principal"
               />
             </Field>
             <Field label="Páginas de Venda">

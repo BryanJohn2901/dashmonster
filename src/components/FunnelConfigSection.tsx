@@ -259,7 +259,7 @@ function FunnelForm({
           <label className="mb-1 block text-[10px] font-semibold" style={{ color: "var(--dm-text-tertiary)" }}>
             URL da página — cole a URL completa sem UTMs
           </label>
-          <TagInput values={urlPatterns} onChange={setUrlPatterns} placeholder="ex: https://seusite.com/perpetuo-sm" />
+          <TagInput values={urlPatterns} onChange={setUrlPatterns} placeholder="ex: https://seusite.com/pagina-de-vendas" />
         </div>
       </div>
 

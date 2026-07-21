@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/trackingAuth";
 import type { MetaCampaignCreative } from "@/utils/metaApi";
 
-const META_API_VERSION = "v21.0";
+import { META_API_VERSION } from "@/lib/meta";
 
 /**
  * Fields that are GUARANTEED to exist on the AdCreative object (v21.0):

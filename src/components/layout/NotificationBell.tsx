@@ -1,7 +1,6 @@
 'use client'
 
-// Port fiel de pipeflow-crm/components/layout/NotificationBell.tsx.
-// Dados: crm.ts (client-side) no lugar das server actions do original;
+// Dados: crm.ts (client-side), sem server actions.
 // InboxNotification → CrmNotification (sem related_lead_id).
 
 import { useState, useTransition, useRef, useEffect, useCallback } from 'react'

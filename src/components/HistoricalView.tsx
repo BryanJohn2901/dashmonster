@@ -37,11 +37,12 @@ import {
 
 // ─── Predefined product category tags (per kind) ─────────────────────────────
 
+// Sem tags de nicho embutidas — a empresa cria as próprias tags de produto.
 const PREDEFINED_TAGS: Record<HistoricalKind, string[]> = {
-  lancamento: ["Biomecânica", "Treinamento Feminino", "Treinamento Funcional", "Musculação", "Bodybuilding", "Fisiologia"],
-  evento:     ["Biomecânica", "Treinamento Feminino", "Treinamento Funcional", "Musculação", "Bodybuilding", "Fisiologia"],
-  perpetuo:   ["Biomecânica", "Treinamento Feminino", "Treinamento Funcional", "Musculação", "Bodybuilding", "Fisiologia"],
-  instagram:  ["Biomecânica", "Treinamento Feminino", "Treinamento Funcional", "Musculação", "Bodybuilding", "Fisiologia"],
+  lancamento: [],
+  evento:     [],
+  perpetuo:   [],
+  instagram:  [],
 };
 
 const MAX_CUSTOM_TAGS = 5;
@@ -53,9 +54,9 @@ type SyncStatus = "idle" | "loading" | "synced" | "local" | "error";
 
 // ─── Persistence ──────────────────────────────────────────────────────────────
 
-const ROWS_KEY_V1 = "pta_hist_rows_v1";
-const ROWS_KEY_V2 = "pta_hist_rows_v2";
-const METAS_KEY = "pta_hist_metas_v1";
+const ROWS_KEY_V1 = "gsah_hist_rows_v1";
+const ROWS_KEY_V2 = "gsah_hist_rows_v2";
+const METAS_KEY = "gsah_hist_metas_v1";
 
 function loadRows(): HistoricalRow[] {
   if (typeof window === "undefined") return [];
@@ -466,7 +467,7 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <label className={`${labelCls} sm:col-span-2`}>
                 Produto / Campanha *
-                <input list="products-list" required value={form.product} onChange={set("product")} placeholder="Ex: Biomecânica" className={fieldCls} />
+                <input list="products-list" required value={form.product} onChange={set("product")} placeholder="Ex: nome do produto" className={fieldCls} />
                 <datalist id="products-list">{products.map((pr) => <option key={pr} value={pr} />)}</datalist>
               </label>
               <label className={labelCls}>
@@ -476,7 +477,7 @@ function EntryForm({ form, products, isEditing, customTags, onChange, onSubmit, 
               {fk === "lancamento" && (
                 <label className={`${labelCls} sm:col-span-3`}>
                   Nome da Imersão <span className="font-normal text-slate-400">(opcional)</span>
-                  <input value={form.imersao} onChange={set("imersao")} placeholder="Ex: Pré-Especialização em Treinamento Feminino" className={fieldCls} />
+                  <input value={form.imersao} onChange={set("imersao")} placeholder="Ex: nome do evento ou imersão" className={fieldCls} />
                 </label>
               )}
               <label className={labelCls}>

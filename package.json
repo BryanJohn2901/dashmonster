@@ -1,7 +1,9 @@
 {
-  "name": "analytics-pta",
+  "name": "gsastudio-hub",
   "version": "0.1.0",
   "private": true,
+  "author": "GSAStúdio",
+  "license": "UNLICENSED",
   "engines": {
     "node": ">=22.0.0"
   },

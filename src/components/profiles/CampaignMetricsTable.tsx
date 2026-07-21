@@ -8,7 +8,7 @@ import {
   type CustomMetric, type CustomFormat,
 } from "@/lib/customMetrics";
 
-const TABLE_CONFIG_KEY = "pta_profile_table_config_v1";
+const TABLE_CONFIG_KEY = "gsah_profile_table_config_v1";
 const DEFAULT_COLS = ["spend", "reach", "leads", "sales", "revenue", "roas"];
 const ITEMS_PER_PAGE = 15;
 

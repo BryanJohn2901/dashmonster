@@ -1,5 +1,5 @@
 -- ============================================================
--- Analytics PTA — Correções de segurança (Supabase Database Linter)
+-- GSAStúdio Hub — Correções de segurança (Supabase Database Linter)
 --
 -- Resolve:
 --   • function_search_path_mutable (set_updated_at, set_updated_at_dashboard_data_source)

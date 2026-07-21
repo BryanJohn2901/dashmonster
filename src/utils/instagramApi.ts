@@ -1,6 +1,6 @@
 import { metaFetch } from "@/lib/authedFetch";
 
-const LS_KEY = "pta_instagram_creds_v1";
+const LS_KEY = "gsah_instagram_creds_v1";
 
 export interface InstagramCredentials {
   accessToken: string;

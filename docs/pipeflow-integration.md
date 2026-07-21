@@ -1,8 +1,8 @@
 # PipeFlow → Monster Hub: Plano de Integração
 
-> Decisão (2026-07-02): **fusão completa** do PipeFlow CRM no dashmonster.
-> Fonte: https://github.com/wesley-wmb/pipeflow-crm.git (Next 14 / React 18 / TW 3, 272 arquivos TS, 33 tabelas)
-> Destino: este repo (Next 16 / React 19 / TW 4). Stripe/billing do PipeFlow: **removido** — acesso é
+> GSAStúdio. Decisão (2026-07-02): **fusão completa** do PipeFlow CRM no hub.
+> Base migrada de uma stack Next 14 / React 18 / TW 3 (33 tabelas).
+> Destino: este repo (Next 16 / React 19 / TW 4). Stripe/billing: **removido** — acesso é
 > decidido pelo super admin via `companies.products` (migration 071, `ProdutosAdminSection` no HubSettings).
 
 ## Princípios
@@ -351,10 +351,5 @@ Progresso (tasks da sessão 2026-07-03):
 ## Riscos conhecidos
 - Next 16 tem breaking changes vs treinamento — ler `node_modules/next/dist/docs/` antes de portar cada padrão
 - React 19: `useFormState` → `useActionState`, refs, etc.
-- Papel `viewer` nosso é mais restrito que `member` deles — revisar cada action de escrita
-- Volume: 272 arquivos TS na origem; portar por feature, nunca por arquivo
-
-## Referência local
-Clone raso para consulta: re-clonar quando preciso —
-`git clone --depth 1 https://github.com/wesley-wmb/pipeflow-crm.git`
-Docs úteis no repo deles: `docs/PRD.md`, `docs/SETTINGS_PLAN.md`, `docs/ai/compatibility-map.md`
+- Papel `viewer` é mais restrito que o `member` da base migrada — revisar cada action de escrita
+- Volume: portar por feature, nunca por arquivo

@@ -1,5 +1,5 @@
 -- ============================================================
--- Analytics PTA — Tabelas faltantes: categoria, historical_rows, historical_metas
+-- GSAStúdio Hub — Tabelas faltantes: categoria, historical_rows, historical_metas
 -- Execute no Supabase SQL Editor (Dashboard > SQL Editor > New query)
 -- ============================================================
 

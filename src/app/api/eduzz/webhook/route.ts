@@ -617,44 +617,6 @@ async function findContractInfo(
   };
 }
 
-// Bug real confirmado em produção (2026-07-09): venda de PSL/assinatura (ex.:
-// oferta "[SM7-19x247-B]", 19 cobranças de R$247) chega com `contract: null`
-// no invoice_paid — a Eduzz simplesmente não manda a ficha do contrato pra
-// ESSE cliente (nem na hora nem depois: os 2 contratos já vistos pra essa
-// MESMA oferta/productId têm `created_received: false`, ou seja o evento
-// `contract_created` nunca chegou nem pra eles — só `contract_updated`, que só
-// dispara em mudança estrutural, não em cobrança rotineira). Sem `contract.id`
-// nenhum, `sale.recurrenceKey` fica null e a venda é tratada como avulsa —
-// `displayValue` acaba sendo só o valor de 1 parcela (R$247), não o valor
-// cheio do contrato (R$4.693 = 19×247).
-//
-// Cura: como o productId (a OFERTA, não o cliente) já é conhecido como um
-// plano de N parcelas por causa de OUTRO cliente que comprou a MESMA oferta e
-// cuja ficha de contrato já existe, usamos essa estrutura (total de parcelas +
-// valor normal da parcela) mesmo sem a ficha desse cliente específico — a
-// oferta em si (link de checkout) É o plano de N parcelas, não uma venda
-// avulsa. Só afeta o valor EXIBIDO/mandado pra Meta (displayValue) — não mexe
-// em recurrence_key/campaign_metrics/detecção de renovação (esse cliente
-// continua sem ficha própria; se uma cobrança futura dele chegar sem
-// contract.id também, cada uma repete essa mesma cura de forma independente).
-async function findKnownInstallmentPlan(
-  db: SupabaseClient,
-  companyId: string,
-  productId: string,
-): Promise<{ total: number; chargeValue: number | null } | null> {
-  const { data, error } = await db
-    .from("eduzz_contracts")
-    .select("total_installments, charge_value")
-    .eq("company_id", companyId)
-    .eq("product_id", productId)
-    .eq("is_finite", true)
-    .order("updated_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (error || !data?.total_installments) return null;
-  return { total: data.total_installments as number, chargeValue: (data.charge_value as number | null) ?? null };
-}
-
 async function discardLateSubscriptionPurchases(db: SupabaseClient, companyId: string, contractId: string): Promise<void> {
   const { error } = await db
     .from("events_log")
@@ -1221,20 +1183,12 @@ export async function recordSale(db: SupabaseClient, companyId: string, sale: Sa
   // parcelas pra calcular um valor cheio SÓ pra exibição/Meta — sem tocar na
   // receita mensal (campaign_metrics usa sale.value cru). Sem ficha conhecida,
   // cai pro valor normal — comportamento de sempre, sem inventar total.
-  // Sem recurrenceKey nenhum (contract: null na fatura, ficha nunca vinculada
-  // a ESTE cliente) mas a OFERTA (productId) já é um plano conhecido de N
-  // parcelas por outro cliente que comprou a mesma — ver findKnownInstallmentPlan.
-  const knownPlan = !sale.recurrenceKey && sale.items[0]?.productId
-    ? await findKnownInstallmentPlan(db, companyId, sale.items[0].productId)
-    : null;
   const contractTotalInstallments =
     contractInfo.total ??
     (sale.recurrenceKey && sale.totalInstallmentsRaw && sale.totalInstallmentsRaw > 1 ? sale.totalInstallmentsRaw : null) ??
     // Último fallback: alguns nomes de oferta já trazem o padrão "[...-19x197-...]".
     // Só usamos quando é assinatura e a ficha ainda não chegou, pra não mexer em venda única.
-    (sale.recurrenceKey ? inferInstallmentsFromProductName(sale.productName) : null) ??
-    knownPlan?.total ??
-    null;
+    (sale.recurrenceKey ? inferInstallmentsFromProductName(sale.productName) : null);
   // Bug real confirmado em produção: ofertas com "1ª parcela com desconto"
   // (ex.: 50% off só na 1ª) têm `sale.value` (valor cobrado AGORA) diferente
   // do `charge_value` da ficha (preço normal das demais parcelas) —
@@ -1245,11 +1199,10 @@ export async function recordSale(db: SupabaseClient, companyId: string, sale: Sa
   // ESSA cobrança é a "diferente" (promoção pontual) e as outras `total - 1`
   // valem o preço normal; sem `charge_value` conhecido, cai pro cálculo
   // antigo (aproximação, melhor que nada).
-  const chargeValueForDisplay = contractInfo.chargeValue ?? knownPlan?.chargeValue ?? null;
   const displayValue = !contractTotalInstallments
     ? sale.value
-    : chargeValueForDisplay != null
-      ? sale.value + (contractTotalInstallments - 1) * chargeValueForDisplay
+    : contractInfo.chargeValue != null
+      ? sale.value + (contractTotalInstallments - 1) * contractInfo.chargeValue
       : sale.value * contractTotalInstallments;
 
   const { data: inserted, error: insertError } = await insertEventsLogRow(db, {
@@ -1306,7 +1259,7 @@ export async function recordSale(db: SupabaseClient, companyId: string, sale: Sa
     // "sempre 1": se essa é a 1ª venda que CAPTURAMOS desse contrato mas a
     // Eduzz já está na cobrança 13 (cobranças anteriores nunca chegaram como
     // webhook — caso real visto em produção), o nº certo é 13, não 1.
-    installment_number: sale.installmentNumber ?? contractInfo.current ?? (sale.recurrenceKey || knownPlan ? 1 : null),
+    installment_number: sale.installmentNumber ?? contractInfo.current ?? (sale.recurrenceKey ? 1 : null),
     // Valor SÓ dessa parcela/cobrança (migration 054) — diferente de `value`
     // (acima) quando a venda é parcelada: `value` já é o total multiplicado,
     // `invoiceValue` é cru, sem multiplicar nada (pra boleto, o que essa 1ª

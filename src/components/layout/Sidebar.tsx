@@ -1,6 +1,5 @@
 'use client'
 
-// Port fiel de pipeflow-crm/components/layout/Sidebar.tsx.
 // Notificações/busca buscam sozinhas via crm.ts (companyId), sem props de seed.
 
 import { Suspense, useCallback, useEffect, useState } from 'react'
@@ -8,7 +7,7 @@ import { PanelLeftClose, PanelLeftOpen, Search } from 'lucide-react'
 import { SidebarNav } from './SidebarNav'
 import { WorkspaceSwitcher, type WorkspaceItem } from './WorkspaceSwitcher'
 import { UserMenu } from './UserMenu'
-import { PipeFlowLogo } from './PipeFlowLogo'
+import { CrmMonsterLogo } from './CrmMonsterLogo'
 import { CommandPalette } from './CommandPalette'
 import { NotificationBell } from './NotificationBell'
 
@@ -77,7 +76,7 @@ export function Sidebar({
         className={`flex h-[72px] flex-shrink-0 items-center ${collapsed ? 'justify-center px-0' : 'justify-between px-5'}`}
         style={{ borderBottom: '1px solid rgba(216,222,227,0.08)' }}
       >
-        {!collapsed && <PipeFlowLogo variant="sidebar" />}
+        {!collapsed && <CrmMonsterLogo variant="sidebar" />}
         <button
           type="button"
           onClick={toggle}
@@ -152,7 +151,7 @@ export function Sidebar({
 
           <div className="my-1 h-px w-8" style={{ background: 'rgba(216,222,227,0.07)' }} />
 
-          <PipeFlowLogo variant="sidebar" compact />
+          <CrmMonsterLogo variant="sidebar" compact />
         </div>
       )}
     </aside>

@@ -2,13 +2,11 @@
 -- 073_pipeflow_full.sql — PipeFlow CRM: schema restante (Fase 4)
 -- Execute no Supabase SQL Editor (após a 072). Idempotente.
 --
--- Completa o porte do wesley-wmb/pipeflow-crm: inbox omnicanal
--- (WhatsApp Z-API/Cloud + Instagram), notificações, playbooks
--- nomeados, dashboards custom + metas, API pública (tokens) e
--- webhooks (in/out), acesso por pipeline.
+-- Completa o schema do CRM: inbox omnicanal (WhatsApp Z-API/Cloud +
+-- Instagram), notificações, playbooks nomeados, dashboards custom +
+-- metas, API pública (tokens) e webhooks (in/out), acesso por pipeline.
 -- Mesmas adaptações da 072: workspace_id→company_id, leads→crm_leads,
--- enums crm_*, RLS padrão da casa. `dashboard_stage_mappings` ficou
--- de fora (o original dropou na 20260615).
+-- enums crm_*, RLS padrão da casa. `dashboard_stage_mappings` ficou de fora.
 -- ============================================================
 
 -- ------------------------------------------------------------

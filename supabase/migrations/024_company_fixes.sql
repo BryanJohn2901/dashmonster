@@ -1,5 +1,5 @@
 -- ============================================================
--- Analytics PTA — Correções multi-tenant
+-- GSAStúdio Hub — Correções multi-tenant
 -- Execute este SQL no Supabase SQL Editor (após a 023)
 --
 -- 1) unique de campaign_metrics passa a incluir company_id:

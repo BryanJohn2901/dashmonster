@@ -9,7 +9,7 @@ import { loadScoped, persistScoped } from "@/lib/companyScopedStorage";
 
 // ─── Local cache (isolado por empresa) ─────────────────────────────────────────
 
-const STORAGE_PREFIX = "pta_products_v1";
+const STORAGE_PREFIX = "gsah_products_v1";
 // empresa cujo cache local está ativo — persist grava sempre nela.
 let activeCid: string | null = null;
 

@@ -256,14 +256,14 @@ describe("POST /api/tracking/track-event", () => {
         event_name: "Lead",
         event_url: "http://localhost:3000/pagina",
         page_title: "Página de Vendas",
-        pii: { email: "a@b.com", fields: { nome: "Wesley", cidade: "SP" } },
+        pii: { email: "a@b.com", fields: { nome: "Ana", cidade: "SP" } },
       }),
     );
 
     expect(mockInsert).toHaveBeenCalledWith(
       expect.objectContaining({
         page_title: "Página de Vendas",
-        extra_fields: { nome: "Wesley", cidade: "SP" },
+        extra_fields: { nome: "Ana", cidade: "SP" },
       }),
     );
   });

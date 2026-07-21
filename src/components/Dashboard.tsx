@@ -20,7 +20,7 @@ import { useTheme } from "next-themes";
 import { CampaignData, LeadRow, ProductCategory, SourceChannel } from "@/types/campaign";
 import type { UserAccountEntry, UserCategory } from "@/types/userConfig";
 import {
-  PTA_PAINEL_SAVE_NAV_EVENT,
+  PAINEL_SAVE_NAV_EVENT,
   mapPainelInternalFilterToDashboardGroupId,
   type PainelSaveNavDetail,
 } from "@/utils/painelDashboardNavigation";
@@ -122,7 +122,7 @@ const DASH_SUB_TABS: Array<{ id: DashSubTab; label: string; icon: React.ElementT
 
 // Bloco "Campanhas" da Visão Geral: tabela por campanha vs. resumo diário.
 type CampanhasView = "performance" | "daily";
-const CAMPANHAS_VIEW_KEY = "pta_campanhas_view_v1";
+const CAMPANHAS_VIEW_KEY = "gsah_campanhas_view_v1";
 const CAMPANHAS_VIEWS: Array<{ id: CampanhasView; label: string; icon: React.ElementType }> = [
   { id: "performance", label: "Performance por Campanha", icon: Megaphone },
   { id: "daily",       label: "Resumo diário",            icon: CalendarDays },
@@ -195,28 +195,9 @@ const G_VIOLET = G_NEUTRAL;
 const G_AMBER = G_NEUTRAL;
 const G_ROSE = G_NEUTRAL;
 
-const CAMPAIGN_GROUPS: GroupConfig[] = [
-  // ── Pós Graduação ──────────────────────────────────────────────────────────
-  { section: "pos", id: "biomecanica",  label: "Biomecânica (BM)",           icon: Dna,             ...G_BLUE },
-  { section: "pos", id: "musculacao",   label: "Musculação (MPA)",            icon: Weight,          ...G_BLUE },
-  { section: "pos", id: "fisiologia",   label: "Fisiologia (FE)",             icon: HeartPulse,      ...G_BLUE },
-  { section: "pos", id: "bodybuilding", label: "Bodybuilding (BB)",           icon: Medal,           ...G_BLUE },
-  { section: "pos", id: "feminino",     label: "Trein. Feminino (SM)",        icon: PersonStanding,  ...G_BLUE },
-  { section: "pos", id: "funcional",    label: "Trein. Funcional (TF)",       icon: Flame,           ...G_BLUE },
-  // ── Livros ─────────────────────────────────────────────────────────────────
-  { section: "livros",   id: "livros",         label: "Livro de Biomecânica", icon: BookText,        ...G_EMERALD },
-  { section: "livros",   id: "livroMarketing", label: "Livro de Marketing",   icon: Library,         ...G_EMERALD },
-  // ── Ebooks ─────────────────────────────────────────────────────────────────
-  { section: "ebooks",   id: "ebookJoelho",    label: "Ebook Bio Joelho",     icon: MonitorSmartphone, ...G_VIOLET },
-  { section: "ebooks",   id: "ebookColuna",    label: "Ebook Bio Coluna",     icon: MonitorSmartphone, ...G_VIOLET },
-  // ── Perpétuo ───────────────────────────────────────────────────────────────
-  { section: "perpetuo", id: "perpetuo",       label: "Notável Play",         icon: RotateCcw,       ...G_AMBER },
-  // ── Eventos ────────────────────────────────────────────────────────────────
-  { section: "eventos",  id: "bs",           label: "Biomechanic Specialist", icon: Ticket,          ...G_ROSE },
-  { section: "eventos",  id: "mentoria",     label: "Mentoria Scala",         icon: Ticket,          ...G_ROSE },
-  { section: "eventos",  id: "next",         label: "Next",                   icon: Ticket,          ...G_ROSE },
-  { section: "eventos",  id: "powertrainer", label: "Power Trainer",          icon: Ticket,          ...G_ROSE },
-];
+// Sem taxonomia embutida: cada empresa monta os próprios grupos (companyFilters
+// / customGroups). Antes vinha cravado o catálogo de um tenant específico.
+const CAMPAIGN_GROUPS: GroupConfig[] = [];
 
 // Default styles for custom-created groups (keyed by built-in section)
 const SECTION_DEFAULTS: Record<string, Omit<GroupConfig, "id" | "label" | "section">> = {
@@ -240,7 +221,7 @@ const SECTION_LABELS = SECTION_LABELS_BUILTIN;
 
 /**
  * Resolve o rótulo de uma seção. Prioridade: nome da categoria da EMPRESA
- * (user_categories, renomeável por empresa) → label built-in (template PTA) →
+ * (user_categories, renomeável por empresa) → label built-in da categoria →
  * seção custom → o próprio id. O slug fica estável; só o nome exibido muda.
  */
 function getSectionLabel(
@@ -2132,8 +2113,8 @@ export function Dashboard({
       }
     };
 
-    window.addEventListener(PTA_PAINEL_SAVE_NAV_EVENT, onApply);
-    return () => window.removeEventListener(PTA_PAINEL_SAVE_NAV_EVENT, onApply);
+    window.addEventListener(PAINEL_SAVE_NAV_EVENT, onApply);
+    return () => window.removeEventListener(PAINEL_SAVE_NAV_EVENT, onApply);
   }, [
     setSelectedCategory,
     setSelectedGroup,
@@ -2165,13 +2146,9 @@ export function Dashboard({
   // (key exists in store even if empty = "deselect all" mode where nothing should show)
   const isFilterExplicit = selectedGroup !== "all" && selectedGroup in selectedCampaignsByGroup;
 
-  // Merge static groups with custom-created ones
-  // CAMPAIGN_GROUPS (biomecânica, mentoria…) é a taxonomia da empresa ORIGINAL
-  // (PTA, slug "principal"). Qualquer outra empresa NÃO a herda — monta os
-  // próprios filtros. Gate por slug é robusto (não depende de flag em settings).
-  const usesPtaTaxonomy = activeCompany?.slug === "principal";
+  // Grupos vêm só do que a empresa configurou (customGroups / companyFilters).
+  // Não há taxonomia embutida nem tenant legado.
   const allGroups = useMemo<GroupConfig[]>(() => [
-    ...(usesPtaTaxonomy ? CAMPAIGN_GROUPS : []),
     ...customGroups.map((cg): GroupConfig => {
       const isBuiltin = cg.section in SECTION_DEFAULTS;
       if (isBuiltin) {
@@ -2183,7 +2160,7 @@ export function Dashboard({
       const ResolvedIcon = ICON_MAP[customSec?.iconName ?? "Package"] ?? Package;
       return { ...colorCfg, icon: ResolvedIcon, id: cg.id, label: cg.label, section: cg.section as GroupSection };
     }),
-  ], [customGroups, customSections, usesPtaTaxonomy]);
+  ], [customGroups, customSections]);
 
   // ── Account → section map for Meta data ──────────────────────────────────────
   const accountSectionMap = useMemo<Record<string, ProductCategory>>(() => {
@@ -2201,7 +2178,7 @@ export function Dashboard({
 
   // ── Mapa campanha→seção a partir da CONFIG da empresa (D-2) ─────────────────
   // A config (qual campanha está em qual grupo/filtro) é a fonte de verdade por
-  // empresa. Substitui a classificação por keyword hardcoded (PTA) como primária.
+  // empresa. Substitui a classificação por keyword genérica como primária.
   const campaignSectionMap = useMemo(() => {
     const map = new Map<string, Set<string>>();
     for (const g of allGroups) {
@@ -2230,7 +2207,7 @@ export function Dashboard({
       // usa a seção dele (adapta por empresa, sem keyword hardcoded).
       const configured = campaignSectionMap.get(c.campaignName);
       if (configured && configured.size > 0) return configured.has(selectedCategory);
-      // Sem config: fallback ao classificador por nome (legado PTA).
+      // Sem config: fallback ao classificador genérico por nome de campanha.
       return classifyCampaign(c.campaignName) === selectedCategory;
     });
   }, [campaigns, selectedCategory, accountSectionMap, campaignSectionMap]);

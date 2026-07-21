@@ -49,7 +49,6 @@ import {
 } from "@/lib/resultDetection";
 import { useCompany, fetchTrackingFunnels, fetchEduzzCatalog, type TrackingFunnel, type EduzzProduct } from "@/hooks/useCompany";
 import { supabaseClient } from "@/lib/supabase";
-import { fetchEventsLogSplit, fetchEventsLogAll } from "@/lib/eventsLogFetch";
 import { useChartTheme, shortDate, xInterval } from "@/components/charts/useChartTheme";
 import { eventMatchesFunnel, groupByVisitor, type TrackingEvent } from "@/components/TrackingEventsView";
 import { TrackingAnalytics } from "@/components/tracking/TrackingAnalytics";
@@ -57,14 +56,14 @@ import { TrackingAnalytics } from "@/components/tracking/TrackingAnalytics";
 const formatCurrency = formatBRL;
 const formatNumber = formatInt;
 
-const TEMPLATE_LS_KEY            = "pta_profile_template_v1";
-const DATES_LS_KEY               = "pta_profile_dates_v1";
-const FUNNEL_CONFIG_LS_KEY       = "pta_profile_funnel_v1";
-const LINKED_FUNNEL_LS_KEY       = "pta_profile_linked_funnel_v1";
-const PRODUCT_LINKS_LS_KEY       = "pta_profile_product_links_v1";
-const GOALS_LS_KEY               = "pta_profile_goals_v1";
-const PROFILE_TAB_LS_KEY         = "pta_profile_tab_v1";
-const OV_TIMELINE_LS_KEY         = "pta_ov_timeline_v1";
+const TEMPLATE_LS_KEY            = "gsah_profile_template_v1";
+const DATES_LS_KEY               = "gsah_profile_dates_v1";
+const FUNNEL_CONFIG_LS_KEY       = "gsah_profile_funnel_v1";
+const LINKED_FUNNEL_LS_KEY       = "gsah_profile_linked_funnel_v1";
+const PRODUCT_LINKS_LS_KEY       = "gsah_profile_product_links_v1";
+const GOALS_LS_KEY               = "gsah_profile_goals_v1";
+const PROFILE_TAB_LS_KEY         = "gsah_profile_tab_v1";
+const OV_TIMELINE_LS_KEY         = "gsah_ov_timeline_v1";
 
 type ProfileFunnelStepId = "reach" | "impressions" | "clicks" | "page_views" | "leads" | "sales" | "purchases" | "profile_visits" | "new_followers";
 
@@ -915,7 +914,7 @@ function ProfileForm({
             <input
               type="text" value={form.name} autoFocus
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-              placeholder="Ex: Rafa Lund"
+              placeholder="Ex: Nome do anunciante"
               className={inputCls}
             />
           </div>
@@ -926,7 +925,7 @@ function ProfileForm({
             <input
               type="text" value={form.product}
               onChange={(e) => setForm((f) => ({ ...f, product: e.target.value }))}
-              placeholder="Ex: Pós em Treinamento Feminino"
+              placeholder="Ex: Produto ou nicho"
               className={inputCls}
             />
           </div>
@@ -1229,13 +1228,13 @@ function ProfileCard({
 // ─── Profile overview — agrega todas as campanhas do perfil ──────────────────
 
 // ─── localStorage keys for overview-level persistence ────────────────────────
-const OVERVIEW_GOALS_KEY  = "pta_overview_goals_v1";
+const OVERVIEW_GOALS_KEY  = "gsah_overview_goals_v1";
 
 // Card personalizado do Perfil — informação livre digitada pelo usuário
 interface ProfileCustomCard { id: string; title: string; value: string; note?: string }
-const CUSTOM_CARDS_KEY = "pta_profile_custom_cards_v1";
-const OVERVIEW_FUNNEL_KEY = "pta_overview_funnel_v1";
-const KPI_CONFIG_KEY      = "pta_profile_kpi_config_v1";
+const CUSTOM_CARDS_KEY = "gsah_profile_custom_cards_v1";
+const OVERVIEW_FUNNEL_KEY = "gsah_overview_funnel_v1";
+const KPI_CONFIG_KEY      = "gsah_profile_kpi_config_v1";
 
 // Shared color maps (mirrors CampaignAnalysisPanel)
 const KPI_SOLID_OV: Record<string, string> = {
@@ -1297,16 +1296,16 @@ function ProfileOverviewPanel({
     setTrackingLoading(true);
     void (async () => {
       try {
-        const { rows } = await fetchEventsLogSplit<TrackingEventMin>(supabaseClient, {
-          select: "fingerprint_id,event_name,value,product_name,product_parent_id,utm_campaign,event_url,pixel_id",
-          companyId,
-          dateFrom,
-          dateTo,
-          extraFilter: (q) => q.or("sale_confirmed.is.null,sale_confirmed.eq.true"),
-          businessEventNames: ["Lead", "Purchase"],
-          excludeEventNames: ["Renewal", "Installment"],
-        });
-        if (alive) setTrackingEvents(rows);
+        const { data } = await supabaseClient
+          .from("events_log")
+          .select("fingerprint_id,event_name,value,product_name,product_parent_id,utm_campaign,event_url,pixel_id")
+          .eq("company_id", companyId)
+          .gte("created_at", new Date(`${dateFrom}T00:00:00`).toISOString())
+          .lte("created_at", new Date(`${dateTo}T23:59:59.999`).toISOString())
+          .or("sale_confirmed.is.null,sale_confirmed.eq.true")
+          .neq("event_name", "Renewal")
+          .neq("event_name", "Installment");
+        if (alive) setTrackingEvents((data ?? []) as TrackingEventMin[]);
       } catch {
         if (alive) setTrackingEvents([]);
       } finally {
@@ -1367,26 +1366,18 @@ function ProfileOverviewPanel({
   useEffect(() => {
     const linkedProductIds = Object.values(productLinks).filter(Boolean);
     if (linkedProductIds.length === 0 || !companyId || !supabaseClient) { setProductEduzzStats({}); return; }
-    const client = supabaseClient;
     let alive = true;
     void (async () => {
       try {
-        // Purchase é sempre de baixo volume — busca paginada completa, sem teto
-        // (evita o cap implícito ~1000 do PostgREST truncar vendas antigas do período).
-        const data = await fetchEventsLogAll<{ fingerprint_id: string; product_parent_id: string | null; value: number | null; created_at: string }>(
-          (offset, limit) => client
-            .from("events_log")
-            .select("fingerprint_id, product_parent_id, value, created_at")
-            .eq("company_id", companyId)
-            .eq("event_name", "Purchase")
-            .in("product_parent_id", linkedProductIds)
-            .gte("created_at", new Date(`${dateFrom}T00:00:00`).toISOString())
-            .lte("created_at", new Date(`${dateTo}T23:59:59.999`).toISOString())
-            .or("sale_confirmed.is.null,sale_confirmed.eq.true")
-            .order("created_at", { ascending: true })
-            .order("id", { ascending: true })
-            .range(offset, offset + limit - 1),
-        );
+        const { data } = await supabaseClient
+          .from("events_log")
+          .select("fingerprint_id, product_parent_id, value, created_at")
+          .eq("company_id", companyId)
+          .eq("event_name", "Purchase")
+          .in("product_parent_id", linkedProductIds)
+          .gte("created_at", new Date(`${dateFrom}T00:00:00`).toISOString())
+          .lte("created_at", new Date(`${dateTo}T23:59:59.999`).toISOString())
+          .or("sale_confirmed.is.null,sale_confirmed.eq.true");
         if (!alive || !data) return;
 
         // Agrega por produto: vendas únicas (fingerprint distinct), receita, e por dia.
@@ -3907,7 +3898,7 @@ export function InstagramInsightsPanel({
 
   useEffect(() => {
     const accessToken = (() => {
-      try { return localStorage.getItem("pta_ig_app_token_v1") ?? ""; } catch { return ""; }
+      try { return localStorage.getItem("gsah_ig_app_token_v1") ?? ""; } catch { return ""; }
     })();
     if (!accessToken || !igUserId) {
       setData(IG_MOCK_DATA);
@@ -4171,7 +4162,9 @@ const ANALYTICS_EVENTS_SELECT =
   "payment_method, installments, installment_number, installment_value, recurrence_key, product_name, " +
   "product_parent_id, is_order_bump, main_sale_transaction_id, items, client_user_agent, via, pixel_id, capi_status, capi_error, created_at";
 
-const ANALYTICS_METRICS_LS_KEY = "pta_analytics_metrics_v1";
+const ANALYTICS_EVENTS_PAGE_SIZE = 1000;
+const ANALYTICS_EVENTS_LIMIT = 10000; // teto de segurança (paginado)
+const ANALYTICS_METRICS_LS_KEY = "gsah_analytics_metrics_v1";
 
 const ANALYTICS_METRIC_DEFS = [
   // pixel / Eduzz
@@ -4246,21 +4239,28 @@ function ProfileAnalyticsPanel({
     setTrkLoading(true);
     void (async () => {
       try {
-        // Lead/Purchase/Installment (negócio) são buscados por completo, sem teto —
-        // receita/vendas/leads nunca ficam sub-contados. Só o restante (PageView e
-        // afins, alto volume) é paginado até um teto de segurança pro browser.
-        const { rows, noiseCapped } = await fetchEventsLogSplit<TrackingEvent>(supabaseClient, {
-          select: ANALYTICS_EVENTS_SELECT,
-          companyId,
-          dateFrom,
-          dateTo,
-          extraFilter: (q) => q.or("sale_confirmed.is.null,sale_confirmed.eq.true"),
-          businessEventNames: ["Lead", "Purchase", "Installment"],
-          excludeEventNames: ["Renewal"],
-        });
+        // Pagina em ordem cronológica para cobrir o período inteiro (não só os eventos
+        // mais recentes) — evita que o gráfico "Linha do tempo" fique truncado em
+        // contas com muitos eventos brutos (pageview/scroll etc).
+        const rows: TrackingEvent[] = [];
+        for (let offset = 0; offset < ANALYTICS_EVENTS_LIMIT; offset += ANALYTICS_EVENTS_PAGE_SIZE) {
+          const { data } = await supabaseClient
+            .from("events_log")
+            .select(ANALYTICS_EVENTS_SELECT)
+            .eq("company_id", companyId)
+            .or("sale_confirmed.is.null,sale_confirmed.eq.true")
+            .neq("event_name", "Renewal")
+            .gte("created_at", new Date(`${dateFrom}T00:00:00`).toISOString())
+            .lte("created_at", new Date(`${dateTo}T23:59:59.999`).toISOString())
+            .order("created_at", { ascending: true })
+            .range(offset, offset + ANALYTICS_EVENTS_PAGE_SIZE - 1);
+          const page = (data ?? []) as unknown as TrackingEvent[];
+          rows.push(...page);
+          if (page.length < ANALYTICS_EVENTS_PAGE_SIZE) break;
+        }
         if (!alive) return;
         setAllEvents(rows);
-        setEventsCapped(noiseCapped);
+        setEventsCapped(rows.length >= ANALYTICS_EVENTS_LIMIT);
       } catch {
         if (alive) setAllEvents([]);
       } finally {
@@ -4371,7 +4371,7 @@ function ProfileAnalyticsPanel({
           {loading && <Loader2 size={11} className="animate-spin" style={{ color: "var(--dm-text-tertiary)" }} />}
           {eventsCapped && (
             <span className="text-[10px]" style={{ color: "#D97706" }}>
-              · volume de navegação (PageView) truncado no período — receita/vendas/leads não são afetados
+              · mostrando os {ANALYTICS_EVENTS_LIMIT} eventos mais recentes
             </span>
           )}
         </div>
@@ -4686,7 +4686,7 @@ function ProfileDetailView({
     ? profile.campaigns.filter((c) => c.id === focusedCampaignId)
     : profile.campaigns;
 
-  const PERSONALIZADO_LS_KEY = "pta_personalizado_v1";
+  const PERSONALIZADO_LS_KEY = "gsah_personalizado_v1";
   const [personalizadoConfig, setPersonalizadoConfig] = useState<PersonalizadoConfig>(() => {
     if (typeof window === "undefined") return DEFAULT_PERSONALIZADO_CONFIG;
     try {

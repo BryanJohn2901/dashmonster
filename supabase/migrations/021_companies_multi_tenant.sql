@@ -1,5 +1,5 @@
 -- ============================================================
--- Analytics PTA — Multi-tenant: Empresas
+-- GSAStúdio Hub — Multi-tenant: Empresas
 -- Execute este SQL no Supabase SQL Editor
 --
 -- 1) companies + company_members (roles: owner/manager/viewer)
@@ -143,7 +143,7 @@ DECLARE
   ];
 BEGIN
   INSERT INTO public.companies (name, slug, created_by)
-  VALUES ('Empresa Principal', 'principal', v_admin_id)
+  VALUES ('Empresa Padrão', 'principal', v_admin_id)
   ON CONFLICT (slug) DO NOTHING;
 
   SELECT id INTO v_company_id FROM public.companies WHERE slug = 'principal';

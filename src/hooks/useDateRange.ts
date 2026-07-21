@@ -1,12 +1,12 @@
 "use client";
 import { useState, useCallback, useEffect } from "react";
 
-const KEY_FROM = "pta_date_range_v2_from";
-const KEY_TO   = "pta_date_range_v2_to";
+const KEY_FROM = "gsah_date_range_v2_from";
+const KEY_TO   = "gsah_date_range_v2_to";
 
 // Legacy keys written by older Dashboard code — read once on mount for migration.
-const LEGACY_FROM = "pta_date_from_v1";
-const LEGACY_TO   = "pta_date_to_v1";
+const LEGACY_FROM = "gsah_date_from_v1";
+const LEGACY_TO   = "gsah_date_to_v1";
 
 export function useDateRange() {
   const [dateFrom, setDateFromState] = useState<string>("");

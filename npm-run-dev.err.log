@@ -1,9 +1,0 @@
-⚠ Port 3000 is in use by process 26924, using available port 3001 instead.
-⨯ Another next dev server is already running.
-
-- Local:        http://localhost:3000
-- PID:          26924
-- Dir:          G:\CODEX\analyticsPta
-- Log:          .next\dev\logs\next-development.log
-
-Run taskkill /PID 26924 /F to stop it.

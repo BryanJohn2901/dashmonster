@@ -110,7 +110,7 @@ export function PersonalizadoBuilder({ config, onChange, onClose }: Props) {
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Ex: Tráfego · Pós Graduação"
+              placeholder="Ex: Tráfego · Produto"
               className="h-9 w-full rounded-[12px] border px-3 text-[13px] outline-none transition"
               style={{
                 borderColor: "var(--dm-border-default)",

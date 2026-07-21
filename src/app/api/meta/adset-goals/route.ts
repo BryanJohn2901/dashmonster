@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/trackingAuth";
 
-const META_API_VERSION = "v21.0";
+import { META_API_VERSION } from "@/lib/meta";
 
 // promoted_object da Meta — descreve o evento que a campanha otimiza.
 interface PromotedObject {

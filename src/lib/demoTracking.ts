@@ -55,13 +55,13 @@ const UA_DESKTOP = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
 function ev(p: Partial<DemoEvent> & Pick<DemoEvent, "id" | "event_name" | "fingerprint_id" | "created_at">): DemoEvent {
   return {
     event_url: "https://demo.dashmonster.com/oferta",
-    page_title: "Pós-Graduação · Oferta",
+    page_title: "Produto · Oferta",
     user_data: null,
     lead_email: null, lead_phone: null, lead_name: null,
     extra_fields: null,
     country: "BR", country_region: "SP", city: "São Paulo",
     event_id: p.id,
-    utm_source: "facebook", utm_medium: "paid", utm_campaign: "[PTA] Pós Grad",
+    utm_source: "facebook", utm_medium: "paid", utm_campaign: "[DEMO] Campanha Principal",
     utm_content: null, utm_term: null, utm_placement: "feed",
     utm_campaign_id: "23851", utm_adset_id: "78422", utm_ad_id: "991024",
     capi_status: "sent", capi_error: null,
@@ -78,28 +78,28 @@ function ev(p: Partial<DemoEvent> & Pick<DemoEvent, "id" | "event_name" | "finge
 export const DEMO_TRACKING_EVENTS: DemoEvent[] = [
   // ── Visitante 1: jornada completa até compra (cartão) ──
   ev({ id: "d1", event_name: "PageView", fingerprint_id: "fp_ana", created_at: minsAgo(58), client_user_agent: UA_IPHONE, city: "Campinas" }),
-  ev({ id: "d2", event_name: "ViewContent", fingerprint_id: "fp_ana", created_at: minsAgo(54), client_user_agent: UA_IPHONE, city: "Campinas", page_title: "Pós Grad. Biomecânica" }),
+  ev({ id: "d2", event_name: "ViewContent", fingerprint_id: "fp_ana", created_at: minsAgo(54), client_user_agent: UA_IPHONE, city: "Campinas", page_title: "Produto A" }),
   ev({ id: "d3", event_name: "Lead", fingerprint_id: "fp_ana", created_at: minsAgo(50), client_user_agent: UA_IPHONE, city: "Campinas",
        lead_name: "Ana Souza", lead_email: "ana.souza@gmail.com", lead_phone: "+5519998877665", user_data: { em: "ana.souza@gmail.com", ph: "5519998877665" } }),
   ev({ id: "d4", event_name: "InitiateCheckout", fingerprint_id: "fp_ana", created_at: minsAgo(46), client_user_agent: UA_IPHONE, city: "Campinas" }),
   ev({ id: "d5", event_name: "Purchase", fingerprint_id: "fp_ana", created_at: minsAgo(44), client_user_agent: UA_IPHONE, city: "Campinas",
        lead_name: "Ana Souza", lead_email: "ana.souza@gmail.com",
        value: 1997, currency: "BRL", source: "eduzz", payment_method: "credit_card",
-       external_transaction_id: "EZ-100501", product_name: "Pós-Grad. Biomecânica Aplicada",
+       external_transaction_id: "EZ-100501", product_name: "Produto A",
        installments: null, installment_number: 1, installment_value: 1997 }),
 
   // ── Visitante 2: lead, sem compra ainda (CAPI pendente em 1) ──
-  ev({ id: "d6", event_name: "PageView", fingerprint_id: "fp_carlos", created_at: minsAgo(120), client_user_agent: UA_ANDROID, city: "Belo Horizonte", country_region: "MG", utm_campaign: "[PTA] Musculação MPA" }),
+  ev({ id: "d6", event_name: "PageView", fingerprint_id: "fp_carlos", created_at: minsAgo(120), client_user_agent: UA_ANDROID, city: "Belo Horizonte", country_region: "MG", utm_campaign: "[DEMO] Produto D" }),
   ev({ id: "d7", event_name: "ViewContent", fingerprint_id: "fp_carlos", created_at: minsAgo(116), client_user_agent: UA_ANDROID, city: "Belo Horizonte", country_region: "MG", capi_status: "pending" }),
   ev({ id: "d8", event_name: "Lead", fingerprint_id: "fp_carlos", created_at: minsAgo(110), client_user_agent: UA_ANDROID, city: "Belo Horizonte", country_region: "MG",
        lead_name: "Carlos Lima", lead_email: "carlos.lima@hotmail.com", lead_phone: "+5531991234567", user_data: { em: "carlos.lima@hotmail.com" } }),
 
   // ── Visitante 3: compra parcelada (boleto 3x) + order bump ──
-  ev({ id: "d9", event_name: "PageView", fingerprint_id: "fp_julia", created_at: minsAgo(220), client_user_agent: UA_DESKTOP, city: "Curitiba", country_region: "PR", utm_campaign: "[PTA] Trein. Funcional" }),
+  ev({ id: "d9", event_name: "PageView", fingerprint_id: "fp_julia", created_at: minsAgo(220), client_user_agent: UA_DESKTOP, city: "Curitiba", country_region: "PR", utm_campaign: "[DEMO] Produto F" }),
   ev({ id: "d10", event_name: "Purchase", fingerprint_id: "fp_julia", created_at: minsAgo(210), client_user_agent: UA_DESKTOP, city: "Curitiba", country_region: "PR",
        lead_name: "Júlia Mendes", lead_email: "julia.mendes@gmail.com",
        value: 2400, currency: "BRL", source: "eduzz", payment_method: "boleto",
-       external_transaction_id: "EZ-100777", product_name: "Pós-Grad. Treinamento Funcional TF",
+       external_transaction_id: "EZ-100777", product_name: "Produto F",
        installments: 3, installment_number: 1, installment_value: 800 }),
   ev({ id: "d11", event_name: "Purchase", fingerprint_id: "fp_julia", created_at: minsAgo(210), client_user_agent: UA_DESKTOP, city: "Curitiba", country_region: "PR",
        lead_name: "Júlia Mendes", lead_email: "julia.mendes@gmail.com",
@@ -110,5 +110,5 @@ export const DEMO_TRACKING_EVENTS: DemoEvent[] = [
 
   // ── Visitante 4: só PageView (visita fria), CAPI skipped ──
   ev({ id: "d12", event_name: "PageView", fingerprint_id: "fp_anon", created_at: minsAgo(8), client_user_agent: UA_ANDROID, city: "Recife", country_region: "PE",
-       capi_status: "skipped", utm_source: "instagram", utm_campaign: "[PTA] Pós Grad. Femini" }),
+       capi_status: "skipped", utm_source: "instagram", utm_campaign: "[DEMO] Produto C" }),
 ];

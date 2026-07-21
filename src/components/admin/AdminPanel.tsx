@@ -34,7 +34,7 @@ const NAV_GROUPS: { group: string; desc: string; items: NavItem[] }[] = [
     group: "Empresas", desc: "Contas de cliente, produtos e provisionamento",
     items: [
       { id: "empresas", label: "Empresas",          icon: Building2, desc: "Todas as contas: membros, token e status" },
-      { id: "produtos", label: "Produtos & acessos", icon: Package,   desc: "Ligue/desligue Dash e PipeFlow por empresa" },
+      { id: "produtos", label: "Produtos & acessos", icon: Package,   desc: "Ligue/desligue Dash e CRM Monster por empresa" },
       { id: "criar",    label: "Criar empresa",      icon: Plus,      desc: "Wizard completo: histórico, filtros e time" },
     ],
   },
@@ -63,7 +63,7 @@ const NAV_GROUPS: { group: string; desc: string; items: NavItem[] }[] = [
     ],
   },
   {
-    group: "PipeFlow", desc: "CRM por empresa (funis, leads e negócios)",
+    group: "CRM Monster", desc: "CRM por empresa (funis, leads e negócios)",
     items: [
       { id: "pipeflow", label: "Funis do CRM", icon: KanbanSquare, desc: "Funis, etapas e volume de negócios por empresa" },
     ],

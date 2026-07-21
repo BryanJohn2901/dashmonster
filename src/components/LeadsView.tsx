@@ -29,14 +29,8 @@ const CATEGORY_COLORS: Record<string, { bg: string; text: string }> = {
   livros:   { bg: "rgba(236,72,153,0.12)", text: "#db2777" },
 };
 
-const PRODUCT_LABELS: Record<string, string> = {
-  biomecanica:  "Biomecânica",
-  musculacao:   "Musculação",
-  fisiologia:   "Fisiologia",
-  bodybuilding: "Bodybuilding",
-  feminino:     "Treino Feminino",
-  funcional:    "Treino Funcional",
-};
+// Sem rótulos embutidos de nicho: o próprio id do grupo/tag da empresa é o label.
+const PRODUCT_LABELS: Record<string, string> = {};
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

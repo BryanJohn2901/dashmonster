@@ -1,5 +1,5 @@
 -- ============================================================
--- Analytics PTA — Realtime para configuração
+-- GSAStúdio Hub — Realtime para configuração
 -- Execute este SQL no Supabase SQL Editor (após a 022)
 --
 -- Habilita Realtime nas tabelas de configuração para o dashboard

@@ -33,7 +33,7 @@ export const CATEGORY_CONFIGS: CategoryConfig[] = [
     label: "Lançamentos de Pós",
     description: "Campanhas mensais de lançamento das turmas de pós-graduação",
     icon: GraduationCap,
-    tags: ["Biomecânica (BM)", "Trein. Funcional (TF)", "Trein. Feminino (SM)", "Musculação (MPA)", "Fisiologia (FE)", "Bodybuilding (BB)"],
+    tags: [],
     vars: {
       bg: "var(--dm-cat-pos-bg)", border: "var(--dm-cat-pos-border)", hoverBorder: "var(--dm-cat-pos-base)",
       iconBg: "var(--dm-cat-pos-tag-bg)", icon: "var(--dm-cat-pos-icon)", title: "var(--dm-cat-pos-title)",
@@ -45,7 +45,7 @@ export const CATEGORY_CONFIGS: CategoryConfig[] = [
     label: "Livros",
     description: "Campanhas de venda de livros físicos e digitais",
     icon: BookMarked,
-    tags: ["Livro de Biomecânica", "Livro de Marketing"],
+    tags: [],
     vars: {
       bg: "var(--dm-cat-livros-bg)", border: "var(--dm-cat-livros-border)", hoverBorder: "var(--dm-cat-livros-base)",
       iconBg: "var(--dm-cat-livros-tag-bg)", icon: "var(--dm-cat-livros-icon)", title: "var(--dm-cat-livros-title)",
@@ -57,7 +57,7 @@ export const CATEGORY_CONFIGS: CategoryConfig[] = [
     label: "Ebooks",
     description: "Produtos digitais e materiais de educação online",
     icon: FileText,
-    tags: ["Ebook Bio Joelho", "Ebook Bio Coluna"],
+    tags: [],
     vars: {
       bg: "var(--dm-cat-ebooks-bg)", border: "var(--dm-cat-ebooks-border)", hoverBorder: "var(--dm-cat-ebooks-base)",
       iconBg: "var(--dm-cat-ebooks-tag-bg)", icon: "var(--dm-cat-ebooks-icon)", title: "var(--dm-cat-ebooks-title)",
@@ -69,7 +69,7 @@ export const CATEGORY_CONFIGS: CategoryConfig[] = [
     label: "Perpétuo",
     description: "Campanhas evergreen de oferta contínua sem data de encerramento",
     icon: Repeat,
-    tags: ["Notável Play"],
+    tags: [],
     vars: {
       bg: "var(--dm-cat-perpetuo-bg)", border: "var(--dm-cat-perpetuo-border)", hoverBorder: "var(--dm-cat-perpetuo-base)",
       iconBg: "var(--dm-cat-perpetuo-tag-bg)", icon: "var(--dm-cat-perpetuo-icon)", title: "var(--dm-cat-perpetuo-title)",
@@ -81,7 +81,7 @@ export const CATEGORY_CONFIGS: CategoryConfig[] = [
     label: "Eventos",
     description: "Eventos presenciais, mentorias e imersões",
     icon: CalendarDays,
-    tags: ["Biomechanic Specialist", "Mentoria Scala", "Next", "Power Trainer"],
+    tags: [],
     vars: {
       bg: "var(--dm-cat-eventos-bg)", border: "var(--dm-cat-eventos-border)", hoverBorder: "var(--dm-cat-eventos-base)",
       iconBg: "var(--dm-cat-eventos-tag-bg)", icon: "var(--dm-cat-eventos-icon)", title: "var(--dm-cat-eventos-title)",

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useCompany } from "@/hooks/useCompany";
 import { scopedKey, persistScoped } from "@/lib/companyScopedStorage";
 
-const STORAGE_PREFIX = "pta_goals_v2"; // v2: per-group goals
+const STORAGE_PREFIX = "gsah_goals_v2"; // v2: per-group goals
 let activeCid: string | null = null;
 
 export interface Goals {

@@ -42,7 +42,7 @@ import {
   fetchUserAccountEntries,
   subscribeUserConfig,
 } from "@/utils/supabaseCategories";
-import { PTA_PAINEL_SAVE_NAV_EVENT, type PainelSaveNavDetail } from "@/utils/painelDashboardNavigation";
+import { PAINEL_SAVE_NAV_EVENT, type PainelSaveNavDetail } from "@/utils/painelDashboardNavigation";
 
 declare global {
   interface Window { supabase?: typeof supabaseClient; }
@@ -52,7 +52,7 @@ declare global {
 export type DataSource = SharedDataSource;
 
 /** Chave localStorage para o período de busca selecionado pelo usuário. */
-const SYNC_LOOKBACK_LS_KEY = "pta_sync_lookback_days";
+const SYNC_LOOKBACK_LS_KEY = "gsah_sync_lookback_days";
 const VALID_LOOKBACK_VALUES = [7, 15, 30, 60, 90, 730] as const;
 
 function readLookbackDays(): number {
@@ -96,7 +96,7 @@ export default function Home() {
   }, []);
 
   const handleOnboardingComplete = () => {
-    try { localStorage.setItem("pta_onboarding_v1", "1"); } catch {}
+    try { localStorage.setItem("gsah_onboarding_v1", "1"); } catch {}
     setShowOnboarding(false);
     setControlPanelOpeningTab("accounts");
     setShowControlPanel(true);
@@ -129,7 +129,7 @@ export default function Home() {
   function loadStoredProfiles(): AdvertiserProfile[] {
     if (typeof window === "undefined") return [];
     try {
-      const raw = localStorage.getItem("pta_advertiser_profiles_v2");
+      const raw = localStorage.getItem("gsah_advertiser_profiles_v2");
       return raw ? (JSON.parse(raw) as AdvertiserProfile[]) : [];
     } catch { return []; }
   }
@@ -556,7 +556,7 @@ export default function Home() {
   useEffect(() => {
     if (isSupabaseConfigured) return;
     try {
-      const onboarded = localStorage.getItem("pta_onboarding_v1");
+      const onboarded = localStorage.getItem("gsah_onboarding_v1");
       if (!onboarded) setShowOnboarding(true);
     } catch {}
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -661,7 +661,7 @@ export default function Home() {
         // Sem fonte nem campanhas: abrir já o Painel em Integrações (token Meta / origem).
         // Com dados ou fonte: tutorial só na primeira visita (localStorage).
         try {
-          const onboarded = localStorage.getItem("pta_onboarding_v1");
+          const onboarded = localStorage.getItem("gsah_onboarding_v1");
           if (needsSourceSetup) {
             setShowOnboarding(false);
             setControlPanelOpeningTab("integrations");
@@ -956,7 +956,7 @@ export default function Home() {
           setControlPanelOpeningTab(undefined);
           setShowControlPanel(false);
           if (typeof window !== "undefined") {
-            window.dispatchEvent(new CustomEvent(PTA_PAINEL_SAVE_NAV_EVENT, { detail }));
+            window.dispatchEvent(new CustomEvent(PAINEL_SAVE_NAV_EVENT, { detail }));
           }
           const list = userAccountEntriesRef.current;
           const merged = list.some((e) => e.id === detail.entry.id)

@@ -1,5 +1,5 @@
 -- ============================================================
--- Analytics PTA — Criativos: tabela + bucket Supabase Storage
+-- GSAStúdio Hub — Criativos: tabela + bucket Supabase Storage
 -- Execute no Supabase SQL Editor
 -- ============================================================
 

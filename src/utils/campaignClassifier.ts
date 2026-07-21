@@ -7,37 +7,28 @@ const norm = (s: string) =>
 
 // ─── Category classification ──────────────────────────────────────────────────
 //
-// Precedence (top → bottom wins):
+// Classificação genérica por palavra-chave (sem taxonomia de nenhum nicho
+// específico). A classificação fina de verdade vem dos filtros da empresa
+// (companyFilters); isto é só um fallback por nome de campanha.
 //   1. Livros    — "livro"
 //   2. Ebooks    — "ebook"
-//   3. Eventos   — exact known campaign names: BS, Next, Mentoria Scala, Power Trainer
-//   4. Pós Grad  — course keywords + abbreviations: BM, TF, SM, BB, FE, MPA
-//   5. Perpétuo  — everything else (Notável Play, etc.)
+//   3. Eventos   — evento / imersão / mentoria / workshop / masterclass
+//   4. Cursos    — curso / formação / graduação / pós
+//   5. Perpétuo  — resto
 
 export function classifyCampaign(name: string): ProductCategory {
   const n = norm(name);
 
   if (/livro/.test(n)) return "livros";
   if (/ebook/.test(n)) return "ebooks";
-  if (/\bbs\b|mentoria.?scala|\bnext\b|power.?trainer/.test(n)) return "eventos";
-  if (/pos.?em|\bmpa\b|biomecan|bodybuil|fisiolog|funcional|saude|feminino|muscula|\bbm\b|\btf\b|\bsm\b|\bbb\b|\bfe\b/.test(n))
-    return "pos";
+  if (/evento|imersao|mentoria|workshop|masterclass/.test(n)) return "eventos";
+  if (/\bpos\b|pos.?grad|graduacao|formacao|\bcurso/.test(n)) return "pos";
 
   return "perpetuo";
 }
 
-// ─── Course group within Pós Grad ─────────────────────────────────────────────
-//
-// Returns the sidebar-group id ("biomecanica" | "musculacao" | …)
-// or "" if the campaign doesn't belong to any recognised course.
-
-export function classifyCourse(name: string): string {
-  const n = norm(name);
-  if (n.includes("biomecan") || /\bbm\b/.test(n))                   return "biomecanica";
-  if (n.includes("muscula") || n.includes("mpa"))                    return "musculacao";
-  if (n.includes("fisiolog") || /\bfe\b/.test(n))                   return "fisiologia";
-  if (n.includes("bodybuil") || /\bbb\b/.test(n))                   return "bodybuilding";
-  if (n.includes("femin") || n.includes("saude") || /\bsm\b/.test(n)) return "feminino";
-  if (n.includes("funcional") || /\btf\b/.test(n))                  return "funcional";
+// Sem agrupamento por curso embutido — o agrupamento vem dos grupos que a
+// empresa configura (customGroups / companyFilters).
+export function classifyCourse(_name: string): string {
   return "";
 }

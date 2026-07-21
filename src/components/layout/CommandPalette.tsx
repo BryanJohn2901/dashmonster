@@ -1,6 +1,5 @@
 'use client'
 
-// Port fiel de pipeflow-crm/components/layout/CommandPalette.tsx.
 // globalSearch vem de crm.ts (client-side) e recebe companyId; rotas /crm/*.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'

@@ -149,16 +149,12 @@ const mockContractByEmailProduct = jest.fn(
     Promise.resolve({ data: [], error: null }),
 );
 function makeContractQuery() {
-  const query: { eq: jest.Mock; order: jest.Mock; limit: jest.Mock; maybeSingle: () => unknown; then: (...args: never[]) => unknown } = {
+  const query: { eq: jest.Mock; maybeSingle: () => unknown; then: (...args: never[]) => unknown } = {
     eq: jest.fn(),
-    order: jest.fn(),
-    limit: jest.fn(),
     maybeSingle: () => mockContractMaybeSingle(),
     then: (onResolve: (v: unknown) => unknown, onReject?: (e: unknown) => unknown) => mockContractByEmailProduct().then(onResolve, onReject),
   };
   query.eq.mockImplementation(() => query);
-  query.order.mockImplementation(() => query);
-  query.limit.mockImplementation(() => query);
   return query;
 }
 const mockContractSelect = jest.fn(() => makeContractQuery());

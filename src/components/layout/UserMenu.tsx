@@ -1,7 +1,6 @@
 'use client'
 
-// Port fiel de pipeflow-crm/components/layout/UserMenu.tsx.
-// signOut: supabaseClient direto (sem server action); volta pro Monster Hub.
+// signOut: supabaseClient direto (sem server action); volta pro hub.
 
 import { LogOut, Settings, UserRound } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'

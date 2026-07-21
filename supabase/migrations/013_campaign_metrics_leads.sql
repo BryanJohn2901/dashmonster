@@ -1,5 +1,5 @@
 -- ============================================================
--- Analytics PTA — Add leads column to campaign_metrics
+-- GSAStúdio Hub — Add leads column to campaign_metrics
 -- Execute no Supabase SQL Editor (Dashboard > SQL Editor > New query)
 -- Depois: no app, use "Atualizar Meta" ou Importar para re-sincronizar.
 -- ============================================================

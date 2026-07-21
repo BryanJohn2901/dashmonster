@@ -1,7 +1,6 @@
-// ─── PipeFlow CRM — camada de dados (Fase 2) ─────────────────────────────────
-// Client-side + RLS, como o resto do app (useCompany.ts é o modelo). Portado de
-// wesley-wmb/pipeflow-crm lib/actions/{pipelines,deals}.ts, sem server actions,
-// sem webhooks/playbooks (Fase 4). Tenancy: company_id = empresa (tenant);
+// ─── CRM — camada de dados (Fase 2) ──────────────────────────────────────────
+// GSAStúdio. Client-side + RLS, como o resto do app (useCompany.ts é o modelo).
+// Sem server actions, sem webhooks/playbooks (Fase 4). Tenancy: company_id = empresa (tenant);
 // a "empresa do lead" (conta B2B) é crm_company_id. Ver docs/pipeflow-integration.md.
 
 import { supabaseClient } from "@/lib/supabase";

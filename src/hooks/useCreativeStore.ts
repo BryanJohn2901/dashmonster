@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useCompany } from "@/hooks/useCompany";
 import { loadScoped, persistScoped } from "@/lib/companyScopedStorage";
 
-const STORAGE_PREFIX = "pta_creatives_v1";
+const STORAGE_PREFIX = "gsah_creatives_v1";
 let activeCid: string | null = null;
 
 export interface CreativeData {

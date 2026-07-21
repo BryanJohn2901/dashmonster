@@ -157,7 +157,7 @@ function seed(d: DB) {
   );
 
   // Inbox: 1 canal IG conectado + 2 conversas (uma não lida)
-  const chIg = { id: uid(), provider: "instagram" as const, status: "connected" as const, accountName: "PT Academy", accountHandle: "@pt.academy" };
+  const chIg = { id: uid(), provider: "instagram" as const, status: "connected" as const, accountName: "Empresa Demo", accountHandle: "@empresademo" };
   d.channels.push(chIg);
 
   const convAna: CrmConversation = {

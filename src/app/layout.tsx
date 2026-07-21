@@ -24,7 +24,7 @@ const poppins = Poppins({
 
 export const metadata: Metadata = {
   title: "DashMonster",
-  description: "SPA para análise de campanhas a partir de Google Sheets.",
+  description: "Análise de campanhas Meta Ads, rastreamento de conversões e CRM.",
 };
 
 export default function RootLayout({
@@ -45,7 +45,8 @@ export default function RootLayout({
           <div className="app-grain-glow" aria-hidden="true" />
           {children}
           <Toaster />
-          <DevtoolsGuard />
+          {/* Só em produção: em dev o anti-inspeção atrapalha o próprio debug. */}
+          {process.env.NODE_ENV === "production" && <DevtoolsGuard />}
         </ThemeProvider>
       </body>
     </html>

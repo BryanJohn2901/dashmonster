@@ -55,7 +55,7 @@ const TYPE_COLOR: Record<MetaCampaignCreative["mediaType"], { bg: string; text: 
 };
 
 // v3: invalida caches truncados pelo filtro de status estreito (só ACTIVE/PAUSED/ARCHIVED).
-function getCacheKey(ids: string[]) { return `pta_creatives_v3_${ids.sort().join(",")}`; }
+function getCacheKey(ids: string[]) { return `gsah_creatives_v3_${ids.sort().join(",")}`; }
 function readCache(key: string): MetaCampaignCreative[] | null {
   try {
     const raw = localStorage.getItem(key);
@@ -71,7 +71,7 @@ function writeCache(key: string, data: MetaCampaignCreative[]) {
 
 // ─── oEmbed thumbnail persistence (survives page refresh via localStorage) ────
 
-const OEMBED_STORE_KEY  = "pta_oembed_v1";
+const OEMBED_STORE_KEY  = "gsah_oembed_v1";
 const oEmbedCardCache   = new Map<string, string>(); // adId → hiResUrl (in-memory fast path)
 let   oEmbedStoreLoaded = false;
 
@@ -103,7 +103,7 @@ function persistOEmbedUrl(adId: string, url: string): void {
 // Stored separately from the thumbnail URL so both caches stay independent.
 // Values: "1/1" | "4/5" | "9/16" — the three standard Instagram ad formats.
 
-const RATIO_STORE_KEY  = "pta_ratio_v1";
+const RATIO_STORE_KEY  = "gsah_ratio_v1";
 const ratioCache       = new Map<string, string>(); // adId → ratio string
 let   ratioCacheLoaded = false;
 

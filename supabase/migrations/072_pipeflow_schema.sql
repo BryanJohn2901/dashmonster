@@ -2,11 +2,10 @@
 -- 072_pipeflow_schema.sql — PipeFlow CRM: núcleo (Fase 1)
 -- Execute no Supabase SQL Editor (após a 071). Idempotente.
 --
--- Consolida as 37 migrations do repo wesley-wmb/pipeflow-crm numa só,
--- já adaptada ao Monster Hub (ver docs/pipeflow-integration.md):
+-- Schema do CRM consolidado numa migration só (ver docs/pipeflow-integration.md):
 --   • workspaces/workspace_members/workspace_invites NÃO existem aqui —
 --     tenancy é a nossa: companies + company_members. Todo workspace_id
---     do original virou company_id → public.companies.
+--     virou company_id → public.companies.
 --   • Colisões renomeadas: leads→crm_leads, companies→crm_companies.
 --     O FK "conta B2B do lead/deal" virou crm_company_id (company_id é
 --     SEMPRE o tenant).

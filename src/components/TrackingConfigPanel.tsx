@@ -59,7 +59,8 @@ export function TrackingConfigPanel({ company, canEdit }: { company: Company; ca
           Somente o dono ou o gestor de tráfego da empresa podem editar essas configurações — os campos abaixo estão travados pro seu papel atual.
         </p>
       )}
-      <p className="text-[13px] leading-relaxed" style={{ color: "var(--dm-text-secondary)" }}>
+      {/* Instrução de entrada: fundo de destaque pra ser lida, não ignorada. */}
+      <p className="rounded-xl px-4 py-3 text-[13px] leading-relaxed" style={{ backgroundColor: "var(--dm-bg-muted)", color: "var(--dm-text-primary)" }}>
         Um pixel por landing page ou produto. Ele captura visitas e leads sozinho — a Meta (Conversions API) é opcional.
       </p>
 
@@ -325,17 +326,20 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
   const capiActive = Boolean(pixelId.trim() && (capiToken.trim() || pixel.hasMetaCapiToken));
   const installState: "ok" | "fail" | "idle" = testResult ? (testResult.allOk ? "ok" : "fail") : "idle";
 
+  // Caixa ÚNICA do pixel. Dentro dela nada mais tem caixa: as seções são
+  // separadas por fio e os campos vivem soltos no mesmo ritmo.
   return (
-    <div className="space-y-3 rounded-2xl border p-4" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)" }}>
-      {/* Cabeçalho: nome + chips de status */}
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="rounded-2xl border p-4" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)" }}>
+      {/* Cabeçalho: o nome É o título do card — input sem moldura, editável no
+          lugar. Moldura só aparece no foco. */}
+      <div className="mb-5 flex flex-wrap items-center gap-2">
         <input
           value={name}
           disabled={!canEdit}
           onChange={(e) => setName(e.target.value)}
           placeholder="Nome do pixel (ex: Lançamento Junho)"
-          className={`min-w-[160px] flex-1 ${inputCls} h-10 font-semibold disabled:opacity-60`}
-          style={inputStyle}
+          className="min-w-[160px] flex-1 rounded-lg bg-transparent px-2 py-1 -ml-2 text-[15px] font-semibold outline-none transition hover:bg-black/[0.03] focus:bg-black/[0.04] disabled:opacity-60 dark:hover:bg-white/[0.04] dark:focus:bg-white/[0.06]"
+          style={{ color: "var(--dm-text-primary)" }}
         />
         {pixel.isDefault && <Chip tone="ok" label="Padrão" />}
         <Chip
@@ -347,18 +351,20 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
 
       {/* ── Passo 1 — Instalação ── */}
       <Collapsible icon={Code2} title="Instalação" subtitle="Código do pixel + teste" defaultOpen>
-        <p className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
-          Cole o código em <strong style={{ color: "var(--dm-text-secondary)" }}>todas</strong> as páginas do site (precisa ser HTTPS).
+        <p className="text-[12.5px] leading-relaxed" style={{ color: "var(--dm-text-secondary)" }}>
+          Cole o código em <strong style={{ color: "var(--dm-text-primary)" }}>todas</strong> as páginas do site (precisa ser HTTPS).
         </p>
 
-        <div className="rounded-xl border" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
-          <div className="flex items-center justify-between border-b px-3 py-1.5" style={{ borderColor: "var(--dm-border-default)" }}>
-            <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Código de instalação</span>
-            <button type="button" onClick={() => void copySnippet()} className="text-[10px] font-bold transition-opacity hover:opacity-70" style={{ color: copied ? "#05CD99" : BRAND }}>
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[12px] font-semibold" style={{ color: "var(--dm-text-secondary)" }}>Código de instalação</span>
+            <button type="button" onClick={() => void copySnippet()} className="text-[11.5px] font-semibold transition-opacity hover:opacity-70" style={{ color: copied ? "#05CD99" : BRAND }}>
               {copied ? "Copiado!" : "Copiar"}
             </button>
           </div>
-          <pre className="overflow-x-auto px-3 py-2.5 font-mono text-[11px] leading-relaxed" style={{ color: "var(--dm-text-secondary)" }}>{snippet}</pre>
+          {/* Fundo de destaque, sem borda — o código é o que se copia, então é ele
+              que precisa saltar do card. */}
+          <pre className="overflow-x-auto rounded-lg px-3.5 py-3 font-mono text-[12px] leading-relaxed" style={{ backgroundColor: "var(--dm-bg-muted)", color: "var(--dm-text-primary)" }}>{snippet}</pre>
         </div>
 
         {/* Download + "como instalar" (texto longo escondido) */}
@@ -366,7 +372,7 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
           <a
             href="/api/tracking/proxy-template"
             download="dm-proxy.php"
-            className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] font-bold transition-opacity hover:opacity-80"
+            className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11.5px] font-medium transition-opacity hover:opacity-80"
             style={{ borderColor: "var(--dm-border-default)", color: BRAND }}
           >
             <Download size={11} /> Baixar dm-proxy.php
@@ -379,29 +385,29 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
         </div>
 
         {/* Testar instalação */}
-        <div className="rounded-xl border px-3 py-2.5" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
-          <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Testar instalação</span>
+        <div className="flex flex-col gap-1">
+          <span className="text-[12px] font-semibold" style={{ color: "var(--dm-text-tertiary)" }}>Testar instalação</span>
           <div className="flex items-center gap-2">
             <input
               value={testUrl}
               onChange={(e) => setTestUrl(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") void runProxyTest(); }}
               placeholder="https://meusite.com.br/pagina"
-              className={`flex-1 ${inputCls} h-9 font-mono text-[11px]`}
+              className={`flex-1 ${inputCls} h-9 font-mono text-[12px]`}
               style={inputStyle}
             />
             <button
               type="button"
               onClick={() => void runProxyTest()}
               disabled={testing || !testUrl.trim()}
-              className="flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[10px] font-bold transition-opacity hover:opacity-80 disabled:opacity-40"
+              className="flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[11.5px] font-medium transition-opacity hover:opacity-80 disabled:opacity-40"
               style={{ borderColor: "var(--dm-border-default)", color: BRAND }}
             >
               {testing ? <Loader2 size={12} className="animate-spin" /> : null} Testar
             </button>
           </div>
           {testResult && (
-            <ul className="mt-2 space-y-1 text-[10px]">
+            <ul className="mt-2 space-y-1 text-[11.5px]">
               {([
                 ["Script instalado na página", testResult.scriptFound, testResult.pageError],
                 ["dm-proxy.php no ar e conectado", testResult.configOk, testResult.configError],
@@ -420,22 +426,22 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
 
         {/* Domínio autorizado */}
         <label className="flex flex-col gap-1">
-          <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
+          <span className="flex items-center gap-1.5 text-[12px] font-semibold" style={{ color: "var(--dm-text-tertiary)" }}>
             <Globe size={11} /> Domínio autorizado <span className="font-normal normal-case">(opcional)</span>
           </span>
           <input value={dominio} disabled={!canEdit} onChange={(e) => setDominio(e.target.value)} placeholder="meusite.com.br" className={`${inputCls} h-10 font-mono disabled:opacity-60`} style={inputStyle} />
-          <span className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>Só o hostname (sem <code>https://</code>). Em branco = aceita qualquer origem.</span>
+          <span className="text-[12px]" style={{ color: "var(--dm-text-secondary)" }}>Só o hostname (sem <code>https://</code>). Em branco = aceita qualquer origem.</span>
         </label>
       </Collapsible>
 
       {/* ── Passo 2 — Meta Conversions API (opcional) ── */}
       <Collapsible icon={Send} title="Enviar pra Meta (Conversions API)" subtitle="Opcional — dobra o sinal com o servidor" defaultOpen={capiActive} badge={capiActive ? { tone: "ok", label: "ativo" } : { tone: "neutral", label: "opcional" }}>
         <label className="flex flex-col gap-1">
-          <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Pixel ID (Meta)</span>
+          <span className="text-[12px] font-semibold" style={{ color: "var(--dm-text-tertiary)" }}>Pixel ID (Meta)</span>
           <input value={pixelId} disabled={!canEdit} onChange={(e) => setPixelId(e.target.value)} placeholder="123456789012345" className={`${inputCls} h-10 font-mono disabled:opacity-60`} style={inputStyle} />
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Token CAPI (Conversions API)</span>
+          <span className="text-[12px] font-semibold" style={{ color: "var(--dm-text-tertiary)" }}>Token CAPI (Conversions API)</span>
           <div className="flex items-center gap-2">
             <input
               type={revealToken ? "text" : "password"}
@@ -447,40 +453,40 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
               style={inputStyle}
             />
             {capiToken && (
-              <button type="button" onClick={() => setRevealToken((v) => !v)} className="text-[10px] font-bold" style={{ color: BRAND }}>{revealToken ? "Ocultar" : "Revelar"}</button>
+              <button type="button" onClick={() => setRevealToken((v) => !v)} className="text-[11.5px] font-medium" style={{ color: BRAND }}>{revealToken ? "Ocultar" : "Revelar"}</button>
             )}
             {pixel.hasMetaCapiToken && !capiToken && canEdit && (
-              <button type="button" onClick={() => setClearCapiToken((v) => !v)} className="text-[10px] font-bold" style={{ color: clearCapiToken ? "#F25767" : BRAND }}>
+              <button type="button" onClick={() => setClearCapiToken((v) => !v)} className="text-[11.5px] font-medium" style={{ color: clearCapiToken ? "#F25767" : BRAND }}>
                 {clearCapiToken ? "Manter" : "Remover"}
               </button>
             )}
           </div>
           {pixel.hasMetaCapiToken && !clearCapiToken && (
-            <span className="text-[10px] font-semibold" style={{ color: "#05CD99" }}>Token CAPI configurado. O valor real fica somente no servidor.</span>
+            <span className="text-[11.5px] font-semibold" style={{ color: "#05CD99" }}>Token CAPI configurado. O valor real fica somente no servidor.</span>
           )}
           {clearCapiToken && (
-            <span className="text-[10px] font-semibold" style={{ color: "#F25767" }}>O token salvo será removido ao salvar.</span>
+            <span className="text-[11.5px] font-semibold" style={{ color: "#F25767" }}>O token salvo será removido ao salvar.</span>
           )}
-          <span className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>Gere em Events Manager → Configurações → Conversions API (não é o token da Conexão Meta).</span>
+          <span className="text-[12px]" style={{ color: "var(--dm-text-secondary)" }}>Gere em Events Manager → Configurações → Conversions API (não é o token da Conexão Meta).</span>
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Código de teste <span className="font-normal normal-case">(só durante validação)</span></span>
+          <span className="text-[12px] font-semibold" style={{ color: "var(--dm-text-tertiary)" }}>Código de teste <span className="font-normal normal-case">(só durante validação)</span></span>
           <input value={testEventCode} disabled={!canEdit} onChange={(e) => setTestEventCode(e.target.value)} placeholder="TEST12345" className={`${inputCls} h-10 font-mono disabled:opacity-60`} style={inputStyle} />
-          <span className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>Da aba <strong style={{ color: "var(--dm-text-secondary)" }}>Eventos de teste</strong> do Events Manager. Apague depois de validar.</span>
+          <span className="text-[12px]" style={{ color: "var(--dm-text-secondary)" }}>Da aba <strong style={{ color: "var(--dm-text-secondary)" }}>Eventos de teste</strong> do Events Manager. Apague depois de validar.</span>
         </label>
         {testEventCode.trim() && (
-          <div className="space-y-2 rounded-xl border px-3 py-2.5" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
+          <div className="space-y-2">
             <button
               type="button"
               onClick={() => void runCapiTest()}
               disabled={sendingTestCapi}
-              className="flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[10px] font-bold transition-opacity hover:opacity-80 disabled:opacity-40"
+              className="flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[11.5px] font-medium transition-opacity hover:opacity-80 disabled:opacity-40"
               style={{ borderColor: BRAND, color: BRAND }}
             >
               {sendingTestCapi ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
               Enviar Purchase de teste
             </button>
-            <p className="text-[10px] leading-relaxed" style={{ color: "var(--dm-text-tertiary)" }}>
+            <p className="text-[11.5px] leading-relaxed" style={{ color: "var(--dm-text-tertiary)" }}>
               Envia um evento <strong style={{ color: "var(--dm-text-secondary)" }}>Purchase</strong> fictício direto pra Meta com o código de teste acima.{" "}
               <strong style={{ color: "var(--dm-text-secondary)" }}>Lead</strong> e{" "}
               <strong style={{ color: "var(--dm-text-secondary)" }}>PageView</strong> devem ser testados abrindo a página real do site com o código ativo.
@@ -497,14 +503,14 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
         defaultOpen={pixel.hasWebhookSecret || Boolean(newWebhookSecret)}
         badge={pixel.hasWebhookSecret || Boolean(newWebhookSecret) ? { tone: "ok", label: "ativo" } : { tone: "neutral", label: "opcional" }}
       >
-        <p className="text-[11px] leading-relaxed" style={{ color: "var(--dm-text-tertiary)" }}>
+        <p className="text-[11.5px] leading-relaxed" style={{ color: "var(--dm-text-tertiary)" }}>
           Envie eventos de formulários externos (Typeform, JotForm, ActiveCampaign etc.) via requisição POST — sem precisar instalar o pixel na ferramenta.
         </p>
 
         {/* URL do webhook */}
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-1.5">
-            <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>URL do Webhook</span>
+            <span className="text-[12px] font-semibold" style={{ color: "var(--dm-text-tertiary)" }}>URL do Webhook</span>
             <button
               type="button"
               onClick={() => setShowWebhookInfo(true)}
@@ -515,12 +521,12 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
               <Info size={12} />
             </button>
           </div>
-          <div className="flex items-center gap-2 rounded-xl border px-3 py-2" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
-            <code className="flex-1 overflow-x-auto text-[11px]" style={{ color: "var(--dm-text-secondary)" }}>{webhookUrl}</code>
+          <div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ backgroundColor: "var(--dm-bg-surface)" }}>
+            <code className="flex-1 overflow-x-auto text-[12px]" style={{ color: "var(--dm-text-secondary)" }}>{webhookUrl}</code>
             <button
               type="button"
               onClick={() => void copyWebhookUrl()}
-              className="flex-shrink-0 text-[10px] font-bold transition-opacity hover:opacity-70"
+              className="flex-shrink-0 text-[11.5px] font-medium transition-opacity hover:opacity-70"
               style={{ color: webhookUrlCopied ? "#05CD99" : BRAND }}
             >
               {webhookUrlCopied ? "Copiado!" : <Copy size={11} />}
@@ -530,15 +536,15 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
 
         {/* Secret recém-gerado — exibido UMA vez */}
         {newWebhookSecret && (
-          <div className="space-y-1.5 rounded-xl border p-3" style={{ borderColor: "#F4A60D", backgroundColor: "rgba(244,166,13,0.06)" }}>
+          <div className="space-y-1.5 rounded-lg p-3" style={{ backgroundColor: "rgba(244,166,13,0.10)" }}>
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "#F4A60D" }}>Secret gerado — copie agora</span>
-              <button type="button" onClick={() => void copyNewSecret()} className="text-[10px] font-bold" style={{ color: webhookSecretCopied ? "#05CD99" : BRAND }}>
+              <span className="text-[12px] font-semibold" style={{ color: "#F4A60D" }}>Secret gerado — copie agora</span>
+              <button type="button" onClick={() => void copyNewSecret()} className="text-[11.5px] font-medium" style={{ color: webhookSecretCopied ? "#05CD99" : BRAND }}>
                 {webhookSecretCopied ? "Copiado!" : "Copiar"}
               </button>
             </div>
-            <code className="block break-all font-mono text-[11px]" style={{ color: "var(--dm-text-primary)" }}>{newWebhookSecret}</code>
-            <p className="text-[10px]" style={{ color: "#F4A60D" }}>
+            <code className="block break-all font-mono text-[12px]" style={{ color: "var(--dm-text-primary)" }}>{newWebhookSecret}</code>
+            <p className="text-[11.5px]" style={{ color: "#F4A60D" }}>
               Este valor não será exibido novamente. Guarde em local seguro e configure na sua ferramenta.
             </p>
           </div>
@@ -546,7 +552,7 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
 
         {/* Gerenciamento do secret */}
         <div className="flex flex-col gap-1">
-          <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>
+          <span className="flex items-center gap-1.5 text-[12px] font-semibold" style={{ color: "var(--dm-text-tertiary)" }}>
             Secret de autenticação
             {(pixel.hasWebhookSecret || newWebhookSecret) && (
               <span className="font-normal normal-case" style={{ color: "#05CD99" }}>✓ configurado</span>
@@ -558,7 +564,7 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
                 type="button"
                 onClick={() => void handleGenerateSecret()}
                 disabled={generatingSecret}
-                className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[10px] font-bold transition-opacity hover:opacity-80 disabled:opacity-40"
+                className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11.5px] font-medium transition-opacity hover:opacity-80 disabled:opacity-40"
                 style={{ borderColor: "var(--dm-border-default)", color: BRAND }}
               >
                 {generatingSecret
@@ -572,7 +578,7 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
                 <button
                   type="button"
                   onClick={() => void handleClearSecret()}
-                  className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[10px] font-bold transition-opacity hover:opacity-80"
+                  className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11.5px] font-medium transition-opacity hover:opacity-80"
                   style={{ borderColor: "var(--dm-border-default)", color: "#ef4444" }}
                 >
                   <X size={11} /> Desativar
@@ -580,7 +586,7 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
               )}
             </div>
           )}
-          <span className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+          <span className="text-[12px]" style={{ color: "var(--dm-text-secondary)" }}>
             Envie o secret no header <code>Authorization: Bearer &lt;secret&gt;</code> de cada requisição.
           </span>
         </div>
@@ -591,20 +597,18 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
         <WebhookInfoModal url={webhookUrl} onClose={() => setShowWebhookInfo(false)} />
       )}
 
+      {/* Secundárias à esquerda, primária à direita — a destrutiva não encosta no Salvar. */}
       {canEdit && (
-        <div className="flex items-center gap-2">
-          <button type="button" onClick={() => void save()} disabled={saving || !dirty} className={`h-11 flex-1 ${btnPrimary}`} style={btnPrimaryStyle}>
-            {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} Salvar
-          </button>
+        <div className="flex items-center gap-1 border-t pt-4" style={{ borderColor: "var(--dm-border-default)" }}>
           {!pixel.isDefault && (
             <button
               type="button"
               onClick={() => void makeDefault()}
               title="Usar este pixel quando o código instalado não especificar nenhum"
-              className="flex h-11 items-center justify-center rounded-xl border px-3 transition-opacity hover:opacity-80"
-              style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}
+              className="flex h-9 items-center justify-center rounded-lg px-2.5 transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+              style={{ color: "var(--dm-text-tertiary)" }}
             >
-              <Star size={13} />
+              <Star size={14} />
             </button>
           )}
           <button
@@ -612,10 +616,14 @@ function PixelCard({ company, canEdit, pixel, onlyPixel, onSaved, onDeleted, onM
             onClick={() => void remove()}
             disabled={deleting || onlyPixel}
             title={onlyPixel ? "A empresa precisa ter pelo menos 1 pixel" : "Remover pixel"}
-            className="flex h-11 items-center justify-center rounded-xl border px-3 transition-opacity hover:opacity-80 disabled:opacity-40"
-            style={{ borderColor: "var(--dm-border-default)", color: "#ef4444" }}
+            className="flex h-9 items-center justify-center rounded-lg px-2.5 transition-colors hover:bg-red-500/10 disabled:opacity-30 disabled:hover:bg-transparent"
+            style={{ color: "#ef4444" }}
           >
-            {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+            {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+          </button>
+          <div className="flex-1" />
+          <button type="button" onClick={() => void save()} disabled={saving || !dirty} className={`h-10 ${btnPrimary}`} style={btnPrimaryStyle}>
+            {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} Salvar
           </button>
         </div>
       )}
@@ -731,15 +739,15 @@ function WH_FieldTable({ fields }: { fields: WH_FIELD[] }) {
         <div key={f.name} className="grid gap-x-3 px-2.5 py-2" style={{ gridTemplateColumns: "140px 1fr" }}>
           <div className="flex flex-col gap-0.5">
             <div className="flex items-center gap-1">
-              <code className="text-[10px] font-semibold" style={{ color: "var(--dm-text-primary)" }}>{f.name}</code>
-              {f.req && <span className="text-[8px] font-bold" style={{ color: "#ef4444" }}>*</span>}
+              <code className="text-[11.5px] font-semibold" style={{ color: "var(--dm-text-primary)" }}>{f.name}</code>
+              {f.req && <span className="text-[10px] font-bold" style={{ color: "#ef4444" }}>*</span>}
             </div>
-            <span className="text-[9px] font-bold uppercase" style={{ color: "var(--dm-text-tertiary)" }}>{f.type}</span>
+            <span className="text-[10px] font-bold uppercase" style={{ color: "var(--dm-text-tertiary)" }}>{f.type}</span>
             {f.auto && (
-              <span className="text-[9px] leading-tight" style={{ color: "#05CD99" }}>auto: {f.auto}</span>
+              <span className="text-[10px] leading-tight" style={{ color: "#05CD99" }}>auto: {f.auto}</span>
             )}
           </div>
-          <p className="text-[10px] leading-snug self-center" style={{ color: "var(--dm-text-secondary)" }}>{f.desc}</p>
+          <p className="text-[11.5px] leading-snug self-center" style={{ color: "var(--dm-text-secondary)" }}>{f.desc}</p>
         </div>
       ))}
     </div>
@@ -749,7 +757,7 @@ function WH_FieldTable({ fields }: { fields: WH_FIELD[] }) {
 function WH_Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="space-y-2 border-t pt-4" style={{ borderColor: "var(--dm-border-default)" }}>
-      <h3 className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>{title}</h3>
+      <h3 className="text-[12px] font-semibold" style={{ color: "var(--dm-text-tertiary)" }}>{title}</h3>
       {children}
     </div>
   );
@@ -773,7 +781,7 @@ function WebhookInfoModal({ url, onClose }: { url: string; onClose: () => void }
           <div className="flex items-center gap-2">
             <Webhook size={15} style={{ color: BRAND }} />
             <span className="text-[14px] font-bold" style={{ color: "var(--dm-text-primary)" }}>Referência do Webhook</span>
-            <span className="rounded-full px-2 py-0.5 text-[9px] font-bold" style={{ background: "rgba(22,163,74,0.12)", color: BRAND }}>v1</span>
+            <span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: "rgba(22,163,74,0.12)", color: BRAND }}>v1</span>
           </div>
           <button type="button" onClick={onClose} className="rounded-lg p-1 transition-opacity hover:opacity-60" style={{ color: "var(--dm-text-tertiary)" }}>
             <X size={16} />
@@ -785,23 +793,23 @@ function WebhookInfoModal({ url, onClose }: { url: string; onClose: () => void }
           {/* Endpoint e Autenticação */}
           <div className="space-y-3">
             <div className="space-y-1.5">
-              <h3 className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Endpoint</h3>
+              <h3 className="text-[12px] font-semibold" style={{ color: "var(--dm-text-tertiary)" }}>Endpoint</h3>
               <div className="flex items-center gap-2 rounded-lg border px-3 py-2" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
-                <span className="flex-shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold" style={{ background: "rgba(22,163,74,0.15)", color: BRAND }}>POST</span>
-                <code className="flex-1 overflow-x-auto text-[10px]" style={{ color: "var(--dm-text-secondary)" }}>{url}</code>
+                <span className="flex-shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold" style={{ background: "rgba(22,163,74,0.15)", color: BRAND }}>POST</span>
+                <code className="flex-1 overflow-x-auto text-[11.5px]" style={{ color: "var(--dm-text-secondary)" }}>{url}</code>
               </div>
             </div>
             <div className="space-y-1.5">
-              <h3 className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "var(--dm-text-tertiary)" }}>Autenticação</h3>
+              <h3 className="text-[12px] font-semibold" style={{ color: "var(--dm-text-tertiary)" }}>Autenticação</h3>
               <div className="rounded-lg border px-3 py-2.5 space-y-1.5" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
-                <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>Use um dos dois headers abaixo (qualquer um é aceito):</p>
-                <code className="block text-[10px]" style={{ color: "var(--dm-text-secondary)" }}>
+                <p className="text-[11.5px]" style={{ color: "var(--dm-text-tertiary)" }}>Use um dos dois headers abaixo (qualquer um é aceito):</p>
+                <code className="block text-[11.5px]" style={{ color: "var(--dm-text-secondary)" }}>
                   <span style={{ color: "var(--dm-text-tertiary)" }}>Authorization:</span> Bearer &lt;webhook_secret&gt;
                 </code>
-                <code className="block text-[10px]" style={{ color: "var(--dm-text-secondary)" }}>
+                <code className="block text-[11.5px]" style={{ color: "var(--dm-text-secondary)" }}>
                   <span style={{ color: "var(--dm-text-tertiary)" }}>X-DM-Secret:</span> &lt;webhook_secret&gt;
                 </code>
-                <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+                <p className="text-[11.5px]" style={{ color: "var(--dm-text-tertiary)" }}>
                   O secret é gerado na seção Webhook acima. Retornado <strong style={{ color: "var(--dm-text-secondary)" }}>uma única vez</strong> — guarde-o imediatamente.
                 </p>
               </div>
@@ -822,8 +830,8 @@ function WebhookInfoModal({ url, onClose }: { url: string; onClose: () => void }
                 ["fingerprint",  "Gera um ID de correlação de sessão: SHA-256(email) quando disponível (liga eventos do mesmo lead), ou UUID aleatório."],
               ] as [string, string][]).map(([field, desc]) => (
                 <div key={field} className="flex gap-3 px-2.5 py-2">
-                  <code className="w-28 flex-shrink-0 text-[10px] font-semibold self-start mt-0.5" style={{ color: "#05CD99" }}>{field}</code>
-                  <p className="text-[10px] leading-snug" style={{ color: "var(--dm-text-secondary)" }}>{desc}</p>
+                  <code className="w-28 flex-shrink-0 text-[11.5px] font-semibold self-start mt-0.5" style={{ color: "#05CD99" }}>{field}</code>
+                  <p className="text-[11.5px] leading-snug" style={{ color: "var(--dm-text-secondary)" }}>{desc}</p>
                 </div>
               ))}
             </div>
@@ -846,7 +854,7 @@ function WebhookInfoModal({ url, onClose }: { url: string; onClose: () => void }
 
           {/* Campos — UTMs */}
           <WH_Section title="Campos do body — UTMs / Origem de tráfego">
-            <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+            <p className="text-[11.5px]" style={{ color: "var(--dm-text-tertiary)" }}>
               Salvo no histórico de tracking. Ferramentas como Typeform permitem passar UTMs via hidden fields; inclua-os no payload para manter a rastreabilidade completa.
             </p>
             <WH_FieldTable fields={WH_FIELDS_UTM} />
@@ -855,19 +863,19 @@ function WebhookInfoModal({ url, onClose }: { url: string; onClose: () => void }
           {/* Campos — Extra */}
           <WH_Section title="Campos do body — Dados extras">
             <WH_FieldTable fields={WH_FIELDS_EXTRA} />
-            <p className="text-[9px]" style={{ color: "var(--dm-text-tertiary)" }}><span style={{ color: "#ef4444" }}>*</span> obrigatório</p>
+            <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}><span style={{ color: "#ef4444" }}>*</span> obrigatório</p>
           </WH_Section>
 
           {/* Catálogo de eventos */}
           <WH_Section title="Catálogo de eventos Meta padrão">
-            <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+            <p className="text-[11.5px]" style={{ color: "var(--dm-text-tertiary)" }}>
               Use qualquer nome abaixo em <code>event_name</code>. Nomes customizados também são aceitos (padrão <code>[A-Za-z][A-Za-z0-9_:-]*</code>, até 64 chars).
             </p>
             <div className="rounded-lg border divide-y overflow-hidden" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
               {META_EVENTS.map((e) => (
                 <div key={e.name} className="flex gap-3 px-2.5 py-1.5">
-                  <code className="w-44 flex-shrink-0 text-[10px] font-semibold self-start mt-0.5" style={{ color: "var(--dm-text-primary)" }}>{e.name}</code>
-                  <p className="text-[10px] leading-snug" style={{ color: "var(--dm-text-secondary)" }}>{e.desc}</p>
+                  <code className="w-44 flex-shrink-0 text-[11.5px] font-semibold self-start mt-0.5" style={{ color: "var(--dm-text-primary)" }}>{e.name}</code>
+                  <p className="text-[11.5px] leading-snug" style={{ color: "var(--dm-text-secondary)" }}>{e.desc}</p>
                 </div>
               ))}
             </div>
@@ -881,7 +889,7 @@ function WebhookInfoModal({ url, onClose }: { url: string; onClose: () => void }
                   key={tab}
                   type="button"
                   onClick={() => setExTab(tab)}
-                  className="flex-1 rounded-md px-2.5 py-1 text-[10px] font-bold transition-all"
+                  className="flex-1 rounded-md px-2.5 py-1 text-[11.5px] font-medium transition-all"
                   style={exTab === tab
                     ? { background: "rgba(22,163,74,0.15)", color: BRAND }
                     : { color: "var(--dm-text-tertiary)" }}
@@ -891,11 +899,11 @@ function WebhookInfoModal({ url, onClose }: { url: string; onClose: () => void }
               ))}
             </div>
             {exTab === "typeform" && (
-              <p className="text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>
+              <p className="text-[11.5px]" style={{ color: "var(--dm-text-tertiary)" }}>
                 Exemplo de mapeamento usando variáveis do Typeform (Webhooks → Body). Substitua os campos hidden por suas próprias variáveis da ferramenta.
               </p>
             )}
-            <pre className="overflow-x-auto rounded-lg border px-3 py-3 text-[10px] leading-relaxed font-mono" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)", color: "var(--dm-text-secondary)" }}>
+            <pre className="overflow-x-auto rounded-lg border px-3 py-3 text-[11.5px] leading-relaxed font-mono" style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)", color: "var(--dm-text-secondary)" }}>
               {exTab === "lead" ? WH_EXAMPLE_LEAD : exTab === "purchase" ? WH_EXAMPLE_PURCHASE : WH_EXAMPLE_TYPEFORM}
             </pre>
           </WH_Section>
@@ -913,8 +921,8 @@ function WebhookInfoModal({ url, onClose }: { url: string; onClose: () => void }
                 <div key={code} className="flex gap-3 px-2.5 py-2">
                   <span className="w-8 flex-shrink-0 text-[11px] font-bold self-start mt-0.5" style={{ color }}>{code}</span>
                   <div className="min-w-0 flex-1">
-                    <code className="block text-[10px]" style={{ color: "var(--dm-text-secondary)" }}>{body}</code>
-                    <p className="mt-0.5 text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>{desc}</p>
+                    <code className="block text-[11.5px]" style={{ color: "var(--dm-text-secondary)" }}>{body}</code>
+                    <p className="mt-0.5 text-[11.5px]" style={{ color: "var(--dm-text-tertiary)" }}>{desc}</p>
                   </div>
                 </div>
               ))}
@@ -937,7 +945,7 @@ const CHIP_STYLE: Record<ChipTone, React.CSSProperties> = {
   neutral: { background: "rgba(100,116,139,0.14)", color: "var(--dm-text-tertiary)" },
 };
 function Chip({ tone, label }: { tone: ChipTone; label: string }) {
-  return <span className="flex-shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold" style={CHIP_STYLE[tone]}>{label}</span>;
+  return <span className="flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold" style={CHIP_STYLE[tone]}>{label}</span>;
 }
 
 function Collapsible({ icon: Icon, title, subtitle, defaultOpen, badge, children }: {
@@ -945,21 +953,20 @@ function Collapsible({ icon: Icon, title, subtitle, defaultOpen, badge, children
   badge?: { tone: ChipTone; label: string }; children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(Boolean(defaultOpen));
+  // Sem caixa: seção é separada por um fio. A caixa do pixel já é o container.
   return (
-    <div className="rounded-xl border" style={{ borderColor: open ? BRAND : "var(--dm-border-default)", backgroundColor: "var(--dm-bg-surface)" }}>
+    <div className="border-t first:border-t-0" style={{ borderColor: "var(--dm-border-default)" }}>
       <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open}
-        className="flex w-full items-center gap-2.5 rounded-xl px-3.5 py-3 text-left transition-colors hover:bg-black/[0.02] dark:hover:bg-white/[0.03]">
-        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg" style={{ background: "rgba(22,163,74,0.12)" }}>
-          <Icon size={15} style={{ color: BRAND }} />
-        </div>
+        className="flex w-full items-center gap-2.5 py-3 text-left">
+        <Icon size={15} className="flex-shrink-0" style={{ color: open ? BRAND : "var(--dm-text-tertiary)" }} />
         <div className="min-w-0 flex-1">
-          <p className="text-[14.5px] font-bold" style={{ color: "var(--dm-text-primary)" }}>{title}</p>
+          <p className="text-[14px] font-bold" style={{ color: "var(--dm-text-primary)" }}>{title}</p>
           {subtitle && <p className="truncate text-[11.5px]" style={{ color: "var(--dm-text-tertiary)" }}>{subtitle}</p>}
         </div>
         {badge && <Chip tone={badge.tone} label={badge.label} />}
         <ChevronDown size={16} className="flex-shrink-0 transition-transform duration-200" style={{ color: "var(--dm-text-tertiary)", transform: open ? "rotate(0deg)" : "rotate(-90deg)" }} />
       </button>
-      {open && <div className="space-y-3 border-t px-3.5 py-3" style={{ borderColor: "var(--dm-border-default)" }}>{children}</div>}
+      {open && <div className="space-y-4 pb-4">{children}</div>}
     </div>
   );
 }
@@ -968,11 +975,11 @@ function Hint({ label, children }: { label: string; children: React.ReactNode })
   const [open, setOpen] = useState(false);
   return (
     <span className="inline-flex flex-col">
-      <button type="button" onClick={() => setOpen((v) => !v)} className="inline-flex items-center gap-1 text-[10px] font-bold" style={{ color: "var(--dm-text-tertiary)" }}>
+      <button type="button" onClick={() => setOpen((v) => !v)} className="inline-flex items-center gap-1 text-[11.5px] font-semibold" style={{ color: "var(--dm-text-secondary)" }}>
         <AlertTriangle size={11} style={{ color: "#F4A60D" }} /> {label}
       </button>
       {open && (
-        <p className="mt-1.5 max-w-[460px] rounded-lg border p-2.5 text-[10px] leading-relaxed" style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-tertiary)" }}>
+        <p className="mt-2 max-w-[460px] rounded-lg p-3 text-[12px] leading-relaxed" style={{ backgroundColor: "var(--dm-bg-muted)", color: "var(--dm-text-primary)" }}>
           {children}
         </p>
       )}

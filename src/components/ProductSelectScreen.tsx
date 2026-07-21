@@ -5,6 +5,7 @@ import { useTheme } from "next-themes";
 import { ArrowRight, Building2, ChevronDown, LogOut, Settings, Sun, Moon } from "lucide-react";
 import { DashMonsterLogo } from "@/components/DashMonsterLogo";
 import { HubSettings } from "@/components/hub/HubSettings";
+import { useCompany } from "@/hooks/useCompany";
 import type { UserCategory } from "@/types/userConfig";
 import { PRODUCTS, canOpenProduct } from "@/config/products";
 
@@ -70,6 +71,12 @@ export function ProductSelectScreen({ userName, email, companyName, companyLogoU
   useEffect(() => setMounted(true), []);
   const isDark = mounted && resolvedTheme === "dark";
 
+  // Troca de empresa direto no menu. Só vira lista clicável quando o usuário é
+  // membro de mais de uma — com uma só, continua sendo um rótulo.
+  const { company, memberships, switchCompany } = useCompany();
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  const multiCompany = memberships.length > 1;
+
   return (
     <div className="flex min-h-screen w-full flex-col" style={{ background: C.page, fontFamily: "var(--font-inter), 'DM Sans', sans-serif" }}>
       {/* Topbar */}
@@ -129,22 +136,58 @@ export function ProductSelectScreen({ userName, email, companyName, companyLogoU
                 <div className="my-1.5 h-px" style={{ background: C.subtle }} />
 
                 {companyName && (
-                  <div className="flex items-center gap-2.5 px-2.5 py-2">
-                    {companyLogoUrl ? (
-                      /* eslint-disable-next-line @next/next/no-img-element */
-                      <img src={companyLogoUrl} alt="" aria-hidden="true"
-                        className="h-8 w-8 flex-shrink-0 rounded-full object-cover" style={{ border: `1px solid ${C.border}` }} />
-                    ) : (
-                      <Building2 size={15} style={{ color: C.tm }} />
-                    )}
-                    <div className="min-w-0">
-                      <p className="text-[11px]" style={{ color: C.tm }}>Empresa</p>
-                      <p className="truncate text-sm font-medium" style={{ color: C.tp }}>{companyName}</p>
-                      {companyDescription && (
-                        <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug" style={{ color: C.ts }}>{companyDescription}</p>
+                  <>
+                    <button
+                      type="button"
+                      disabled={!multiCompany}
+                      onClick={() => setSwitcherOpen((v) => !v)}
+                      aria-expanded={multiCompany ? switcherOpen : undefined}
+                      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors enabled:hover:bg-black/[0.05] dark:enabled:hover:bg-white/[0.07] disabled:cursor-default"
+                    >
+                      {companyLogoUrl ? (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img src={companyLogoUrl} alt="" aria-hidden="true"
+                          className="h-8 w-8 flex-shrink-0 rounded-full object-cover" style={{ border: `1px solid ${C.border}` }} />
+                      ) : (
+                        <Building2 size={15} style={{ color: C.tm }} />
                       )}
-                    </div>
-                  </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[11px]" style={{ color: C.tm }}>
+                          {multiCompany ? `Empresa · ${memberships.length} disponíveis` : "Empresa"}
+                        </p>
+                        <p className="truncate text-sm font-medium" style={{ color: C.tp }}>{companyName}</p>
+                        {companyDescription && !switcherOpen && (
+                          <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug" style={{ color: C.ts }}>{companyDescription}</p>
+                        )}
+                      </div>
+                      {multiCompany && (
+                        <ChevronDown size={14} className="flex-shrink-0 transition-transform"
+                          style={{ color: C.tm, transform: switcherOpen ? "rotate(180deg)" : "none" }} />
+                      )}
+                    </button>
+
+                    {multiCompany && switcherOpen && (
+                      <div className="mt-0.5 mb-1 space-y-0.5">
+                        {memberships.map((m) => {
+                          const active = m.company.id === company?.id;
+                          return (
+                            <button
+                              key={m.company.id}
+                              type="button"
+                              onClick={() => { switchCompany(m.company.id); setSwitcherOpen(false); setMenuOpen(false); }}
+                              className="flex w-full items-center gap-2 rounded-lg py-1.5 pl-10 pr-2.5 text-left transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.07]"
+                              style={active ? { background: `${C.green}14` } : undefined}
+                            >
+                              <span className="min-w-0 flex-1 truncate text-[13px]" style={{ color: active ? C.green : C.tp, fontWeight: active ? 600 : 400 }}>
+                                {m.company.name}
+                              </span>
+                              {active && <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ background: C.green }} />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
                 )}
 
                 <MenuRow icon={Settings} label="Configurações" onClick={() => { setMenuOpen(false); setSettingsOpen(true); }} />
@@ -177,7 +220,7 @@ export function ProductSelectScreen({ userName, email, companyName, companyLogoU
 
                 {onSignOut && (
                   <button type="button" onClick={onSignOut}
-                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm font-medium transition-colors hover:bg-red-50"
+                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm font-medium transition-colors hover:bg-red-500/10"
                     style={{ color: "#DC2626" }}>
                     <LogOut size={15} /> Sair da conta
                   </button>
@@ -224,9 +267,11 @@ export function ProductSelectScreen({ userName, email, companyName, companyLogoU
 
 /* ── Linha de menu ────────────────────────────────────────────────────────── */
 function MenuRow({ icon: Icon, label, onClick }: { icon: typeof Settings; label: string; onClick?: () => void }) {
+  // Hover translúcido, não cor fixa: escurece no claro, clareia no escuro. Com
+  // um cinza cravado o texto (quase branco no dark) sumia no fundo claro.
   return (
     <button type="button" onClick={onClick}
-      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm font-medium transition-colors hover:bg-[#EEF0F3]"
+      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm font-medium transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.07]"
       style={{ color: C.tp }}>
       <Icon size={15} style={{ color: C.ts }} /> {label}
     </button>
@@ -241,7 +286,7 @@ function CardMeta({ logo, name, tag, tagBg, tagText, desc, descColor }: {
     <>
       <div className="mb-2 flex h-7 items-center gap-2">
         {logo}
-        <span className="text-lg font-semibold leading-none" style={{ color: name === "PipeFlow" ? "#fff" : C.tp }}>{name}</span>
+        <span className="text-lg font-semibold leading-none" style={{ color: name === "CRM Monster" ? "#fff" : C.tp }}>{name}</span>
         <span className="ml-1 rounded-md px-2 py-0.5 text-[11px] leading-none" style={{ background: tagBg, color: tagText }}>{tag}</span>
       </div>
       <p className="mb-6 min-h-[40px] text-sm leading-relaxed" style={{ color: descColor }}>{desc}</p>
@@ -297,7 +342,7 @@ function DashCard({ onOpen }: { onOpen: () => void }) {
   );
 }
 
-/* ── PipeFlow card (animado; contratado → abre, senão teaser) ─────────────── */
+/* ── CRM Monster card (animado; contratado → abre, senão teaser) ──────────── */
 function PipeCard({ openable, onOpen }: { openable: boolean; onOpen: () => void }) {
   const [hover, setHover] = useState(false);
   const e = easeOut(useHoverProgress(hover));
@@ -331,8 +376,8 @@ function PipeCard({ openable, onOpen }: { openable: boolean; onOpen: () => void 
       </div>
 
       <CardMeta
-        logo={<span className="flex h-7 w-7 items-center justify-center rounded-lg text-xs font-bold" style={{ background: C.lime, color: C.ink }}>P</span>}
-        name="PipeFlow" tag="CRM · Social Selling" tagBg="#22271A" tagText="#9AA37C"
+        logo={<span className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ background: C.lime }}><DashMonsterLogo size={15} className="text-[#0E1108] dark:!text-[#0E1108]" /></span>}
+        name="CRM Monster" tag="CRM · Social Selling" tagBg="#22271A" tagText={C.lime}
         desc="Pipeline Kanban, gestão de leads e CRM para quem vende pelo Instagram."
         descColor="#9DA38C"
       />
@@ -340,7 +385,7 @@ function PipeCard({ openable, onOpen }: { openable: boolean; onOpen: () => void 
         <button type="button" onClick={onOpen}
           className="mt-auto flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition hover:brightness-105"
           style={{ background: C.lime, color: C.ink }}>
-          Abrir PipeFlow <ArrowRight size={16} />
+          Abrir CRM Monster <ArrowRight size={16} />
         </button>
       ) : (
         <button type="button" disabled

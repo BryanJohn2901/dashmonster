@@ -41,7 +41,7 @@ export function ChannelCard({ provider, connection, onConnect, onDisconnect, isC
     if (provider !== 'whatsapp_cloud') return message
 
     if (/\/me\?fields=id,name,businesses|missing permission/i.test(message)) {
-      return 'A Meta conectou a conta, mas o PipeFlow nao conseguiu identificar o numero do WhatsApp. Desconecte e conecte novamente para capturarmos o WABA ID e Phone Number ID pelo fluxo oficial.'
+      return 'A Meta conectou a conta, mas o CRM Monster nao conseguiu identificar o numero do WhatsApp. Desconecte e conecte novamente para capturarmos o WABA ID e Phone Number ID pelo fluxo oficial.'
     }
 
     if (/subscribed_apps|webhook/i.test(message)) {

@@ -22,7 +22,7 @@ export const PRODUCTS: ProductDef[] = [
   },
   {
     id: "pipe",
-    name: "PipeFlow",
+    name: "CRM Monster",
     tagline: "CRM · Social Selling",
     description: "Pipeline Kanban, gestão de leads e CRM para quem vende pelo Instagram.",
     status: "live",

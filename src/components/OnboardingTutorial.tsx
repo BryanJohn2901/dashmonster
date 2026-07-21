@@ -30,8 +30,8 @@ const SLIDES = [
     subtitle: "Acompanhe a evolução de todos os seus lançamentos e gerencie seus produtos em uma base centralizada.",
     features: [
       { icon: History,  label: "Histórico de lançamentos", desc: "Compare lançamentos por ROAS, faturamento e vendas." },
-      { icon: Database, label: "Base de Produtos",          desc: "Cadastre Pós-Graduações e Imersões com todos os detalhes." },
-      { icon: Target,   label: "Filtro por tags",           desc: "Biomecânica, Bodybuilding, Treinamento Feminino e mais." },
+      { icon: Database, label: "Base de Produtos",          desc: "Cadastre seus produtos e ofertas com todos os detalhes." },
+      { icon: Target,   label: "Filtro por tags",           desc: "Organize as campanhas pelas tags e categorias da sua empresa." },
     ],
   },
   {

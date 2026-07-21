@@ -1,11 +1,11 @@
 /**
  * Extrai o nome base do produto a partir do nome bruto do Eduzz.
  * Formatos encontrados no banco:
- *   "[SM7-19x197-C] 1ª com 50% - Pós-graduação em Treinamento Feminino..."
- *   "[SM7-18x247-B] 50% na 1ª -  Pós-graduação em Treinamento Feminino..."
- *   "[SM7-18x229-C] - Pós-graduação em Treinamento Feminino..."
- *   "[SM7-18x167-B] Pós-graduação em Treinamento Feminino... – Opção 02"
- *   "[SM7-18x197-B] 1- 50% de desconto - Matrícula - Pós-graduação em..."
+ *   "[COD-19x197-C] 1ª com 50% - Nome do Produto..."
+ *   "[COD-18x247-B] 50% na 1ª -  Nome do Produto..."
+ *   "[COD-18x229-C] - Nome do Produto..."
+ *   "[COD-18x167-B] Nome do Produto... – Opção 02"
+ *   "[COD-18x197-B] 1- 50% de desconto - Matrícula - Nome do Produto..."
  */
 export function productBaseName(raw: string): string {
   // 1. Strip [CODE] prefix

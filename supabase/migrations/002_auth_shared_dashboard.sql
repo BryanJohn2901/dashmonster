@@ -1,5 +1,5 @@
 -- ============================================================
--- Analytics PTA — Auth + Dashboard compartilhado
+-- GSAStúdio Hub — Auth + Dashboard compartilhado
 -- Execute este SQL no Supabase SQL Editor
 -- ============================================================
 

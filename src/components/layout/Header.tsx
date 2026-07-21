@@ -1,6 +1,6 @@
 'use client'
 
-// Port fiel de pipeflow-crm/components/layout/Header.tsx (header mobile + sheet).
+// Header mobile + sheet.
 
 import { useState } from 'react'
 import { Menu, Search } from 'lucide-react'
@@ -10,7 +10,7 @@ import { CommandPalette } from './CommandPalette'
 import { SidebarNav } from './SidebarNav'
 import { WorkspaceSwitcher, type WorkspaceItem } from './WorkspaceSwitcher'
 import { UserMenu } from './UserMenu'
-import { PipeFlowLogo } from './PipeFlowLogo'
+import { CrmMonsterLogo } from './CrmMonsterLogo'
 import { NotificationBell } from './NotificationBell'
 
 interface HeaderProps {
@@ -62,7 +62,7 @@ export function Header({
         </Button>
 
         {/* App name */}
-        <span className="text-[15px] font-bold text-[#F7F9FA] tracking-tight">PipeFlow CRM</span>
+        <span className="text-[15px] font-bold text-[#F7F9FA] tracking-tight">CRM Monster</span>
 
         <div className="flex-1" />
 
@@ -97,7 +97,7 @@ export function Header({
             className="flex h-[72px] flex-row items-center px-5 py-0"
             style={{ borderBottom: '1px solid rgba(216,222,227,0.08)' }}
           >
-            <PipeFlowLogo variant="sidebar" />
+            <CrmMonsterLogo variant="sidebar" />
             <SheetTitle className="sr-only">Menu de navegação</SheetTitle>
           </SheetHeader>
 

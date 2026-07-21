@@ -58,7 +58,7 @@ export function FunnelCard({
   impressions, clicks, conversions, investment,
   pageViews, leads, storageScope,
 }: FunnelCardProps) {
-  const storageKey = `pta_funnel_steps_v1:${storageScope ?? "default"}`;
+  const storageKey = `gsah_funnel_steps_v1:${storageScope ?? "default"}`;
   const [showPanel, setShowPanel] = useState(false);
   const [stepIds, setStepIds]     = useState<FunnelStepId[]>(() => load(storageKey));
 
@@ -293,7 +293,7 @@ export function reportFunnelFromValues(opts: {
     leads:       opts.leads ?? 0,
     conversions: opts.conversions,
   };
-  const stepIds = load(`pta_funnel_steps_v1:${opts.storageScope ?? "default"}`);
+  const stepIds = load(`gsah_funnel_steps_v1:${opts.storageScope ?? "default"}`);
   const raw = ALL_STEPS.filter((s) => stepIds.includes(s.id));
   const steps = raw.map((s, i) => {
     const prev = i > 0 ? values[raw[i - 1].id] : null;

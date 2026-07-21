@@ -32,13 +32,14 @@ function parseCenario(val: string | null): { emoji: string; text: string } {
   return { emoji: "⬜", text: val };
 }
 
+// Rótulos genéricos por chave — a empresa mapeia suas próprias linhas na planilha.
 const PRODUTO_LABELS: Record<ProdutoKey, { name: string; emoji: string }> = {
-  bm:  { name: "Biomecânica",           emoji: "🦴" },
-  bb:  { name: "Bodybuilding",           emoji: "🏋️" },
-  sm:  { name: "Treinamento feminino",    emoji: "🏃" },
-  mpa: { name: "Musculação",             emoji: "💪" },
-  fe:  { name: "Fisiologia",             emoji: "🫀" },
-  tf:  { name: "Treinamento funcional",  emoji: "👩" },
+  bm:  { name: "Produto A", emoji: "📦" },
+  bb:  { name: "Produto B", emoji: "📦" },
+  sm:  { name: "Produto C", emoji: "📦" },
+  mpa: { name: "Produto D", emoji: "📦" },
+  fe:  { name: "Produto E", emoji: "📦" },
+  tf:  { name: "Produto F", emoji: "📦" },
 };
 
 // ── Mini donut ────────────────────────────────────────────────────────────────

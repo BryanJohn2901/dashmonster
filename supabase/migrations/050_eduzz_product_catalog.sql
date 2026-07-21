@@ -7,7 +7,7 @@
 -- 1 PRODUTO (curso) e dentro dele N OFERTAS (preço/parcelamento diferentes,
 -- cada uma com seu próprio `productId`). `parentId` é o produto, estável
 -- entre todas as ofertas — confirmado com dado real: 2 vendas da mesma
--- empresa, mesmo `parentId` (2915528, "Treinamento Feminino"), `productId`
+-- empresa, mesmo `parentId` (ex.: 2915528, um produto/curso), `productId`
 -- diferente em cada (3030076 e 2944992, ofertas/parcelamentos distintos).
 --
 -- `eduzz_products` — 1 linha por produto (parentId). `pixel_id` aqui é a

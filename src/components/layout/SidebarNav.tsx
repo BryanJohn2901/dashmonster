@@ -1,8 +1,7 @@
 'use client'
 
-// Port fiel de pipeflow-crm/components/layout/SidebarNav.tsx.
-// Rotas prefixadas com /crm. O board hoje vive em /crm (raiz); quando o port
-// fiel do Kanban mover pra /crm/pipeline, basta trocar PIPELINE_HREF.
+// Rotas prefixadas com /crm. O board hoje vive em /crm (raiz); quando o Kanban
+// mover pra /crm/pipeline, basta trocar PIPELINE_HREF.
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'

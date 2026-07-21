@@ -8,9 +8,10 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Building2, Camera, Check, CheckCircle2, Eye, EyeOff, KeyRound, Loader2,
-  Mail, Megaphone, Pencil, Plus, Save, Search, SlidersHorizontal, Trash2, Users, X, History, Radar,
+  Mail, Megaphone, Pencil, Plus, RotateCcw, Save, Search, SlidersHorizontal, Trash2, Users, X, History, Radar,
 } from "lucide-react";
-import { TrackingSection } from "@/components/CompanyStudio";
+import { TrackingConfigPanel } from "@/components/TrackingConfigPanel";
+import { EduzzConfigPanel } from "@/components/EduzzConfigPanel";
 import {
   fetchCompanyMembers, updateMemberRole, removeMember, renameCompany, setCompanyProducts,
   fetchCompanyToken, setCompanyToken, inviteMemberByEmail, sendInviteEmail, fetchCompanyAdAccounts,
@@ -18,7 +19,7 @@ import {
   fetchCompanyInvites, revokeCompanyInvite, type PendingInvite,
   readMemberProducts, MEMBER_PRODUCTS_KEY,
   readCompanyBranding, updateCompanyLogo, COMPANY_BRANDING_KEY, type CompanyBranding,
-  deleteCompany, readCompanyTag, COMPANY_TAG_KEY,
+  deleteCompany, restoreCompany, readCompanyTag, COMPANY_TAG_KEY,
   type AdminCompany, type CompanyRole, type CompanyMember, type AdAccountEntry,
 } from "@/hooks/useCompany";
 import { PRODUCTS } from "@/config/products";
@@ -127,13 +128,15 @@ export function EmpresasSection({ companies, onSelect, reload, onCreate, onGo }:
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const q = query.trim().toLowerCase();
-  const filtered = companies.filter((c) => !q || c.company.name.toLowerCase().includes(q) || c.company.slug.toLowerCase().includes(q) || readCompanyTag(c.company.settings).toLowerCase().includes(q));
+  const active = companies.filter((c) => !c.company.deletedAt);
+  const trashed = companies.filter((c) => c.company.deletedAt);
+  const filtered = active.filter((c) => !q || c.company.name.toLowerCase().includes(q) || c.company.slug.toLowerCase().includes(q) || readCompanyTag(c.company.settings).toLowerCase().includes(q));
 
   const saveEdit = async (c: AdminCompany) => {
     const nm = editName.trim();
     const tg = editTag.trim().toUpperCase();
     if (!nm) { toast.error("Nome não pode ficar vazio."); return; }
-    if (tg && !/^[A-Z]{3}$/.test(tg)) { toast.error("TAG: exatamente 3 letras (ex.: PTA)."); return; }
+    if (tg && !/^[A-Z]{3}$/.test(tg)) { toast.error("TAG: exatamente 3 letras (ex.: ABC)."); return; }
     if (tg && companies.some((x) => x.company.id !== c.company.id && readCompanyTag(x.company.settings) === tg)) {
       toast.error(`A TAG ${tg} já está em uso por outra empresa.`);
       return;
@@ -155,14 +158,21 @@ export function EmpresasSection({ companies, onSelect, reload, onCreate, onGo }:
   const doDelete = async (c: AdminCompany) => {
     setConfirmDeleteId(null);
     setBusyId(c.company.id);
-    try { await deleteCompany(c.company.id); await reload(); toast.success(`Empresa "${c.company.name}" excluída.`); }
-    catch (e) { toast.error(e instanceof Error ? e.message : "Erro ao excluir."); }
+    try { await deleteCompany(c.company.id); await reload(); toast.success(`"${c.company.name}" movida pra lixeira.`); }
+    catch (e) { toast.error(e instanceof Error ? e.message : "Erro ao mover pra lixeira."); }
+    finally { setBusyId(null); }
+  };
+
+  const doRestore = async (c: AdminCompany) => {
+    setBusyId(c.company.id);
+    try { await restoreCompany(c.company.id); await reload(); toast.success(`"${c.company.name}" restaurada.`); }
+    catch (e) { toast.error(e instanceof Error ? e.message : "Erro ao restaurar."); }
     finally { setBusyId(null); }
   };
 
   return (
     <div>
-      <SectionHeader icon={Building2} title="Empresas" desc={`${companies.length} conta${companies.length === 1 ? "" : "s"} na plataforma`}
+      <SectionHeader icon={Building2} title="Empresas" desc={`${active.length} conta${active.length === 1 ? "" : "s"} na plataforma`}
         right={
           <button type="button" onClick={onCreate}
             className="flex h-10 items-center gap-1.5 rounded-xl px-4 text-xs font-bold text-white transition hover:opacity-90"
@@ -278,12 +288,12 @@ export function EmpresasSection({ companies, onSelect, reload, onCreate, onGo }:
               </button>
             </div>
 
-            {/* Confirmação de exclusão — apaga a empresa e TODOS os dados dela */}
+            {/* Confirmação — vai pra lixeira (soft delete), some das listas mas dá pra restaurar */}
             {confirmDeleteId === c.company.id && (
               <div className="flex flex-wrap items-center gap-2 border-t px-4 py-3"
                 style={{ borderColor: "rgba(238,93,80,0.4)", background: "rgba(238,93,80,0.06)" }}>
                 <p className="min-w-0 flex-1 text-[12px] font-semibold" style={{ color: "#EE5D50" }}>
-                  Excluir &quot;{c.company.name}&quot;? Apaga membros, filtros, contas e histórico. Não tem volta.
+                  Mover &quot;{c.company.name}&quot; pra lixeira? Some das listas, mas dá pra restaurar. Os dados ficam intactos.
                 </p>
                 <button type="button" onClick={() => setConfirmDeleteId(null)}
                   className="h-8 rounded-lg border px-3 text-[11px] font-bold transition hover:opacity-80"
@@ -293,7 +303,7 @@ export function EmpresasSection({ companies, onSelect, reload, onCreate, onGo }:
                 <button type="button" onClick={() => void doDelete(c)} disabled={busyId === c.company.id}
                   className="flex h-8 items-center gap-1.5 rounded-lg px-3 text-[11px] font-bold text-white transition hover:opacity-90 disabled:opacity-50"
                   style={{ background: "#EE5D50" }}>
-                  <Trash2 size={12} /> Excluir de vez
+                  <Trash2 size={12} /> Mover pra lixeira
                 </button>
               </div>
             )}
@@ -329,6 +339,35 @@ export function EmpresasSection({ companies, onSelect, reload, onCreate, onGo }:
           );
         })}
       </div>
+
+      {trashed.length > 0 && (
+        <div className="mt-6">
+          <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--dm-text-tertiary)" }}>
+            <Trash2 size={12} /> Lixeira · {trashed.length}
+          </p>
+          <div className="flex flex-col gap-2">
+            {trashed.map((c) => (
+              <div key={c.company.id} className="flex items-center gap-3 rounded-2xl border px-4 py-3 opacity-70"
+                style={{ borderColor: "var(--dm-border-default)", background: "var(--dm-bg-surface)" }}>
+                <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl"
+                  style={{ background: "var(--dm-bg-elevated)", border: "1px solid var(--dm-border-default)" }}>
+                  <Building2 size={15} style={{ color: "var(--dm-text-tertiary)" }} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13px] font-bold" style={{ color: "var(--dm-text-secondary)" }}>{c.company.name}</p>
+                  <p className="truncate text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>{c.company.slug}</p>
+                </div>
+                {busyId === c.company.id && <Loader2 size={14} className="animate-spin" style={{ color: "var(--dm-text-tertiary)" }} />}
+                <button type="button" onClick={() => void doRestore(c)} disabled={busyId === c.company.id}
+                  className="flex h-8 items-center gap-1.5 rounded-lg border px-3 text-[11px] font-bold transition hover:opacity-80 disabled:opacity-50"
+                  style={{ borderColor: "var(--dm-primary)", color: "var(--dm-primary)" }}>
+                  <RotateCcw size={12} /> Restaurar
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1121,13 +1160,20 @@ export function ConvitesSection({ selected, reload }: ScopedProps) {
 // ─── Conexão Meta (token por empresa) ───────────────────────────────────────────
 
 // ─── Tracking (pixel server-side + Eduzz) por empresa ──────────────────────────
-// Reusa a TrackingSection do Estúdio (variant painel). Super admin sempre edita.
+// Monta os painéis direto: o SectionHeader da página já é o título. Usar a
+// TrackingSection do Estúdio aqui repetia "Tracking" duas vezes na mesma tela.
 export function TrackingAdminSection({ selected }: ScopedProps) {
   return (
     <div>
       <SectionHeader icon={Radar} title="Tracking" desc="Pixel server-side e conexão Eduzz, por empresa" />
       {selected ? (
-        <TrackingSection company={selected.company} canEdit open onToggle={() => {}} variant="panel" />
+        <div className="space-y-10">
+          <TrackingConfigPanel company={selected.company} canEdit />
+          <section className="space-y-4">
+            <h3 className="text-[15px] font-semibold" style={{ color: "var(--dm-text-primary)" }}>Conexão Eduzz</h3>
+            <EduzzConfigPanel company={selected.company} canEdit />
+          </section>
+        </div>
       ) : (
         <ScopeHint selected={null} />
       )}
@@ -1465,7 +1511,7 @@ export function FiltrosSection({ selected, reload }: ScopedProps) {
       <Card>
         <p className="mb-1 text-[13px] font-bold" style={{ color: "var(--dm-text-primary)" }}>Filtros da empresa</p>
         <p className="mb-3 text-[11px] leading-relaxed" style={{ color: "var(--dm-text-tertiary)" }}>
-          Ex.: Lançamentos, Eventos — cada filtro pode ter subfiltros (Pós-graduação, Info produtos…).
+          Ex.: Lançamentos, Eventos — cada filtro pode ter subfiltros (Cursos, Info produtos…).
         </p>
         <div className="mb-3 flex gap-2">
           <input value={newFilter} onChange={(e) => setNewFilter(e.target.value)}
@@ -1621,7 +1667,7 @@ export function PipeFlowSection({ selected }: ScopedProps) {
     return () => { active = false; };
   }, [selected]);
 
-  if (!selected) return <><SectionHeader icon={Users} title="PipeFlow · Funis" desc="CRM da empresa selecionada" /><ScopeHint selected={selected} /></>;
+  if (!selected) return <><SectionHeader icon={Users} title="CRM Monster · Funis" desc="CRM da empresa selecionada" /><ScopeHint selected={selected} /></>;
 
   const hasPipe = (selected.company.products ?? []).includes("pipe");
 
@@ -1645,18 +1691,18 @@ export function PipeFlowSection({ selected }: ScopedProps) {
 
   return (
     <div>
-      <SectionHeader icon={Users} title="PipeFlow · Funis" desc={`CRM de ${selected.company.name}`}
+      <SectionHeader icon={Users} title="CRM Monster · Funis" desc={`CRM de ${selected.company.name}`}
         right={
           <a href="/crm" className="flex h-10 items-center gap-1.5 rounded-xl border px-4 text-xs font-bold transition hover:opacity-80"
             style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-primary)" }}>
-            Abrir PipeFlow →
+            Abrir CRM Monster →
           </a>
         } />
 
       {!hasPipe && (
         <Card className="mb-4">
           <p className="text-[13px]" style={{ color: "#F4A60D" }}>
-            Esta empresa ainda não tem o PipeFlow liberado. Ative em <b>Produtos &amp; acessos</b> — os dados abaixo só aparecem pro time depois disso.
+            Esta empresa ainda não tem o CRM Monster liberado. Ative em <b>Produtos &amp; acessos</b> — os dados abaixo só aparecem pro time depois disso.
           </p>
         </Card>
       )}

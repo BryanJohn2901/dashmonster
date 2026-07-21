@@ -2,9 +2,8 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
-import { Search, RefreshCw, Calendar, Radar, X, Mail, Phone, MapPin, User, ShoppingBag, CreditCard, Hash, Smartphone, Monitor, Tablet, BarChart3, Table2, Filter, Workflow, SlidersHorizontal, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, RefreshCw, Calendar, Radar, X, Mail, Phone, MapPin, User, ShoppingBag, CreditCard, Hash, Smartphone, Monitor, Tablet, BarChart3, Table2, Filter, Workflow, SlidersHorizontal } from "lucide-react";
 import { supabaseClient } from "@/lib/supabase";
-import { fetchEventsLogSplit } from "@/lib/eventsLogFetch";
 import { isDevModeActive } from "@/hooks/useDevMode";
 import { DEMO_TRACKING_EVENTS } from "@/lib/demoTracking";
 import { DateRangePicker } from "@/components/DateRangePicker";
@@ -77,8 +76,6 @@ export interface TrackingEvent {
 
 export interface Visitor {
   fingerprintId: string;
-  /** Todos os fingerprint_id's unidos neste visitante (>1 quando a mesma pessoa apareceu em dispositivos/cookies diferentes mas com o MESMO email ou telefone — ver groupByVisitor). Sempre inclui fingerprintId. */
-  mergedFingerprintIds: string[];
   events: TrackingEvent[]; // mais recente primeiro
   firstSeen: string;
   lastSeen: string;
@@ -155,6 +152,10 @@ const UTM_KEYS = [
   "utm_adset_id",
   "utm_ad_id",
 ];
+
+// Teto de linhas por busca — protege o browser de agrupar volume absurdo de
+// uma vez. Quando atingido, a UI avisa que pode estar truncado (ver eventsCapped).
+const EVENTS_LIMIT = 1000;
 
 const EVENTS_SELECT =
   "id, event_name, fingerprint_id, event_url, page_title, user_data, lead_email, lead_phone, lead_name, extra_fields, country, country_region, city, event_id, " +
@@ -372,6 +373,15 @@ export function parseBrowser(ua: string | null): string | null {
   return null;
 }
 
+// Converte data YYYY-MM-DD para ISO UTC usando o timezone LOCAL do browser.
+// Garante que o filtro "até 27/06" inclua eventos até 23:59:59 BRT (= 02:59:59 UTC do dia 28).
+function localDayStart(dateStr: string): string {
+  return new Date(`${dateStr}T00:00:00`).toISOString();
+}
+function localDayEnd(dateStr: string): string {
+  return new Date(`${dateStr}T23:59:59.999`).toISOString();
+}
+
 // Builders de formulário (Elementor, WP Forms etc.) costumam nomear o input
 // com notação de array — ex.: "form_fields[name]", "data[telefone]" — extrai
 // só o nome legível de dentro dos colchetes e formata como rótulo.
@@ -428,125 +438,55 @@ function isVisibleTrackingEvent(e: TrackingEvent): boolean {
   return e.value !== e.installment_value;
 }
 
-// Normalização mínima e conservadora — só pra evitar falso-negativo óbvio
-// (espaço/maiúscula), nunca pra "adivinhar" (ex.: telefone com/sem DDI ou
-// máscara não é normalizado — limitação conhecida, ver CLAUDE.md). Melhor
-// deixar de unir um visitante do que unir 2 pessoas diferentes por engano.
-function normalizeEmail(email: string): string {
-  return email.trim().toLowerCase();
-}
-function normalizePhone(phone: string): string {
-  return phone.trim();
-}
-
-function buildVisitorFromEvents(fingerprintId: string, list: TrackingEvent[], mergedFingerprintIds: string[]): Visitor {
-  const sorted = [...list].sort((a, b) => b.created_at.localeCompare(a.created_at));
-  // event_name === "Lead" especificamente — Purchase (venda Eduzz) também
-  // grava lead_email/lead_phone (mesmo comprador), mas não é um cadastro de
-  // formulário, não deve aparecer como "Lead" nem entrar no seletor de
-  // "Dados capturados" do drawer (ver VisitorDrawer).
-  const leadEvent = sorted.find((e) => e.event_name === "Lead");
-  const purchaseEvents = sorted.filter((e) => e.event_name === "Purchase");
-  return {
-    fingerprintId,
-    mergedFingerprintIds,
-    events: sorted,
-    lastSeen: sorted[0].created_at,
-    firstSeen: sorted[sorted.length - 1].created_at,
-    isLead: Boolean(leadEvent),
-    leadEmail: leadEvent?.lead_email ?? null,
-    leadPhone: leadEvent?.lead_phone ?? null,
-    anyEmail: sorted.find((e) => e.lead_email)?.lead_email ?? null,
-    anyPhone: sorted.find((e) => e.lead_phone)?.lead_phone ?? null,
-    leadFields: leadEvent?.extra_fields ?? {},
-    lastUrl: sorted[0].event_url,
-    lastPageTitle: sorted[0].page_title,
-    lastUtm: resolveUtm(sorted[0]),
-    // Geo: prefere evento com cidade/estado (browser real) — evita que uma
-    // Purchase/Lead server-side (IP do servidor, geralmente US) sobrescreva
-    // a localização real do visitante que veio da PageView anterior.
-    lastLocation: (() => {
-      const withCity = sorted.find((e) => e.city || e.country_region);
-      const withCountry = sorted.find((e) => e.country);
-      const best = withCity ?? withCountry ?? sorted[0];
-      return { country: best.country, countryRegion: best.country_region, city: best.city };
-    })(),
-    // Mais recente primeiro (sorted) — pega o 1º evento que TEM UA, não
-    // necessariamente sorted[0] (ex.: a Purchase mais recente pode não ter
-    // UA por não ter casado com nenhuma visita, mas a PageView anterior tem).
-    lastUserAgent: sorted.find((e) => e.client_user_agent)?.client_user_agent ?? null,
-    lastVia: sorted.find((e) => e.via)?.via ?? null,
-    isCustomer: purchaseEvents.length > 0,
-    totalRevenue: purchaseEvents.reduce((sum, e) => sum + (e.value ?? 0), 0),
-    purchaseCount: purchaseEvents.length,
-  };
-}
-
 export function groupByVisitor(events: TrackingEvent[]): Visitor[] {
-  const byFingerprint = new Map<string, TrackingEvent[]>();
+  const map = new Map<string, TrackingEvent[]>();
   for (const e of events) {
-    const list = byFingerprint.get(e.fingerprint_id);
+    const list = map.get(e.fingerprint_id);
     if (list) list.push(e);
-    else byFingerprint.set(e.fingerprint_id, [e]);
-  }
-
-  // Une fingerprints da MESMA pessoa em dispositivos/cookies diferentes —
-  // cookie (_dm_uid) vive por navegador, então trocar de aparelho sempre gera
-  // um fingerprint novo; email/telefone (capturados em Lead OU Purchase) são o
-  // único jeito de saber que são a mesma pessoa. Union-Find: 2 fingerprints
-  // entram no mesmo grupo se QUALQUER evento de um bate (email OU telefone,
-  // exato/normalizado) com QUALQUER evento do outro.
-  const parent = new Map<string, string>();
-  const find = (x: string): string => {
-    let root = x;
-    while (parent.get(root) && parent.get(root) !== root) root = parent.get(root)!;
-    parent.set(x, root);
-    return root;
-  };
-  const union = (a: string, b: string) => {
-    const ra = find(a);
-    const rb = find(b);
-    if (ra !== rb) parent.set(ra, rb);
-  };
-  for (const fp of byFingerprint.keys()) parent.set(fp, fp);
-
-  const fpsByEmail = new Map<string, Set<string>>();
-  const fpsByPhone = new Map<string, Set<string>>();
-  for (const [fp, list] of byFingerprint) {
-    for (const e of list) {
-      if (e.lead_email) {
-        const key = normalizeEmail(e.lead_email);
-        if (!fpsByEmail.has(key)) fpsByEmail.set(key, new Set());
-        fpsByEmail.get(key)!.add(fp);
-      }
-      if (e.lead_phone) {
-        const key = normalizePhone(e.lead_phone);
-        if (!fpsByPhone.has(key)) fpsByPhone.set(key, new Set());
-        fpsByPhone.get(key)!.add(fp);
-      }
-    }
-  }
-  for (const group of [...fpsByEmail.values(), ...fpsByPhone.values()]) {
-    const [first, ...rest] = [...group];
-    for (const fp of rest) union(first, fp);
-  }
-
-  const mergedGroups = new Map<string, string[]>(); // root -> fingerprintIds
-  for (const fp of byFingerprint.keys()) {
-    const root = find(fp);
-    const list = mergedGroups.get(root) ?? [];
-    list.push(fp);
-    mergedGroups.set(root, list);
+    else map.set(e.fingerprint_id, [e]);
   }
 
   const visitors: Visitor[] = [];
-  for (const fingerprintIds of mergedGroups.values()) {
-    const allEvents = fingerprintIds.flatMap((fp) => byFingerprint.get(fp)!);
-    // Representante do grupo: fingerprint do evento mais recente — só usado
-    // como chave/id de exibição (drawer, key de lista); cada evento individual
-    // mantém seu próprio fingerprint_id original, intocado.
-    const newestFp = [...allEvents].sort((a, b) => b.created_at.localeCompare(a.created_at))[0].fingerprint_id;
-    visitors.push(buildVisitorFromEvents(newestFp, allEvents, fingerprintIds));
+  for (const [fingerprintId, list] of map) {
+    const sorted = [...list].sort((a, b) => b.created_at.localeCompare(a.created_at));
+    // event_name === "Lead" especificamente — Purchase (venda Eduzz) também
+    // grava lead_email/lead_phone (mesmo comprador), mas não é um cadastro de
+    // formulário, não deve aparecer como "Lead" nem entrar no seletor de
+    // "Dados capturados" do drawer (ver VisitorDrawer).
+    const leadEvent = sorted.find((e) => e.event_name === "Lead");
+    const purchaseEvents = sorted.filter((e) => e.event_name === "Purchase");
+    visitors.push({
+      fingerprintId,
+      events: sorted,
+      lastSeen: sorted[0].created_at,
+      firstSeen: sorted[sorted.length - 1].created_at,
+      isLead: Boolean(leadEvent),
+      leadEmail: leadEvent?.lead_email ?? null,
+      leadPhone: leadEvent?.lead_phone ?? null,
+      anyEmail: sorted.find((e) => e.lead_email)?.lead_email ?? null,
+      anyPhone: sorted.find((e) => e.lead_phone)?.lead_phone ?? null,
+      leadFields: leadEvent?.extra_fields ?? {},
+      lastUrl: sorted[0].event_url,
+      lastPageTitle: sorted[0].page_title,
+      lastUtm: resolveUtm(sorted[0]),
+      // Geo: prefere evento com cidade/estado (browser real) — evita que uma
+      // Purchase/Lead server-side (IP do servidor, geralmente US) sobrescreva
+      // a localização real do visitante que veio da PageView anterior.
+      lastLocation: (() => {
+        const withCity = sorted.find((e) => e.city || e.country_region);
+        const withCountry = sorted.find((e) => e.country);
+        const best = withCity ?? withCountry ?? sorted[0];
+        return { country: best.country, countryRegion: best.country_region, city: best.city };
+      })(),
+      // Mais recente primeiro (sorted) — pega o 1º evento que TEM UA, não
+      // necessariamente sorted[0] (ex.: a Purchase mais recente pode não ter
+      // UA por não ter casado com nenhuma visita, mas a PageView anterior tem).
+      lastUserAgent: sorted.find((e) => e.client_user_agent)?.client_user_agent ?? null,
+      lastVia: sorted.find((e) => e.via)?.via ?? null,
+      isCustomer: purchaseEvents.length > 0,
+      totalRevenue: purchaseEvents.reduce((sum, e) => sum + (e.value ?? 0), 0),
+      purchaseCount: purchaseEvents.length,
+    });
   }
 
   return visitors.sort((a, b) => b.lastSeen.localeCompare(a.lastSeen));
@@ -600,18 +540,7 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
       >
         <div className="flex flex-shrink-0 items-center justify-between border-b px-6 py-4" style={{ borderColor: "var(--dm-border-default)" }}>
           <div>
-            <div className="flex items-center gap-1.5">
-              <h3 className="text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>Histórico do visitante</h3>
-              {visitor.mergedFingerprintIds.length > 1 && (
-                <span
-                  className="rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
-                  style={{ background: "rgba(22,163,74,0.12)", color: "var(--dm-primary)" }}
-                  title="Mesmo email/telefone visto em navegadores ou dispositivos diferentes — jornadas unidas."
-                >
-                  {visitor.mergedFingerprintIds.length} dispositivos
-                </span>
-              )}
-            </div>
+            <h3 className="text-sm font-bold" style={{ color: "var(--dm-text-primary)" }}>Histórico do visitante</h3>
             <p className="font-mono text-[10px] mt-0.5" style={{ color: "var(--dm-text-tertiary)" }}>{visitor.fingerprintId}</p>
           </div>
           <button type="button" onClick={onClose} aria-label="Fechar" className="flex h-7 w-7 items-center justify-center rounded-full transition-opacity hover:opacity-70" style={{ color: "var(--dm-text-tertiary)" }}>
@@ -897,9 +826,6 @@ function VisitorDrawer({ visitor, onClose }: { visitor: Visitor; onClose: () => 
 export function TrackingEventsView() {
   const { company, companyId, canWrite } = useCompany();
   const [events, setEvents] = useState<TrackingEvent[]>([]);
-  // true só quando o grupo de "ruído" (PageView etc) bateu no teto de segurança —
-  // Lead/Purchase/Installment são sempre buscados por completo, nunca truncados.
-  const [noiseCapped, setNoiseCapped] = useState(false);
   const [funnels, setFunnels] = useState<TrackingFunnel[]>([]);
   // true se PELO MENOS 1 pixel da empresa tem Pixel ID preenchido (banner "Meta não configurada").
   const [anyMetaConfigured, setAnyMetaConfigured] = useState(false);
@@ -921,11 +847,6 @@ export function TrackingEventsView() {
   const [view, setView] = useState<"visitors" | "analytics" | "funnels">("visitors");
   const [advFiltersOpen, setAdvFiltersOpen] = useState(false);
   const fetchSeq = useRef(0);
-
-  // Renderizar milhares de linhas de uma vez trava o browser — a tabela/cards
-  // de visitantes mostram só 1 página (50) por vez, o resto fica só no total.
-  const VISITORS_PAGE_SIZE = 50;
-  const [visitorsPage, setVisitorsPage] = useState(1);
 
   const fetchEvents = useCallback(async () => {
     if (!supabaseClient) {
@@ -949,10 +870,17 @@ export function TrackingEventsView() {
     const requestId = ++fetchSeq.current;
 
     try {
-    // Uma query de sonda (1 linha) só pra detectar se as colunas novas existem —
-    // decide qual EVENTS_SELECT usar antes de disparar a busca paginada de verdade.
-    const [probeRes, pixelsRes] = await Promise.all([
-      supabaseClient.from("events_log").select(EVENTS_SELECT).eq("company_id", companyId).limit(1),
+    const [eventsRes, pixelsRes] = await Promise.all([
+      supabaseClient
+        .from("events_log")
+        .select(EVENTS_SELECT)
+        .eq("company_id", companyId)
+        .or("sale_confirmed.is.null,sale_confirmed.eq.true")
+        .neq("event_name", "Renewal")
+        .gte("created_at", localDayStart(dateFrom))
+        .lte("created_at", localDayEnd(dateTo))
+        .order("created_at", { ascending: false })
+        .limit(EVENTS_LIMIT),
       supabaseClient.from("tracking_pixels").select("id, name, meta_pixel_id").eq("company_id", companyId),
     ]);
     if (requestId !== fetchSeq.current) return;
@@ -975,24 +903,28 @@ export function TrackingEventsView() {
       "utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "utm_placement", "utm_campaign_id", "utm_adset_id", "utm_ad_id",
       "lead_name", "value", "currency", "external_transaction_id", "source", "payment_method", "installments", "installment_number", "installment_value", "recurrence_key", "product_name", "product_parent_id",
       "is_order_bump", "main_sale_transaction_id", "client_user_agent", "via", "pixel_id", "sale_confirmed",
-    ].some((col) => probeRes.error?.message?.includes(col));
-
-    const select = missingNewColumn ? EVENTS_SELECT_FALLBACK : EVENTS_SELECT;
-    // Lead/Purchase/Installment (negócio) são buscados por completo, sem teto —
-    // visitantes/receita/leads nunca ficam sub-contados. Só PageView e afins
-    // (ruído, alto volume) são paginados até um teto de segurança pro browser.
-    const { rows, noiseCapped: capped } = await fetchEventsLogSplit<TrackingEvent>(supabaseClient, {
-      select,
-      companyId,
-      dateFrom,
-      dateTo,
-      extraFilter: (q) => q.or("sale_confirmed.is.null,sale_confirmed.eq.true"),
-      businessEventNames: ["Lead", "Purchase", "Installment"],
-      excludeEventNames: ["Renewal"],
-    });
-    if (requestId !== fetchSeq.current) return;
-    setEvents(rows as unknown as TrackingEvent[]);
-    setNoiseCapped(capped);
+    ].some((col) => eventsRes.error?.message?.includes(col));
+    if (missingNewColumn) {
+      // Migration 033/034/038/039/040 ainda não rodou no Supabase — busca sem as colunas novas em vez de quebrar a tela.
+      const retry = await supabaseClient
+        .from("events_log")
+        .select(EVENTS_SELECT_FALLBACK)
+        .eq("company_id", companyId)
+        .neq("event_name", "Renewal")
+        .gte("created_at", localDayStart(dateFrom))
+        .lte("created_at", localDayEnd(dateTo))
+        .order("created_at", { ascending: false })
+        .limit(EVENTS_LIMIT);
+      if (retry.error) {
+        setError(retry.error.message);
+      } else {
+        setEvents((retry.data as TrackingEvent[]) ?? []);
+      }
+    } else if (eventsRes.error) {
+      setError(eventsRes.error.message);
+    } else {
+      setEvents((eventsRes.data as unknown as TrackingEvent[]) ?? []);
+    }
 
     } catch (e) {
       if (requestId === fetchSeq.current) setError(e instanceof Error ? e.message : "Erro ao buscar eventos.");
@@ -1132,20 +1064,6 @@ export function TrackingEventsView() {
     return true;
   });
 
-  // Volta pra página 1 sempre que o resultado filtrado muda de tamanho
-  // (novo filtro/busca/período) — evita ficar numa página vazia.
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setVisitorsPage(1);
-  }, [dateFrom, dateTo, search, eventFilter, paymentMethodFilter, productFilter, deviceFilter, funnelFilter]);
-
-  const visitorsPageCount = Math.max(1, Math.ceil(filteredVisitors.length / VISITORS_PAGE_SIZE));
-  const visitorsPageSafe = Math.min(visitorsPage, visitorsPageCount);
-  const pagedVisitors = filteredVisitors.slice(
-    (visitorsPageSafe - 1) * VISITORS_PAGE_SIZE,
-    visitorsPageSafe * VISITORS_PAGE_SIZE,
-  );
-
   const eventTypes = [...new Set(visibleEvents.map((e) => e.event_name))];
   // Formas de pagamento das vendas (Purchase) realmente vistas no período — só
   // mostra o chip pra filtrar quando o usuário já está olhando "Compra" (filtro
@@ -1160,7 +1078,10 @@ export function TrackingEventsView() {
   const deviceCategories = [...new Set(visitors.map((v) => parseUserAgent(v.lastUserAgent)?.device).filter((d): d is "mobile" | "tablet" | "desktop" => Boolean(d)))];
   // Captura funciona sem Meta — isso é só um lembrete de que o envio CAPI está desligado, não um erro.
   const metaNotConfigured = !loading && !error && !anyMetaConfigured;
-  const eventsCapped = noiseCapped;
+  // A query tem limit(1000) — quando bate exatamente nisso, provavelmente há
+  // mais eventos no período que não vieram, então visitantes/receita podem estar
+  // truncados. Avisa em vez de mostrar números silenciosamente errados.
+  const eventsCapped = events.length >= EVENTS_LIMIT;
 
   // Mantém o drawer em sincronia se um refresh trouxer novos eventos do mesmo visitante.
   const openVisitor = selectedVisitor
@@ -1184,7 +1105,7 @@ export function TrackingEventsView() {
                 : `${visitors.length} visitante${visitors.length !== 1 ? "s" : ""}`)
               : `${filteredVisitors.length} visitante${filteredVisitors.length !== 1 ? "s" : ""}`
             } · {visibleEvents.length} evento{visibleEvents.length !== 1 ? "s" : ""}
-            {eventsCapped && <span style={{ color: "#d97706" }}> · volume de navegação (PageView) truncado no período — visitantes/vendas/leads não são afetados</span>}
+            {eventsCapped && <span style={{ color: "#d97706" }}> · mostrando os {EVENTS_LIMIT} mais recentes (estreite o período pra ver tudo)</span>}
           </p>
         </div>
         <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
@@ -1504,7 +1425,7 @@ export function TrackingEventsView() {
               </tr>
             </thead>
             <tbody>
-              {pagedVisitors.map((visitor, i) => {
+              {filteredVisitors.map((visitor, i) => {
                 const utmEntries = Object.entries(visitor.lastUtm);
                 const device = parseUserAgent(visitor.lastUserAgent);
                 const os = parseOS(visitor.lastUserAgent);
@@ -1517,7 +1438,7 @@ export function TrackingEventsView() {
                     onClick={() => setSelectedVisitor(visitor)}
                     className="cursor-pointer transition-colors hover:opacity-80"
                     style={{
-                      borderBottom: i < pagedVisitors.length - 1 ? "1px solid var(--dm-border-subtle)" : undefined,
+                      borderBottom: i < filteredVisitors.length - 1 ? "1px solid var(--dm-border-subtle)" : undefined,
                       background: i % 2 === 0 ? "var(--dm-bg-surface)" : "var(--dm-bg-card)",
                     }}
                   >
@@ -1528,15 +1449,6 @@ export function TrackingEventsView() {
                           <span className="block truncate text-[11px] font-medium" style={{ color: "var(--dm-text-secondary)", maxWidth: 170 }} title={email}>{email}</span>
                         ) : (
                           <span className="font-mono text-[10px]" style={{ color: "var(--dm-text-tertiary)" }}>{visitor.fingerprintId.slice(0, 12)}…</span>
-                        )}
-                        {visitor.mergedFingerprintIds.length > 1 && (
-                          <span
-                            className="flex-shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
-                            style={{ background: "rgba(22,163,74,0.12)", color: "var(--dm-primary)" }}
-                            title="Mesmo email/telefone visto em navegadores ou dispositivos diferentes — jornadas unidas."
-                          >
-                            {visitor.mergedFingerprintIds.length}📱
-                          </span>
                         )}
                       </div>
                     </td>
@@ -1639,7 +1551,7 @@ export function TrackingEventsView() {
       {/* Cards — 1 por visitante (mobile < md) */}
       {view === "visitors" && filteredVisitors.length > 0 && (
         <div className="flex flex-col gap-2 md:hidden">
-          {pagedVisitors.map((visitor) => {
+          {filteredVisitors.map((visitor) => {
             const device = parseUserAgent(visitor.lastUserAgent);
             const os = parseOS(visitor.lastUserAgent);
             const browser = parseBrowser(visitor.lastUserAgent);
@@ -1697,37 +1609,6 @@ export function TrackingEventsView() {
               </button>
             );
           })}
-        </div>
-      )}
-
-      {/* Paginação — evita renderizar milhares de linhas/cards de uma vez só */}
-      {view === "visitors" && filteredVisitors.length > VISITORS_PAGE_SIZE && (
-        <div className="mt-3 flex items-center justify-between gap-3">
-          <span className="text-[11px]" style={{ color: "var(--dm-text-tertiary)" }}>
-            Página {visitorsPageSafe} de {visitorsPageCount} · {filteredVisitors.length} visitantes
-          </span>
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => setVisitorsPage((p) => Math.max(1, p - 1))}
-              disabled={visitorsPageSafe <= 1}
-              className="flex h-7 w-7 items-center justify-center rounded-lg border transition disabled:opacity-40"
-              style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}
-              aria-label="Página anterior"
-            >
-              <ChevronLeft size={14} />
-            </button>
-            <button
-              type="button"
-              onClick={() => setVisitorsPage((p) => Math.min(visitorsPageCount, p + 1))}
-              disabled={visitorsPageSafe >= visitorsPageCount}
-              className="flex h-7 w-7 items-center justify-center rounded-lg border transition disabled:opacity-40"
-              style={{ borderColor: "var(--dm-border-default)", color: "var(--dm-text-secondary)" }}
-              aria-label="Próxima página"
-            >
-              <ChevronRight size={14} />
-            </button>
-          </div>
         </div>
       )}
 

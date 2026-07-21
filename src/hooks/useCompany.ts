@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabaseClient } from "@/lib/supabase";
 import { useDevMode, isDevModeActive } from "@/hooks/useDevMode";
+import { logSilentError } from "@/utils/logSilentError";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -19,6 +20,8 @@ export interface Company {
   products: string[];
   /** Validade por produto (ISO). Sem chave = ilimitado. Vencido = não contratado (076). */
   productExpiry?: Record<string, string>;
+  /** Exclusão lógica (082). Preenchido = na lixeira: some das listas, mas o dado fica. */
+  deletedAt?: string | null;
 }
 
 /** Uma empresa da qual o usuário é membro, com o papel dele nela. */
@@ -63,8 +66,27 @@ function writeActiveCompanyId(id: string | null): void {
   } catch {}
 }
 
+/** Erro do PostgREST, no mínimo que a gente usa aqui. */
+type PgError = { code?: string; message?: string };
+
+/** Linha crua de companies como vem do select (com ou sem deleted_at). */
+type CompanyRow = {
+  id: string; name: string; slug: string; logo_url?: string | null;
+  settings?: unknown; products?: unknown; product_expiry?: unknown; deleted_at?: string | null;
+};
+
+/** Linha de company_members com a empresa embutida pelo join. */
+type MemberRow = { role: string; companies: CompanyRow | CompanyRow[] | null };
+
+/** true quando a query falhou só porque a migration 082 (deleted_at) não rodou. */
+function isMissingDeletedAt(err: PgError | null): boolean {
+  if (!err) return false;
+  return err.code === "42703" || /deleted_at/.test(err.message ?? "");
+}
+
 function rowToCompany(raw: {
   id: string; name: string; slug: string; logo_url?: string | null; settings?: unknown; products?: unknown; product_expiry?: unknown;
+  deleted_at?: string | null;
 }): Company {
   const expiry = raw.product_expiry && typeof raw.product_expiry === "object" && !Array.isArray(raw.product_expiry)
     ? (raw.product_expiry as Record<string, string>)
@@ -78,6 +100,7 @@ function rowToCompany(raw: {
     // default ["dash"]: empresas antes da migration 071 (ou preview) mantêm o Dash.
     products: Array.isArray(raw.products) ? (raw.products as string[]) : ["dash"],
     productExpiry: expiry,
+    deletedAt: raw.deleted_at ?? null,
   };
 }
 
@@ -96,24 +119,24 @@ export function activeCompanyProducts(company: Company | null | undefined): stri
 // populada e como o contexto propaga no dashboard. Não persiste nada.
 const DEMO_COMPANIES: Company[] = [
   {
-    id: "demo-1", name: "Personal Trainer Academy (Demo)", slug: "demo-pta", logoUrl: null,
+    id: "demo-1", name: "Empresa Demo A", slug: "demo-a", logoUrl: null,
     settings: {
       adAccountSuggestions: [
         { id: "1860195434590", label: "Conta Principal" },
         { id: "9087654321000", label: "Conta Secundária" },
       ],
       historyTabLabels: { lancamento: "Lançamentos", evento: "Eventos ao vivo" },
-      customHistoryTabs: [{ id: "ct_demo", label: "Mentorias", emoji: "🎓" }],
+      customHistoryTabs: [{ id: "ct_demo", label: "Programas", emoji: "🎯" }],
     },
     products: ["dash", "pipe"],
   },
   {
-    id: "demo-2", name: "Loja Fitness Online (Demo)", slug: "demo-loja", logoUrl: null,
+    id: "demo-2", name: "Empresa Demo B", slug: "demo-b", logoUrl: null,
     settings: { adAccountSuggestions: [{ id: "5551234567890", label: "E-commerce" }] },
     products: ["dash"],
   },
   {
-    id: "demo-3", name: "Clínica Estética (Demo)", slug: "demo-clinica", logoUrl: null,
+    id: "demo-3", name: "Empresa Demo C", slug: "demo-c", logoUrl: null,
     settings: {},
     products: ["dash"],
   },
@@ -152,11 +175,27 @@ async function fetchCompanyState(): Promise<CompanyState> {
   const { data: auth } = await supabaseClient.auth.getUser();
   if (!auth.user) return base;
 
-  const { data, error } = await supabaseClient
+  // Selects literais: o cliente tipado do Supabase valida a string em tempo de
+  // compilação, então interpolar as colunas quebra o parser dele.
+  const withSoft = await supabaseClient
     .from("company_members")
-    .select("role, companies ( id, name, slug, logo_url, settings, products, product_expiry )")
+    .select("role, companies ( id, name, slug, logo_url, settings, products, product_expiry, deleted_at )")
     .eq("user_id", auth.user.id)
     .order("created_at");
+
+  let data = withSoft.data as unknown as MemberRow[] | null;
+  let error: PgError | null = withSoft.error;
+
+  if (error && isMissingDeletedAt(error)) {
+    // Migration 082 ainda não rodou — busca sem deleted_at (nada fica na lixeira).
+    const legacy = await supabaseClient
+      .from("company_members")
+      .select("role, companies ( id, name, slug, logo_url, settings, products, product_expiry )")
+      .eq("user_id", auth.user.id)
+      .order("created_at");
+    data = legacy.data as unknown as MemberRow[] | null;
+    error = legacy.error;
+  }
 
   if (error) {
     // 42P01 = tabela não existe → migration 021 não aplicada ainda
@@ -170,7 +209,9 @@ async function fetchCompanyState(): Promise<CompanyState> {
       if (!raw) return null;
       return { role: row.role as CompanyRole, company: rowToCompany(raw) };
     })
-    .filter((m): m is CompanyMembership => m !== null);
+    .filter((m): m is CompanyMembership => m !== null)
+    // Na lixeira não aparece pra ninguém — só o admin lista as excluídas.
+    .filter((m) => !m.company.deletedAt);
 
   // ── Modo DEV: super admin enxerga TODAS as empresas ──────────────────────
   // Fonte da verdade = a função is_super_admin() (migration 026), que lê
@@ -181,16 +222,32 @@ async function fetchCompanyState(): Promise<CompanyState> {
     const { data: isAdmin } = await supabaseClient.rpc("is_super_admin");
     isSuperAdmin = isAdmin === true;
     if (isSuperAdmin) {
-      const { data: allCompanies, error: allErr } = await supabaseClient
+      const soft = await supabaseClient
         .from("companies")
-        .select("id, name, slug, logo_url, settings, products, product_expiry")
+        .select("id, name, slug, logo_url, settings, products, product_expiry, deleted_at")
         .order("name");
-      if (!allErr && allCompanies) {
+      let allCompanies = soft.data as unknown as CompanyRow[] | null;
+      let allErr: PgError | null = soft.error;
+      if (allErr && isMissingDeletedAt(allErr)) {
+        const legacy = await supabaseClient
+          .from("companies")
+          .select("id, name, slug, logo_url, settings, products, product_expiry")
+          .order("name");
+        allCompanies = legacy.data as unknown as CompanyRow[] | null;
+        allErr = legacy.error;
+      }
+      if (allErr) {
+        // NÃO engolir: era isto que fazia empresas sumirem da lista sem aviso
+        // nenhum, parecendo exclusão. Falhou a leitura → o usuário fica sabendo.
+        console.error("[useCompany] super admin: falha ao listar empresas —", allErr.message);
+        logSilentError("useCompany.allCompanies", allErr);
+      } else if (allCompanies) {
         const ownIds = new Set(memberships.map((m) => m.company.id));
         // empresas onde não sou membro entram com papel "owner" (acesso via policy)
         allCompanies
-          .filter((c) => !ownIds.has(c.id))
-          .forEach((c) => memberships.push({ role: "owner", company: rowToCompany(c) }));
+          .map(rowToCompany)
+          .filter((c) => !ownIds.has(c.id) && !c.deletedAt)
+          .forEach((c) => memberships.push({ role: "owner", company: c }));
       }
     }
   }
@@ -381,9 +438,9 @@ export interface CompanyMember {
 /** Lista os membros da empresa (RLS: qualquer membro enxerga). */
 export async function fetchCompanyMembers(companyId: string): Promise<CompanyMember[]> {
   if (!supabaseClient) return isDevModeActive() ? [
-    { id: "m1", userId: "u1", email: "dono@ptacademy.com",   role: "owner",   createdAt: new Date().toISOString() },
-    { id: "m2", userId: "u2", email: "gestor@ptacademy.com", role: "manager", createdAt: new Date().toISOString() },
-    { id: "m3", userId: "u3", email: "social@ptacademy.com", role: "viewer",  createdAt: new Date().toISOString() },
+    { id: "m1", userId: "u1", email: "dono@empresademo.com",   role: "owner",   createdAt: new Date().toISOString() },
+    { id: "m2", userId: "u2", email: "gestor@empresademo.com", role: "manager", createdAt: new Date().toISOString() },
+    { id: "m3", userId: "u3", email: "social@empresademo.com", role: "viewer",  createdAt: new Date().toISOString() },
   ] : [];
   const { data, error } = await supabaseClient
     .from("company_members")
@@ -432,7 +489,7 @@ export async function renameCompany(companyId: string, name: string): Promise<vo
   await refreshCompany();
 }
 
-/** TAG curta de identificação da empresa (3 letras, ex.: PTA) — vive em settings. */
+/** TAG curta de identificação da empresa (3 letras, ex.: ABC) — vive em settings. */
 export const COMPANY_TAG_KEY = "companyTag";
 
 export function readCompanyTag(settings?: Record<string, unknown>): string {
@@ -447,7 +504,7 @@ export async function createCompany(name: string, ownerEmail?: string, tag?: str
   const clean = name.trim();
   if (!clean) throw new Error("Informe o nome da empresa.");
   const cleanTag = (tag ?? "").trim().toUpperCase();
-  if (!/^[A-Z]{3}$/.test(cleanTag)) throw new Error("TAG obrigatória: exatamente 3 letras (ex.: PTA).");
+  if (!/^[A-Z]{3}$/.test(cleanTag)) throw new Error("TAG obrigatória: exatamente 3 letras (ex.: ABC).");
 
   // Sem duplicada: nome (case-insensitive) e TAG são únicos na plataforma.
   const { data: existing } = await supabaseClient.from("companies").select("name, settings");
@@ -463,9 +520,8 @@ export async function createCompany(name: string, ownerEmail?: string, tag?: str
   const slug =
     clean.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) +
     "-" + Math.random().toString(36).slice(2, 7);
-  // blankTaxonomy: empresa nova nasce SEM os filtros padrão PTA (Biomecânica,
-  // Mentoria…). O dono monta os próprios filtros na aba Filtros / no wizard.
-  // Empresas antigas (sem a flag) seguem com a taxonomia PTA hardcoded.
+  // blankTaxonomy: toda empresa nasce sem taxonomia embutida. O dono monta os
+  // próprios filtros na aba Filtros / no wizard de criar empresa.
   const { data, error } = await supabaseClient
     .from("companies")
     .insert({ name: clean, slug, settings: { blankTaxonomy: true, [COMPANY_TAG_KEY]: cleanTag } })
@@ -482,6 +538,13 @@ export async function createCompany(name: string, ownerEmail?: string, tag?: str
 }
 
 /** Apaga a empresa e tudo dela (FKs em cascade). RLS: só super admin. */
+/**
+ * Exclusão LÓGICA. Nunca DELETE: a FK de 13+ tabelas é ON DELETE CASCADE
+ * (migration 021), então apagar a linha levaria junto campanhas, histórico,
+ * produtos, leads, tracking e Eduzz — e no plano Free não há backup pra voltar.
+ * A empresa some das listas e fica restaurável (ver restoreCompany).
+ * O banco também barra DELETE direto (trigger, migration 082).
+ */
 export async function deleteCompany(companyId: string): Promise<void> {
   if (!supabaseClient) {
     if (!isDevModeActive()) throw new Error("Supabase não configurado.");
@@ -493,7 +556,25 @@ export async function deleteCompany(companyId: string): Promise<void> {
   }
   const { error } = await supabaseClient
     .from("companies")
-    .delete()
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", companyId);
+  if (error) throw new Error(error.message);
+  await refreshCompany();
+}
+
+/** Tira a empresa da lixeira. Só faz sentido pra quem lista as excluídas (admin). */
+export async function restoreCompany(companyId: string): Promise<void> {
+  if (!supabaseClient) {
+    if (!isDevModeActive()) throw new Error("Supabase não configurado.");
+    const overrides = readDemoOverrides();
+    overrides[companyId] = { ...overrides[companyId], deleted: false };
+    try { localStorage.setItem(DEMO_OVERRIDES_KEY, JSON.stringify(overrides)); } catch {}
+    await refreshCompany();
+    return;
+  }
+  const { error } = await supabaseClient
+    .from("companies")
+    .update({ deleted_at: null })
     .eq("id", companyId);
   if (error) throw new Error(error.message);
   await refreshCompany();
@@ -1044,10 +1125,19 @@ export interface AdminCompany {
  */
 export async function fetchAdminCompanies(): Promise<AdminCompany[]> {
   if (!supabaseClient) return [];
-  const { data: comps, error } = await supabaseClient
+  let { data: comps, error } = await supabaseClient
     .from("companies")
-    .select("id, name, slug, logo_url, settings, products, product_expiry, meta_access_token")
+    .select("id, name, slug, logo_url, settings, products, product_expiry, meta_access_token, deleted_at")
     .order("name");
+  if (isMissingDeletedAt(error)) {
+    // Migration 082 ainda não rodou — busca sem deleted_at (lixeira fica vazia).
+    const fb = await supabaseClient
+      .from("companies")
+      .select("id, name, slug, logo_url, settings, products, product_expiry, meta_access_token")
+      .order("name");
+    comps = (fb.data ?? []).map((r) => ({ ...r, deleted_at: null }));
+    error = fb.error;
+  }
   if (error) throw new Error(error.message);
 
   const { data: mem } = await supabaseClient

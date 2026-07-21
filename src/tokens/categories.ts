@@ -125,28 +125,7 @@ export const getAllCategories = (): CategoryConfig[] =>
   Object.values(CATEGORIES);
 
 /**
- * Mapeia nomes de campanha para chave de categoria.
- * Adaptar conforme crescimento dos produtos.
+ * Mapa nome de campanha → chave de categoria. Cada empresa define o seu via
+ * companyFilters; sem entradas embutidas de nenhum nicho.
  */
-export const CAMPAIGN_CATEGORY_MAP: Record<string, CategoryKey> = {
-  // Pós-graduação
-  "BM":  "pos",
-  "TF":  "pos",
-  "SM":  "pos",
-  "MPA": "pos",
-  "FE":  "pos",
-  "BB":  "pos",
-  // Livros
-  "Livro de Biomecânica": "livros",
-  "Livro de Marketing":   "livros",
-  // Ebooks
-  "Ebook Bio Joelho": "ebooks",
-  "Ebook Bio Coluna": "ebooks",
-  // Perpétuo
-  "Notável Play": "perpetuo",
-  // Eventos
-  "BS":            "eventos",
-  "Mentoria Scala":"eventos",
-  "Next":          "eventos",
-  "Power Trainer": "eventos",
-};
+export const CAMPAIGN_CATEGORY_MAP: Record<string, CategoryKey> = {};

@@ -5,7 +5,7 @@ import { fetchProfilesFromDB, saveProfilesToDB } from "@/utils/supabaseProfiles"
 import { useCompany } from "@/hooks/useCompany";
 import { loadScoped, persistScoped } from "@/lib/companyScopedStorage";
 
-const STORAGE_PREFIX = "pta_advertiser_profiles_v2";
+const STORAGE_PREFIX = "gsah_advertiser_profiles_v2";
 // empresa cujo cache local está ativo — persist grava sempre nela.
 let activeCid: string | null = null;
 
@@ -40,7 +40,7 @@ export interface AdvertiserProfile {
   groupId: string;
   campaigns: ActiveCampaign[];
   instagramUserId?: string;      // Meta IBA ID (e.g. "17841401234567890")
-  instagramUsername?: string;    // @handle (e.g. "personaltraineracademy_")
+  instagramUsername?: string;    // @handle (ex.: "minhaempresa_")
   instagramAccountId?: string;   // Supabase UUID from instagram_accounts (set after register)
   createdAt: string;
 }

@@ -21,7 +21,7 @@ export {
 };
 export type { MetaInsight, MetaAction };
 
-const CREDS_KEY = "pta_meta_creds_v1";
+const CREDS_KEY = "gsah_meta_creds_v1";
 
 // ─── Campaigns ────────────────────────────────────────────────────────────────
 

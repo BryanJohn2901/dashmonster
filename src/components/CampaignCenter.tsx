@@ -36,12 +36,12 @@ interface MockCampaign {
 }
 
 const MOCK_CENTER_CAMPAIGNS: MockCampaign[] = [
-  { id: "mc_001", name: "[LEAD] Captação BM - Formulário Instantâneo", adAccountId: "act_demo_1", adAccountLabel: "PTA Digital (demo)", objective: "OUTCOME_LEADS", detectedResultType: "leadgen_grouped" },
-  { id: "mc_002", name: "[VENDA] Remarketing Compra Pós-Graduação",    adAccountId: "act_demo_1", adAccountLabel: "PTA Digital (demo)", objective: "OUTCOME_SALES", detectedResultType: "offsite_conversion.fb_pixel_purchase" },
-  { id: "mc_003", name: "Topo - Visitas ao Perfil Instagram",           adAccountId: "act_demo_1", adAccountLabel: "PTA Digital (demo)", objective: "OUTCOME_ENGAGEMENT", detectedResultType: "profile_visit" },
-  { id: "mc_004", name: "Tráfego LP - Ebook Biomecânica",               adAccountId: "act_demo_2", adAccountLabel: "Cliente Fitness (demo)", objective: "OUTCOME_TRAFFIC", detectedResultType: "link_click" },
-  { id: "mc_005", name: "Leads no Site - Pixel Captação",               adAccountId: "act_demo_2", adAccountLabel: "Cliente Fitness (demo)", detectedResultType: "offsite_conversion.fb_pixel_lead" },
-  { id: "mc_006", name: "Alcance - Branding Instituto",                 adAccountId: "act_demo_2", adAccountLabel: "Cliente Fitness (demo)", objective: "OUTCOME_AWARENESS" },
+  { id: "mc_001", name: "[LEAD] Captação - Formulário Instantâneo", adAccountId: "act_demo_1", adAccountLabel: "Empresa Demo (demo)", objective: "OUTCOME_LEADS", detectedResultType: "leadgen_grouped" },
+  { id: "mc_002", name: "[VENDA] Remarketing Compra",              adAccountId: "act_demo_1", adAccountLabel: "Empresa Demo (demo)", objective: "OUTCOME_SALES", detectedResultType: "offsite_conversion.fb_pixel_purchase" },
+  { id: "mc_003", name: "Topo - Visitas ao Perfil Instagram",      adAccountId: "act_demo_1", adAccountLabel: "Empresa Demo (demo)", objective: "OUTCOME_ENGAGEMENT", detectedResultType: "profile_visit" },
+  { id: "mc_004", name: "Tráfego LP - Ebook",                      adAccountId: "act_demo_2", adAccountLabel: "Cliente Demo (demo)", objective: "OUTCOME_TRAFFIC", detectedResultType: "link_click" },
+  { id: "mc_005", name: "Leads no Site - Pixel Captação",          adAccountId: "act_demo_2", adAccountLabel: "Cliente Demo (demo)", detectedResultType: "offsite_conversion.fb_pixel_lead" },
+  { id: "mc_006", name: "Alcance - Branding",                      adAccountId: "act_demo_2", adAccountLabel: "Cliente Demo (demo)", objective: "OUTCOME_AWARENESS" },
 ];
 
 function mockToEntry(c: MockCampaign): CampaignCenterEntry {
@@ -477,7 +477,7 @@ function ConnectDrawer({ onClose, onImport }: {
                   Nome da conta
                 </span>
                 <input type="text" value={entryName} onChange={(e) => setEntryName(e.target.value)}
-                  placeholder="ex: Pós-graduação"
+                  placeholder="ex: nome do filtro"
                   className="h-9 rounded-[10px] border px-2.5 text-xs outline-none"
                   style={{ borderColor: "var(--dm-border-default)", backgroundColor: "var(--dm-bg-elevated)", color: "var(--dm-text-primary)" }} />
               </label>

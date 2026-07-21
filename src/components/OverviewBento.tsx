@@ -22,7 +22,7 @@ const originColor = (origem: string, index: number): string =>
   ORIGIN_COLORS[origem] ?? ORIGIN_FALLBACK[index % ORIGIN_FALLBACK.length];
 
 // ─── Catálogo de cards do bento (escolhíveis pelo lápis) ──────────────────────
-const BENTO_KEY = "pta_bento_cards_v1";
+const BENTO_KEY = "gsah_bento_cards_v1";
 const DEFAULT_CARDS = ["investment", "results", "cpa", "roas"];
 const MAX_CARDS = 4;
 

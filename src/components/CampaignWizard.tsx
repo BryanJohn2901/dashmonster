@@ -7,8 +7,8 @@
 //
 // Em vez de gravar só na Central (que agrupava por CONTA), monta uma
 // UserAccountEntry e dispara a MESMA ponte do Painel de Controle
-// (PTA_PAINEL_SAVE_NAV_EVENT) — o listener do Dashboard registra a campanha no
-// FILTRO certo (Biomecânica, Mentoria…) e puxa as métricas. É o caminho provado.
+// (PAINEL_SAVE_NAV_EVENT) — o listener do Dashboard registra a campanha no
+// FILTRO certo configurado pela empresa e puxa as métricas. Caminho provado.
 
 import { useMemo, useState } from "react";
 import { ArrowLeft, ArrowRight, Check, Loader2, Plug, Target, X, Plus, Search } from "lucide-react";
@@ -31,7 +31,7 @@ import {
 } from "@/config/categoryInternalFilters";
 import { fetchMetaCampaigns, loadMetaCredentials, type MetaCampaign } from "@/utils/metaApi";
 import {
-  PTA_PAINEL_SAVE_NAV_EVENT,
+  PAINEL_SAVE_NAV_EVENT,
   mapPainelInternalFilterToDashboardGroupId,
 } from "@/utils/painelDashboardNavigation";
 import { companyTemplateCategories } from "@/types/userConfig";
@@ -71,7 +71,7 @@ export function CampaignWizard({ onClose, onSave, nameSuggestions = [] }: {
   const [catSlug, setCatSlug] = useState("");   // categoria existente escolhida
   const [newCat, setNewCat] = useState("");     // nome de categoria nova (se preenchido, tem prioridade)
   const [creatingCat, setCreatingCat] = useState(false);
-  const [internalFilter, setInternalFilter] = useState(""); // filtro específico do dashboard (bm, mentoria-scala…)
+  const [internalFilter, setInternalFilter] = useState(""); // filtro específico do dashboard (subfiltro da empresa)
   const [creatingFilter, setCreatingFilter] = useState(false);
   const [newFilter, setNewFilter] = useState("");
   const [actId, setActId] = useState("");
@@ -234,7 +234,7 @@ export function CampaignWizard({ onClose, onSave, nameSuggestions = [] }: {
           updatedAt: now,
         })));
 
-        window.dispatchEvent(new CustomEvent(PTA_PAINEL_SAVE_NAV_EVENT, {
+        window.dispatchEvent(new CustomEvent(PAINEL_SAVE_NAV_EVENT, {
           detail: { entry, categorySlug: slug, isCustom: isCustomCat, syncAfter: true },
         }));
         onClose();
@@ -308,7 +308,7 @@ export function CampaignWizard({ onClose, onSave, nameSuggestions = [] }: {
               <span className={labelCls} style={{ color: "var(--dm-text-tertiary)" }}>Nome da campanha</span>
               <input type="text" value={name} onChange={(e) => setName(e.target.value)}
                 list="dm-wiz-names"
-                placeholder="ex: Biomecânica, Musculação, Mentoria Scala"
+                placeholder="ex: nome do produto ou linha"
                 className={fieldCls} style={{ ...fieldStyle, background: "var(--dm-bg-surface)" }} autoFocus />
               <datalist id="dm-wiz-names">
                 {nameSuggestions.map((n) => <option key={n} value={n} />)}
@@ -362,7 +362,7 @@ export function CampaignWizard({ onClose, onSave, nameSuggestions = [] }: {
               </div>
               {(creatingCat || newCat.trim()) && (
                 <input type="text" value={newCat} onChange={(e) => setNewCat(e.target.value)}
-                  placeholder="ex: Pós, Eventos, Perpétuo, Livros…"
+                  placeholder="ex: Lançamentos, Eventos, Perpétuo…"
                   className={fieldCls} style={{ ...fieldStyle, background: "var(--dm-bg-surface)", marginTop: 4 }} autoFocus />
               )}
             </div>

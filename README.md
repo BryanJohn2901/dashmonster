@@ -7,7 +7,7 @@
 [![Next.js](https://img.shields.io/badge/Next.js_16.2-0E1108?style=flat-square&logo=next.js&logoColor=B6F500)](https://nextjs.org)
 [![React](https://img.shields.io/badge/React_19-0E1108?style=flat-square&logo=react&logoColor=B6F500)](https://react.dev)
 [![Supabase](https://img.shields.io/badge/Supabase_·_RLS-0E1108?style=flat-square&logo=supabase&logoColor=B6F500)](https://supabase.com)
-[![Meta API](https://img.shields.io/badge/Graph_API_v21-0E1108?style=flat-square&logo=meta&logoColor=B6F500)](https://developers.facebook.com)
+[![Meta API](https://img.shields.io/badge/Graph_API_v23-0E1108?style=flat-square&logo=meta&logoColor=B6F500)](https://developers.facebook.com)
 [![Tailwind](https://img.shields.io/badge/Tailwind_v4-0E1108?style=flat-square&logo=tailwindcss&logoColor=B6F500)](https://tailwindcss.com)
 [![Vercel](https://img.shields.io/badge/Deploy_Vercel-0E1108?style=flat-square&logo=vercel&logoColor=B6F500)](https://vercel.com/new/clone?repository-url=https://github.com/BryanJohn2901/dashmonster)
 
@@ -122,7 +122,7 @@ Auditoria de login (quem, quando, de onde, qual device), banimento e liberação
 ```mermaid
 %%{init: {'theme':'base','themeVariables':{'primaryColor':'#0E1108','primaryTextColor':'#EAFFF2','primaryBorderColor':'#16A34A','lineColor':'#B6F500','secondaryColor':'#191D14','tertiaryColor':'#0E1108','fontFamily':'Segoe UI'}}}%%
 flowchart LR
-    subgraph Meta["☁️ Meta Graph API v21"]
+    subgraph Meta["☁️ Meta Graph API v23"]
         ADS[Campanhas & Insights]
         IG[Instagram]
     end
@@ -260,7 +260,7 @@ src/
 | Banco | Supabase (PostgreSQL + RLS + Realtime) |
 | Auth | Supabase Auth (+ GoTrue admin p/ banimento) |
 | Gráficos | Recharts |
-| APIs externas | Meta Ads Graph API v21 · Instagram · Eduzz |
+| APIs externas | Meta Ads Graph API v23 · Instagram · Eduzz |
 | Deploy | Vercel |
 
 ## Contribuindo
@@ -278,5 +278,9 @@ src/
 **🐉 Feito para quem leva tráfego — e venda — a sério.**
 
 <sub>Dados reais. Decisões reais. Resultado real.</sub>
+
+<br/><br/>
+
+<sub>Desenvolvido e assinado por <strong>GSAStúdio</strong> · <a href="https://gsaweb.com.br">gsaweb.com.br</a></sub>
 
 </div>

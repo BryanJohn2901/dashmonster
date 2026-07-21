@@ -1,8 +1,7 @@
 'use client'
 
-// Port fiel de pipeflow-crm/components/layout/AppShell.tsx.
-// O original era Server Component (supabase server + cookies); aqui é client,
-// padrão do dashmonster: useCompany (tenancy do hub) + crm.ts (dados).
+// Shell do CRM. Client component (não Server Component): useCompany (tenancy
+// do hub) + crm.ts (dados), padrão do resto do app.
 // Gate de entitlement ('pipe' em companies.products) veio do CrmShell.
 
 import { useCallback, useEffect, useState } from 'react'
@@ -74,7 +73,7 @@ export function AppShell({ children }: AppShellProps) {
     return (
       <Centered>
         <p className="text-sm font-medium text-geyser">
-          Faça login e escolha uma empresa para abrir o PipeFlow.
+          Faça login e escolha uma empresa para abrir o CRM Monster.
         </p>
         <BackToHub />
       </Centered>
@@ -86,9 +85,9 @@ export function AppShell({ children }: AppShellProps) {
   if (!hasPipe) {
     return (
       <Centered>
-        <h1 className="text-xl font-semibold text-[#F7F9FA]">PipeFlow não contratado</h1>
+        <h1 className="text-xl font-semibold text-[#F7F9FA]">CRM Monster não contratado</h1>
         <p className="max-w-md text-center text-sm text-geyser">
-          A empresa <strong>{company.name}</strong> ainda não tem o PipeFlow ativo.
+          A empresa <strong>{company.name}</strong> ainda não tem o CRM Monster ativo.
           Fale com o suporte para liberar o CRM.
         </p>
         <BackToHub />

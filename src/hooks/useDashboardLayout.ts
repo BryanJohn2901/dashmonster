@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from "react";
 import type { MetricId } from "./useMetricVisibility";
 import { ALL_METRIC_IDS, METRIC_LABELS } from "./useMetricVisibility";
 
-const STORE_KEY = "pta_layout_v1";
+const STORE_KEY = "gsah_layout_v1";
 
 export interface DashboardLayout {
   order:       MetricId[];

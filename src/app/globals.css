@@ -27,6 +27,9 @@
   --dm-bg-card-soft:     #EEF0F3;
   --dm-bg-surface-hover: #EEF0F3;
   --dm-divider:          #EEF0F3;
+  /* Fundo de destaque: blocos de instrução e código. Mais forte que o elevated
+     de propósito — é o que dá contraste dentro de um card já cinza. */
+  --dm-bg-muted:         #CED2D8;
 
   --dm-border-subtle:    #EEF0F3;
   --dm-border-default:   #E4E7EC;
@@ -303,6 +306,8 @@
   --dm-bg-elevated:      #252932;
   --dm-bg-card-soft:     #252932;
   --dm-bg-surface-hover: #252932;
+  /* Par escuro do #CED2D8 no claro. */
+  --dm-bg-muted:         #2E333F;
   --dm-bg-input:         #1D2027;
   --dm-bg-table:         #1D2027;
   --dm-bg-table-header:  #252932;

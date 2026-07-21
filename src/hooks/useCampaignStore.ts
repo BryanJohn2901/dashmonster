@@ -14,8 +14,8 @@ import { mapPainelInternalFilterToDashboardGroupId } from "@/utils/painelDashboa
 // estado (grupos, adAccountId em campaignConfigs, seleções) de uma empresa
 // vazava pro dashboard de outra ao trocar. `activeStoreCompanyId` diz pra qual
 // empresa o persist() grava — atualizado no render do hook.
-const STORAGE_PREFIX = "pta_campaign_store_v2";
-const LEGACY_GLOBAL_KEYS = ["pta_campaign_store_v2", "pta_campaign_store_v1"];
+const STORAGE_PREFIX = "gsah_campaign_store_v2";
+const LEGACY_GLOBAL_KEYS = ["gsah_campaign_store_v2", "gsah_campaign_store_v1"];
 let activeStoreCompanyId: string | null = null;
 
 const storeKeyFor = (companyId: string | null): string =>

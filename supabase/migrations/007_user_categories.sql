@@ -1,5 +1,5 @@
 -- ============================================================
--- Analytics PTA — User Categories & Account Entries
+-- GSAStúdio Hub — User Categories & Account Entries
 -- Painel de Controle: categorias (fixas + custom) e contas vinculadas
 -- ============================================================
 

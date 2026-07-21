@@ -1,5 +1,5 @@
 -- ============================================================
--- Analytics PTA — Historical Data Tables
+-- GSAStúdio Hub — Historical Data Tables
 -- Run this in the Supabase SQL Editor (Dashboard > SQL Editor)
 -- ============================================================
 

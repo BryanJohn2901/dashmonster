@@ -12,16 +12,10 @@ export interface Attachment {
 
 export type ProductType = "pos" | "imersao";
 
-export const COURSE_GROUPS_PRODUCT = [
-  { id: "biomecanica",  label: "Biomecânica (BM)" },
-  { id: "musculacao",   label: "Musculação / MPA" },
-  { id: "fisiologia",   label: "Fisiologia (FE)" },
-  { id: "bodybuilding", label: "Bodybuilding (BB)" },
-  { id: "feminino",     label: "Trein. Feminino (SM)" },
-  { id: "funcional",    label: "Trein. Funcional (TF)" },
-] as const;
+// Sem catálogo de curso embutido: cada empresa define as próprias linhas.
+export const COURSE_GROUPS_PRODUCT: ReadonlyArray<{ id: string; label: string }> = [];
 
-export type CourseGroupId = (typeof COURSE_GROUPS_PRODUCT)[number]["id"];
+export type CourseGroupId = string;
 
 // ─── Sub-structures ───────────────────────────────────────────────────────────
 
@@ -49,7 +43,7 @@ export interface TurmaLink {
 
 export interface PageLink {
   id: string;
-  label: string;   // ex: "Pré-Especialização", "PEMPA2", "Principal"
+  label: string;   // ex: "Principal", "Captação", "Checkout"
   url: string;
 }
 
