@@ -13,7 +13,7 @@ import {
   Target, Trash2, TrendingUp, Trophy, Upload, UserRound, Users, Wallet, X, XCircle, Zap,
   LayoutDashboard, History, LineChart, Sparkles, Database, Dna, Weight, HeartPulse,
   Medal, PersonStanding, Flame, BookText, MonitorSmartphone, Ticket, Library, VenetianMask,
-  Radar
+  Radar, AlertTriangle
 } from "lucide-react";
 import Link from "next/link";
 import { useTheme } from "next-themes";
@@ -1791,6 +1791,47 @@ function CampaignPanel({
   );
 }
 
+// ─── Banner de falha de sync (dash vazio) ─────────────────────────────────────
+// Sem isto, um token Meta expirado falha em silêncio no auto-sync do login e o
+// usuário só vê a tela "Conecte uma fonte" — sem pista de que o sync tentou e
+// morreu. Detecta erro de auth/token e manda direto pro Painel reconectar.
+function SyncErrorBanner({ error, onOpenControlPanel }: {
+  error: string;
+  onOpenControlPanel?: () => void;
+}) {
+  const isAuth = /expired|access token|oauth|session|c[oó]digo 190|\b190\b/i.test(error);
+  return (
+    <div
+      className="mx-auto mb-6 max-w-4xl rounded-xl border border-red-200 bg-red-50 px-4 py-3.5 dark:border-red-900/50 dark:bg-red-950/40"
+      role="alert"
+    >
+      <div className="flex items-start gap-3">
+        <AlertTriangle size={18} className="mt-0.5 flex-shrink-0 text-red-600 dark:text-red-400" />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-red-900 dark:text-red-100">
+            {isAuth ? "O token do Meta expirou" : "Falha ao sincronizar com o Meta"}
+          </p>
+          <p className="mt-1 text-[13px] leading-relaxed text-red-800/90 dark:text-red-200/80">
+            {isAuth
+              ? "Por isso o painel está vazio. Gere um System User Token (não expira) e cole em Integrações."
+              : "O painel está vazio porque a última sincronização não completou."}
+          </p>
+          <p className="mt-1 break-words font-mono text-[11px] text-red-700/70 dark:text-red-300/60">{error}</p>
+          {onOpenControlPanel && (
+            <button
+              type="button"
+              onClick={onOpenControlPanel}
+              className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-[12px] font-semibold text-white transition hover:bg-red-700"
+            >
+              <Settings2 size={13} /> Abrir Painel de Controle
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function Dashboard({
@@ -3476,7 +3517,11 @@ export function Dashboard({
           {/* ── Overview: sem dados → onboarding; com dados → dashboard (categoria opcional no topo) ── */}
           {mainTab === "overview" && (
             campaigns.length === 0 ? (
-              inlineImportTab ? (
+              <>
+                {syncStatus?.error && (
+                  <SyncErrorBanner error={syncStatus.error} onOpenControlPanel={onOpenControlPanel} />
+                )}
+              {inlineImportTab ? (
                 /* ── Step 2: source selected — tutorial gone, form centered ── */
                 <div className="mx-auto max-w-2xl py-6" style={{ animation: "dm-fade-up 0.28s ease both" }}>
                   <ImportPopover
@@ -3505,7 +3550,8 @@ export function Dashboard({
                   onOpenControlPanel={onOpenControlPanel}
                   onSelectTab={(tab) => setInlineImportTab(tab)}
                 />
-              )
+              )}
+              </>
             ) : (
               /* ── Dashboard com dados (todas as campanhas até escolher categoria no topo) ── */
               <div className="space-y-6">
