@@ -33,6 +33,9 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 !.env.example
+# .env.production só com NEXT_PUBLIC_* (valores públicos) — precisa estar no git
+# porque o build da Hostinger é git-sourced e é a única fonte que o `next build` lê.
+!.env.production
 
 # vercel
 .vercel
